@@ -1,6 +1,6 @@
 {
-  "versione": "1.0.0",
-  "note": "Prima pubblicazione.",
+  "versione": "1.0.1",
+  "note": "Test del meccanismo di aggiornamento.",
   "file": [
     { "nome": "gestionale.htm", "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/aggiornamenti/gestionale.htm" },
     { "nome": "server.js", "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/aggiornamenti/server.js" }
