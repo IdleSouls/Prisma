@@ -1,0 +1,8 @@
+{
+  "versione": "1.0.0",
+  "note": "Prima pubblicazione.",
+  "file": [
+    { "nome": "gestionale.htm", "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/aggiornamenti/gestionale.htm" },
+    { "nome": "server.js", "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/aggiornamenti/server.js" }
+  ]
+}
