@@ -72,6 +72,39 @@ function presenzaOccupataDaAltroDispositivo(nome, deviceId) {
   return !!voce.deviceId && voce.deviceId !== deviceId;
 }
 
+// Task Matteo (accesso ai referenti individuale, non solo il login unico di studio sulla porta
+// team): sopra questo file di presenza "soft" (nessuna password, solo un avviso aggirabile) si
+// aggiunge qui un livello OPZIONALE per referente - se un responsabile ha una password impostata
+// (vedi FILE_RESPONSABILI_PASSWORD sotto), scegliere quel nome richiede quella password E la
+// sessione diventa VERAMENTE esclusiva: un secondo dispositivo che prova a usare lo stesso nome
+// mentre la sessione è ancora viva (heartbeat recente) viene RIFIUTATO, non solo avvisato - "due pc
+// non possono accedere a Matteo insieme" (parole di Matteo). Un responsabile senza password
+// impostata continua a funzionare esattamente come prima (comportamento invariato, retrocompatibile).
+const FILE_RESPONSABILI_PASSWORD = path.join(CARTELLA, 'responsabili-password.json');
+function leggiResponsabiliPassword() {
+  try {
+    const raw = fs.readFileSync(FILE_RESPONSABILI_PASSWORD, 'utf8');
+    const cfg = JSON.parse(raw);
+    return (cfg && typeof cfg === 'object') ? cfg : {};
+  } catch (err) {
+    return {};
+  }
+}
+function scriviResponsabiliPassword(cfg) {
+  fs.writeFileSync(FILE_RESPONSABILI_PASSWORD, JSON.stringify(cfg, null, 2), 'utf8');
+}
+// nome -> { token, deviceId, ultimoHeartbeat }. Solo in memoria (come presenzaOperatori): un
+// riavvio del server chiude tutte le sessioni esclusive, chi era collegato dovrà solo reinserire la
+// password al prossimo heartbeat/scelta operatore, nessun dato perso.
+const SESSIONE_ESCLUSIVA_TTL_MS = 45 * 1000; // un po' più largo dell'heartbeat (15s) per tollerare un giro perso
+const sessioneAttivaPerNome = new Map();
+function sessioneEsclusivaValida(nome, token, deviceId) {
+  const sess = sessioneAttivaPerNome.get(nome);
+  if (!sess) return false;
+  if (Date.now() - sess.ultimoHeartbeat > SESSIONE_ESCLUSIVA_TTL_MS) return false;
+  return sess.token === token && sess.deviceId === deviceId;
+}
+
 const PORTA = 8420;
 // CARTELLA: normalmente __dirname. Se questo file viene eseguito pacchettizzato come eseguibile
 // singolo (Node.js Single Executable Applications - vedi licensing/installer.js per i dettagli e
@@ -1186,10 +1219,30 @@ function gestisciRichiesta(req, res) {
         const nome = String(dati.operatore || '').trim();
         const deviceId = String(dati.deviceId || '').trim() || null;
         if (nome) {
-          // Task #114: un dispositivo diverso da quello già attivo su questo nome NON sovrascrive
-          // silenziosamente la presenza (altrimenti i due dispositivi si "strapperebbero" a vicenda
-          // il presidio ogni 15s) a meno che non forzi esplicitamente (l'utente ha confermato
-          // l'avviso lato client di "nome già in uso altrove").
+          const passwordCfg = leggiResponsabiliPassword();
+          if (passwordCfg[nome]) {
+            // Referente con sessione esclusiva vera: l'heartbeat DEVE portare il token ottenuto da
+            // /api/operatore-login per questo stesso dispositivo, altrimenti la sessione non è (più)
+            // valida - un altro dispositivo può averla presa nel frattempo, o è scaduta - e si
+            // segnala sessioneScaduta così il client forza il logout invece di restare "online" in
+            // modo silenziosamente sbagliato.
+            const token = String(dati.token || '');
+            if (!sessioneEsclusivaValida(nome, token, deviceId)) {
+              res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+              res.end(JSON.stringify({ ok: true, sessioneScaduta: true, online: presenzaOnlineElenco() }));
+              return;
+            }
+            sessioneAttivaPerNome.set(nome, { token, deviceId, ultimoHeartbeat: Date.now() });
+            presenzaOperatori.set(nome, { ts: Date.now(), deviceId });
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ ok: true, occupato: false, online: presenzaOnlineElenco() }));
+            return;
+          }
+          // Task #114 (nessuna password impostata per questo referente): comportamento invariato,
+          // solo avviso "soft" aggirabile - un dispositivo diverso da quello già attivo su questo
+          // nome NON sovrascrive silenziosamente la presenza (altrimenti i due dispositivi si
+          // "strapperebbero" a vicenda il presidio ogni 15s) a meno che non forzi esplicitamente
+          // (l'utente ha confermato l'avviso lato client di "nome già in uso altrove").
           const occupato = presenzaOccupataDaAltroDispositivo(nome, deviceId);
           if (occupato && !dati.forza) {
             res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -1200,6 +1253,119 @@ function gestisciRichiesta(req, res) {
         }
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ ok: true, occupato: false, online: presenzaOnlineElenco() }));
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, errore: err.message }));
+      }
+    });
+    return;
+  }
+
+  // Stato "chi ha una password impostata" (mai la password stessa) - usato in Impostazioni per
+  // mostrare il lucchetto giusto per ogni responsabile, e nel selettore operatore per sapere a chi
+  // chiedere la password prima di attribuirsi quel nome.
+  if (url === '/api/responsabili-password-stato' && req.method === 'GET') {
+    const cfg = leggiResponsabiliPassword();
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ ok: true, nomiConPassword: Object.keys(cfg).filter(n => cfg[n]) }));
+    return;
+  }
+
+  // Impostare/cambiare/rimuovere la password di un referente (lato amministrazione, in
+  // Impostazioni) - password vuota = rimuove la protezione per quel nome, tornando al comportamento
+  // "soft" di prima.
+  if (url === '/api/responsabili-password' && req.method === 'POST') {
+    leggiCorpoRichiesta(req, (corpo) => {
+      try {
+        const dati = JSON.parse(corpo);
+        const nome = String(dati.nome || '').trim();
+        const password = String(dati.password || '');
+        if (!nome) { res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ ok: false, errore: 'Nome mancante.' })); return; }
+        const cfg = leggiResponsabiliPassword();
+        if (password) cfg[nome] = password; else delete cfg[nome];
+        scriviResponsabiliPassword(cfg);
+        // Rimuovendo la password si chiude anche un'eventuale sessione esclusiva ancora attesa per
+        // quel nome: da questo momento è di nuovo un nome "libero" col solo avviso soft.
+        if (!password) sessioneAttivaPerNome.delete(nome);
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: true }));
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, errore: err.message }));
+      }
+    });
+    return;
+  }
+
+  // Segue una rinomina/eliminazione del responsabile fatta in Impostazioni (STATE.meta.responsabili
+  // vive solo lato client in dati-studio.json - il file delle password è keyed per nome esatto,
+  // quindi senza questo la password resterebbe orfana sotto il vecchio nome). Nessun errore se il
+  // vecchio nome non aveva una password: operazione no-op, non bloccante.
+  if (url === '/api/responsabili-password-rinomina' && req.method === 'POST') {
+    leggiCorpoRichiesta(req, (corpo) => {
+      try {
+        const dati = JSON.parse(corpo);
+        const vecchioNome = String(dati.vecchioNome || '').trim();
+        const nuovoNome = String(dati.nuovoNome || '').trim();
+        const cfg = leggiResponsabiliPassword();
+        if (vecchioNome && nuovoNome && vecchioNome !== nuovoNome && cfg[vecchioNome]) {
+          cfg[nuovoNome] = cfg[vecchioNome];
+          delete cfg[vecchioNome];
+          scriviResponsabiliPassword(cfg);
+          const sess = sessioneAttivaPerNome.get(vecchioNome);
+          if (sess) { sessioneAttivaPerNome.set(nuovoNome, sess); sessioneAttivaPerNome.delete(vecchioNome); }
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: true }));
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, errore: err.message }));
+      }
+    });
+    return;
+  }
+
+  // Login per un referente con password impostata: verifica la password e, se il nome non è già
+  // occupato da un ALTRO dispositivo con sessione ancora viva, assegna un token di sessione
+  // esclusiva. Se è occupato, la richiesta è RIFIUTATA (non un avviso aggirabile come per i
+  // referenti senza password) - vera esclusività, come chiesto da Matteo.
+  if (url === '/api/operatore-login' && req.method === 'POST') {
+    leggiCorpoRichiesta(req, (corpo) => {
+      try {
+        const dati = JSON.parse(corpo);
+        const nome = String(dati.nome || '').trim();
+        const password = String(dati.password || '');
+        const deviceId = String(dati.deviceId || '').trim() || null;
+        const cfg = leggiResponsabiliPassword();
+        const passwordAttesa = cfg[nome];
+        if (!passwordAttesa) {
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ ok: false, errore: 'Questo referente non ha una password impostata.' }));
+          return;
+        }
+        // confronto a tempo costante, stesso schema di autenticazioneBasicOk
+        const a = Buffer.from(password);
+        const b = Buffer.from(passwordAttesa);
+        const passwordCorretta = a.length === b.length && crypto.timingSafeEqual(a, b);
+        if (!passwordCorretta) {
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ ok: false, errore: 'Password non corretta.' }));
+          return;
+        }
+        const sessioneAttuale = sessioneAttivaPerNome.get(nome);
+        const occupatoDaAltri = sessioneAttuale
+          && sessioneAttuale.deviceId !== deviceId
+          && (Date.now() - sessioneAttuale.ultimoHeartbeat <= SESSIONE_ESCLUSIVA_TTL_MS);
+        if (occupatoDaAltri) {
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ ok: false, occupato: true, errore: nome + ' è già collegato in questo momento da un altro dispositivo. Per usare questo nome qui, chi lo sta usando ora deve prima disconnettersi.' }));
+          return;
+        }
+        const token = crypto.randomBytes(16).toString('hex');
+        sessioneAttivaPerNome.set(nome, { token, deviceId, ultimoHeartbeat: Date.now() });
+        presenzaOperatori.set(nome, { ts: Date.now(), deviceId });
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: true, token, online: presenzaOnlineElenco() }));
       } catch (err) {
         res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ ok: false, errore: err.message }));

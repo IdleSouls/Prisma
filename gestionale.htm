@@ -1768,6 +1768,63 @@ function caricaOperatoreLocale() {
   } catch (err) { OPERATORE = null; }
 }
 
+// Sessione esclusiva vera per referenti con password (vedi /api/operatore-login in server.js):
+// il token ottenuto al login si salva qui, per-dispositivo (stessa chiave di LS_KEY_DEVICE_ID),
+// così un refresh di pagina su QUESTO stesso PC non richiede di reinserire la password ogni volta -
+// ma un ALTRO dispositivo non ha questo token nel proprio localStorage, quindi non può ereditare
+// silenziosamente la sessione. Se il nome cambia operatore (impostaOperatore con un nome diverso,
+// o null), il token del nome precedente va scartato: non è più valido per il nuovo nome comunque.
+const LS_KEY_SESSIONE_OPERATORE = 'gestionaleSessioneOperatoreLocale_v1';
+let SESSIONE_OPERATORE_TOKEN = null; // { nome, token } oppure null
+function caricaSessioneOperatoreLocale() {
+  try {
+    const raw = (typeof localStorage !== 'undefined') && localStorage.getItem(LS_KEY_SESSIONE_OPERATORE);
+    const parsed = raw ? JSON.parse(raw) : null;
+    SESSIONE_OPERATORE_TOKEN = (parsed && parsed.nome && parsed.token) ? parsed : null;
+  } catch (err) { SESSIONE_OPERATORE_TOKEN = null; }
+}
+function salvaSessioneOperatoreLocale(nome, token) {
+  SESSIONE_OPERATORE_TOKEN = (nome && token) ? { nome, token } : null;
+  try {
+    if (typeof localStorage === 'undefined') return;
+    if (SESSIONE_OPERATORE_TOKEN) localStorage.setItem(LS_KEY_SESSIONE_OPERATORE, JSON.stringify(SESSIONE_OPERATORE_TOKEN));
+    else localStorage.removeItem(LS_KEY_SESSIONE_OPERATORE);
+  } catch (err) { /* la sessione resta comunque valida in memoria per questa scheda */ }
+}
+// Token da mandare nell'heartbeat per l'operatore corrente - null se quel nome non ha (più) un
+// token valido salvato per questo dispositivo (es. non è un referente con password, o la sessione
+// è di un nome diverso da quello attuale).
+function tokenSessioneOperatoreCorrente() {
+  const nome = operatoreCorrente();
+  return (SESSIONE_OPERATORE_TOKEN && SESSIONE_OPERATORE_TOKEN.nome === nome) ? SESSIONE_OPERATORE_TOKEN.token : null;
+}
+
+// Cache dei referenti che hanno una password impostata (mai la password stessa) - usata sia nel
+// selettore operatore (per sapere a chi chiederla) sia in Impostazioni (per mostrare il lucchetto
+// giusto). Stesso pattern delle altre cache HTTP_SYNC_ATTIVO-gated del file (ACCESSO_ESTERNO_CACHE
+// ecc.): un fetch alla volta, invalidata esplicitamente dopo un salvataggio.
+let RESPONSABILI_CON_PASSWORD_CACHE = null;
+let RESPONSABILI_CON_PASSWORD_CARICAMENTO = false;
+function caricaResponsabiliConPassword() {
+  if (!HTTP_SYNC_ATTIVO || RESPONSABILI_CON_PASSWORD_CARICAMENTO || RESPONSABILI_CON_PASSWORD_CACHE !== null) return;
+  RESPONSABILI_CON_PASSWORD_CARICAMENTO = true;
+  fetch('/api/responsabili-password-stato')
+    .then(r => r.json())
+    .then(info => { RESPONSABILI_CON_PASSWORD_CACHE = (info && info.ok) ? info.nomiConPassword : []; })
+    .catch(() => { RESPONSABILI_CON_PASSWORD_CACHE = []; })
+    .finally(() => {
+      RESPONSABILI_CON_PASSWORD_CARICAMENTO = false;
+      render();
+    });
+}
+function responsabileHaPassword(nome) {
+  return Array.isArray(RESPONSABILI_CON_PASSWORD_CACHE) && RESPONSABILI_CON_PASSWORD_CACHE.includes(nome);
+}
+// Bozza (non salvata) delle password digitate in Impostazioni per ogni referente - stesso schema
+// "draft buffer" di PORTALE_PASSWORD_DRAFT/ACCESSO_ESTERNO_DRAFT: sopravvive ai re-render in
+// background finché non si preme "Salva".
+let RESPONSABILE_PASSWORD_DRAFT = {};
+
 /* Task #142 (feedback di Federico: troppe voci di menu tutte visibili per chi non conosce già
    Prisma): i gruppi della sidebar sono collassabili. Come OPERATORE/DEVICE_ID qui sopra, è una
    preferenza di INTERFACCIA per questo dispositivo/browser, non un dato dello studio — resta
@@ -1866,14 +1923,18 @@ function avviaHeartbeatOperatore() {
     if (!HTTP_SYNC_ATTIVO) return;
     const nome = operatoreCorrente();
     if (!nome) return;
-    fetch('/api/presenza', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operatore: nome, deviceId: DEVICE_ID }) })
+    const token = tokenSessioneOperatoreCorrente();
+    fetch('/api/presenza', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operatore: nome, deviceId: DEVICE_ID, token: token || undefined }) })
       .then(r => r.json()).then(d => {
         if (!d || !d.ok) return;
         PRESENZA_ONLINE = d.online || {};
-        // Task #114: se nel frattempo un ALTRO dispositivo ha preso questo nome (es. lo hai scelto
-        // anche altrove dopo aver forzato qui), il server smette di accettare i nostri heartbeat per
-        // questo nome finché non si sceglie di nuovo - avvisiamo invece di restare "online" in modo
-        // silenzioso ma sbagliato (falso senso di presidio).
+        // Referente con sessione esclusiva vera (token scaduto o ripreso da un altro dispositivo):
+        // logout VERO, non un avviso ignorabile - vedi forzaLogoutSessioneOperatore.
+        if (d.sessioneScaduta) { forzaLogoutSessioneOperatore(nome); return; }
+        // Task #114 (referenti senza password): se nel frattempo un ALTRO dispositivo ha preso
+        // questo nome (es. lo hai scelto anche altrove dopo aver forzato qui), il server smette di
+        // accettare i nostri heartbeat per questo nome finché non si sceglie di nuovo - avvisiamo
+        // invece di restare "online" in modo silenzioso ma sbagliato (falso senso di presidio).
         if (d.occupato) mostraAvvisoOperatoreOccupatoAltrove(nome);
       }).catch(() => {});
   };
@@ -1893,6 +1954,9 @@ function tentaSceltaOperatore(nome) {
   if (!nome || !STATE.meta.responsabili.includes(nome)) return;
   if (nome === operatoreCorrente()) { chiudiModal(); return; }
   if (!HTTP_SYNC_ATTIVO) { impostaOperatore(nome); chiudiModal(); return; }
+  // Referente con password impostata: sessione esclusiva VERA, si passa da /api/operatore-login
+  // invece del solo avviso "soft" qui sotto - vedi modalPasswordOperatore.
+  if (responsabileHaPassword(nome)) { modalPasswordOperatore(nome); return; }
   fetch('/api/presenza/verifica', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operatore: nome, deviceId: DEVICE_ID }) })
     .then(r => r.json())
     .then(d => {
@@ -1924,7 +1988,59 @@ function impostaOperatore(nome) {
     else if (OPERATORE) localStorage.setItem(LS_KEY_OPERATORE, OPERATORE);
     else localStorage.removeItem(LS_KEY_OPERATORE);
   } catch (err) { /* storage non disponibile: l'attribuzione resta solo per questa sessione */ }
+  // Un token di sessione esclusiva vale solo per il nome per cui è stato ottenuto (vedi
+  // tokenSessioneOperatoreCorrente): se si cambia operatore senza essere passati da
+  // eseguiLoginOperatore (es. un referente senza password), un token residuo di un nome diverso
+  // va scartato, non ha senso mandarlo nell'heartbeat del nuovo nome.
+  if (!SESSIONE_OPERATORE_TOKEN || SESSIONE_OPERATORE_TOKEN.nome !== OPERATORE) salvaSessioneOperatoreLocale(null, null);
   render();
+}
+// Referente con password impostata (vedi tentaSceltaOperatore): piccola modale con un solo campo
+// password, invece del prompt di conferma "soft" usato per i referenti senza password - qui non
+// c'è modo di "continuare comunque", se il nome è già in uso il login viene rifiutato dal server.
+function modalPasswordOperatore(nome, messaggioErrore) {
+  const html = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
+    <div class="modal" style="max-width:340px;">
+      <h2>Password di ${escapeHtml(nome)}</h2>
+      <div class="modal-sub">Questo referente è protetto da una password personale.</div>
+      <form id="formLoginOperatore" data-nome="${escapeHtml(nome)}" onsubmit="return false;" style="margin-top:12px;">
+        <input type="password" id="operatoreLoginPassword" autocomplete="current-password" placeholder="Password" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 11px;box-sizing:border-box;" autofocus>
+        <div style="color:var(--rosso);font-size:12.5px;margin-top:8px;min-height:16px;">${escapeHtml(messaggioErrore || '')}</div>
+        <div class="modal-actions" style="margin-top:6px;">
+          <button type="button" class="btn" data-action="chiudi-modal">Annulla</button>
+          <button type="button" class="btn primary" data-action="login-operatore" data-nome="${escapeHtml(nome)}">Entra</button>
+        </div>
+      </form>
+    </div>
+  </div>`;
+  document.getElementById('modalRoot').innerHTML = html;
+  requestAnimationFrame(() => { const c = h('operatoreLoginPassword'); if (c) c.focus(); });
+}
+function eseguiLoginOperatore(nome) {
+  const password = (h('operatoreLoginPassword') || {}).value || '';
+  if (!password) { modalPasswordOperatore(nome, 'Scrivi la password.'); return; }
+  fetch('/api/operatore-login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nome, password, deviceId: DEVICE_ID }) })
+    .then(r => r.json())
+    .then(d => {
+      if (!d || !d.ok) { modalPasswordOperatore(nome, (d && d.errore) || 'Password non corretta.'); return; }
+      salvaSessioneOperatoreLocale(nome, d.token);
+      if (d.online) PRESENZA_ONLINE = d.online;
+      OPERATORE_AVVISO_OCCUPATO_MOSTRATO = null;
+      impostaOperatore(nome);
+      chiudiModal();
+      toast(`Bentornato, ${nome}.`);
+    })
+    .catch(() => modalPasswordOperatore(nome, 'Impossibile contattare il server. Riprova.'));
+}
+// Il server ha rifiutato l'ultimo heartbeat di sessione esclusiva (token scaduto, o un altro
+// dispositivo ha preso questo nome nel frattempo): a differenza dell'avviso "soft" (che lascia
+// l'utente libero di ignorarlo), qui il logout è VERO - non ha più senso restare attribuiti a un
+// nome la cui sessione qui non è più valida, si torna al selettore per rientrare con la password.
+function forzaLogoutSessioneOperatore(nome) {
+  salvaSessioneOperatoreLocale(null, null);
+  impostaOperatore(null);
+  toast(`⚠ La tua sessione come ${nome} è terminata (probabilmente ripresa da un altro dispositivo). Rientra con la password.`);
+  modalSelettoreOperatore();
 }
 function aggiornaBadgeOperatore() {
   const el = typeof document !== 'undefined' && document.getElementById('operatoreBadge');
@@ -1968,14 +2084,15 @@ function eventualeSelettoreOperatore() {
   modalSelettoreOperatore();
 }
 function modalSelettoreOperatore() {
+  caricaResponsabiliConPassword();
   const html = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
     <div class="modal" style="max-width:380px;">
       <h2>Chi sta usando questo PC?</h2>
-      <div class="modal-sub">Serve solo per sapere chi ha risposto a un cliente o creato una comunicazione — non è un vero login: chiunque sulla rete dello studio ha comunque accesso completo, come oggi.</div>
+      <div class="modal-sub">Serve solo per sapere chi ha risposto a un cliente o creato una comunicazione — non è un vero login: chiunque sulla rete dello studio ha comunque accesso completo, come oggi. I referenti con 🔒 hanno una password personale (vedi Impostazioni).</div>
       <div style="display:flex;flex-direction:column;gap:8px;margin:14px 0;">
         ${STATE.meta.responsabili.map(r => `<button class="btn" data-action="operatore-scegli" data-nome="${escapeHtml(r)}" style="text-align:left;display:flex;align-items:center;gap:8px;">
           <span class="chat-pallino ${operatoreOnline(r)?'online':'offline'}" style="position:static;flex:none;" title="${operatoreOnline(r)?'Online adesso':'Offline'}"></span>
-          ${escapeHtml(r)}
+          ${escapeHtml(r)}${responsabileHaPassword(r) ? ' 🔒' : ''}
         </button>`).join('')}
       </div>
       <div class="modal-actions"><button class="btn" data-action="chiudi-modal">Non ora</button></div>
@@ -10614,6 +10731,34 @@ function renderImpostazioniStudio() {
   </div>`;
 }
 
+function cardPasswordResponsabili() {
+  if (!HTTP_SYNC_ATTIVO) return '';
+  caricaResponsabiliConPassword();
+  if (RESPONSABILI_CON_PASSWORD_CACHE === null) {
+    return `<div class="card"><div class="section-title">Accesso individuale ai referenti</div><div class="helptext">Caricamento…</div></div>`;
+  }
+  const riga = (nome) => {
+    const protetto = responsabileHaPassword(nome);
+    const valore = Object.prototype.hasOwnProperty.call(RESPONSABILE_PASSWORD_DRAFT, nome) ? RESPONSABILE_PASSWORD_DRAFT[nome] : '';
+    return `<div style="border-top:1px solid var(--border);padding:10px 0;">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+        <div style="font-weight:600;font-size:13px;flex:1;">${protetto ? '🔒' : '🔓'} ${escapeHtml(nome)}</div>
+        <div class="helptext" style="margin:0;">${protetto ? 'Protetto: password richiesta, sessione esclusiva (due PC non possono usare questo nome insieme).' : 'Nessuna password: chiunque può scegliere questo nome, con solo un avviso se già in uso altrove.'}</div>
+      </div>
+      <div style="display:flex;gap:8px;max-width:420px;flex-wrap:wrap;">
+        <input type="text" id="respPassword_${escapeHtml(nome)}" value="${escapeHtml(valore)}" placeholder="${protetto ? 'Nuova password (lascia vuoto per non cambiarla)' : 'Imposta una password'}" data-action="responsabile-password-campo" data-nome="${escapeHtml(nome)}" style="flex:1;min-width:180px;font-size:12.5px;padding:7px 9px;border:1px solid var(--border);border-radius:8px;">
+        <button class="btn small" data-action="responsabile-password-salva" data-nome="${escapeHtml(nome)}">Salva</button>
+        ${protetto ? `<button class="btn small ghost" data-action="responsabile-password-rimuovi" data-nome="${escapeHtml(nome)}">Rimuovi</button>` : ''}
+      </div>
+    </div>`;
+  };
+  return `<div class="card">
+    <div class="section-title">Accesso individuale ai referenti</div>
+    <div class="helptext" style="margin-bottom:4px;">Opzionale, per referente: senza password chiunque può scegliere quel nome nel selettore "Chi sta usando questo PC?" (comportamento di sempre). Con una password impostata qui, quel nome richiede la password per essere scelto e la sessione diventa esclusiva davvero: un secondo PC non può usare lo stesso nome finché il primo è collegato.</div>
+    ${STATE.meta.responsabili.map(riga).join('')}
+  </div>`;
+}
+
 function renderImpostazioniTeam() {
   return `
   <div class="card">
@@ -10628,6 +10773,7 @@ function renderImpostazioniTeam() {
     </div>`).join('')}
     <button class="btn small" data-action="aggiungi-responsabile">+ Aggiungi responsabile</button>
   </div>
+  ${cardPasswordResponsabili()}
   ${cardAccessoEsterno()}`;
 }
 
@@ -11249,6 +11395,7 @@ function onClickDelegato(e) {
     case 'apri-ricerca-globale': modalRicercaGlobale(); break;
     case 'apri-selettore-operatore': modalSelettoreOperatore(); break;
     case 'operatore-scegli': tentaSceltaOperatore(el.dataset.nome); break;
+    case 'login-operatore': eseguiLoginOperatore(el.dataset.nome); break;
     case 'apri-riferimento-chat': modalRiferimentoChat(); break;
     case 'chat-rif-scegli': inserisciRiferimentoChat(el.dataset.tipo, el.dataset.id, el.dataset.label); break;
     case 'ricerca-apri': { const r = RICERCA_RISULTATI[Number(el.dataset.idx)]; if (r && r.azione) r.azione(); break; }
@@ -11944,6 +12091,34 @@ function onClickDelegato(e) {
       }
       break;
     }
+    case 'responsabile-password-salva': {
+      const nome = el.dataset.nome;
+      const valore = (Object.prototype.hasOwnProperty.call(RESPONSABILE_PASSWORD_DRAFT, nome) ? RESPONSABILE_PASSWORD_DRAFT[nome] : (h('respPassword_' + nome) || {}).value || '').trim();
+      if (!valore) { toast('Scrivi una password prima di salvare (o usa "Rimuovi" per toglierla).'); return; }
+      fetch('/api/responsabili-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nome, password: valore }) })
+        .then(r => r.json()).then(d => {
+          if (!d || !d.ok) { toast('Errore nel salvare la password.'); return; }
+          delete RESPONSABILE_PASSWORD_DRAFT[nome];
+          RESPONSABILI_CON_PASSWORD_CACHE = null;
+          render();
+          toast(`Password di ${nome} salvata.`);
+        }).catch(() => toast('Errore nel salvare la password.'));
+      break;
+    }
+    case 'responsabile-password-rimuovi': {
+      const nome = el.dataset.nome;
+      if (confermaAzione(`Rimuovere la password di ${nome}? Tornerà a essere un nome libero, senza sessione esclusiva.`)) {
+        fetch('/api/responsabili-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nome, password: '' }) })
+          .then(r => r.json()).then(d => {
+            if (!d || !d.ok) { toast('Errore nel rimuovere la password.'); return; }
+            delete RESPONSABILE_PASSWORD_DRAFT[nome];
+            RESPONSABILI_CON_PASSWORD_CACHE = null;
+            render();
+            toast(`Password di ${nome} rimossa.`);
+          }).catch(() => toast('Errore nel rimuovere la password.'));
+      }
+      break;
+    }
     /* NB: 'portal-com-vista'/'portal-com-archivia'/'portal-com-disarchivia' (Segna come letta/
        Archivia/Ripristina) esistevano solo nel mockup "a telefono" dell'anteprima, rimosso col
        task #111 — nessun pulsante li richiama più (il portale reale servito da server.js è in
@@ -12257,6 +12432,12 @@ function onClickDelegato(e) {
       if (Array.isArray(STATE.meta.consulenti)) {
         const ic = STATE.meta.consulenti.indexOf(nomeRimosso);
         if (ic !== -1) STATE.meta.consulenti.splice(ic, 1);
+      }
+      // Ripulisce anche un'eventuale password del referente eliminato (vedi cardPasswordResponsabili):
+      // altrimenti resterebbe orfana sul server, legata a un nome che in Impostazioni non esiste più.
+      if (HTTP_SYNC_ATTIVO && responsabileHaPassword(nomeRimosso)) {
+        fetch('/api/responsabili-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nome: nomeRimosso, password: '' }) })
+          .then(() => { RESPONSABILI_CON_PASSWORD_CACHE = null; }).catch(() => {});
       }
       salvaStato(); render();
       break;
@@ -12728,6 +12909,12 @@ function onChangeDelegato(e) {
         const ic = STATE.meta.consulenti.indexOf(vecchioNome);
         if (ic !== -1) STATE.meta.consulenti[ic] = nuovoNome;
       }
+      // Segue la rinomina anche lato password del referente (vedi endpoint dedicato in server.js),
+      // altrimenti la password resterebbe legata al vecchio nome, non più selezionabile in Impostazioni.
+      if (nuovoNome !== vecchioNome && HTTP_SYNC_ATTIVO && responsabileHaPassword(vecchioNome)) {
+        fetch('/api/responsabili-password-rinomina', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ vecchioNome, nuovoNome }) })
+          .then(() => { RESPONSABILI_CON_PASSWORD_CACHE = null; render(); }).catch(() => {});
+      }
       salvaStato();
       break;
     }
@@ -12758,6 +12945,7 @@ function onInputDelegato(e) {
     case 'aml-filtro-q': AML_FILTRO_Q = el.value; render(); restoreFocus('[data-action="aml-filtro-q"]'); break;
     case 'proc-filtro-q': PROC_FILTRO_Q = el.value; render(); restoreFocus('[data-action="proc-filtro-q"]'); break;
     case 'portale-password-campo': PORTALE_PASSWORD_DRAFT[el.dataset.id] = el.value; break;
+    case 'responsabile-password-campo': RESPONSABILE_PASSWORD_DRAFT[el.dataset.nome] = el.value; break;
     case 'accesso-esterno-campo': {
       const tipo = el.dataset.tipo, campo = el.dataset.campo;
       if (ACCESSO_ESTERNO_DRAFT && ACCESSO_ESTERNO_DRAFT[tipo]) ACCESSO_ESTERNO_DRAFT[tipo][campo] = el.value;
@@ -13170,6 +13358,7 @@ function init() {
   caricaStato();
   caricaOperatoreLocale();
   caricaDeviceIdLocale();
+  caricaSessioneOperatoreLocale();
   caricaNavGruppiApertiLocale();
   generaComunicazioniRicorrentiDovute();
   document.body.addEventListener('click', onClickDelegato);
