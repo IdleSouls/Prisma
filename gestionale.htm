@@ -8901,6 +8901,19 @@ function datiPortaleCliente(cliente) {
        appartenga DAVVERO al cliente del token prima di risolverlo a un percorso reale.
      - se il token non corrisponde a nessun cliente attivo (mai attivato, rigenerato, disattivato)
        si ritorna null: chi chiama risponde con un errore generico, senza indizi su "perché". */
+// Confronto a tempo costante rispetto al CONTENUTO (non serve nascondere la lunghezza, solo dove le
+// due stringhe differiscono - è quello che un === naive rivelerebbe con un timing attack ripetuto).
+// Non usa crypto.timingSafeEqual di Node (come invece fa /api/operatore-login in server.js) perché
+// questa funzione gira in DUE contesti diversi: nel browser reale per l'anteprima interna allo
+// studio, e dentro una finestra jsdom (motorePortale in server.js) per il portale esterno vero - né
+// l'uno né l'altro espongono le API crypto di Node.
+function confrontoTempoCostante(a, b) {
+  a = String(a); b = String(b);
+  const lunghezzaMax = Math.max(a.length, b.length);
+  let diff = a.length === b.length ? 0 : 1;
+  for (let i = 0; i < lunghezzaMax; i++) diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
+  return diff === 0;
+}
 function costruisciVistaPortaleClienteEsterna(token, password) {
   if (!token || typeof token !== 'string') return null;
   const cliente = STATE.clienti.find(c => c.portaleToken && c.portaleToken === token);
@@ -8908,7 +8921,7 @@ function costruisciVistaPortaleClienteEsterna(token, password) {
   // Password per-cliente (task Matteo, vedi cardPasswordPortaleCliente): se non impostata il link
   // segreto resta l'unica protezione, come prima - nessuna richiesta di password quindi nessun
   // ostacolo per i clienti già attivi a cui non ne è stata data una.
-  if (cliente.portalePassword && cliente.portalePassword !== (password || '')) {
+  if (cliente.portalePassword && !confrontoTempoCostante(cliente.portalePassword, password || '')) {
     return { richiedePassword: true };
   }
 
@@ -10451,6 +10464,7 @@ function cardAccessoEsterno() {
           ? `<button class="btn danger" data-action="disattiva-accesso-esterno" data-tipo="${tipo}">⏻ Disattiva porta ${titolo.toLowerCase()}</button>`
           : `<button class="btn primary" data-action="salva-accesso-esterno" data-tipo="${tipo}" ${credenzialiPronte ? '' : 'disabled title="Imposta prima utente e password qui sotto"'}>⏻ Attiva porta ${titolo.toLowerCase()}</button>`}
         <button class="btn small" data-action="copia-comando-ngrok" data-testo="${escapeHtml(comando)}">📋 Copia comando ngrok</button>
+        <button class="btn small" data-action="copia-link-porta" data-testo="${escapeHtml(`http://localhost:${porta}`)}">🔗 Copia link porta</button>
       </div>
       ${!credenzialiPronte && !dati.attivo ? `<div class="helptext" style="margin-bottom:10px;color:var(--arancio,#c0790c);">⚠️ Imposta utente e password qui sotto: il pulsante "Attiva porta" si accende appena sono entrambi compilati.</div>` : ''}
       <details ${dati.attivo ? '' : 'open'}>
@@ -11779,6 +11793,8 @@ function onClickDelegato(e) {
       break;
 
     case 'copia-comando-ngrok': copiaTestoNegliAppunti(el.dataset.testo, 'Comando copiato: incollalo nel terminale dove hai installato ngrok.'); break;
+
+    case 'copia-link-porta': copiaTestoNegliAppunti(el.dataset.testo, 'Link copiato: incollalo nel browser per aprire questa porta in locale.'); break;
 
     case 'salva-accesso-esterno': {
       const tipo = el.dataset.tipo;
