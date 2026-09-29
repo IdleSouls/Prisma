@@ -199,6 +199,16 @@ select.statoSel.stato-non-applicabile{background:var(--grigio-bg);color:var(--gr
 .riga-f24-modal .col-rimuovi{width:26px;flex:none;display:flex;justify-content:center;}
 .f24-righe-header{display:flex;gap:6px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-mut);margin-bottom:4px;padding:0 1px;}
 #f24RigheContainer{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;}
+/* Editor campi credenziale (Entratel: utente+password+PIN, Desktop telematico: ambiente di
+   sicurezza+password...): stesso schema di allineamento colonne di riga-f24-modal/f24-righe-header
+   qui sopra, larghezze condivise tra intestazione e righe. */
+.riga-cred-campo{display:flex;gap:6px;align-items:center;margin-bottom:6px;}
+.riga-cred-campo input{border:1px solid var(--border);border-radius:6px;padding:7px 9px;font-size:12.5px;font-family:inherit;}
+.riga-cred-campo .col-etichetta, .cred-campi-header .col-etichetta{width:170px;flex:none;}
+.riga-cred-campo .col-valore, .cred-campi-header .col-valore{flex:1 1 140px;min-width:0;}
+.riga-cred-campo .col-segreto, .cred-campi-header .col-segreto{width:80px;flex:none;font-size:11.5px;font-weight:400;white-space:nowrap;}
+.cred-campi-header{display:flex;gap:6px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-mut);margin-bottom:4px;padding:0 1px;}
+#credCampiContainer{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;}
 
 .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px;}
 .paginazione{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 4px 2px;}
@@ -1565,6 +1575,28 @@ function migraNoteTaskTeam(stato) {
   return migrati;
 }
 
+/* Credenziali con campi personalizzabili (richiesto da Matteo: Entratel ha nome utente + password
+   + PIN, il Desktop telematico ha ambiente di sicurezza + password — i due campi fissi
+   username/password non bastavano più, servono N campi con nome scelto liberamente). Una
+   credenziale già salvata con la vecchia forma (username/password fissi) non deve perdere quei
+   dati: diventano le prime voci di un array "campi" — Nome utente (in chiaro) e Password
+   (segreta) — la prima volta che lo stato viene caricato dopo l'aggiornamento. Da qui in avanti
+   il modale di modifica lavora solo su "campi"; username/password restano sull'oggetto solo come
+   residuo storico, ignorati dal resto dell'app. */
+function migraCampiCredenziali(stato) {
+  if (!Array.isArray(stato.credenziali)) return 0;
+  let migrati = 0;
+  stato.credenziali.forEach(c => {
+    if (Array.isArray(c.campi)) return;
+    c.campi = [];
+    if (c.username) c.campi.push({ id: uid('campo'), etichetta: 'Nome utente', valore: c.username, segreto: false });
+    if (c.password) c.campi.push({ id: uid('campo'), etichetta: 'Password', valore: c.password, segreto: true });
+    if (c.campi.length === 0) c.campi.push({ id: uid('campo'), etichetta: 'Password', valore: '', segreto: true });
+    migrati++;
+  });
+  return migrati;
+}
+
 function normalizzaStatoCaricato(parsed) {
   const stato = Object.assign(statoIniziale(), parsed);
   stato.meta = Object.assign(statoIniziale().meta, parsed.meta || {});
@@ -1574,6 +1606,7 @@ function normalizzaStatoCaricato(parsed) {
   migraAdempimentiDuplicati(stato);
   migraDocumentiContabiliConti(stato);
   migraNoteTaskTeam(stato);
+  migraCampiCredenziali(stato);
   return stato;
 }
 
@@ -9869,7 +9902,9 @@ function renderStrumenti() {
    gira il server locale (vedi cifraCredenziale/decifraCredenziale in server.js): qui in STATE e a
    video resta sempre in chiaro, mascherata di default e mostrabile/copiabile a richiesta. */
 let CRED_FILTRO = { q: '', cliente: 'Tutti' };
-let CRED_VISIBILI = new Set(); // id delle credenziali con password momentaneamente mostrata in chiaro
+// Chiave "credId::campoId" (non solo credId): ogni campo segreto di una credenziale — password,
+// PIN, ambiente di sicurezza, quanti siano — si mostra/nasconde in modo indipendente dagli altri.
+let CRED_VISIBILI = new Set();
 const CATEGORIE_CREDENZIALI_SUGGERITE = ['Entratel', 'Telemaco', 'Home banking', 'INPS', 'INAIL', 'Camera di Commercio', 'PEC', 'Software gestionale', 'Altro'];
 
 function generaPasswordCasuale() {
@@ -9886,7 +9921,15 @@ function renderCredenziali() {
   else if (f.cliente !== 'Tutti') lista = lista.filter(c => c.clienteId === f.cliente);
   if (f.q.trim()) {
     const q = f.q.trim().toLowerCase();
-    lista = lista.filter(c => [c.titolo, c.categoria, c.username, c.note, c.clienteId ? nomeCliente(c.clienteId) : ''].filter(Boolean).join(' ').toLowerCase().includes(q));
+    lista = lista.filter(c => {
+      const etichetteCampi = (c.campi || []).map(campo => campo.etichetta).filter(Boolean);
+      // Il VALORE dei campi segreti (password, PIN...) resta fuori dalla ricerca di proposito: non
+      // deve bastare digitare qualcosa nella barra di ricerca per far comparire una password nei
+      // risultati filtrati. Il valore dei campi NON segreti (es. nome utente) invece è cercabile.
+      const valoriInChiaro = (c.campi || []).filter(campo => !campo.segreto).map(campo => campo.valore).filter(Boolean);
+      return [c.titolo, c.categoria, c.note, c.clienteId ? nomeCliente(c.clienteId) : '', ...etichetteCampi, ...valoriInChiaro]
+        .filter(Boolean).join(' ').toLowerCase().includes(q);
+    });
   }
 
   const toolbar = `<div class="toolbar">
@@ -9907,20 +9950,36 @@ function renderCredenziali() {
   }
 
   const pag = paginaLista('credenziali', lista);
+  // Task richiesto da Matteo: le credenziali possono avere N campi con nome libero (Entratel:
+  // utente+password+PIN; Desktop telematico: ambiente di sicurezza+password...), non più solo
+  // username/password fissi — ogni campo si mostra/copia/nasconde per conto suo (vedi
+  // CRED_VISIBILI, chiave "credId::campoId"). Un campo segnato "segreto" resta sempre mascherato
+  // finché non lo si mostra esplicitamente; uno non segreto (es. nome utente, ambiente di
+  // sicurezza) è sempre visibile in chiaro, come prima.
   const righe = pag.pagina.map(c => {
-    const visibile = CRED_VISIBILI.has(c.id);
+    const campiHtml = (c.campi || []).map(campo => {
+      const chiave = c.id + '::' + campo.id;
+      const vis = CRED_VISIBILI.has(chiave);
+      const valoreMostrato = campo.segreto ? (vis ? escapeHtml(campo.valore || '') : '••••••••') : (campo.valore ? escapeHtml(campo.valore) : '<span class="helptext">—</span>');
+      return `<div style="display:flex;align-items:center;gap:6px;justify-content:flex-end;">
+        <span style="font-size:10.5px;font-weight:700;color:var(--text-mut);text-transform:uppercase;letter-spacing:.02em;">${escapeHtml(campo.etichetta || 'Campo')}</span>
+        <span style="font-family:monospace;font-size:13px;min-width:110px;text-align:right;">${valoreMostrato}</span>
+        ${campo.segreto ? `<button class="btn small ghost" data-action="cred-mostra-campo" data-id="${c.id}" data-campo="${campo.id}" title="${vis?'Nascondi':'Mostra'}">${vis?'🙈':'👁'}</button>` : ''}
+        ${campo.valore ? `<button class="btn small ghost" data-action="cred-copia-campo" data-id="${c.id}" data-campo="${campo.id}" title="Copia ${escapeHtml(campo.etichetta||'valore')}">Copia</button>` : ''}
+      </div>`;
+    }).join('');
     return `<div class="client-row" style="cursor:default;align-items:flex-start;">
-      <div>
+      <div style="flex:1;min-width:0;">
         <div class="name">${escapeHtml(c.titolo || '(senza titolo)')} ${c.categoria ? `<span class="badge">${escapeHtml(c.categoria)}</span>` : ''}</div>
-        <div class="meta">${c.clienteId ? escapeHtml(nomeCliente(c.clienteId)) : 'Studio'}${c.username ? ` · Utente: ${escapeHtml(c.username)} <span style="cursor:pointer;text-decoration:underline;" data-action="cred-copia-username" data-id="${c.id}" title="Copia nome utente">copia</span>` : ''}${c.url ? ` · <a href="${escapeHtml(c.url)}" target="_blank" rel="noopener">apri sito ↗</a>` : ''}</div>
+        <div class="meta">${c.clienteId ? escapeHtml(nomeCliente(c.clienteId)) : 'Studio'}${c.url ? ` · <a href="${escapeHtml(c.url)}" target="_blank" rel="noopener">apri sito ↗</a>` : ''}</div>
         ${c.note ? `<div class="helptext" style="margin-top:2px;">${escapeHtml(c.note)}</div>` : ''}
       </div>
-      <div class="right" style="gap:6px;">
-        <div style="font-family:monospace;font-size:13.5px;min-width:140px;text-align:right;">${c.password ? (visibile ? escapeHtml(c.password) : '••••••••') : '<span class="helptext">—</span>'}</div>
-        ${c.password ? `<button class="btn small ghost" data-action="cred-mostra-password" data-id="${c.id}" title="${visibile?'Nascondi':'Mostra'}">${visibile?'🙈':'👁'}</button>
-        <button class="btn small ghost" data-action="cred-copia-password" data-id="${c.id}" title="Copia password">Copia</button>` : ''}
-        <button class="btn small" data-action="modifica-credenziale" data-id="${c.id}">Modifica</button>
-        <button class="btn small danger" data-action="elimina-credenziale" data-id="${c.id}">Elimina</button>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex:none;">
+        ${campiHtml || '<span class="helptext">Nessun campo</span>'}
+        <div style="display:flex;gap:6px;margin-top:2px;">
+          <button class="btn small" data-action="modifica-credenziale" data-id="${c.id}">Modifica</button>
+          <button class="btn small danger" data-action="elimina-credenziale" data-id="${c.id}">Elimina</button>
+        </div>
       </div>
     </div>`;
   }).join('');
@@ -9928,12 +9987,42 @@ function renderCredenziali() {
   return toolbar + avviso + header + righe + controlliPaginazione(pag);
 }
 
+/* Editor dei campi di una credenziale (task richiesto da Matteo: Entratel ha nome utente +
+   password + PIN, il Desktop telematico ha ambiente di sicurezza + password — servono N campi
+   con un nome scelto liberamente, non solo i due fissi di prima). Stesso pattern di
+   F24_RIGHE_MODAL/righeF24: un array di lavoro in una variabile di modulo, sostituito quando si
+   apre il modale e riletto solo al salvataggio, con righe che si aggiungono/rimuovono senza
+   toccare il resto del form. */
+let CRED_CAMPI_MODAL = [];
+function nuovoCampoCredenzialeModal(segreto) { return { id: uid('campo'), etichetta: '', valore: '', segreto: !!segreto }; }
+function rigaCampoCredenzialeHtml(campo, idx) {
+  const rimuovi = CRED_CAMPI_MODAL.length > 1
+    ? `<button type="button" class="icon-x" data-action="cred-campo-rimuovi" data-idx="${idx}" title="Rimuovi campo">✕</button>`
+    : `<span style="visibility:hidden;">✕</span>`;
+  return `<div class="riga-cred-campo" data-idx="${idx}">
+    <input class="col-etichetta" placeholder="es. Nome utente, PIN, Ambiente di sicurezza..." value="${escapeHtml(campo.etichetta || '')}" data-action="cred-campo-input" data-idx="${idx}" data-campo="etichetta">
+    <input class="col-valore" type="text" placeholder="Valore" value="${escapeHtml(campo.valore || '')}" data-action="cred-campo-input" data-idx="${idx}" data-campo="valore">
+    <label class="col-segreto checkline" title="Se spuntato, il valore resta mascherato finché non lo mostri esplicitamente (come una password)">
+      <input type="checkbox" ${campo.segreto?'checked':''} data-action="cred-campo-toggle-segreto" data-idx="${idx}"> Segreto
+    </label>
+    ${campo.segreto ? `<button type="button" class="btn small ghost" data-action="cred-campo-genera" data-idx="${idx}" title="Genera valore casuale sicuro">🎲</button>` : '<span style="width:30px;"></span>'}
+    ${rimuovi}
+  </div>`;
+}
+function renderCampiCredenzialeModal() {
+  const cont = h('credCampiContainer');
+  if (!cont) return;
+  cont.innerHTML = CRED_CAMPI_MODAL.map((campo, idx) => rigaCampoCredenzialeHtml(campo, idx)).join('');
+}
 function modalCredenziale(id) {
   const editing = id ? STATE.credenziali.find(c => c.id === id) : null;
+  CRED_CAMPI_MODAL = editing && Array.isArray(editing.campi) && editing.campi.length
+    ? editing.campi.map(campo => Object.assign({}, campo))
+    : [nuovoCampoCredenzialeModal(false), nuovoCampoCredenzialeModal(true)];
   const html = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
-    <div class="modal" style="max-width:520px;">
+    <div class="modal" style="max-width:560px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-        <div><h2>${editing?'Modifica credenziale':'Nuova credenziale'}</h2><div class="modal-sub">Un account/accesso: dello studio, oppure legato a un cliente specifico.</div></div>
+        <div><h2>${editing?'Modifica credenziale':'Nuova credenziale'}</h2><div class="modal-sub">Un account/accesso: dello studio, oppure legato a un cliente specifico. Aggiungi tutti i campi che servono, con il nome che preferisci (es. Entratel: utente, password, PIN).</div></div>
         <button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button>
       </div>
       <form id="formCredenziale" onsubmit="return false;">
@@ -9946,13 +10035,17 @@ function modalCredenziale(id) {
             <option value="">— Nessuno (credenziale studio) —</option>
             ${STATE.clienti.filter(c=>c.stato!=='cessato').map(c=>`<option value="${c.id}" ${editing&&editing.clienteId===c.id?'selected':''}>${escapeHtml(c.ragioneSociale)}</option>`).join('')}
           </select></div>
-          <div class="field"><label>Nome utente</label><input id="credUsername" value="${editing?escapeHtml(editing.username||''):''}"></div>
-          <div class="field">
-            <label>Password</label>
-            <div style="display:flex;gap:6px;">
-              <input id="credPassword" type="text" style="flex:1;" value="${editing?escapeHtml(editing.password||''):''}">
-              <button type="button" class="btn small" data-action="cred-genera-password-campo" title="Genera password sicura">🎲</button>
+          <div class="field full" style="grid-column:1/-1;">
+            <label>Campi (nome utente, password, PIN, ambiente di sicurezza...) *</label>
+            <div class="cred-campi-header">
+              <span class="col-etichetta">Nome campo</span>
+              <span class="col-valore">Valore</span>
+              <span class="col-segreto">Segreto</span>
+              <span style="width:30px;"></span>
+              <span style="width:26px;"></span>
             </div>
+            <div id="credCampiContainer"></div>
+            <button type="button" class="btn small" style="margin-top:6px;" data-action="cred-campo-aggiungi">+ Aggiungi campo</button>
           </div>
           <div class="field full" style="grid-column:1/-1;"><label>Link al sito (opzionale)</label><input id="credUrl" value="${editing?escapeHtml(editing.url||''):''}" placeholder="https://..."></div>
           <div class="field full" style="grid-column:1/-1;"><label>Note</label><textarea id="credNote" rows="2">${editing?escapeHtml(editing.note||''):''}</textarea></div>
@@ -9965,6 +10058,7 @@ function modalCredenziale(id) {
     </div>
   </div>`;
   document.getElementById('modalRoot').innerHTML = html;
+  renderCampiCredenzialeModal();
 }
 
 const IMP_SEZIONI = [
@@ -11630,12 +11724,18 @@ function onClickDelegato(e) {
     case 'salva-credenziale': {
       const titolo = h('credTitolo').value.trim();
       if (!titolo) { toast('Il titolo è obbligatorio.'); return; }
+      // Righe lasciate completamente vuote (né nome né valore) vengono scartate al salvataggio —
+      // capita facilmente con "+ Aggiungi campo" seguito da un ripensamento, senza dover per forza
+      // premere anche "Rimuovi". Se dopo lo scarto non resta nessun campo, se ne salva comunque uno
+      // vuoto: una credenziale senza nessun campo sarebbe un risultato spiazzante, non intenzionale.
+      let campi = CRED_CAMPI_MODAL.filter(c => (c.etichetta && c.etichetta.trim()) || (c.valore && c.valore.trim()))
+        .map(c => ({ id: c.id, etichetta: c.etichetta.trim() || 'Campo', valore: c.valore, segreto: !!c.segreto }));
+      if (campi.length === 0) campi = [{ id: uid('campo'), etichetta: 'Password', valore: '', segreto: true }];
       const dati = {
         titolo,
         categoria: h('credCategoria').value.trim(),
         clienteId: h('credCliente').value || null,
-        username: h('credUsername').value.trim(),
-        password: h('credPassword').value,
+        campi,
         url: h('credUrl').value.trim(),
         note: h('credNote').value.trim(),
       };
@@ -11643,19 +11743,23 @@ function onClickDelegato(e) {
       chiudiModal(); render(); toast(id ? 'Credenziale aggiornata.' : 'Credenziale salvata.');
       break;
     }
-    case 'cred-genera-password-campo': { const campo = h('credPassword'); if (campo) campo.value = generaPasswordCasuale(); break; }
-    case 'cred-mostra-password':
-      if (CRED_VISIBILI.has(id)) CRED_VISIBILI.delete(id); else CRED_VISIBILI.add(id);
-      render();
-      break;
-    case 'cred-copia-password': {
-      const c = STATE.credenziali.find(x => x.id === id);
-      if (c && c.password) copiaTestoNegliAppunti(c.password, 'Password copiata negli appunti.');
+    case 'cred-campo-aggiungi': CRED_CAMPI_MODAL.push(nuovoCampoCredenzialeModal(true)); renderCampiCredenzialeModal(); break;
+    case 'cred-campo-rimuovi': CRED_CAMPI_MODAL.splice(Number(el.dataset.idx), 1); renderCampiCredenzialeModal(); break;
+    case 'cred-campo-genera': {
+      const idx = Number(el.dataset.idx);
+      if (CRED_CAMPI_MODAL[idx]) { CRED_CAMPI_MODAL[idx].valore = generaPasswordCasuale(); renderCampiCredenzialeModal(); }
       break;
     }
-    case 'cred-copia-username': {
+    case 'cred-mostra-campo': {
+      const chiave = id + '::' + el.dataset.campo;
+      if (CRED_VISIBILI.has(chiave)) CRED_VISIBILI.delete(chiave); else CRED_VISIBILI.add(chiave);
+      render();
+      break;
+    }
+    case 'cred-copia-campo': {
       const c = STATE.credenziali.find(x => x.id === id);
-      if (c && c.username) copiaTestoNegliAppunti(c.username, 'Nome utente copiato negli appunti.');
+      const campo = c && (c.campi || []).find(cc => cc.id === el.dataset.campo);
+      if (campo && campo.valore) copiaTestoNegliAppunti(campo.valore, `${campo.etichetta || 'Valore'} copiato negli appunti.`);
       break;
     }
 
@@ -11843,6 +11947,11 @@ function onChangeDelegato(e) {
     case 'app-cambia-oggetto': aggiornaAppuntamento(id, { oggetto: el.value }); break;
     case 'app-cambia-note': aggiornaAppuntamento(id, { note: el.value }); break;
     case 'nuovo-evento-scad-frequenza': aggiornaVisibilitaMeseScadenzaRicorrente(); break;
+    case 'cred-campo-toggle-segreto': {
+      const idx = Number(el.dataset.idx);
+      if (CRED_CAMPI_MODAL[idx]) { CRED_CAMPI_MODAL[idx].segreto = el.checked; renderCampiCredenzialeModal(); }
+      break;
+    }
 
     case 'rit-filtro-cliente': RIT_FILTRO_CLIENTE = el.value; resetPagina('ritenute'); render(); break;
     case 'rit-cambia-stato': {
@@ -12092,6 +12201,12 @@ function onInputDelegato(e) {
         F24_RIGHE_MODAL[idx][campo] = (campo === 'importo' || campo === 'importoPagato') ? (el.value === '' ? null : el.value) : el.value;
         if (campo === 'importo') { const totEl = h('f24RigheTotale'); if (totEl) totEl.textContent = 'Totale: ' + fmtEuro(F24_RIGHE_MODAL.reduce((s,r)=>s+(Number(r.importo)||0),0)); }
       }
+      break;
+    }
+    case 'cred-campo-input': {
+      const idx = Number(el.dataset.idx);
+      const campo = el.dataset.campo;
+      if (CRED_CAMPI_MODAL[idx]) CRED_CAMPI_MODAL[idx][campo] = el.value; // no render: perderebbe il focus a metà digitazione
       break;
     }
     case 'doc-nome-suggerisci': aggiornaSuggerimentoCategoriaDocumento(); break; // no render: perderebbe il focus a metà nome

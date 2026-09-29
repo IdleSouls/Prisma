@@ -660,13 +660,23 @@ function decifraCredenziale(valore) {
 }
 // Applicate al confine con il disco (leggiDati/scriviDati sotto), così il resto del server e il
 // browser lavorano sempre e solo con STATE in chiaro - nessun altro endpoint deve saperne nulla.
+// Campi personalizzabili per credenziale (Entratel: utente+password+PIN, ecc. - vedi
+// migraCampiCredenziali in gestionale.htm): ogni campo con segreto:true viene cifrato/decifrato
+// individualmente, non solo un'unica "password" fissa. c.password resta gestito in parallelo per
+// compatibilità con eventuali dati non ancora passati dalla migrazione lato client.
 function cifraCredenzialiInDati(dati) {
   if (!dati || !Array.isArray(dati.credenziali)) return dati;
-  return Object.assign({}, dati, { credenziali: dati.credenziali.map(c => Object.assign({}, c, { password: cifraCredenziale(c.password) })) });
+  return Object.assign({}, dati, { credenziali: dati.credenziali.map(c => Object.assign({}, c, {
+    password: cifraCredenziale(c.password),
+    campi: Array.isArray(c.campi) ? c.campi.map(campo => campo.segreto ? Object.assign({}, campo, { valore: cifraCredenziale(campo.valore) }) : campo) : c.campi,
+  })) });
 }
 function decifraCredenzialiInDati(dati) {
   if (!dati || !Array.isArray(dati.credenziali)) return dati;
-  return Object.assign({}, dati, { credenziali: dati.credenziali.map(c => Object.assign({}, c, { password: decifraCredenziale(c.password) })) });
+  return Object.assign({}, dati, { credenziali: dati.credenziali.map(c => Object.assign({}, c, {
+    password: decifraCredenziale(c.password),
+    campi: Array.isArray(c.campi) ? c.campi.map(campo => campo.segreto ? Object.assign({}, campo, { valore: decifraCredenziale(campo.valore) }) : campo) : c.campi,
+  })) });
 }
 
 // ---------------------------------------------------------------------------

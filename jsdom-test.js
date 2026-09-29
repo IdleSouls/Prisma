@@ -4461,30 +4461,50 @@ async function main() {
     await wait(20);
     assert(q('[data-action="nuova-credenziale"]'), 'manca il pulsante "Nuova credenziale"');
 
-    // credenziale STUDIO (nessun cliente collegato)
+    // credenziale STUDIO (nessun cliente collegato) — task richiesto da Matteo: campi liberi con
+    // nome personalizzato (Entratel: nome utente + password + PIN), non più solo username/password
+    // fissi. Il modale apre già con 2 righe di default (idx 0 = non segreto, idx 1 = segreto);
+    // questo test ne aggiunge una terza per il PIN.
     click(q('[data-action="nuova-credenziale"]'));
     await wait(20);
     assert(q('#formCredenziale'), 'form nuova credenziale non renderizzato');
     assertNoAutoSubmit(q('#formCredenziale'), 'formCredenziale');
     setVal(q('#credTitolo'), 'Entratel - Studio');
     setVal(q('#credCategoria'), 'Entratel');
-    setVal(q('#credUsername'), 'utente.entratel');
-    setVal(q('#credPassword'), 'PasswordProva123!');
+    setVal(q('[data-action="cred-campo-input"][data-idx="0"][data-campo="etichetta"]'), 'Nome utente');
+    setVal(q('[data-action="cred-campo-input"][data-idx="0"][data-campo="valore"]'), 'utente.entratel');
+    setVal(q('[data-action="cred-campo-input"][data-idx="1"][data-campo="etichetta"]'), 'Password');
+    setVal(q('[data-action="cred-campo-input"][data-idx="1"][data-campo="valore"]'), 'PasswordProva123!');
+    click(q('[data-action="cred-campo-aggiungi"]'));
+    await wait(20);
+    setVal(q('[data-action="cred-campo-input"][data-idx="2"][data-campo="etichetta"]'), 'PIN');
+    setVal(q('[data-action="cred-campo-input"][data-idx="2"][data-campo="valore"]'), '998877');
+    // "+ Aggiungi campo" crea righe già segrete di default (nuovoCampoCredenzialeModal(true)),
+    // giusto per un PIN — nessun toggle da cliccare qui.
     setVal(q('#credUrl'), 'https://telematici.agenziaentrate.gov.it');
     click(q('[data-action="salva-credenziale"]'));
     await wait(20);
     assert(window.getSTATE().credenziali.length === nCredPrima + 1, 'nuova credenziale studio non salvata');
     const credStudio = window.getSTATE().credenziali.find(c => c.titolo === 'Entratel - Studio');
-    assert(credStudio && credStudio.clienteId === null && credStudio.password === 'PasswordProva123!', 'credenziale studio salvata con dati errati (clienteId dovrebbe essere null)');
-    console.log('=== Credenziali: nuova credenziale studio (senza cliente) salvata correttamente OK');
+    assert(credStudio && credStudio.clienteId === null, 'credenziale studio salvata con dati errati (clienteId dovrebbe essere null)');
+    assert(credStudio.campi.length === 3, `attesi 3 campi sulla credenziale Entratel, trovati ${credStudio.campi.length}`);
+    const campoUtente = credStudio.campi.find(c => c.etichetta === 'Nome utente');
+    const campoPassword = credStudio.campi.find(c => c.etichetta === 'Password');
+    const campoPin = credStudio.campi.find(c => c.etichetta === 'PIN');
+    assert(campoUtente && campoUtente.valore === 'utente.entratel' && campoUtente.segreto === false, 'campo "Nome utente" salvato con dati errati');
+    assert(campoPassword && campoPassword.valore === 'PasswordProva123!' && campoPassword.segreto === true, 'campo "Password" salvato con dati errati');
+    assert(campoPin && campoPin.valore === '998877' && campoPin.segreto === true, 'campo "PIN" aggiunto non salvato correttamente (nome personalizzato + segreto)');
+    console.log('=== Credenziali: nuova credenziale studio con campi multipli personalizzati (utente/password/PIN) salvata correttamente OK');
 
     // credenziale legata a un CLIENTE
     click(q('[data-action="nuova-credenziale"]'));
     await wait(20);
     setVal(q('#credTitolo'), 'Home banking cliente');
     setVal(q('#credCliente'), clienteCred.id);
-    setVal(q('#credUsername'), 'iban.user');
-    setVal(q('#credPassword'), 'BancaSegreta1!');
+    setVal(q('[data-action="cred-campo-input"][data-idx="0"][data-campo="etichetta"]'), 'IBAN utente');
+    setVal(q('[data-action="cred-campo-input"][data-idx="0"][data-campo="valore"]'), 'iban.user');
+    setVal(q('[data-action="cred-campo-input"][data-idx="1"][data-campo="etichetta"]'), 'Password');
+    setVal(q('[data-action="cred-campo-input"][data-idx="1"][data-campo="valore"]'), 'BancaSegreta1!');
     click(q('[data-action="salva-credenziale"]'));
     await wait(20);
     const credCliente = window.getSTATE().credenziali.find(c => c.titolo === 'Home banking cliente');
@@ -4492,25 +4512,26 @@ async function main() {
     assert(window.document.body.textContent.includes('Cliente Credenziali Test SRL'), 'nome cliente collegato non mostrato nell\'elenco credenziali');
     console.log('=== Credenziali: nuova credenziale legata a un cliente salvata correttamente OK');
 
-    // la password è mascherata di default, mostra/nascondi funziona
-    assert(!window.document.body.textContent.includes('PasswordProva123!'), 'la password non deve essere visibile in chiaro prima di premere "Mostra"');
-    click(q(`[data-action="cred-mostra-password"][data-id="${credStudio.id}"]`));
+    // il valore di un campo "segreto" è mascherato di default, mostra/nascondi funziona per singolo campo
+    assert(!window.document.body.textContent.includes('PasswordProva123!'), 'il valore segreto non deve essere visibile in chiaro prima di premere "Mostra"');
+    assert(window.document.body.textContent.includes('utente.entratel'), 'il valore di un campo NON segreto (Nome utente) deve essere sempre visibile in chiaro');
+    click(q(`[data-action="cred-mostra-campo"][data-id="${credStudio.id}"][data-campo="${campoPassword.id}"]`));
     await wait(20);
-    assert(window.document.body.textContent.includes('PasswordProva123!'), 'dopo "Mostra" la password dovrebbe comparire in chiaro');
-    click(q(`[data-action="cred-mostra-password"][data-id="${credStudio.id}"]`));
+    assert(window.document.body.textContent.includes('PasswordProva123!'), 'dopo "Mostra" il valore del campo segreto dovrebbe comparire in chiaro');
+    click(q(`[data-action="cred-mostra-campo"][data-id="${credStudio.id}"][data-campo="${campoPassword.id}"]`));
     await wait(20);
-    assert(!window.document.body.textContent.includes('PasswordProva123!'), 'dopo aver ricliccato "Mostra/Nascondi" la password dovrebbe tornare mascherata');
-    console.log('=== Credenziali: password mascherata di default, mostra/nascondi funzionante OK');
+    assert(!window.document.body.textContent.includes('PasswordProva123!'), 'dopo aver ricliccato "Mostra/Nascondi" il valore dovrebbe tornare mascherato');
+    console.log('=== Credenziali: valore di un campo segreto mascherato di default, mostra/nascondi per singolo campo funzionante OK');
 
-    // copia password negli appunti (stub diretto della funzione, stesso motivo di Rubrica sopra)
+    // copia negli appunti (stub diretto della funzione, stesso motivo di Rubrica sopra)
     const copiatiCred = [];
     const copiaOriginaleCred = window.copiaTestoNegliAppunti;
     window.copiaTestoNegliAppunti = (t) => { copiatiCred.push(t); };
-    click(q(`[data-action="cred-copia-password"][data-id="${credStudio.id}"]`));
+    click(q(`[data-action="cred-copia-campo"][data-id="${credStudio.id}"][data-campo="${campoPassword.id}"]`));
     await wait(20);
-    assert(copiatiCred.length === 1 && copiatiCred[0] === 'PasswordProva123!', 'pulsante "Copia" password non ha copiato il valore atteso');
+    assert(copiatiCred.length === 1 && copiatiCred[0] === 'PasswordProva123!', 'pulsante "Copia" del campo password non ha copiato il valore atteso');
     window.copiaTestoNegliAppunti = copiaOriginaleCred;
-    console.log('=== Credenziali: copia password negli appunti funzionante OK');
+    console.log('=== Credenziali: copia valore campo negli appunti funzionante OK');
 
     // filtro per cliente: "solo studio" nasconde la credenziale legata al cliente
     setVal(q('[data-action="cred-filtro-cliente"]'), '__studio__');
