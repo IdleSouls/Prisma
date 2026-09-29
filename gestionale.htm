@@ -8739,10 +8739,16 @@ function datiPortaleCliente(cliente) {
        appartenga DAVVERO al cliente del token prima di risolverlo a un percorso reale.
      - se il token non corrisponde a nessun cliente attivo (mai attivato, rigenerato, disattivato)
        si ritorna null: chi chiama risponde con un errore generico, senza indizi su "perché". */
-function costruisciVistaPortaleClienteEsterna(token) {
+function costruisciVistaPortaleClienteEsterna(token, password) {
   if (!token || typeof token !== 'string') return null;
   const cliente = STATE.clienti.find(c => c.portaleToken && c.portaleToken === token);
   if (!cliente) return null;
+  // Password per-cliente (task Matteo, vedi cardPasswordPortaleCliente): se non impostata il link
+  // segreto resta l'unica protezione, come prima - nessuna richiesta di password quindi nessun
+  // ostacolo per i clienti già attivi a cui non ne è stata data una.
+  if (cliente.portalePassword && cliente.portalePassword !== (password || '')) {
+    return { richiedePassword: true };
+  }
 
   const { scadenzeClienteTutte, annualiCliente, annualiIncompleti, comCliente, comClienteArchiviate, comClienteNonLette, docCliente, pctOnboarding, anniBilancioPortale } = datiPortaleCliente(cliente);
   const contattiC = cliente.contatti || {};
@@ -9188,15 +9194,38 @@ function cardAccessoPortaleReale(cliente) {
         <input type="text" readonly value="${escapeHtml(link)}" style="flex:1;font-size:12.5px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text-mut);" onclick="this.select()">
         <button class="btn small" data-action="portale-copia-link" data-link="${escapeHtml(link)}">Copia link</button>
       </div>
-      <div style="display:flex;gap:8px;">
+      <div style="display:flex;gap:8px;margin-bottom:14px;">
         <button class="btn small" data-action="portale-rigenera-link" data-id="${cliente.id}" title="Genera un nuovo link: quello vecchio smette subito di funzionare">Rigenera link</button>
         <button class="btn small danger" data-action="portale-disattiva-accesso" data-id="${cliente.id}">Disattiva accesso</button>
-      </div>`
+      </div>
+      ${cardPasswordPortaleCliente(cliente)}`
     : `<div class="helptext" style="margin-bottom:12px;">${escapeHtml(cliente.ragioneSociale)} non ha ancora un accesso al portale. Attivandolo genera un link personale (con un token di sicurezza, non indovinabile) da mandargli via email o chat: da lì vede solo i propri dati, mai quelli di altri clienti.</div>
       <button class="btn small" data-action="portale-attiva-accesso" data-id="${cliente.id}">Attiva accesso portale</button>`;
   return `<div class="card" id="cardAccessoPortaleReale">
     <div class="section-title">Accesso portale reale</div>
     ${stato}
+  </div>`;
+}
+
+/* Password del portale per SINGOLO cliente (task Matteo: "trova il modo per dare una password ad
+   ogni cliente" — il link già contiene un token segreto non indovinabile, ma Matteo vuole una vera
+   password che il cliente digiti). Stesso pattern-draft di ACCESSO_ESTERNO_DRAFT: un buffer locale
+   per non perdere quanto digitato se un re-render "in background" arriva mentre si sta scrivendo.
+   La password è salvata in chiaro sul cliente (stesso livello di riservatezza di altri dati
+   anagrafici già in STATE, es. codice fiscale) — è un secondo fattore leggero ABBINATO al link
+   segreto, non pensata per reggere da sola un attacco mirato. */
+let PORTALE_PASSWORD_DRAFT = {}; // clienteId -> valore digitato, non ancora salvato
+function cardPasswordPortaleCliente(cliente) {
+  const valore = Object.prototype.hasOwnProperty.call(PORTALE_PASSWORD_DRAFT, cliente.id) ? PORTALE_PASSWORD_DRAFT[cliente.id] : (cliente.portalePassword || '');
+  const attiva = !!cliente.portalePassword;
+  return `<div style="border-top:1px solid var(--border);padding-top:12px;">
+    <div style="font-weight:600;font-size:13px;margin-bottom:4px;">Password del portale</div>
+    <div class="helptext" style="margin-bottom:8px;">${attiva ? 'Il cliente deve inserire questa password (oltre ad aprire il link) per vedere i propri dati.' : 'Senza una password qui, il link da solo basta ad aprire il portale (come oggi). Impostane una per chiedere anche una password al cliente.'}</div>
+    <div style="display:flex;gap:8px;max-width:360px;">
+      <input type="text" id="portPassword_${cliente.id}" value="${escapeHtml(valore)}" placeholder="es. una parola facile da dettare al telefono" data-action="portale-password-campo" data-id="${cliente.id}" style="flex:1;font-size:12.5px;padding:7px 9px;border:1px solid var(--border);border-radius:8px;">
+      <button class="btn small" data-action="portale-password-salva" data-id="${cliente.id}">Salva</button>
+      ${attiva ? `<button class="btn small ghost" data-action="portale-password-rimuovi" data-id="${cliente.id}">Rimuovi</button>` : ''}
+    </div>
   </div>`;
 }
 
@@ -11877,6 +11906,28 @@ function onClickDelegato(e) {
     case 'portale-copia-link':
       copiaTestoNegliAppunti(el.dataset.link);
       break;
+    case 'portale-password-salva': {
+      const c = clienteById(id);
+      if (!c) return;
+      const valore = (Object.prototype.hasOwnProperty.call(PORTALE_PASSWORD_DRAFT, id) ? PORTALE_PASSWORD_DRAFT[id] : (h('portPassword_' + id) || {}).value || '').trim();
+      if (!valore) { toast('Scrivi una password prima di salvare (o usa "Rimuovi" per toglierla).'); return; }
+      c.portalePassword = valore;
+      delete PORTALE_PASSWORD_DRAFT[id];
+      salvaStato(); render();
+      toast('Password del portale salvata.');
+      break;
+    }
+    case 'portale-password-rimuovi': {
+      const c = clienteById(id);
+      if (!c) return;
+      if (confermaAzione(`Rimuovere la password del portale di ${c.ragioneSociale}? Il link da solo tornerà a bastare per accedere.`)) {
+        c.portalePassword = null;
+        delete PORTALE_PASSWORD_DRAFT[id];
+        salvaStato(); render();
+        toast('Password del portale rimossa.');
+      }
+      break;
+    }
     /* NB: 'portal-com-vista'/'portal-com-archivia'/'portal-com-disarchivia' (Segna come letta/
        Archivia/Ripristina) esistevano solo nel mockup "a telefono" dell'anteprima, rimosso col
        task #111 — nessun pulsante li richiama più (il portale reale servito da server.js è in
@@ -12690,6 +12741,7 @@ function onInputDelegato(e) {
     case 'onboard-filtro-q': ONBOARD_FILTRO_Q = el.value; render(); restoreFocus('[data-action="onboard-filtro-q"]'); break;
     case 'aml-filtro-q': AML_FILTRO_Q = el.value; render(); restoreFocus('[data-action="aml-filtro-q"]'); break;
     case 'proc-filtro-q': PROC_FILTRO_Q = el.value; render(); restoreFocus('[data-action="proc-filtro-q"]'); break;
+    case 'portale-password-campo': PORTALE_PASSWORD_DRAFT[el.dataset.id] = el.value; break;
     case 'accesso-esterno-campo': {
       const tipo = el.dataset.tipo, campo = el.dataset.campo;
       if (ACCESSO_ESTERNO_DRAFT && ACCESSO_ESTERNO_DRAFT[tipo]) ACCESSO_ESTERNO_DRAFT[tipo][campo] = el.value;

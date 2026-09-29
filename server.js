@@ -384,12 +384,12 @@ function ricaricaDatiMotorePortale(win) {
   win.caricaStato();
 }
 
-function vistaPortaleCliente(token) {
+function vistaPortaleCliente(token, password) {
   const { win, errore } = motorePortale();
   if (!win) return { errore };
   try {
     ricaricaDatiMotorePortale(win);
-    return { vista: win.costruisciVistaPortaleClienteEsterna(token) };
+    return { vista: win.costruisciVistaPortaleClienteEsterna(token, password) };
   } catch (err) {
     console.error('[gestionale] Errore calcolando la vista del portale cliente:', err.message);
     return { errore: 'Errore interno calcolando la vista del portale.' };
@@ -1551,7 +1551,9 @@ function gestisciRichiesta(req, res) {
 
   if (url.indexOf('/api/portale-vista/') === 0 && req.method === 'GET') {
     const token = decodeURIComponent(url.slice('/api/portale-vista/'.length)).trim();
-    const { vista, errore } = vistaPortaleCliente(token);
+    const queryGrezza = (req.url.split('?')[1] || '');
+    const password = new URLSearchParams(queryGrezza).get('password') || '';
+    const { vista, errore } = vistaPortaleCliente(token, password);
     if (errore) {
       // Il dettaglio (es. "manca jsdom") resta SOLO nel log del server per chi amministra il
       // gestionale: a un visitatore esterno del link basta sapere che il portale non è al momento

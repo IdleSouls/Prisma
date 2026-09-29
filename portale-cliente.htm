@@ -231,6 +231,18 @@ details summary{cursor:pointer;font-size:10.5px;font-weight:700;color:var(--text
   </div>
 </div>
 
+<div id="statoPassword" hidden style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--bg);padding:24px;text-align:center;z-index:51;">
+  <div style="max-width:340px;width:100%;">
+    <h1 style="font-size:17px;margin:0 0 8px 0;color:var(--blu-scuro);">Inserisci la password</h1>
+    <p style="font-size:13.5px;line-height:1.55;color:var(--text-mut);margin:0 0 16px 0;">Il tuo commercialista ha protetto questo spazio con una password. Chiedila allo studio se non la conosci.</p>
+    <form id="formPassword" onsubmit="return inviaPassword(event)">
+      <input type="password" id="inputPasswordPortale" autocomplete="current-password" placeholder="Password" style="width:100%;font-size:14px;padding:11px 13px;border:1px solid var(--border);border-radius:9px;box-sizing:border-box;">
+      <div id="erroreInputPassword" style="color:var(--rosso);font-size:12.5px;margin-top:8px;min-height:16px;"></div>
+      <button type="submit" style="margin-top:10px;width:100%;padding:11px 20px;border-radius:9px;border:1px solid var(--blu-mid);background:var(--blu-mid);color:#fff;font-size:13.5px;font-weight:700;">Entra</button>
+    </form>
+  </div>
+</div>
+
 <div id="appRoot" hidden>
   <div id="tabbarWrap">
     <div id="hero">
@@ -258,6 +270,21 @@ details summary{cursor:pointer;font-size:10.5px;font-weight:700;color:var(--text
    di questo stesso URL) e mostrarla. Sola lettura per ora: l'interattività (contattare lo studio,
    solleciti, domande - task #88) arriverà in un secondo momento. */
 const TOKEN = decodeURIComponent(location.pathname.replace(/^.*\/portale\//, '').replace(/\/+$/, ''));
+// Password del portale (opzionale, impostata dallo studio per singolo cliente - vedi
+// cardPasswordPortaleCliente in gestionale.htm): tenuta in sessionStorage, per-tab, così il cliente
+// non deve reinserirla a ogni refresh di pagina finché resta su questa scheda del browser, ma un
+// dispositivo condiviso non la conserva a lungo termine (a differenza di localStorage).
+const PORTALE_PASSWORD_KEY = 'portaleClientePassword_' + TOKEN;
+function leggiPasswordPortale() {
+  try { return sessionStorage.getItem(PORTALE_PASSWORD_KEY) || ''; } catch (e) { return ''; }
+}
+function scriviPasswordPortale(valore) {
+  try { sessionStorage.setItem(PORTALE_PASSWORD_KEY, valore); } catch (e) { /* storage non disponibile: si richiederà di nuovo la password a ogni apertura, nulla di grave */ }
+}
+function urlVistaPortale() {
+  const pw = leggiPasswordPortale();
+  return '/api/portale-vista/' + encodeURIComponent(TOKEN) + (pw ? '?password=' + encodeURIComponent(pw) : '');
+}
 let VISTA = null;
 let TAB = 'panoramica';
 // Task #88 - area cliente interattiva: se non null, la prossima apertura della tab Comunicazioni
@@ -365,6 +392,26 @@ function statoPieno(titolo, testo, { spinner = true, riprova = false } = {}) {
   document.getElementById('btnRiprova').hidden = !riprova;
 }
 
+function mostraStatoPassword(messaggioErrore) {
+  document.getElementById('statoPieno').style.display = 'none';
+  document.getElementById('appRoot').hidden = true;
+  document.getElementById('statoPassword').hidden = false;
+  document.getElementById('erroreInputPassword').textContent = messaggioErrore || '';
+  const campo = document.getElementById('inputPasswordPortale');
+  campo.value = '';
+  setTimeout(() => campo.focus(), 30);
+}
+
+async function inviaPassword(ev) {
+  ev.preventDefault();
+  const valore = (document.getElementById('inputPasswordPortale').value || '').trim();
+  if (!valore) return false;
+  scriviPasswordPortale(valore);
+  document.getElementById('statoPassword').hidden = true;
+  await avvia();
+  return false;
+}
+
 async function avvia() {
   if (!TOKEN) {
     statoPieno('Link non valido', 'Questo indirizzo non contiene un link di accesso riconoscibile. Controlla di aver copiato l\'intero link ricevuto dallo studio.');
@@ -373,7 +420,7 @@ async function avvia() {
   statoPieno('Apertura in corso...', 'Sto recuperando i tuoi dati.');
   let risp;
   try {
-    risp = await fetch('/api/portale-vista/' + encodeURIComponent(TOKEN));
+    risp = await fetch(urlVistaPortale());
   } catch (err) {
     statoPieno('Non riesco a collegarmi', 'Verifica la connessione a internet e riprova. Se il problema persiste, contatta lo studio.', { spinner: false, riprova: true });
     return;
@@ -393,7 +440,16 @@ async function avvia() {
     statoPieno('Link non valido', 'Questo link non è valido o non è più attivo. Contatta il tuo commercialista per un nuovo link di accesso.', { spinner: false });
     return;
   }
+  if (dati.vista.richiedePassword) {
+    // La password salvata (se c'era) non è quella giusta, o non era stata ancora chiesta: azzerarla
+    // evita di ripresentare all'infinito la stessa password sbagliata a ogni polling.
+    const avevaGiaProvato = !!leggiPasswordPortale();
+    scriviPasswordPortale('');
+    mostraStatoPassword(avevaGiaProvato ? 'Password non corretta. Riprova.' : '');
+    return;
+  }
   VISTA = dati.vista;
+  document.getElementById('statoPassword').hidden = true;
   document.getElementById('statoPieno').style.display = 'none';
   document.getElementById('appRoot').hidden = false;
   renderHero();
@@ -524,10 +580,18 @@ function leggiFileBase64(file) {
 
 async function ricaricaVista() {
   try {
-    const risp = await fetch('/api/portale-vista/' + encodeURIComponent(TOKEN));
+    const risp = await fetch(urlVistaPortale());
     if (!risp.ok) return;
     const dati = await risp.json().catch(() => null);
     if (!dati || !dati.ok || !dati.vista) return;
+    if (dati.vista.richiedePassword) {
+      // La password è cambiata o è stata rimossa dallo studio nel frattempo: non ha senso continuare
+      // a mostrare dati potenzialmente non più corretti in background, si richiede di nuovo l'accesso.
+      scriviPasswordPortale('');
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+      mostraStatoPassword('Per continuare, inserisci di nuovo la password.');
+      return;
+    }
     VISTA = dati.vista;
     renderHero();
     renderTabbar();
