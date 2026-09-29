@@ -50,3 +50,5 @@ electron-app/dist/
 
 # --- Token di push automatico verso GitHub: MAI in repository ---
 .git-credentials
+accesso-esterno.json
+responsabili-password.json
