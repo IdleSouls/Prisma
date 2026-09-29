@@ -151,6 +151,13 @@ details summary{cursor:pointer;font-size:10.5px;font-weight:700;color:var(--text
 /* Ritenute d'acconto in attesa che il cliente segnali il pagamento della fattura */
 .ritenuta-riga{padding:11px 0;border-top:1px solid var(--border);}
 .ritenuta-riga:first-child{border-top:none;}
+/* Task #67 (Matteo: "font numeri nella sezione F24 da pagare non coerente"): .t/.s qui dentro non
+   avevano NESSUNA regola propria, quindi ereditavano il font-size di default del body (14.5px) - un
+   valore diverso da quello usato per il dettaglio di ogni riga (rigaPagamentoF24Html, inline
+   font-size:13px/12px). Stesso trattamento di .item .t/.item .s usato nel resto della pagina, così
+   l'importo totale dell'F24 (dentro .s) torna alla stessa dimensione dell'importo residuo per riga. */
+.ritenuta-riga .t{font-size:13.5px;font-weight:700;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+.ritenuta-riga .s{font-size:12px;color:var(--text-mut);margin-top:3px;line-height:1.5;}
 .ritenuta-riga .rig-data{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px;}
 .ritenuta-riga input[type="date"]{font-family:inherit;font-size:12.5px;padding:6px 9px;border-radius:8px;border:1px solid var(--border);}
 /* Thread di una comunicazione come vere bolle di chat (Matteo: la struttura andava bene, la
