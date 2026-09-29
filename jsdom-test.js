@@ -1891,6 +1891,82 @@ async function main() {
   assert(window.getSTATE().modelliDocumento.length === nModelliPrima, 'i modelli di test non sono stati eliminati correttamente');
   console.log('=== Modelli documenti: duplicazione, modifica, disattivazione (non più selezionabile per nuovi documenti), eliminazione OK');
 
+  // ---------- 8d-sexies) Procedure interne: pagina di gestione CRUD (task #146) ----------
+  click(q('[data-nav="procedure"]'));
+  await wait(20);
+  const nProcPrima = window.getSTATE().procedureInterne.length;
+  assert(nProcPrima === 3, `attese 3 procedure di default (seed task #146), trovate ${nProcPrima}`);
+  assert(q('#content').textContent.includes('Apertura Partita IVA') && q('#content').textContent.includes('Apertura Bar'), 'le procedure di default non compaiono nella pagina Procedure interne');
+
+  click(q('[data-action="nuova-procedura"]'));
+  await wait(20);
+  assert(q('#formProcedura'), 'form nuova procedura non renderizzato');
+  assertNoAutoSubmit(q('#formProcedura'), 'formProcedura');
+  const categorieProcDatalist = qa('#procCategorieList option').map(o => o.value);
+  ['Apertura attività', 'Cessazione attività', 'Consulenza società'].forEach(cat => {
+    assert(categorieProcDatalist.includes(cat), `la categoria base "${cat}" non compare nel datalist di suggerimento delle procedure`);
+  });
+  click(q('[data-action="salva-procedura"]')); // senza compilare nulla: non deve salvare
+  await wait(20);
+  assert(window.getSTATE().procedureInterne.length === nProcPrima, 'il salvataggio di una procedura senza categoria/nome/contenuto non dovrebbe creare nulla');
+
+  setVal(q('#procCategoria'), 'Apertura attività');
+  setVal(q('#procNome'), 'Procedura di prova (test)');
+  setVal(q('#procContenuto'), '1. Primo passaggio di prova.\n2. Secondo passaggio di prova.');
+  setVal(q('#procChecklist'), 'Documento A\nDocumento B\n\nDocumento C'); // riga vuota nel mezzo: va scartata
+  click(q('[data-action="salva-procedura"]'));
+  await wait(20);
+  assert(window.getSTATE().procedureInterne.length === nProcPrima + 1, 'nuova procedura di test non salvata');
+  const procTest = window.getSTATE().procedureInterne.find(p => p.nome === 'Procedura di prova (test)');
+  assert(procTest, 'procedura di test non trovata in STATE');
+  assert(procTest.categoria === 'Apertura attività' && procTest.attivo === true, 'categoria o flag attivo della procedura di test non salvati correttamente');
+  assert(procTest.checklistDocumenti.length === 3 && procTest.checklistDocumenti.join(',') === 'Documento A,Documento B,Documento C', `la checklist documenti dovrebbe avere 3 righe non vuote, trovato: ${JSON.stringify(procTest.checklistDocumenti)}`);
+  console.log('=== Procedure interne: creazione, validazione, datalist categorie, checklist "un documento per riga" OK');
+
+  // vista di dettaglio (sola lettura, pensata per il consulente prima dell'appuntamento)
+  click(q(`[data-action="apri-procedura"][data-id="${procTest.id}"]`));
+  await wait(20);
+  assert(q('.modal').textContent.includes('Primo passaggio di prova') && q('.modal').textContent.includes('Documento A'), 'la vista di dettaglio della procedura non mostra contenuto e checklist');
+  click(q('[data-action="chiudi-modal"]'));
+  await wait(20);
+
+  // duplicazione
+  click(q(`[data-action="duplica-procedura"][data-id="${procTest.id}"]`));
+  await wait(20);
+  assert(window.getSTATE().procedureInterne.length === nProcPrima + 2, 'la duplicazione della procedura di test non ha creato una nuova voce');
+  const procDuplicata = window.getSTATE().procedureInterne.find(p => p.nome === 'Procedura di prova (test) (copia)');
+  assert(procDuplicata, 'procedura duplicata non trovata (nome atteso con suffisso "(copia)")');
+  assert(procDuplicata.checklistDocumenti.join(',') === procTest.checklistDocumenti.join(','), 'la checklist documenti della procedura duplicata non coincide con l\'originale');
+
+  // modifica + ricerca
+  click(q(`[data-action="modifica-procedura"][data-id="${procDuplicata.id}"]`));
+  await wait(20);
+  assert(q('#procNome').value === 'Procedura di prova (test) (copia)', 'il modale di modifica non è precompilato con i dati esistenti della procedura');
+  setVal(q('#procNome'), 'Procedura di prova (test) modificata');
+  setChecked(q('#procAttivo'), false);
+  click(q('[data-action="salva-procedura"]'));
+  await wait(20);
+  const procDuplicataAgg = window.getSTATE().procedureInterne.find(p => p.id === procDuplicata.id);
+  assert(procDuplicataAgg.nome === 'Procedura di prova (test) modificata' && procDuplicataAgg.attivo === false, 'la modifica della procedura duplicata non è stata salvata correttamente');
+
+  setVal(q('[data-action="proc-filtro-q"]'), 'Procedura di prova (test) modificata');
+  await wait(20);
+  // Nota: qui si controlla #content (non body) perché body.textContent include anche il testo grezzo
+  // dello <script>, che contiene "Apertura Bar" nel codice sorgente (seed di default) a prescindere
+  // dal filtro applicato in UI — un falso negativo, non un bug della ricerca.
+  assert(q('#content').textContent.includes('Procedura di prova (test) modificata'), 'la ricerca in Procedure interne non mostra la procedura cercata per nome');
+  assert(!q('#content').textContent.includes('Apertura Bar'), 'la ricerca in Procedure interne dovrebbe filtrare via le procedure non corrispondenti');
+  setVal(q('[data-action="proc-filtro-q"]'), '');
+  await wait(20);
+
+  // pulizia: elimina le procedure di test
+  click(q(`[data-action="elimina-procedura"][data-id="${procTest.id}"]`));
+  await wait(20);
+  click(q(`[data-action="elimina-procedura"][data-id="${procDuplicata.id}"]`));
+  await wait(20);
+  assert(window.getSTATE().procedureInterne.length === nProcPrima, 'le procedure di test non sono state eliminate correttamente');
+  console.log('=== Procedure interne: vista di dettaglio, duplicazione, modifica, ricerca, eliminazione OK');
+
   // ---------- 8e) Portale cliente: dati/stato riusati dall'anteprima desktop a schermo intero ----------
   // Task #111: il mockup inline "a telefono" (portal-tabs/phone-frame/phone-screen) è stato rimosso
   // insieme al relativo case 'portal-tab' — l'unica anteprima interattiva rimasta in-app è quella a

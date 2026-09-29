@@ -1228,6 +1228,52 @@ function sincronizzaCatalogoConDefault(stato) {
    documenti", non testo definitivo. Generati una sola volta: se l'utente ha già uno stato salvato
    (anche vuoto ma con la chiave modelliDocumento presente), normalizzaStatoCaricato/Object.assign
    preserva SEMPRE quello salvato — questi valgono solo per il primissimo avvio. */
+/* Procedure interne di partenza (task #146): esempi realistici genericizzati, pensati come punto
+   di partenza da modificare in "Procedure interne" — non testo definitivo. Stesso meccanismo dei
+   modelli documento: generate una sola volta, un utente con stato già salvato mantiene sempre il
+   proprio (vedi normalizzaStatoCaricato/Object.assign in statoIniziale). Il campo "motivoAppuntamento"
+   collega la procedura a uno o più motivi dell'elenco MOTIVI_APPUNTAMENTO (task #147, "Prenota un
+   appuntamento"): quando la segreteria prenota un appuntamento per quel motivo, la procedura
+   corrispondente viene suggerita al consulente. */
+function procedureInterneDefault() {
+  const mk = (categoria, nome, contenuto, checklistDocumenti, motiviAppuntamento) => ({
+    id: uid('proc'), categoria, nome, contenuto, checklistDocumenti: checklistDocumenti || [],
+    motiviAppuntamento: motiviAppuntamento || [], attivo: true, creatoIl: oggiISO(),
+  });
+  return [
+    mk('Apertura attività', 'Apertura Partita IVA - Ditta individuale',
+`1. Colloquio iniziale: raccogliere attività svolta, codice ATECO presumibile, sede, eventuale regime forfettario o ordinario.
+2. Verificare i requisiti per il regime forfettario (ricavi/compensi ultimo anno, cause di esclusione ex L.190/2014).
+3. Compilare e trasmettere il modello AA9/12 (apertura P.IVA) tramite Entratel/Fisconline.
+4. Iscrizione INPS gestione competente (artigiani/commercianti o gestione separata) entro 30 giorni.
+5. Iscrizione Camera di Commercio (se richiesta dall'attività) e comunicazione unica se necessaria.
+6. Valutare l'iscrizione INAIL se previsto dall'attività.
+7. Consegnare al cliente: credenziali per il cassetto fiscale, calendario scadenze, informativa privacy.`,
+      ['Documento d\'identità e tessera sanitaria', 'Visura camerale (se già iscritto)', 'Contratto di locazione/comodato sede attività (se presente)'],
+      ['Apertura nuova attività']),
+    mk('Apertura attività', 'Apertura Bar / Pubblico esercizio',
+`1. Verificare i requisiti soggettivi (SCIA per somministrazione alimenti e bevande) e conformità dei locali.
+2. Apertura Partita IVA con codice ATECO specifico (56.30.00 o simile) — vedi procedura "Apertura Partita IVA".
+3. SCIA al Comune (Sportello Unico Attività Produttive) per somministrazione al pubblico.
+4. Verifica requisiti professionali/morali del titolare (corso HACCP, eventuale corso SAB se richiesto dal Comune).
+5. Iscrizione INPS commercianti e valutazione posizione INAIL per eventuali dipendenti.
+6. Registratore telematico: attivazione e censimento all'Agenzia delle Entrate.
+7. Licenza per pubblica sicurezza se prevista (es. musica, orari particolari).
+8. Consegnare al cliente: calendario scadenze IVA/liquidazioni, promemoria corrispettivi telematici giornalieri.`,
+      ['Documento d\'identità', 'SCIA/planimetria locale', 'Attestato corso HACCP', 'Contratto di locazione/affitto d\'azienda'],
+      ['Apertura nuova attività']),
+    mk('Consulenza società', 'Costituzione SRL',
+`1. Colloquio con i soci: oggetto sociale, capitale sociale, quote, nomina amministratore/i.
+2. Predisposizione bozza statuto e atto costitutivo (con il notaio incaricato).
+3. Versamento capitale sociale (25% in conti correnti dedicati o intero importo per SRLS).
+4. Atto notarile di costituzione, iscrizione al Registro Imprese.
+5. Apertura Partita IVA e posizione INPS/INAIL amministratore (se dovuta).
+6. Impostazione contabilità ordinaria e libri sociali obbligatori.
+7. Consegnare ai soci: copia atto costitutivo, calendario adempimenti societari (bilancio, assemblee).`,
+      ['Documenti d\'identità di tutti i soci', 'Codice fiscale soci', 'Bozza patti parasociali (se presenti)'],
+      ['Consulenza per attività esistente']),
+  ];
+}
 function modelliDocumentoDefault() {
   const mk = (categoria, nome, corpo) => ({ id: uid('mod'), categoria, nome, corpo, attivo: true, predefinito: true, creatoIl: oggiISO() });
   return [
@@ -1498,6 +1544,12 @@ function statoIniziale() {
     /* Appuntamenti con clienti creati dal calendario (task #140): eventi puntuali, distinti dalle
        scadenze fiscali/adempimenti che restano generate dal motore scadenze esistente. */
     appuntamenti: [],
+    /* Procedure interne dello studio (task #146): raccolta di SOP/indicazioni operative per lo staff
+       ("come si apre una nuova attività X", quali documenti servono ecc.), strutturate come i Modelli
+       documenti (categoria/nome/contenuto) più una checklist di documenti necessari. Usate anche dal
+       flusso "Prenota un appuntamento" (task #147) per suggerire la procedura giusta in base al motivo
+       dell'appuntamento. */
+    procedureInterne: procedureInterneDefault(),
   }, clonaCatalogoDefault());
 }
 /* Attività "a listino" dello studio (task #138): usate in Preventivi/Mandati per calcolare
@@ -3115,6 +3167,32 @@ function duplicaModelloDocumento(id) {
   return copia;
 }
 
+/* -------------------- MUTAZIONI: procedure interne (task #146) -------------------- */
+function aggiungiProceduraInterna(p) {
+  const nuova = Object.assign({ id: uid('proc'), attivo: true, checklistDocumenti: [], motiviAppuntamento: [], creatoIl: oggiISO() }, p);
+  STATE.procedureInterne.push(nuova);
+  salvaStato();
+  return nuova;
+}
+function aggiornaProceduraInterna(id, patch) {
+  const p = STATE.procedureInterne.find(x => x.id === id);
+  if (!p) return;
+  Object.assign(p, patch);
+  salvaStato();
+}
+function eliminaProceduraInterna(id) {
+  STATE.procedureInterne = STATE.procedureInterne.filter(x => x.id !== id);
+  salvaStato();
+}
+function duplicaProceduraInterna(id) {
+  const p = STATE.procedureInterne.find(x => x.id === id);
+  if (!p) return null;
+  const copia = Object.assign({}, p, { id: uid('proc'), nome: p.nome + ' (copia)', checklistDocumenti: (p.checklistDocumenti || []).slice(), motiviAppuntamento: (p.motiviAppuntamento || []).slice(), creatoIl: oggiISO() });
+  STATE.procedureInterne.push(copia);
+  salvaStato();
+  return copia;
+}
+
 /* -------------------- MUTAZIONI: documenti da modello — preventivi/mandati/AML (task #121-126) -------------------- */
 function aggiungiPreventivo(p) {
   const nuovo = Object.assign({ id: uid('doc'), stato: 'Bozza', creatoIl: oggiISO() }, p);
@@ -3547,6 +3625,7 @@ const NAV = [
   { group: 'Team', items: [
     { id: 'taskteam', label: 'Task team', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="5" height="16" rx="1.3"/><rect x="9.5" y="4" width="5" height="10" rx="1.3"/><rect x="16" y="4" width="5" height="13" rx="1.3"/></svg>' },
     { id: 'chat', label: 'Chat interna', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5h16a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H9l-4.5 4v-4H4a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1z"/></svg>' },
+    { id: 'procedure', label: 'Procedure interne', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3.5h6a1.5 1.5 0 0 1 1.5 1.5v14a1.5 1.5 0 0 1-1.5 1.5H9a1.5 1.5 0 0 1-1.5-1.5V5A1.5 1.5 0 0 1 9 3.5z"/><path d="M8.5 8.5h7"/><path d="M9.3 12.2l1.6 1.6 3-3.4"/></svg>' },
   ]},
   { group: 'Relazione cliente', items: [
     { id: 'onboarding', label: 'Onboarding', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7"/><path d="M9 7h8v8"/></svg>' },
@@ -3681,6 +3760,7 @@ function render() {
     case 'documenti': content.innerHTML = renderDocumenti(); break;
     case 'preventivi': content.innerHTML = renderPreventivi(); break;
     case 'modelli': content.innerHTML = renderModelliDocumento(); break;
+    case 'procedure': content.innerHTML = renderProcedureInterne(); break;
     case 'strumenti': content.innerHTML = renderStrumenti(); break;
     case 'credenziali': content.innerHTML = renderCredenziali(); break;
     case 'portale': content.innerHTML = renderPortaleCliente(); break;
@@ -6074,6 +6154,115 @@ function modalModelloDocumento(id) {
       <div class="modal-actions">
         <button class="btn" data-action="chiudi-modal">Annulla</button>
         <button class="btn primary" data-action="salva-modello" data-id="${editing?editing.id:''}">${editing?'Salva modifiche':'Crea modello'}</button>
+      </div>
+    </div>
+  </div>`;
+  document.getElementById('modalRoot').innerHTML = html;
+}
+
+/* -------------------- RENDER: PROCEDURE INTERNE (task #146) --------------------
+   Stesso pattern di renderModelliDocumento/modalModelloDocumento (lista raggruppata per categoria +
+   un solo modale creazione/modifica), ma con contenuto libero (niente segnaposto {{così}}: qui è
+   testo procedurale, non un documento da compilare) e una checklist di documenti necessari, gestita
+   come elenco "un documento per riga" in una textarea dedicata. */
+let PROC_FILTRO_Q = '';
+function renderProcedureInterne() {
+  const tutte = STATE.procedureInterne || [];
+  const q = PROC_FILTRO_Q.trim().toLowerCase();
+  const procedure = q ? tutte.filter(p => (p.nome + ' ' + p.categoria + ' ' + p.contenuto).toLowerCase().includes(q)) : tutte;
+  const intro = `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+    <input type="text" placeholder="Cerca per nome, categoria o contenuto..." value="${escapeHtml(PROC_FILTRO_Q)}" data-action="proc-filtro-q" style="flex:1;min-width:220px;max-width:360px;border:1px solid var(--border);border-radius:6px;padding:7px 10px;">
+    <button class="btn primary" data-action="nuova-procedura">+ Nuova procedura</button>
+  </div>`;
+  if (tutte.length === 0) {
+    return intro + `<div class="card"><div class="empty"><div class="big">Nessuna procedura ancora</div>Raccogli qui le indicazioni operative per lo staff (es. apertura di una nuova attività, costituzione società): passo per passo, con la checklist dei documenti necessari.</div></div>`;
+  }
+  if (procedure.length === 0) {
+    return intro + `<div class="card"><div class="empty">Nessuna procedura trovata per "${escapeHtml(PROC_FILTRO_Q)}".</div></div>`;
+  }
+  const categorie = Array.from(new Set(procedure.map(p => p.categoria))).sort((a,b) => a.localeCompare(b));
+  const gruppi = categorie.map(cat => {
+    const procCat = procedure.filter(p => p.categoria === cat).sort((a,b) => a.nome.localeCompare(b.nome));
+    const righe = procCat.map(p => {
+      const anteprima = p.contenuto.replace(/\s+/g, ' ').trim();
+      const nDoc = (p.checklistDocumenti || []).length;
+      return `<div class="card" style="margin-bottom:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;">
+          <div>
+            <div style="font-weight:600;">${escapeHtml(p.nome)} ${!p.attivo?'<span class="badge stato-errore">Disattivata</span>':''}</div>
+            <div class="helptext" style="margin-top:4px;">${nDoc} document${nDoc===1?'o necessario':'i necessari'} · ${escapeHtml(anteprima.slice(0,140))}${anteprima.length>140?'…':''}</div>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <button class="btn small" data-action="apri-procedura" data-id="${p.id}">Apri</button>
+            <button class="btn small" data-action="modifica-procedura" data-id="${p.id}">Modifica</button>
+            <button class="btn small" data-action="duplica-procedura" data-id="${p.id}">Duplica</button>
+            <button class="btn small danger" data-action="elimina-procedura" data-id="${p.id}">Elimina</button>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+    return `<div class="section-title" style="margin-top:18px;">${escapeHtml(cat)}</div>${righe}`;
+  }).join('');
+  return intro + gruppi;
+}
+
+/* Vista di sola lettura, pensata per essere aperta velocemente dal consulente prima di un appuntamento
+   (vedi task #147): procedura passo-passo + checklist documenti, senza dover passare da "Modifica". */
+function modalDettaglioProcedura(id) {
+  const p = STATE.procedureInterne.find(x => x.id === id);
+  if (!p) { toast('Procedura non trovata.'); return; }
+  const checklist = (p.checklistDocumenti || []);
+  const html = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
+    <div class="modal" style="max-width:700px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div><h2>${escapeHtml(p.nome)}</h2><div class="modal-sub">${escapeHtml(p.categoria)}</div></div>
+        <button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button>
+      </div>
+      <div style="white-space:pre-wrap;line-height:1.6;margin-top:10px;">${escapeHtml(p.contenuto)}</div>
+      ${checklist.length ? `<div class="section-title" style="margin-top:16px;">Documenti necessari</div>
+        <ul style="margin:6px 0 0 18px;padding:0;">${checklist.map(d => `<li>${escapeHtml(d)}</li>`).join('')}</ul>` : ''}
+      <div class="modal-actions">
+        <button class="btn" data-action="chiudi-modal">Chiudi</button>
+        <button class="btn primary" data-action="modifica-procedura" data-id="${p.id}">Modifica</button>
+      </div>
+    </div>
+  </div>`;
+  document.getElementById('modalRoot').innerHTML = html;
+}
+
+const CATEGORIE_PROCEDURA_BASE = ['Apertura attività', 'Cessazione attività', 'Consulenza società', 'Adempimenti periodici', 'Amministrazione studio'];
+function modalProceduraInterna(id) {
+  const editing = id ? STATE.procedureInterne.find(x => x.id === id) : null;
+  if (id && !editing) { toast('Procedura non trovata.'); return; }
+  const categorieEsistenti = Array.from(new Set(CATEGORIE_PROCEDURA_BASE.concat((STATE.procedureInterne || []).map(p => p.categoria))));
+  const checklistTesto = editing ? (editing.checklistDocumenti || []).join('\n') : '';
+  const html = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
+    <div class="modal" style="max-width:760px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div><h2>${editing?'Modifica procedura':'Nuova procedura interna'}</h2><div class="modal-sub">Indicazioni operative per lo staff: passo per passo, in linguaggio semplice.</div></div>
+        <button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button>
+      </div>
+      <form id="formProcedura" onsubmit="return false;">
+        <div class="grid2">
+          <div class="field"><label>Categoria *</label><input id="procCategoria" list="procCategorieList" value="${editing?escapeHtml(editing.categoria):''}" placeholder="es. Apertura attività">
+          <datalist id="procCategorieList">${categorieEsistenti.map(c=>`<option value="${escapeHtml(c)}">`).join('')}</datalist></div>
+          <div class="field"><label>Nome procedura *</label><input id="procNome" value="${editing?escapeHtml(editing.nome):''}" placeholder="es. Apertura Partita IVA - Ditta individuale"></div>
+        </div>
+        <div class="field full" style="grid-column:1/-1;margin-top:10px;">
+          <label>Contenuto (passo per passo) *</label>
+          <textarea id="procContenuto" style="min-height:240px;font-size:13px;line-height:1.6;" placeholder="1. Primo passaggio...&#10;2. Secondo passaggio...">${editing?escapeHtml(editing.contenuto):''}</textarea>
+        </div>
+        <div class="field full" style="grid-column:1/-1;margin-top:10px;">
+          <label>Documenti necessari (uno per riga)</label>
+          <textarea id="procChecklist" style="min-height:90px;font-size:13px;" placeholder="Documento d'identità&#10;Visura camerale">${escapeHtml(checklistTesto)}</textarea>
+        </div>
+        <div style="margin-top:14px;">
+          <label style="display:flex;align-items:center;gap:8px;font-weight:400;"><input type="checkbox" id="procAttivo" ${(!editing || editing.attivo)?'checked':''}> Attiva</label>
+        </div>
+      </form>
+      <div class="modal-actions">
+        <button class="btn" data-action="chiudi-modal">Annulla</button>
+        <button class="btn primary" data-action="salva-procedura" data-id="${editing?editing.id:''}">${editing?'Salva modifiche':'Crea procedura'}</button>
       </div>
     </div>
   </div>`;
@@ -11234,6 +11423,26 @@ function onClickDelegato(e) {
       break;
     }
 
+    case 'nuova-procedura': modalProceduraInterna(null); break;
+    case 'apri-procedura': modalDettaglioProcedura(id); break;
+    case 'modifica-procedura': modalProceduraInterna(id); break;
+    case 'duplica-procedura': duplicaProceduraInterna(id); render(); toast('Procedura duplicata.'); break;
+    case 'elimina-procedura':
+      if (confermaAzione('Eliminare questa procedura?')) { chiudiModal(); eliminaProceduraInterna(id); render(); toast('Procedura eliminata.'); }
+      break;
+    case 'salva-procedura': {
+      const categoria = h('procCategoria').value.trim();
+      const nomeProc = h('procNome').value.trim();
+      const contenuto = h('procContenuto').value;
+      if (!categoria || !nomeProc || !contenuto.trim()) { toast('Compila categoria, nome e contenuto della procedura.'); return; }
+      const checklistDocumenti = h('procChecklist').value.split('\n').map(s => s.trim()).filter(Boolean);
+      const attivo = h('procAttivo').checked;
+      const dati = { categoria, nome: nomeProc, contenuto, checklistDocumenti, attivo };
+      if (id) aggiornaProceduraInterna(id, dati); else aggiungiProceduraInterna(dati);
+      chiudiModal(); render(); toast(id ? 'Procedura aggiornata.' : 'Procedura creata.');
+      break;
+    }
+
     case 'nuovo-preventivo': modalPreventivo(null, el.dataset.cliente || null, el.dataset.aml === '1', null, !!el.dataset.cliente); break;
     case 'apri-preventivo': modalDettaglioPreventivo(id); break;
     case 'modifica-preventivo': modalPreventivo(id); break;
@@ -12255,6 +12464,7 @@ function onInputDelegato(e) {
     // salvato da perdere — restoreFocus tiene comunque il campo a fuoco dopo il ridisegno.
     case 'onboard-filtro-q': ONBOARD_FILTRO_Q = el.value; render(); restoreFocus('[data-action="onboard-filtro-q"]'); break;
     case 'aml-filtro-q': AML_FILTRO_Q = el.value; render(); restoreFocus('[data-action="aml-filtro-q"]'); break;
+    case 'proc-filtro-q': PROC_FILTRO_Q = el.value; render(); restoreFocus('[data-action="proc-filtro-q"]'); break;
     case 'dc-tipo-change': apriModalDocumentoContabile(el.dataset.cliente, el.value); break;
     case 'f24-chiave-change': aggiornaSuggerimentoImportoF24(); break;
     case 'f24-cliente-change': aggiornaSuggerimentoImportoF24(); break;
