@@ -3668,6 +3668,7 @@ const PAGE_TITLES = {
   bilanci: ['Bilanci & KPI', 'Carica situazioni economico-patrimoniali e ottieni indicatori e grafici automatici'],
   contabilita: ['Contabilità', 'Import periodico da Excel/CSV: nessuna doppia registrazione, nessuna data indovinata'],
   modelli: ['Modelli documenti', 'Testi precompilati per preventivi, mandati e documenti antiriciclaggio: i segnaposto {{così}} si trasformano in campi da compilare'],
+  procedure: ['Procedure interne', 'Indicazioni operative per lo staff, passo per passo, con la checklist dei documenti necessari'],
   strumenti: ['Strumenti', 'Convertitore file Word ↔ PDF ↔ PDF/A (serve LibreOffice installato sul PC del server locale)'],
   credenziali: ['Password', 'Credenziali e accessi dello studio e dei clienti — Entratel, Telemaco, home banking, software, ecc.'],
   impostazioni: ['Impostazioni e backup', 'Studio, responsabili, catalogo scadenze, esporta/importa dati'],
@@ -3678,6 +3679,7 @@ function badgeVoceNav(it) {
   if (it.id === 'chat') return chatTotaleNonLetti();
   if (it.id === 'taskteam') return taskTeamNonVistiConteggio();
   if (it.id === 'comunicazioni') return comunicazioniDaLeggereConteggio();
+  if (it.id === 'calendario') return appuntamentiNonVistiConteggio();
   return 0;
 }
 /* Task #142: gruppi della sidebar collassabili (feedback di Federico — troppe voci tutte
@@ -9314,11 +9316,14 @@ function renderCalendario() {
   for (let g = 1; g <= nGiorniMese; g++) celle.push(g);
   while (celle.length % 7 !== 0) celle.push(null);
 
-  const nav = `<div class="toolbar" style="align-items:center;">
-    <button class="btn" data-action="cal-prev">← Mese prec.</button>
-    <div style="font-weight:700;font-size:15px;min-width:160px;text-align:center;">${MESI_COMPLETI[CAL_MESE]} ${anno}</div>
-    <button class="btn" data-action="cal-next">Mese succ. →</button>
-    <button class="btn ghost" data-action="cal-oggi">Vai a oggi</button>
+  const nav = `<div class="toolbar" style="align-items:center;justify-content:space-between;flex-wrap:wrap;">
+    <div class="toolbar" style="align-items:center;">
+      <button class="btn" data-action="cal-prev">← Mese prec.</button>
+      <div style="font-weight:700;font-size:15px;min-width:160px;text-align:center;">${MESI_COMPLETI[CAL_MESE]} ${anno}</div>
+      <button class="btn" data-action="cal-next">Mese succ. →</button>
+      <button class="btn ghost" data-action="cal-oggi">Vai a oggi</button>
+    </div>
+    ${(STATE.meta.consulenti || []).length ? `<button class="btn primary" data-action="prenota-appuntamento">📞 Prenota un appuntamento</button>` : ''}
   </div>`;
 
   const legenda = `<div class="cal-legenda">${TIPI_ADEMPIMENTO.concat([CATEGORIA_TASK_TEAM_CAL, CATEGORIA_APPUNTAMENTO_CAL]).map(t => {
@@ -9454,15 +9459,43 @@ function apriModalGiornoCalendario(dataISO) {
      aggiungiTipoPeriodicoCustom, e attiva subito il flag sui clienti scelti invece di
      richiedere un secondo passaggio manuale in anagrafica. */
 const STATI_APPUNTAMENTO = ['Programmato', 'Concluso', 'Annullato'];
+/* Motivi dell'appuntamento (task #147, "Prenota un appuntamento"): prima lista proposta da Prisma,
+   da affinare con l'uso — collegati (dove pertinente) al campo motiviAppuntamento delle Procedure
+   interne (vedi procedureInterneDefault), così la procedura giusta viene suggerita al consulente in
+   base al motivo scelto dalla segreteria al telefono. */
+const MOTIVI_APPUNTAMENTO = [
+  'Apertura nuova attività',
+  'Consulenza per attività esistente',
+  'Dichiarazione dei redditi',
+  'Problema con una scadenza o una sanzione',
+  'Richiesta di preventivo',
+  'Cambio commercialista (subentro)',
+  'Consulenza societaria (costituzione, modifica, cessione quote)',
+  'Altro',
+];
+const TIPI_RICHIESTA_APPUNTAMENTO = ['Nuova attività', 'Consulenza per attività esistente'];
 
 function trovaAppuntamento(id) {
   return (STATE.appuntamenti || []).find(a => a.id === id);
 }
 function aggiungiAppuntamento(dati) {
+  const prenotatoDaSegreteria = !!dati.prenotatoDaSegreteria;
   const a = {
     id: uid('app'), clienteId: dati.clienteId || null, data: dati.data, ora: dati.ora || '',
     oggetto: (dati.oggetto || '').trim() || 'Appuntamento', note: (dati.note || '').trim(),
     responsabile: operatoreCorrente() || '', stato: 'Programmato', creatoIl: new Date().toISOString(),
+    /* Campi task #147 (flusso "Prenota un appuntamento" della segreteria): "consulente" è il
+       responsabile per cui è prenotato l'appuntamento (distinto da "responsabile" sopra, che resta
+       chi lo ha materialmente creato — la segreteria, in questo caso). notificaVista segue lo stesso
+       pattern di taskTeam.notificaVista: false solo per gli appuntamenti prenotati dalla segreteria,
+       così il pallino di notifica non compare per gli appuntamenti che un consulente si crea da sé. */
+    consulente: dati.consulente || null,
+    prenotatoDaSegreteria,
+    tipoRichiesta: dati.tipoRichiesta || null,
+    telefono: (dati.telefono || '').trim(),
+    motivo: dati.motivo || null,
+    motivoAltro: (dati.motivoAltro || '').trim(),
+    notificaVista: !prenotatoDaSegreteria,
   };
   STATE.appuntamenti = STATE.appuntamenti || [];
   STATE.appuntamenti.push(a);
@@ -9479,6 +9512,29 @@ function aggiornaAppuntamento(id, patch) {
 function rimuoviAppuntamento(id) {
   STATE.appuntamenti = (STATE.appuntamenti || []).filter(a => a.id !== id);
   salvaStato();
+}
+/* Notifica "nuovo appuntamento prenotato dalla segreteria" per il consulente destinatario — stesso
+   pattern di taskTeamNonVistiPerOperatore/segnaTaskTeamVisto (task #119). */
+function appuntamentiNonVistiPerConsulente() {
+  const io = operatoreCorrente();
+  if (!io) return [];
+  return (STATE.appuntamenti || []).filter(a => a.consulente === io && a.notificaVista === false);
+}
+function appuntamentiNonVistiConteggio() { return appuntamentiNonVistiPerConsulente().length; }
+function segnaAppuntamentoVisto(id) {
+  const a = trovaAppuntamento(id);
+  if (a && a.notificaVista === false) {
+    a.notificaVista = true;
+    salvaStato();
+    renderNav();
+  }
+}
+/* Procedura interna suggerita per un appuntamento, in base al motivo scelto dalla segreteria (task
+   #147: "l'ideale sarebbe poter trovare un modo per collegare l'appuntamento a delle procedure").
+   Nessun collegamento per gli appuntamenti creati direttamente dal consulente (motivo assente). */
+function proceduraSuggeritaPerAppuntamento(a) {
+  if (!a || !a.motivo) return null;
+  return (STATE.procedureInterne || []).find(p => p.attivo && (p.motiviAppuntamento || []).includes(a.motivo)) || null;
 }
 
 /* Modale "Nuovo evento": due pulsanti per scegliere il tipo, poi un form dedicato sotto. Lo stato
@@ -9609,16 +9665,34 @@ function salvaNuovaScadenzaRicorrente() {
     : 'Scadenza ricorrente creata. Nessun cliente selezionato: attivala in anagrafica quando serve.');
 }
 
-/* Dettaglio/modifica di un appuntamento: stato, ora, oggetto, note, più eliminazione. */
+/* Dettaglio/modifica di un appuntamento: stato, ora, oggetto, note, più eliminazione. Per gli
+   appuntamenti prenotati dalla segreteria (task #147) mostra anche i dati raccolti al telefono, la
+   procedura interna suggerita in base al motivo e il pulsante per il riepilogo stampabile — e segna
+   la notifica come vista appena il consulente la apre. */
 function apriModalAppuntamento(id) {
   const a = trovaAppuntamento(id);
   if (!a) return;
+  if (a.prenotatoDaSegreteria) segnaAppuntamentoVisto(id);
+  const procedura = proceduraSuggeritaPerAppuntamento(a);
+  const bloccoSegreteria = a.prenotatoDaSegreteria ? `
+    <div class="card" style="margin:10px 0;background:var(--rosa-bg);">
+      <div class="section-title" style="margin-top:0;">Prenotato dalla segreteria</div>
+      <div style="font-size:13px;line-height:1.7;">
+        ${a.consulente ? `<div><strong>Consulente:</strong> ${escapeHtml(a.consulente)}</div>` : ''}
+        ${a.tipoRichiesta ? `<div><strong>Tipo richiesta:</strong> ${escapeHtml(a.tipoRichiesta)}</div>` : ''}
+        ${a.telefono ? `<div><strong>Telefono di chi ha chiamato:</strong> ${escapeHtml(a.telefono)}</div>` : ''}
+        ${a.motivo ? `<div><strong>Cosa vuole:</strong> ${escapeHtml(a.motivo)}${a.motivo==='Altro'&&a.motivoAltro?': '+escapeHtml(a.motivoAltro):''}</div>` : ''}
+      </div>
+      ${procedura ? `<div style="margin-top:8px;"><button class="btn small" data-action="apri-procedura" data-id="${procedura.id}">📋 Procedura collegata: ${escapeHtml(procedura.nome)}</button></div>` : ''}
+      <div style="margin-top:8px;"><button class="btn small" data-action="stampa-riepilogo-appuntamento" data-id="${a.id}">🖨 Riepilogo stampabile per l'incontro</button></div>
+    </div>` : '';
   const html = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
-    <div class="modal" style="max-width:520px;">
+    <div class="modal" style="max-width:560px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;">
         <div><h2>Appuntamento</h2><div class="modal-sub">${escapeHtml(fmtData(a.data))}${a.ora?` · ${escapeHtml(a.ora)}`:''} — ${escapeHtml(etichettaClienteEvento('appuntamento', a.clienteId))}</div></div>
         <button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button>
       </div>
+      ${bloccoSegreteria}
       <div class="grid2">
         <div class="field"><label>Stato</label><select data-action="app-cambia-stato" data-id="${a.id}">${STATI_APPUNTAMENTO.map(s=>`<option value="${s}" ${a.stato===s?'selected':''}>${s}</option>`).join('')}</select></div>
         <div class="field"><label>Ora</label><input type="time" value="${escapeHtml(a.ora||'')}" data-action="app-cambia-ora" data-id="${a.id}"></div>
@@ -9632,6 +9706,154 @@ function apriModalAppuntamento(id) {
     </div>
   </div>`;
   document.getElementById('modalRoot').innerHTML = html;
+}
+
+/* Foglio riepilogativo stampabile (task #147: "si potrà guidare l'appuntamento avendo una chiara
+   idea di cosa vuole il cliente") — stesso meccanismo/limiti di apriStampaPreventivo: finestra
+   separata, window.print() avvolto in try/catch perché non disponibile in jsdom (mai testabile
+   end-to-end) e perché in ambienti con popup bloccati il documento deve restare comunque aperto e
+   leggibile/stampabile a mano. */
+function apriRiepilogoAppuntamento(id) {
+  const a = trovaAppuntamento(id);
+  if (!a) { toast('Appuntamento non trovato.'); return; }
+  const procedura = proceduraSuggeritaPerAppuntamento(a);
+  const righe = [];
+  righe.push(`Appuntamento del ${fmtData(a.data)}${a.ora ? ' alle ' + a.ora : ''}`);
+  if (a.consulente) righe.push(`Consulente: ${a.consulente}`);
+  righe.push(`Cliente: ${etichettaClienteEvento('appuntamento', a.clienteId)}`);
+  if (a.tipoRichiesta) righe.push(`Tipo richiesta: ${a.tipoRichiesta}`);
+  if (a.telefono) righe.push(`Telefono di chi ha chiamato: ${a.telefono}`);
+  if (a.motivo) righe.push(`Cosa vuole: ${a.motivo}${a.motivo==='Altro'&&a.motivoAltro?' — '+a.motivoAltro:''}`);
+  if (a.note) righe.push(`Note aggiuntive: ${a.note}`);
+  let corpo = righe.map(r => escapeHtml(r)).join('<br>');
+  if (procedura) {
+    corpo += `<hr style="margin:24px 0;"><h2 style="font-size:16px;">Procedura collegata: ${escapeHtml(procedura.nome)}</h2>`;
+    corpo += `<div style="white-space:pre-wrap;">${escapeHtml(procedura.contenuto)}</div>`;
+    if ((procedura.checklistDocumenti || []).length) {
+      corpo += `<h3 style="font-size:14px;margin-top:16px;">Documenti necessari</h3><ul>${procedura.checklistDocumenti.map(d=>`<li>${escapeHtml(d)}</li>`).join('')}</ul>`;
+    }
+  }
+  const win = window.open('', '_blank');
+  if (!win) { toast('Impossibile aprire la finestra di stampa (popup bloccato dal browser?).', true); return; }
+  win.document.write(`<!DOCTYPE html><html><head><title>Riepilogo appuntamento</title><meta charset="utf-8"><style>body{font-family:system-ui,sans-serif;max-width:680px;margin:40px auto;padding:0 24px;line-height:1.7;font-size:14px;color:#111;}</style></head><body><h1 style="font-size:18px;">Riepilogo appuntamento</h1>${corpo}</body></html>`);
+  win.document.close();
+  win.focus();
+  try { win.print(); } catch (e) { /* il documento resta comunque aperto e stampabile manualmente */ }
+}
+
+/* -------------------- "PRENOTA UN APPUNTAMENTO" (task #147, flusso segreteria) --------------------
+   Un consulente è considerato impegnato in un appuntamento se è lui/lei il destinatario di una
+   prenotazione fatta dalla segreteria (a.consulente) OPPURE se se l'è creato da sé dal calendario
+   normale (a.responsabile, quando non prenotato dalla segreteria) — così l'agenda mostrata qui è
+   completa anche per gli appuntamenti che il consulente si è già segnato da solo. Calendario interno
+   di Prisma per ora: il collegamento con Google Calendar resta task #59. */
+function appuntamentiDiConsulente(nome) {
+  return (STATE.appuntamenti || []).filter(a => a.stato !== 'Annullato' && (a.consulente === nome || (!a.prenotatoDaSegreteria && a.responsabile === nome)));
+}
+let PRENOTA_CONSULENTE = null;
+function modalPrenotaAppuntamento() {
+  const consulenti = STATE.meta.consulenti || [];
+  if (!consulenti.length) { toast('Nessun consulente configurato: attivali in Impostazioni > Team.'); return; }
+  PRENOTA_CONSULENTE = consulenti[0];
+  const html = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
+    <div class="modal" style="max-width:640px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div><h2>Prenota un appuntamento</h2><div class="modal-sub">Per chi telefona, senza dover riaprire il calendario del consulente.</div></div>
+        <button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button>
+      </div>
+      <div id="prenotaAppuntamentoForm"></div>
+    </div>
+  </div>`;
+  document.getElementById('modalRoot').innerHTML = html;
+  renderFormPrenotaAppuntamento();
+}
+function renderFormPrenotaAppuntamento() {
+  const el = document.getElementById('prenotaAppuntamentoForm');
+  if (!el) return;
+  const consulenti = STATE.meta.consulenti || [];
+  const oggi = oggiISO();
+  const impegni = appuntamentiDiConsulente(PRENOTA_CONSULENTE).filter(a => a.data >= oggi).sort((a,b) => (a.data + (a.ora||'')).localeCompare(b.data + (b.ora||''))).slice(0, 8);
+  const agendaHtml = impegni.length
+    ? impegni.map(a => `<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:12.5px;">
+        <span>${escapeHtml(fmtData(a.data))}${a.ora?' · '+escapeHtml(a.ora):''}</span>
+        <span style="color:var(--text-mut);">${escapeHtml(a.oggetto||'')}${a.clienteId?' — '+escapeHtml(etichettaClienteEvento('appuntamento', a.clienteId)):''}</span>
+      </div>`).join('')
+    : `<div class="helptext">Nessun impegno programmato nei prossimi giorni.</div>`;
+  const attivi = STATE.clienti.filter(c => c.stato !== 'cessato').sort((a,b) => a.ragioneSociale.localeCompare(b.ragioneSociale));
+  el.innerHTML = `
+    <div class="field"><label>Consulente</label>
+      <select id="prenConsulente" data-action="prenota-cambia-consulente">${consulenti.map(c => `<option value="${escapeHtml(c)}" ${c===PRENOTA_CONSULENTE?'selected':''}>${escapeHtml(c)}</option>`).join('')}</select>
+    </div>
+    <div class="section-title" style="margin-top:10px;font-size:12px;">Impegni già in agenda</div>
+    <div style="max-height:130px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:6px 10px;margin-bottom:12px;">${agendaHtml}</div>
+
+    <div class="grid2">
+      <div class="field"><label>Data</label><input type="date" id="prenData" value="${oggi}"></div>
+      <div class="field"><label>Ora</label><input type="time" id="prenOra"></div>
+    </div>
+
+    <div class="field full" style="grid-column:1/-1;margin-top:8px;">
+      <label>Tipo di richiesta</label>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;">
+        ${TIPI_RICHIESTA_APPUNTAMENTO.map((t,i) => `<label class="checkline"><input type="radio" name="prenTipo" value="${escapeHtml(t)}" data-action="prenota-tipo-change" ${i===0?'checked':''}> ${escapeHtml(t)}</label>`).join('')}
+      </div>
+    </div>
+    <div class="field full" id="prenClienteWrap" style="grid-column:1/-1;margin-top:6px;display:none;">
+      <label>Cliente</label>
+      <select id="prenCliente"><option value="">— seleziona —</option>${attivi.map(c=>`<option value="${c.id}">${escapeHtml(c.ragioneSociale)}</option>`).join('')}</select>
+    </div>
+
+    <div class="field full" style="grid-column:1/-1;margin-top:8px;"><label>Telefono di chi ha chiamato</label><input type="tel" id="prenTelefono" placeholder="es. 0444 123456"></div>
+
+    <div class="field full" style="grid-column:1/-1;margin-top:8px;">
+      <label>Cosa vuole</label>
+      <div style="display:flex;flex-direction:column;gap:6px;border:1px solid var(--border);border-radius:6px;padding:8px 10px;">
+        ${MOTIVI_APPUNTAMENTO.map((m,i) => `<label class="checkline"><input type="radio" name="prenMotivo" value="${escapeHtml(m)}" data-action="prenota-motivo-change" ${i===0?'checked':''}> ${escapeHtml(m)}</label>`).join('')}
+      </div>
+    </div>
+    <div class="field full" id="prenMotivoAltroWrap" style="grid-column:1/-1;margin-top:6px;display:none;">
+      <label>Specifica</label><input type="text" id="prenMotivoAltro" placeholder="cosa vuole, in poche parole">
+    </div>
+
+    <div class="field full" style="grid-column:1/-1;margin-top:8px;"><label>Note aggiuntive (facoltative)</label><textarea id="prenNote" rows="2" placeholder="qualsiasi altro dettaglio utile al consulente"></textarea></div>
+
+    <div class="modal-actions">
+      <button class="btn" data-action="chiudi-modal">Annulla</button>
+      <button class="btn primary" data-action="salva-prenota-appuntamento">Prenota appuntamento</button>
+    </div>`;
+}
+/* Cambio tipo richiesta/motivo: manipolazione diretta del DOM (mostra/nasconde un campo) invece di
+   un renderFormPrenotaAppuntamento() completo, per non perdere quanto già digitato negli altri campi
+   del form (stesso principio di cred-campo-input: niente re-render che azzeri l'input). */
+function aggiornaVisibilitaClientePrenota() {
+  const tipo = document.querySelector('input[name="prenTipo"]:checked');
+  const wrap = document.getElementById('prenClienteWrap');
+  if (wrap) wrap.style.display = (tipo && tipo.value === 'Consulenza per attività esistente') ? '' : 'none';
+}
+function aggiornaVisibilitaMotivoAltroPrenota() {
+  const motivo = document.querySelector('input[name="prenMotivo"]:checked');
+  const wrap = document.getElementById('prenMotivoAltroWrap');
+  if (wrap) wrap.style.display = (motivo && motivo.value === 'Altro') ? '' : 'none';
+}
+function salvaPrenotaAppuntamento() {
+  const data = h('prenData').value;
+  if (!data) { toast('Serve una data per l\'appuntamento.'); return; }
+  const ora = h('prenOra').value || '';
+  const tipoEl = document.querySelector('input[name="prenTipo"]:checked');
+  const tipoRichiesta = tipoEl ? tipoEl.value : TIPI_RICHIESTA_APPUNTAMENTO[0];
+  const clienteId = (tipoRichiesta === 'Consulenza per attività esistente' && h('prenCliente')) ? (h('prenCliente').value || null) : null;
+  const telefono = h('prenTelefono').value;
+  const motivoEl = document.querySelector('input[name="prenMotivo"]:checked');
+  const motivo = motivoEl ? motivoEl.value : null;
+  const motivoAltro = h('prenMotivoAltro') ? h('prenMotivoAltro').value : '';
+  const note = h('prenNote').value;
+  const oggetto = motivo === 'Altro' && motivoAltro.trim() ? motivoAltro.trim() : (motivo || 'Appuntamento');
+  aggiungiAppuntamento({
+    clienteId, data, ora, oggetto, note, consulente: PRENOTA_CONSULENTE,
+    prenotatoDaSegreteria: true, tipoRichiesta, telefono, motivo, motivoAltro,
+  });
+  chiudiModal(); render();
+  toast(`Appuntamento prenotato per ${PRENOTA_CONSULENTE}.`);
 }
 
 /* -------------------- RENDER: CATALOGO SCADENZE (dentro Impostazioni) -------------------- */
@@ -11937,6 +12159,9 @@ function onClickDelegato(e) {
     case 'nuovo-evento-tipo': NUOVO_EVENTO_TIPO = el.dataset.tipo; renderFormNuovoEvento(CAL_NUOVO_EVENTO_DATA); break;
     case 'nuovo-evento-salva-appuntamento': salvaNuovoAppuntamento(el.dataset.data); break;
     case 'nuovo-evento-salva-scadenza': salvaNuovaScadenzaRicorrente(); break;
+    case 'stampa-riepilogo-appuntamento': apriRiepilogoAppuntamento(id); break;
+    case 'prenota-appuntamento': modalPrenotaAppuntamento(); break;
+    case 'salva-prenota-appuntamento': salvaPrenotaAppuntamento(); break;
     case 'app-elimina': if (confirm('Eliminare questo appuntamento?')) { rimuoviAppuntamento(id); chiudiModal(); render(); } break;
     case 'cal-toggle-gruppo': {
       const chiave = el.dataset.chiave;
@@ -12246,6 +12471,9 @@ function onChangeDelegato(e) {
     case 'app-cambia-oggetto': aggiornaAppuntamento(id, { oggetto: el.value }); break;
     case 'app-cambia-note': aggiornaAppuntamento(id, { note: el.value }); break;
     case 'nuovo-evento-scad-frequenza': aggiornaVisibilitaMeseScadenzaRicorrente(); break;
+    case 'prenota-cambia-consulente': PRENOTA_CONSULENTE = el.value; renderFormPrenotaAppuntamento(); break;
+    case 'prenota-tipo-change': aggiornaVisibilitaClientePrenota(); break;
+    case 'prenota-motivo-change': aggiornaVisibilitaMotivoAltroPrenota(); break;
     case 'cred-campo-toggle-segreto': {
       const idx = Number(el.dataset.idx);
       if (CRED_CAMPI_MODAL[idx]) { CRED_CAMPI_MODAL[idx].segreto = el.checked; renderCampiCredenzialeModal(); }

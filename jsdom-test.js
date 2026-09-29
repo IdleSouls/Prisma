@@ -1967,6 +1967,85 @@ async function main() {
   assert(window.getSTATE().procedureInterne.length === nProcPrima, 'le procedure di test non sono state eliminate correttamente');
   console.log('=== Procedure interne: vista di dettaglio, duplicazione, modifica, ricerca, eliminazione OK');
 
+  // ---------- 8d-septies) Calendario: "Prenota un appuntamento" (task #147, flusso segreteria) ----------
+  // Operatore impostato esplicitamente qui (non dato per scontato dal blocco "Chi sei": altri test
+  // nel frattempo possono averlo azzerato, es. ricaricando i dati demo) perché il resto di questo
+  // blocco verifica la notifica per il CONSULENTE che ha operatoreCorrente() === 'Matteo'.
+  window.impostaOperatore('Matteo');
+  assert(window.operatoreCorrente() === 'Matteo', `impostaOperatore('Matteo') non ha impostato operatoreCorrente, trovato "${window.operatoreCorrente()}"`);
+  assert(window.getSTATE().meta.consulenti.length === 1 && window.getSTATE().meta.consulenti[0] === 'Matteo', `atteso un solo consulente "Matteo" a questo punto della suite, trovato ${JSON.stringify(window.getSTATE().meta.consulenti)}`);
+  click(q('[data-nav="calendario"]'));
+  await wait(20);
+  const nAppPrima = window.getSTATE().appuntamenti.length;
+  const btnPrenota = q('[data-action="prenota-appuntamento"]');
+  assert(btnPrenota, 'pulsante "Prenota un appuntamento" non presente in Calendario (con almeno un consulente configurato dovrebbe esserci)');
+  click(btnPrenota);
+  await wait(20);
+  assert(q('#prenotaAppuntamentoForm'), 'form "Prenota un appuntamento" non renderizzato');
+  const opzioniConsulente = qa('#prenConsulente option').map(o => o.value);
+  assert(opzioniConsulente.length === 1 && opzioniConsulente[0] === 'Matteo', `il selettore consulente dovrebbe mostrare solo "Matteo", trovato ${JSON.stringify(opzioniConsulente)}`);
+
+  // di default "Nuova attività" è selezionato: il campo cliente deve restare nascosto
+  assert(q('#prenClienteWrap').style.display === 'none', 'con tipo richiesta "Nuova attività" il campo cliente non dovrebbe essere visibile di default');
+  setChecked(q('input[name="prenTipo"][value="Consulenza per attività esistente"]'), true);
+  await wait(20);
+  assert(q('#prenClienteWrap').style.display !== 'none', 'selezionando "Consulenza per attività esistente" il campo cliente dovrebbe comparire');
+  const clientePrenota = window.getSTATE().clienti.filter(c => c.stato !== 'cessato')[0];
+  setVal(q('#prenCliente'), clientePrenota.id);
+
+  // motivo di default "Apertura nuova attività": il campo "Altro" resta nascosto finché non si sceglie "Altro"
+  assert(q('#prenMotivoAltroWrap').style.display === 'none', 'il campo "Specifica" (motivo Altro) non dovrebbe essere visibile per un motivo diverso da "Altro"');
+
+  setVal(q('#prenData'), '2026-11-10');
+  setVal(q('#prenOra'), '15:30');
+  setVal(q('#prenTelefono'), '0444 999888');
+  setVal(q('#prenNote'), 'Cliente ha chiesto se portare anche il socio.');
+  click(q('[data-action="salva-prenota-appuntamento"]'));
+  await wait(20);
+  assert(window.getSTATE().appuntamenti.length === nAppPrima + 1, 'appuntamento prenotato dalla segreteria non salvato');
+  const appPrenotato = window.getSTATE().appuntamenti.find(a => a.telefono === '0444 999888');
+  assert(appPrenotato, 'appuntamento prenotato non trovato in STATE (cercato per telefono)');
+  assert(appPrenotato.consulente === 'Matteo' && appPrenotato.prenotatoDaSegreteria === true, 'appuntamento prenotato: consulente o flag prenotatoDaSegreteria non corretti');
+  assert(appPrenotato.tipoRichiesta === 'Consulenza per attività esistente' && appPrenotato.clienteId === clientePrenota.id, 'appuntamento prenotato: tipo richiesta o cliente collegato non corretti');
+  assert(appPrenotato.motivo === 'Apertura nuova attività' && appPrenotato.oggetto === 'Apertura nuova attività', 'appuntamento prenotato: motivo od oggetto non corretti (motivo di default atteso, non "Altro")');
+  assert(appPrenotato.notificaVista === false, 'un appuntamento prenotato dalla segreteria deve nascere con notificaVista=false (per il pallino di notifica al consulente)');
+  console.log('=== "Prenota un appuntamento": form (consulente/agenda/tipo richiesta/cliente/telefono/motivo/note), toggle campi condizionali, salvataggio OK');
+
+  // notifica per il consulente: pallino sulla voce "Calendario" della sidebar finché non apre l'appuntamento
+  assert(window.appuntamentiNonVistiConteggio() >= 1, 'appuntamentiNonVistiConteggio dovrebbe contare il nuovo appuntamento non ancora visto dal consulente');
+  const badgeCalendario = q('[data-nav="calendario"] .nav-badge');
+  assert(badgeCalendario && Number(badgeCalendario.textContent) >= 1, 'la voce "Calendario" della sidebar dovrebbe mostrare il pallino di notifica per il nuovo appuntamento prenotato');
+
+  window.apriModalAppuntamento(appPrenotato.id);
+  await wait(20);
+  assert(q('.modal').textContent.includes('Prenotato dalla segreteria'), 'il dettaglio dell\'appuntamento non mostra il blocco "Prenotato dalla segreteria"');
+  assert(q('.modal').textContent.includes('0444 999888') && q('.modal').textContent.includes('Cliente ha chiesto'), 'il dettaglio dell\'appuntamento non mostra telefono/note raccolti dalla segreteria');
+  const btnProcCollegata = q('[data-action="apri-procedura"]');
+  assert(btnProcCollegata, 'manca il pulsante della procedura interna collegata al motivo "Apertura nuova attività" (dovrebbe suggerirne almeno una tra quelle seed)');
+  assert(q('[data-action="stampa-riepilogo-appuntamento"]'), 'manca il pulsante per il riepilogo stampabile dell\'appuntamento prenotato dalla segreteria');
+  assert(window.getSTATE().appuntamenti.find(a => a.id === appPrenotato.id).notificaVista === true, 'aprire il dettaglio dell\'appuntamento dovrebbe segnarlo come visto (notificaVista=true)');
+  assert(window.appuntamentiNonVistiConteggio() === 0, 'dopo aver aperto l\'appuntamento la notifica non dovrebbe più essere conteggiata');
+  click(q('[data-action="chiudi-modal"]'));
+  await wait(20);
+  assert(!q('[data-nav="calendario"] .nav-badge'), 'il pallino di notifica sulla voce Calendario dovrebbe sparire dopo aver visto l\'appuntamento');
+
+  // un appuntamento creato normalmente dal calendario (non dalla segreteria) non genera notifiche né
+  // il blocco "Prenotato dalla segreteria"
+  const appNormale = window.aggiungiAppuntamento({ clienteId: null, data: '2026-11-11', ora: '10:00', oggetto: 'Appuntamento auto-creato' });
+  assert(appNormale.prenotatoDaSegreteria === false && appNormale.notificaVista === true, 'un appuntamento creato dal consulente stesso (non dalla segreteria) non deve generare una notifica');
+  window.apriModalAppuntamento(appNormale.id);
+  await wait(20);
+  assert(!q('.modal').textContent.includes('Prenotato dalla segreteria'), 'un appuntamento non prenotato dalla segreteria non dovrebbe mostrare il blocco "Prenotato dalla segreteria"');
+  click(q('[data-action="chiudi-modal"]'));
+  await wait(20);
+  console.log('=== Notifica appuntamento prenotato: pallino sidebar Calendario, sparisce all\'apertura, procedura interna suggerita in base al motivo, nessuna notifica per gli appuntamenti auto-creati OK');
+
+  // pulizia
+  const nAppuntamentiPrimaCleanup = window.getSTATE().appuntamenti.length;
+  window.rimuoviAppuntamento(appPrenotato.id);
+  window.rimuoviAppuntamento(appNormale.id);
+  assert(window.getSTATE().appuntamenti.length === nAppuntamentiPrimaCleanup - 2, 'pulizia appuntamenti di test non riuscita');
+
   // ---------- 8e) Portale cliente: dati/stato riusati dall'anteprima desktop a schermo intero ----------
   // Task #111: il mockup inline "a telefono" (portal-tabs/phone-frame/phone-screen) è stato rimosso
   // insieme al relativo case 'portal-tab' — l'unica anteprima interattiva rimasta in-app è quella a
