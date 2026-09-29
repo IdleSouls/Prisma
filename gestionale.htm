@@ -1947,32 +1947,26 @@ function mostraAvvisoOperatoreOccupatoAltrove(nome) {
   toast(`⚠ ${nome} risulta ora attivo anche su un altro dispositivo: qui non stai più segnalando presenza come ${nome}.`);
 }
 let OPERATORE_AVVISO_OCCUPATO_MOSTRATO = null;
-// Task #114: prima di attribuirsi un nome già "occupato" da un altro dispositivo (heartbeat fresco,
-// deviceId diverso dal nostro), chiediamo conferma invece di lasciare che due postazioni diverse
-// risultino entrambe "Matteo" in chat/comunicazioni senza che nessuno se ne accorga.
+// Task #114 (revisione Matteo: "non deve proprio esistere la possibilità di accedere con due
+// nomi" - il vecchio flusso con conferma "continua comunque?" tecnicamente funzionava ma era
+// confuso: chi confermava vedeva l'altro dispositivo sparire silenziosamente dall'online senza
+// un vero motivo visibile). Ora un nome già occupato da un altro dispositivo è un BLOCCO secco,
+// niente conferma/subentro: si aspetta che l'altra postazione mandi un heartbeat (ogni 15s) o che
+// la sua presenza scada (PRESENZA_TTL_MS, 30s) e riprovare. Stesso principio "hard" già usato per
+// i referenti con password (vedi modalPasswordOperatore/eseguiLoginOperatore), solo senza
+// autenticazione dato che qui non c'è una password con cui dimostrare di essere davvero io.
 function tentaSceltaOperatore(nome) {
   if (!nome || !STATE.meta.responsabili.includes(nome)) return;
   if (nome === operatoreCorrente()) { chiudiModal(); return; }
   if (!HTTP_SYNC_ATTIVO) { impostaOperatore(nome); chiudiModal(); return; }
   // Referente con password impostata: sessione esclusiva VERA, si passa da /api/operatore-login
-  // invece del solo avviso "soft" qui sotto - vedi modalPasswordOperatore.
+  // invece del controllo "soft" qui sotto - vedi modalPasswordOperatore.
   if (responsabileHaPassword(nome)) { modalPasswordOperatore(nome); return; }
   fetch('/api/presenza/verifica', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operatore: nome, deviceId: DEVICE_ID }) })
     .then(r => r.json())
     .then(d => {
       if (d && d.ok && d.occupato) {
-        const conferma = confermaAzione(`${nome} risulta già collegato in questo momento da un altro dispositivo. Se scegli comunque questo nome qui, le due postazioni risulteranno entrambe "${nome}" e l'altra smetterà di segnalarsi come online: continuare comunque?`);
-        if (conferma) {
-          OPERATORE_AVVISO_OCCUPATO_MOSTRATO = null;
-          impostaOperatore(nome);
-          chiudiModal();
-          // forza:true qui: l'utente ha appena confermato esplicitamente il subentro, non ha senso
-          // fargli aspettare fino a 30s (il TTL) prima che il server accetti il "sono qui" con il
-          // nostro deviceId - il prossimo heartbeat automatico (15s) userà comunque forza:false, ma
-          // a quel punto saremo già noi l'entry più recente.
-          fetch('/api/presenza', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operatore: nome, deviceId: DEVICE_ID, forza: true }) })
-            .then(r => r.json()).then(dd => { if (dd && dd.ok) PRESENZA_ONLINE = dd.online || {}; render(); }).catch(() => {});
-        }
+        toast(`⚠ ${nome} è già collegato da un altro dispositivo in questo momento: riprova tra qualche secondo (si libera da solo se quella postazione resta inattiva).`, true);
       } else {
         OPERATORE_AVVISO_OCCUPATO_MOSTRATO = null;
         impostaOperatore(nome);
@@ -2493,7 +2487,7 @@ function toast(msg, isError) {
   el.textContent = msg;
   root.appendChild(el);
   requestAnimationFrame(() => el.classList.add('show'));
-  setTimeout(() => { el.classList.remove('show'); setTimeout(() => el.remove(), 250); }, isError ? 6000 : 2600);
+  setTimeout(() => { el.classList.remove('show'); setTimeout(() => el.remove(), 250); }, isError ? 7000 : 4200);
 }
 function confermaAzione(msg) {
   return window.confirm(msg);
