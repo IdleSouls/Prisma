@@ -4769,6 +4769,37 @@ async function main() {
   assert(cardBil.textContent.includes('va impostata a mano'), 'catalogo annuale: BILANCIO non mostra la spiegazione "va impostata a mano"');
   console.log('=== Catalogo adempimenti annuali: data predefinita editabile per le voci con scadenzaDefault statica, spiegazione corretta per quelle dinamiche/manuali, modifica riflessa nelle scadenze generate OK');
 
+  // ---------- 11p) Impostazioni > Team: flag "consulente" per responsabile (task #145) ----------
+  click(q('[data-nav="impostazioni"]'));
+  await wait(20);
+  click(q('[data-action="imp-sezione"][data-sezione="team"]'));
+  await wait(20);
+  // Aggiunge un responsabile sintetico direttamente in STATE per non dipendere dal window.prompt().
+  window.getSTATE().meta.responsabili.push('Responsabile Test Consulente');
+  window.render();
+  await wait(20);
+  const idxRespTest = window.getSTATE().meta.responsabili.indexOf('Responsabile Test Consulente');
+  const chkConsulente = q(`[data-action="toggle-consulente"][data-idx="${idxRespTest}"]`);
+  assert(chkConsulente, 'Impostazioni Team: manca la checkbox "Consulente" per il responsabile appena aggiunto');
+  assert(!chkConsulente.checked, 'Impostazioni Team: la checkbox "Consulente" di un nuovo responsabile non dovrebbe partire spuntata');
+  chkConsulente.checked = true;
+  click(chkConsulente);
+  await wait(20);
+  assert(window.getSTATE().meta.consulenti.includes('Responsabile Test Consulente'), 'Impostazioni Team: spuntare "Consulente" non aggiunge il nome a STATE.meta.consulenti');
+  // Rinominare il responsabile deve aggiornare anche il nome dentro meta.consulenti.
+  const inputRespTest = q(`[data-action="edit-responsabile"][data-idx="${idxRespTest}"]`);
+  setVal(inputRespTest, 'Responsabile Test Consulente Rinominato');
+  await wait(20);
+  assert(window.getSTATE().meta.consulenti.includes('Responsabile Test Consulente Rinominato'), 'Impostazioni Team: rinominare un responsabile-consulente non aggiorna il nome in STATE.meta.consulenti');
+  assert(!window.getSTATE().meta.consulenti.includes('Responsabile Test Consulente'), 'Impostazioni Team: dopo la rinomina resta il vecchio nome in STATE.meta.consulenti');
+  // Eliminare il responsabile deve ripulire meta.consulenti (niente nomi fantasma).
+  const btnEliminaRespTest = q(`[data-action="elimina-responsabile"][data-idx="${idxRespTest}"]`);
+  click(btnEliminaRespTest);
+  await wait(20);
+  assert(!window.getSTATE().meta.consulenti.includes('Responsabile Test Consulente Rinominato'), 'Impostazioni Team: eliminare un responsabile-consulente lascia un nome fantasma in STATE.meta.consulenti');
+  assert(!window.getSTATE().meta.responsabili.includes('Responsabile Test Consulente Rinominato'), 'Impostazioni Team: eliminazione responsabile di test non riuscita');
+  console.log('=== Impostazioni Team: checkbox "Consulente" per responsabile, sincronizzata su rinomina ed eliminazione OK');
+
   // ---------- 12) Gestione annualità (task #147): aggiungi/rimuovi anno + backup/pulizia dati ----------
   click(q('[data-nav="impostazioni"]'));
   await wait(20);

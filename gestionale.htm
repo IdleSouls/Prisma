@@ -1464,7 +1464,11 @@ function statoIniziale() {
     /* qualifica/iscrizione/indirizzoStudio/cfStudio/citta: usati come placeholder automatici
        {{studio.*}} nei modelli documento (task #122) — intestazione di preventivi, mandati e
        documenti antiriciclaggio generati dai modelli. */
-    meta: { versione: 2, studioNome: 'Studio', responsabili: ['Matteo', 'Sabrina'], qualifica: '', iscrizione: '', indirizzoStudio: '', cfStudio: '', citta: 'Vicenza', anniExtra: [] },
+    /* consulenti (task richiesto da Matteo): sottoinsieme di meta.responsabili abilitato a ricevere
+       appuntamenti dal flusso "Prenota un appuntamento" della segreteria — non ogni responsabile
+       dello studio prende appuntamenti con i clienti (es. Sabrina no, Matteo e Federico sì).
+       Gestito solo dall'admin in Impostazioni > Team, vedi renderImpostazioniTeam. */
+    meta: { versione: 2, studioNome: 'Studio', responsabili: ['Matteo', 'Sabrina'], consulenti: ['Matteo'], qualifica: '', iscrizione: '', indirizzoStudio: '', cfStudio: '', citta: 'Vicenza', anniExtra: [] },
     annoCorrente: annoOggi,
     clienti: [],
     scadenzeOverrides: {},
@@ -10162,9 +10166,12 @@ function renderImpostazioniTeam() {
   return `
   <div class="card">
     <div class="section-title">Responsabili dello studio</div>
-    <div class="helptext" style="margin-bottom:10px;">Usati nei menu a tendina "responsabile" per assegnare scadenze e adempimenti.</div>
+    <div class="helptext" style="margin-bottom:10px;">Usati nei menu a tendina "responsabile" per assegnare scadenze e adempimenti. La spunta "Consulente" indica chi riceve appuntamenti dalla segreteria (vedi Calendario &gt; Prenota un appuntamento).</div>
     ${STATE.meta.responsabili.map((r,i) => `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-      <input type="text" value="${escapeHtml(r)}" data-action="edit-responsabile" data-idx="${i}" style="border:1px solid var(--border);border-radius:6px;padding:6px 9px;">
+      <input type="text" value="${escapeHtml(r)}" data-action="edit-responsabile" data-idx="${i}" style="flex:1;border:1px solid var(--border);border-radius:6px;padding:6px 9px;">
+      <label class="checkline" style="white-space:nowrap;" title="Può ricevere appuntamenti dalla segreteria">
+        <input type="checkbox" data-action="toggle-consulente" data-idx="${i}" ${(STATE.meta.consulenti||[]).includes(r)?'checked':''}> Consulente
+      </label>
       <button class="icon-x" data-action="elimina-responsabile" data-idx="${i}" title="Rimuovi responsabile">✕</button>
     </div>`).join('')}
     <button class="btn small" data-action="aggiungi-responsabile">+ Aggiungi responsabile</button>
@@ -11745,8 +11752,25 @@ function onClickDelegato(e) {
     }
     case 'elimina-responsabile': {
       const idx = Number(el.dataset.idx);
+      const nomeRimosso = STATE.meta.responsabili[idx];
       STATE.meta.responsabili.splice(idx, 1);
+      /* Ripulisce anche meta.consulenti se il responsabile eliminato era un consulente,
+         altrimenti resterebbe un nome "fantasma" nell'elenco dei consulenti prenotabili. */
+      if (Array.isArray(STATE.meta.consulenti)) {
+        const ic = STATE.meta.consulenti.indexOf(nomeRimosso);
+        if (ic !== -1) STATE.meta.consulenti.splice(ic, 1);
+      }
       salvaStato(); render();
+      break;
+    }
+    case 'toggle-consulente': {
+      const idx = Number(el.dataset.idx);
+      const nome = STATE.meta.responsabili[idx];
+      if (!Array.isArray(STATE.meta.consulenti)) STATE.meta.consulenti = [];
+      const ic = STATE.meta.consulenti.indexOf(nome);
+      if (el.checked) { if (ic === -1) STATE.meta.consulenti.push(nome); }
+      else { if (ic !== -1) STATE.meta.consulenti.splice(ic, 1); }
+      salvaStato();
       break;
     }
     case 'esporta-backup': esportaBackup(); break;
@@ -12194,7 +12218,15 @@ function onChangeDelegato(e) {
 
     case 'edit-responsabile': {
       const idx = Number(el.dataset.idx);
-      STATE.meta.responsabili[idx] = el.value.trim() || STATE.meta.responsabili[idx];
+      const vecchioNome = STATE.meta.responsabili[idx];
+      const nuovoNome = el.value.trim() || vecchioNome;
+      STATE.meta.responsabili[idx] = nuovoNome;
+      /* Se il responsabile rinominato era un consulente, aggiorna anche il nome in meta.consulenti
+         (che è un elenco di stringhe-nome, non di indici, quindi va tenuto sincronizzato). */
+      if (nuovoNome !== vecchioNome && Array.isArray(STATE.meta.consulenti)) {
+        const ic = STATE.meta.consulenti.indexOf(vecchioNome);
+        if (ic !== -1) STATE.meta.consulenti[ic] = nuovoNome;
+      }
       salvaStato();
       break;
     }
