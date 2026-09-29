@@ -894,6 +894,16 @@ function notificaRiavvioImminente(secondi) {
     try { res.write(payload); } catch (err) { /* client ormai disconnesso, ignorato */ }
   });
 }
+// Chi ha già premuto "Ho visto, va bene" durante il conto alla rovescia attuale del riavvio -
+// azzerato a ogni nuovo riavvio richiesto (vedi /api/server/riavvia). Solo per far vedere agli
+// altri operatori chi ha già confermato, mai per decidere se/quando riavviare davvero.
+let RIAVVIO_CONFERME = [];
+function notificaRiavvioConferme() {
+  const payload = 'data: ' + JSON.stringify({ tipo: 'riavvioConferme', conferme: RIAVVIO_CONFERME }) + '\n\n';
+  clientiSSE.forEach((res) => {
+    try { res.write(payload); } catch (err) { /* client ormai disconnesso, ignorato */ }
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Piccolo helper per servire file statici (solo gestionale.htm ci interessa)
@@ -1256,15 +1266,36 @@ function gestisciRichiesta(req, res) {
   // non a sorpresa), fa un backup di sicurezza, POI rilancia se stesso come nuovo processo (vedi
   // rilanciaProcesso più sopra) e SOLO DOPO chiude quello attuale - un vero riavvio con un click,
   // non solo una chiusura (task Matteo: "il riavvio del server non funziona, si chiude e basta").
+  // Task Matteo: 60 secondi (non 5) per dare tempo reale a chi ha lavoro in corso di salvare, con
+  // un pulsante "Ho visto, va bene" che ogni operatore può premere (vedi RIAVVIO_CONFERME e
+  // /api/server/riavvio-conferma sotto) - ma la conferma è solo per dare un riscontro a chi lavora,
+  // NON blocca né accelera il riavvio: "se non lo fanno il server si riavvia lo stesso" (parole di
+  // Matteo), sempre e solo allo scadere dei 60 secondi.
   if (url === '/api/server/riavvia' && req.method === 'POST') {
     const online = Object.keys(presenzaOnlineElenco());
-    const secondiAttesa = 5;
+    const secondiAttesa = 60;
+    RIAVVIO_CONFERME = [];
     notificaRiavvioImminente(secondiAttesa);
     scriviLog('Riavvio manuale del server richiesto' + (online.length ? (' (utenti online: ' + online.join(', ') + ')') : '') + '.');
     eseguiBackup('prima di un riavvio manuale del server');
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify({ ok: true, secondi: secondiAttesa, online }));
     setTimeout(() => { rilanciaProcesso(); process.exit(0); }, secondiAttesa * 1000);
+    return;
+  }
+
+  // Conferma di un operatore ("ho visto, va bene procedere") durante il conto alla rovescia del
+  // riavvio - solo per riscontro/tranquillità reciproca, vedi commento sopra: non altera i tempi.
+  if (url === '/api/server/riavvio-conferma' && req.method === 'POST') {
+    leggiCorpoRichiesta(req, (corpo) => {
+      let dati = {};
+      try { dati = JSON.parse(corpo); } catch (err) { /* corpo vuoto o malformato: nessuna conferma valida */ }
+      const operatore = dati && typeof dati.operatore === 'string' ? dati.operatore.trim() : '';
+      if (operatore && !RIAVVIO_CONFERME.includes(operatore)) RIAVVIO_CONFERME.push(operatore);
+      notificaRiavvioConferme();
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ ok: true, conferme: RIAVVIO_CONFERME }));
+    });
     return;
   }
 

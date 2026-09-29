@@ -438,6 +438,7 @@ select[multiple]{min-height:150px;}
     </div>
     <div style="display:flex;align-items:center;gap:10px;">
       <span id="syncBadge" class="helptext"></span>
+      <span id="chiOnlineBadge" style="display:none;align-items:center;gap:5px;"></span>
       <button class="btn" id="operatoreBadge" data-action="apri-selettore-operatore" style="display:none;"></button>
       <button class="btn" data-action="apri-ricerca-globale" title="Cerca ovunque (Ctrl/Cmd+K)">🔍 Cerca <span class="helptext" style="margin-left:4px;">Ctrl+K</span></button>
       <select id="annoSelect" class="field" style="min-width:90px;padding:7px 9px;border:1px solid var(--border);border-radius:6px;"></select>
@@ -1767,6 +1768,25 @@ function aggiornaBadgeOperatore() {
     ? (nonLetti ? `${nonLetti} messagg${nonLetti===1?'io':'i'} non lett${nonLetti===1?'o':'i'} in chat. Clicca sul tuo nome per cambiare operatore, o apri Chat interna dal menu.` : `Stai usando il gestionale come ${nome}. Clicca per cambiare.`)
     : 'Scegli chi sta usando questo PC (solo per sapere chi ha fatto cosa, nessuna restrizione).';
 }
+// Bug segnalato da Matteo ("manca l'indicatore per vedere quali responsabili sono online"): i
+// pallini di presenza esistevano SOLO dentro Chat interna (lista contatti), quindi per sapere chi
+// altro è collegato bisognava aprire la chat. Questo badge nella topbar mostra un pallino per
+// OGNI collega (tranne se stessi) sempre visibile, in qualunque vista ci si trovi - stessa fonte
+// dati (operatoreOnline/PRESENZA_ONLINE) dei pallini in chat, nessuna logica nuova, solo un
+// secondo posto dove si vede.
+function aggiornaChiOnlineBadge() {
+  const el = typeof document !== 'undefined' && document.getElementById('chiOnlineBadge');
+  if (!el) return;
+  const io = operatoreCorrente();
+  const altri = (STATE.meta.responsabili || []).filter(n => n !== io);
+  if (!HTTP_SYNC_ATTIVO || altri.length === 0) { el.style.display = 'none'; return; }
+  el.style.display = 'inline-flex';
+  const online = altri.filter(operatoreOnline);
+  el.innerHTML = altri.map(n => `<span class="chat-pallino ${operatoreOnline(n)?'online':'offline'}" style="position:static;" title="${escapeHtml(n)} — ${operatoreOnline(n)?'online':'offline'}"></span>`).join('');
+  el.title = online.length
+    ? `Online ora: ${online.join(', ')}`
+    : 'Nessun collega online al momento';
+}
 // Mostrato una volta per browser (finché non si scegli un nome, o se i responsabili passano da 1 a
 // 2+): niente da fare se c'è un solo responsabile configurato, o se qui è già stato scelto un nome.
 function eventualeSelettoreOperatore() {
@@ -1965,6 +1985,7 @@ async function inizializzaSyncViaServerLocale() {
       try { dati = JSON.parse(ev.data); } catch (e) { return; }
       if (dati && dati.tipo === 'comandoMcp') { eseguiComandoMCP(dati.comando); return; }
       if (dati && dati.tipo === 'riavvioImminente') { mostraAvvisoRiavvioServer(dati.secondi); return; }
+      if (dati && dati.tipo === 'riavvioConferme') { aggiornaConfermeRiavvioServer(dati.conferme || []); return; }
       if (dati && dati.origine === HTTP_CLIENT_ID) return; // eco della propria scrittura: già applicata in locale
       fetch('/api/stato').then(r => r.json()).then(remoto => {
         if (remoto && Array.isArray(remoto.clienti)) {
@@ -2186,21 +2207,33 @@ function confermaAzione(msg) {
 /* Banner di avviso "il server sta per riavviarsi" (task Matteo: pulsante Riavvia server con avviso
    agli utenti online) - creato direttamente su document.body, non dentro #content, così resta
    visibile qualunque sia la vista aperta e sopravvive ai render() successivi. */
+// Task Matteo: 60 secondi di preavviso (non più 5) con un pulsante "Ho visto, va bene" che ogni
+// operatore collegato può premere - la conferma è solo un riscontro reciproco ("Confermato da:
+// ..."), MAI un blocco: allo scadere del tempo il server si riavvia comunque, con o senza conferme
+// (lo decide solo il countdown lato server, questo banner si limita a rifletterlo).
+let RIAVVIO_CONFERME_RICEVUTE = [];
 function mostraAvvisoRiavvioServer(secondi) {
+  RIAVVIO_CONFERME_RICEVUTE = [];
   let box = document.getElementById('avvisoRiavvioServer');
   if (!box) {
     box = document.createElement('div');
     box.id = 'avvisoRiavvioServer';
-    box.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:var(--arancio,#e08a2c);color:#fff;text-align:center;padding:10px 16px;font-weight:600;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,.2);';
+    box.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:var(--arancio,#e08a2c);color:#fff;text-align:center;padding:10px 16px;font-weight:600;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;';
     document.body.appendChild(box);
   }
-  let restante = Number(secondi) || 5;
-  box.textContent = `⚠️ Il server sta per riavviarsi tra ${restante} secondi — salva eventuali modifiche in corso.`;
+  let restante = Number(secondi) || 60;
+  const disegna = () => {
+    box.innerHTML = `<span id="avvisoRiavvioServerTesto">⚠️ Il server sta per riavviarsi tra ${restante} secondi — salva eventuali modifiche in corso.</span>` +
+      `<button class="btn small" data-action="conferma-riavvio-server" style="background:#fff;color:var(--arancio,#e08a2c);border:none;">✓ Ho visto, va bene</button>` +
+      `<span id="avvisoRiavvioServerConferme" style="font-size:12px;opacity:.9;"></span>`;
+    aggiornaTestoConfermeRiavvio();
+  };
+  disegna();
   const timer = setInterval(() => {
     restante -= 1;
     if (restante <= 0) {
       clearInterval(timer);
-      box.textContent = '🔄 Server riavviato, sto ricaricando la pagina tra qualche secondo...';
+      box.innerHTML = '🔄 Server riavviato, sto ricaricando la pagina tra qualche secondo...';
       box.style.background = 'var(--rosso,#c0392b)';
       // Il server ora si rilancia davvero da solo (non solo si chiude) - proviamo a ricaricare in
       // automatico dopo che ha avuto il tempo di ripartire, invece di lasciare che sia l'utente a
@@ -2208,9 +2241,27 @@ function mostraAvvisoRiavvioServer(secondi) {
       // modo silenzioso e la pagina resta quella vecchia con questo banner ancora visibile.
       setTimeout(() => { try { window.location.reload(); } catch (err) { /* niente da fare qui */ } }, 6000);
     } else {
-      box.textContent = `⚠️ Il server sta per riavviarsi tra ${restante} secondi — salva eventuali modifiche in corso.`;
+      const t = document.getElementById('avvisoRiavvioServerTesto');
+      if (t) t.textContent = `⚠️ Il server sta per riavviarsi tra ${restante} secondi — salva eventuali modifiche in corso.`;
     }
   }, 1000);
+}
+function aggiornaTestoConfermeRiavvio() {
+  const el = document.getElementById('avvisoRiavvioServerConferme');
+  if (!el) return;
+  el.textContent = RIAVVIO_CONFERME_RICEVUTE.length ? `(confermato da: ${RIAVVIO_CONFERME_RICEVUTE.join(', ')})` : '';
+}
+function aggiornaConfermeRiavvioServer(conferme) {
+  RIAVVIO_CONFERME_RICEVUTE = conferme;
+  aggiornaTestoConfermeRiavvio();
+}
+function confermaVistaRiavvioServer() {
+  const nome = operatoreCorrente() || 'un operatore';
+  const btn = document.querySelector('#avvisoRiavvioServer [data-action="conferma-riavvio-server"]');
+  if (btn) { btn.disabled = true; btn.textContent = '✓ Confermato'; }
+  fetch('/api/server/riavvio-conferma', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operatore: nome }) })
+    .then(r => r.json()).then(d => { if (d && d.ok) aggiornaConfermeRiavvioServer(d.conferme || []); })
+    .catch(() => {});
 }
 /* Copia negli appunti con ripiego: l'API moderna (navigator.clipboard) richiede un contesto
    sicuro (HTTPS o localhost) e potrebbe non essere disponibile su una rete studio raggiunta via
@@ -3425,6 +3476,7 @@ function render() {
   renderNav();
   renderAnnoSelect();
   aggiornaBadgeOperatore();
+  aggiornaChiOnlineBadge();
   const [title, sub] = PAGE_TITLES[VIEW] || ['', ''];
   document.getElementById('pageTitle').textContent = title;
   document.getElementById('pageSub').textContent = sub;
@@ -6634,14 +6686,14 @@ function renderTaskTeam() {
   const nonVisti = taskTeamNonVistiPerOperatore();
   const banner = nonVisti.length ? `<div class="card" style="border-left:4px solid var(--rosso,#d33);background:var(--rosso-bg,#fdeceb);margin-bottom:14px;">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">
-      <div style="font-weight:700;font-size:13px;">🔔 ${nonVisti.length} task nuov${nonVisti.length===1?'o':'i'} assegnat${nonVisti.length===1?'o':'i'} a te</div>
+      <div style="font-weight:700;font-size:13px;">🔔 ${nonVisti.length} novità sui tuoi task</div>
       <button class="btn small" data-action="task-segna-tutti-visti">Segna tutti come visti</button>
     </div>
     <div style="display:flex;flex-direction:column;gap:6px;">
-      ${nonVisti.map(t => `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;padding:4px 0;" data-action="apri-dettaglio-task-team" data-id="${t.id}">
-        <span style="font-size:13px;">${escapeHtml(t.titolo)}${t.notificaCreatoDa ? ` <span class="helptext" style="display:inline;">— da ${escapeHtml(t.notificaCreatoDa)}</span>` : ''}</span>
+      ${nonVisti.map(t => { const etichettaTipo = etichettaNotificaTaskTeam(t); return `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;padding:4px 0;" data-action="apri-dettaglio-task-team" data-id="${t.id}">
+        <span style="font-size:13px;">${escapeHtml(t.titolo)}${t.notificaCreatoDa ? ` <span class="helptext" style="display:inline;">— ${etichettaTipo} da ${escapeHtml(t.notificaCreatoDa)}</span>` : ''}</span>
         <span class="badge">Apri →</span>
-      </div>`).join('')}
+      </div>`; }).join('')}
     </div>
   </div>` : '';
 
@@ -6748,7 +6800,7 @@ function modalDettaglioTaskTeam(taskId) {
   const html = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
     <div class="modal" style="max-width:480px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-        <div><h2>${escapeHtml(t.titolo)}</h2><div class="modal-sub">${escapeHtml(t.stato)}${t.notificaCreatoDa ? ` · creato da ${escapeHtml(t.notificaCreatoDa)}` : ''}</div></div>
+        <div><h2>${escapeHtml(t.titolo)}</h2><div class="modal-sub">${escapeHtml(t.stato)}${(t.notificaCreatoDa && !t.notificaVista) ? ` · ${etichettaNotificaTaskTeam(t)} da ${escapeHtml(t.notificaCreatoDa)}` : ''}</div></div>
         <button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 14px;">
@@ -6838,6 +6890,7 @@ function aggiungiTaskTeam(t) {
   // Se uno crea un task per sé stesso non ha senso "notificarlo": lo sta già facendo lui.
   const creatore = operatoreCorrente() || null;
   task.notificaCreatoDa = creatore;
+  task.notificaTipo = 'creato';
   task.notificaVista = !task.assegnatoA || task.assegnatoA === creatore;
   STATE.taskTeam.push(task);
   salvaStato();
@@ -6845,21 +6898,40 @@ function aggiungiTaskTeam(t) {
 function aggiornaTaskTeam(id, patch) {
   const t = STATE.taskTeam.find(x => x.id === id);
   if (!t) return;
-  // Stessa logica di aggiungiTaskTeam, ma per la RIASSEGNAZIONE di un task esistente: se cambia
-  // l'assegnatario, per il nuovo assegnatario è come se il task fosse appena arrivato - va di nuovo
-  // segnalato, anche se il task esisteva già da tempo. Un patch che tocca altri campi (stato, note,
-  // scadenza...) senza cambiare l'assegnatario non tocca la notifica: non è quello il segnale a cui
-  // Matteo si riferiva ("un task PER Matteo"), e risegnalare ad ogni modifica minore sarebbe rumore.
-  if ('assegnatoA' in patch && patch.assegnatoA !== t.assegnatoA) {
-    const attore = operatoreCorrente() || null;
+  const attore = operatoreCorrente() || null;
+  // Riassegnazione: se cambia l'assegnatario, per il nuovo assegnatario è come se il task fosse
+  // appena arrivato - va di nuovo segnalato, anche se il task esisteva già da tempo.
+  const cambiaAssegnatario = 'assegnatoA' in patch && patch.assegnatoA !== t.assegnatoA;
+  if (cambiaAssegnatario) {
     t.notificaCreatoDa = attore;
+    t.notificaTipo = 'riassegnato';
     t.notificaVista = !patch.assegnatoA || patch.assegnatoA === attore;
+  } else {
+    // Bug segnalato da Matteo (test con l'utenza di Federico: ha modificato un task assegnato a
+    // Sabrina e a Sabrina non è arrivata nessuna notifica): prima QUALSIASI modifica a un task
+    // esistente che non cambiava l'assegnatario passava sotto silenzio - solo la riassegnazione
+    // notificava. Ora un cambiamento sostanziale (titolo/cliente/scadenza/stato) fatto da qualcuno
+    // DIVERSO dall'assegnatario riapre la notifica per lui, con dicitura "modificato da" invece di
+    // "creato da" (vedi notificaTipo, usato nel banner/riga Task team). Se è l'assegnatario stesso
+    // a modificare il proprio task non ha senso notificarlo di sé stesso.
+    const campiRilevanti = ['titolo', 'clienteId', 'scadenza', 'stato'];
+    const cambiaQualcosaDiRilevante = campiRilevanti.some(k => k in patch && patch[k] !== t[k]);
+    if (cambiaQualcosaDiRilevante && t.assegnatoA && attore && t.assegnatoA !== attore) {
+      t.notificaCreatoDa = attore;
+      t.notificaTipo = 'modificato';
+      t.notificaVista = false;
+    }
   }
   Object.assign(t, patch);
   // stessa difesa di aggiungiTaskTeam: un patch esterno che tocca "stato" con un valore non tra i
   // 3 riconosciuti lo renderebbe invisibile nel kanban pur restando contato nei KPI.
   if ('stato' in patch && !STATI_TASK_TEAM.includes(t.stato)) t.stato = STATI_TASK_TEAM[0];
   salvaStato();
+}
+// Etichetta breve per il tipo di notifica di un task (creato/riassegnato/modificato) - usata sia
+// nel banner "novità sui tuoi task" sia nel sottotitolo del modale di dettaglio.
+function etichettaNotificaTaskTeam(t) {
+  return { creato: 'creato', riassegnato: 'riassegnato a te', modificato: 'modificato' }[t.notificaTipo] || 'creato';
 }
 // Task assegnati all'operatore corrente non ancora visti (nuovi o riassegnati a lui) - usato sia
 // per il pallino nella nav sia per il banner in cima alla vista Task team.
@@ -11212,15 +11284,16 @@ function onClickDelegato(e) {
     case 'riavvia-server': {
       const online = Object.keys(PRESENZA_ONLINE || {}).filter(n => n !== operatoreCorrente());
       const avviso = online.length
-        ? `Attenzione: risultano online anche ${online.join(', ')}. Il riavvio disconnetterà temporaneamente tutti. Continuare?`
-        : 'Riavviare il server ora? Chi ha il gestionale aperto verrà avvisato con un conto alla rovescia.';
+        ? `Attenzione: risultano online anche ${online.join(', ')}. Riceveranno 60 secondi di preavviso per salvare eventuale lavoro in corso, poi il server si riavvia comunque. Continuare?`
+        : 'Riavviare il server ora? Chi ha il gestionale aperto verrà avvisato con 60 secondi di preavviso.';
       if (!confermaAzione(avviso)) return;
       fetch('/api/server/riavvia', { method: 'POST' })
         .then(r => r.json())
-        .then(() => toast('Riavvio avviato: il server si chiude e si riavvia da solo tra pochi secondi. Se dopo circa 30 secondi la pagina non torna a funzionare (ricaricala), va riavviato a mano.'))
+        .then(() => toast('Riavvio avviato: tra 60 secondi il server si chiude e si riavvia da solo. Se dopo qualche secondo in più la pagina non torna a funzionare (ricaricala), va riavviato a mano.'))
         .catch(() => toast('Non sono riuscito a contattare il server per il riavvio.', true));
       break;
     }
+    case 'conferma-riavvio-server': confermaVistaRiavvioServer(); break;
     case 'carica-demo':
       if (confermaAzione('Aggiunge clienti ed esempi di prova ai dati attuali. Continuare?')) {
         const demo = generaDatiEsempio();
