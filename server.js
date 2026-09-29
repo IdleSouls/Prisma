@@ -1114,48 +1114,6 @@ function gestisciRichiesta(req, res) {
     return;
   }
 
-  if (url === '/api/stato-info' && req.method === 'GET') {
-    const dati = leggiDati();
-    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-    res.end(JSON.stringify({
-      fileEsiste: fs.existsSync(FILE_DATI),
-      numeroClienti: dati && Array.isArray(dati.clienti) ? dati.clienti.length : null,
-      browserCollegati: clientiSSE.length,
-      cartella: CARTELLA,
-    }));
-    return;
-  }
-
-  // Indirizzi con cui i colleghi in studio possono raggiungere QUESTO server dalla stessa rete
-  // WiFi/LAN (hostname + IP), da mostrare/copiare direttamente nella scheda "Responsabili dello
-  // studio" di Impostazioni - stessa lista usata per generare il launcher qui sotto, ricalcolata a
-  // ogni chiamata (l'indirizzo di rete di questo PC può cambiare cambiando WiFi senza riavviare).
-  if (url === '/api/indirizzi-rete' && req.method === 'GET') {
-    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-    res.end(JSON.stringify({ ok: true, hostname: os.hostname(), porta: PORTA, indirizzi: indirizziRete() }));
-    return;
-  }
-
-  // Scarica il file "Apri Gestionale (rete studio).html" (rigenerato al volo con gli indirizzi di
-  // rete più aggiornati) da mandare una volta ai colleghi via email/chat: a ogni doppio click
-  // provano a collegarsi da soli a questo PC, senza dover ricordare o digitare nessun indirizzo.
-  if (url === '/api/link-colleghi' && req.method === 'GET') {
-    scriviLauncherCollegamento(os.hostname(), indirizziRete());
-    fs.readFile(FILE_LAUNCHER_COLLEGA, (err, contenuto) => {
-      if (err) {
-        res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ ok: false, errore: 'Non sono riuscito a generare il file di collegamento.' }));
-        return;
-      }
-      res.writeHead(200, {
-        'Content-Type': 'text/html; charset=utf-8',
-        'Content-Disposition': 'attachment; filename="Apri Gestionale (rete studio).html"',
-      });
-      res.end(contenuto);
-    });
-    return;
-  }
-
   // Scarica il file di log (task #158) - da mandare a chi presta assistenza quando qualcosa non
   // funziona, soprattutto ora che Prisma gira come app desktop senza nessuna finestra di console da
   // guardare. Se il log non esiste ancora (nessun problema si è mai verificato) risponde comunque

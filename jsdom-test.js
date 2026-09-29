@@ -4442,10 +4442,6 @@ async function main() {
       richieste.push({ url, opts });
       if (url === '/api/backup/elenco') return Promise.resolve({ json: async () => rispostaElenco });
       if (url === '/api/backup/ripristina') return Promise.resolve({ json: async () => ({ ok: true }) });
-      // task #132: la card "Responsabili dello studio" carica anche gli indirizzi di rete quando
-      // HTTP_SYNC_ATTIVO è vero - non è oggetto di QUESTO test, va solo soddisfatta perché non resti
-      // a carico del ramo "URL non atteso" qui sotto (pensato per intercettare errori REALI).
-      if (url === '/api/indirizzi-rete') return Promise.resolve({ json: async () => ({ ok: true, hostname: 'pc-test', porta: 8420, indirizzi: ['10.0.0.5'] }) });
       return Promise.reject(new Error('URL non atteso nel mock: ' + url));
     };
     window.setHttpSyncAttivoTest(true);

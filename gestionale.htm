@@ -3126,12 +3126,6 @@ function aggiungiDocumento(d) {
   salvaStato();
   return nuovo;
 }
-function aggiornaDocumento(id, patch) {
-  const d = STATE.documenti.find(x => x.id === id);
-  if (!d) return;
-  Object.assign(d, patch);
-  salvaStato();
-}
 function eliminaDocumento(id) {
   const d = STATE.documenti.find(x => x.id === id);
   if (d && d.filePercorso) {
@@ -3552,17 +3546,6 @@ function aggiornaF24(id, patch) {
 // Registra un pagamento (totale o parziale) su UNA riga specifica - usato sia dalle azioni rapide
 // "Segna pagato"/"Segna da pagare" nell'elenco (tutte le righe insieme) sia da un domani pagamento
 // riga per riga dal portale cliente. Non lascia mai importoPagato sopra l'importo della riga.
-function registraPagamentoRigaF24(f24Id, rigaId, importoPagato) {
-  const f = STATE.f24.find(x => x.id === f24Id);
-  if (!f) return null;
-  const righe = assicuraRigheF24(f);
-  const r = righe.find(x => x.id === rigaId);
-  if (!r) return null;
-  r.importoPagato = Math.max(0, Math.min(Number(importoPagato) || 0, Number(r.importo) || 0));
-  ricalcolaTotaliF24(f);
-  salvaStato();
-  return f;
-}
 // Segna TUTTE le righe di un F24 come pagate/da pagare in un colpo solo - le azioni rapide
 // "Segna pagato"/"Segna da pagare" nell'elenco (f24-cambia-stato è stato rimosso: lo stato ora è
 // SEMPRE calcolato dalle righe, non impostabile a mano).
