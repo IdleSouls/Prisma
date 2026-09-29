@@ -6403,12 +6403,20 @@ function aggiornaSuggerimentoImportoF24() {
 // il tipo 'annuale' accanto a cliente/scadenza. Per l'azione di apertura non esiste un modale di
 // dettaglio dedicato per un singolo adempimento annuale (stesso caso già risolto per
 // 'dash-apri-annuale' in dashboard): si riusa lo stesso pattern, vedi 'chat-apri-annuale' più sotto.
-const CHAT_RIF_REGEX = /\{\{(cliente|scadenza|annuale)\|([^|{}]+)\|([^{}]+)\}\}/g;
+// Ulteriore richiesta di Matteo: anche task e documenti cliente devono essere referenziabili, con
+// un filtro per categoria nel picker (vedi CHAT_RIF_FILTRO_TIPO più sotto) dato che con tutti questi
+// tipi insieme la lista di risultati può diventare lunga da scorrere.
+const CHAT_RIF_REGEX = /\{\{(cliente|scadenza|annuale|task|documento)\|([^|{}]+)\|([^{}]+)\}\}/g;
 const CHAT_RIF_INFO = {
-  cliente:  { azione: 'apri-cliente',           icona: '👤', label: 'la scheda cliente' },
-  scadenza: { azione: 'apri-dettaglio-scadenza', icona: '📅', label: 'la scadenza' },
-  annuale:  { azione: 'chat-apri-annuale',       icona: '📋', label: 'l\'adempimento annuale' },
+  cliente:   { azione: 'apri-cliente',            icona: '👤', label: 'la scheda cliente',        categoria: 'Clienti' },
+  scadenza:  { azione: 'apri-dettaglio-scadenza',  icona: '📅', label: 'la scadenza',              categoria: 'Scadenze' },
+  annuale:   { azione: 'chat-apri-annuale',        icona: '📋', label: 'l\'adempimento annuale',   categoria: 'Adempimenti annuali' },
+  task:      { azione: 'apri-dettaglio-task-team', icona: '✅', label: 'il task',                  categoria: 'Task' },
+  documento: { azione: 'chat-apri-documento',      icona: '📄', label: 'il documento',             categoria: 'Documenti' },
 };
+// Filtro per categoria nel picker "Aggiungi riferimento" - 'tutti' cerca su tutto, altrimenti solo
+// sul tipo scelto. Reimpostato a 'tutti' ogni volta che si riapre il modale (vedi modalRiferimentoChat).
+let CHAT_RIF_FILTRO_TIPO = 'tutti';
 function formattaTestoChatConRiferimenti(testo) {
   const str = String(testo || '');
   CHAT_RIF_REGEX.lastIndex = 0;
@@ -6434,34 +6442,64 @@ let CHAT_RIF_QUERY = '';
 function risultatiRiferimentoChat(query) {
   const q = (query || '').trim().toLowerCase();
   if (q.length < 2) return [];
+  const filtro = CHAT_RIF_FILTRO_TIPO;
   const out = [];
-  STATE.clienti.forEach(c => {
-    if ((c.ragioneSociale || '').toLowerCase().includes(q)) {
-      out.push({ tipo: 'cliente', id: c.id, label: c.ragioneSociale, sotto: `${c.regimeFiscale || '—'}${c.stato === 'cessato' ? ' · cessato' : ''}` });
-    }
-  });
+  if (filtro === 'tutti' || filtro === 'cliente') {
+    STATE.clienti.forEach(c => {
+      if ((c.ragioneSociale || '').toLowerCase().includes(q)) {
+        out.push({ tipo: 'cliente', id: c.id, label: c.ragioneSociale, sotto: `${c.regimeFiscale || '—'}${c.stato === 'cessato' ? ' · cessato' : ''}` });
+      }
+    });
+  }
   const { tutteScadenze, annuali } = derivati();
-  tutteScadenze.forEach(s => {
-    const nomeCli = nomeCliente(s.clienteId);
-    if (`${s.nome} ${nomeCli}`.toLowerCase().includes(q)) {
-      out.push({ tipo: 'scadenza', id: s.id, label: `${s.nome} — ${nomeCli}`, sotto: `${fmtDataBreve(s.data)} · ${s.stato}` });
-    }
-  });
-  annuali.forEach(a => {
-    const nomeCli = nomeCliente(a.clienteId);
-    if (`${a.tipoNome} ${nomeCli}`.toLowerCase().includes(q)) {
-      out.push({ tipo: 'annuale', id: a.id, label: `${a.tipoNome} — ${nomeCli}`, sotto: `${a.percentuale}% completato${a.scadenza ? ' · scad. ' + fmtDataBreve(a.scadenza) : ''}` });
-    }
-  });
+  if (filtro === 'tutti' || filtro === 'scadenza') {
+    tutteScadenze.forEach(s => {
+      const nomeCli = nomeCliente(s.clienteId);
+      if (`${s.nome} ${nomeCli}`.toLowerCase().includes(q)) {
+        out.push({ tipo: 'scadenza', id: s.id, label: `${s.nome} — ${nomeCli}`, sotto: `${fmtDataBreve(s.data)} · ${s.stato}` });
+      }
+    });
+  }
+  if (filtro === 'tutti' || filtro === 'annuale') {
+    annuali.forEach(a => {
+      const nomeCli = nomeCliente(a.clienteId);
+      if (`${a.tipoNome} ${nomeCli}`.toLowerCase().includes(q)) {
+        out.push({ tipo: 'annuale', id: a.id, label: `${a.tipoNome} — ${nomeCli}`, sotto: `${a.percentuale}% completato${a.scadenza ? ' · scad. ' + fmtDataBreve(a.scadenza) : ''}` });
+      }
+    });
+  }
+  if (filtro === 'tutti' || filtro === 'task') {
+    (STATE.taskTeam || []).forEach(t => {
+      const nomeCli = t.clienteId ? nomeCliente(t.clienteId) : '';
+      if (`${t.titolo} ${nomeCli}`.toLowerCase().includes(q)) {
+        out.push({ tipo: 'task', id: t.id, label: `${t.titolo}${nomeCli ? ' — ' + nomeCli : ''}`, sotto: `${t.assegnatoA || '—'} · ${t.stato}` });
+      }
+    });
+  }
+  if (filtro === 'tutti' || filtro === 'documento') {
+    (STATE.documenti || []).forEach(d => {
+      const nomeCli = nomeCliente(d.clienteId);
+      if (`${d.nome} ${nomeCli}`.toLowerCase().includes(q)) {
+        out.push({ tipo: 'documento', id: d.id, label: `${d.nome} — ${nomeCli}`, sotto: `${d.categoria || '—'}${d.dataScadenza ? ' · scad. ' + fmtDataBreve(d.dataScadenza) : ''}` });
+      }
+    });
+  }
   return out.slice(0, 30);
 }
 function modalRiferimentoChat() {
   CHAT_RIF_QUERY = '';
+  CHAT_RIF_FILTRO_TIPO = 'tutti';
+  const opzioniFiltro = [['tutti', 'Tutti']].concat(Object.keys(CHAT_RIF_INFO).map(k => [k, CHAT_RIF_INFO[k].categoria]));
   const html = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
     <div class="modal" style="max-width:480px;padding-top:16px;">
       <h2 style="margin-top:0;">Aggiungi riferimento</h2>
-      <div class="modal-sub">Cerca un cliente, una scadenza o un adempimento annuale da citare nel messaggio: verrà inserito come collegamento cliccabile.</div>
-      <input id="chatRifInput" type="text" placeholder="Cerca cliente, scadenza o adempimento annuale..." style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;margin:10px 0;box-sizing:border-box;" data-action="chat-rif-input" autocomplete="off">
+      <div class="modal-sub">Cerca un cliente, una scadenza, un adempimento annuale, un task o un documento da citare nel messaggio: verrà inserito come collegamento cliccabile.</div>
+      <div style="display:flex;gap:8px;margin:10px 0;">
+        <input id="chatRifInput" type="text" placeholder="Cerca..." style="flex:1;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;box-sizing:border-box;" data-action="chat-rif-input" autocomplete="off">
+        <select data-action="chat-rif-filtro-tipo" style="width:auto;padding:0 8px;border:1px solid var(--border);border-radius:8px;">
+          ${opzioniFiltro.map(([v,l]) => `<option value="${v}" ${CHAT_RIF_FILTRO_TIPO===v?'selected':''}>${escapeHtml(l)}</option>`).join('')}
+        </select>
+      </div>
       <div id="chatRifResults"><div class="empty" style="padding:20px 4px;">Digita almeno 2 caratteri.</div></div>
       <div class="modal-actions"><button class="btn" data-action="chiudi-modal">Annulla</button></div>
     </div>
@@ -10292,6 +10330,18 @@ function onClickDelegato(e) {
       setView('annuali');
       break;
     }
+    // Riferimento a un documento in chat (task richiesto da Matteo): come per 'chat-apri-annuale',
+    // non esiste un modale di dettaglio per un singolo documento - si naviga alla vista Documenti
+    // filtrata per il cliente giusto, così il documento citato è in cima e facile da trovare.
+    case 'chat-apri-documento': {
+      const doc = (STATE.documenti || []).find(x => x.id === id);
+      if (doc) {
+        DOC_FILTRO = { cliente: doc.clienteId, categoria: 'Tutti' };
+        resetPagina('documenti');
+      }
+      setView('documenti');
+      break;
+    }
 
     case 'nuova-ritenuta': modalRitenuta(); break;
     case 'elimina-ritenuta':
@@ -11520,6 +11570,7 @@ function onChangeDelegato(e) {
     case 'task-filtro-mostra-fatti': TASK_FILTRO.mostraFatti = el.checked; STATI_TASK_TEAM.forEach(s=>resetPagina('taskteam-'+s)); render(); break;
     case 'task-cambia-stato': aggiornaTaskTeam(id, { stato: el.value }); render(); break;
 
+    case 'chat-rif-filtro-tipo': CHAT_RIF_FILTRO_TIPO = el.value; aggiornaRisultatiRiferimentoChat(); break;
     case 'com-filtro-cliente': COM_FILTRO.cliente = el.value; resetPagina('comunicazioni'); render(); break;
     case 'com-filtro-stato': COM_FILTRO.stato = el.value; resetPagina('comunicazioni'); render(); break;
     case 'com-filtro-categoria': COM_FILTRO.categoria = el.value; resetPagina('comunicazioni'); render(); break;
