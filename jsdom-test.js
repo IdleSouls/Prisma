@@ -807,9 +807,9 @@ async function main() {
   // mappatura categoria -> colore/classe: le 7 categorie di TIPI_ADEMPIMENTO PIÙ "Task team" (i
   // task team con scadenza, task #131) hanno tutte un colore distinto, e una categoria non mappata
   // (non dovrebbe mai succedere, ma niente crash) ricade su "Altri tributi" invece di esplodere
-  const categorieCalTotali = window.TIPI_ADEMPIMENTO.concat(['Task team']);
+  const categorieCalTotali = window.TIPI_ADEMPIMENTO.concat(['Task team', 'Appuntamenti']);
   const classiCategoria = new Set(categorieCalTotali.map(t => window.infoCategoriaCalendario(t).classe));
-  assert(classiCategoria.size === categorieCalTotali.length, `attese ${categorieCalTotali.length} classi colore distinte (7 fiscali + Task team), trovate ${classiCategoria.size}`);
+  assert(classiCategoria.size === categorieCalTotali.length, `attese ${categorieCalTotali.length} classi colore distinte (7 fiscali + Task team + Appuntamenti), trovate ${classiCategoria.size}`);
   assert(window.infoCategoriaCalendario('Categoria mai vista') === window.infoCategoriaCalendario('Altri tributi'), 'una categoria non mappata deve ricadere su "Altri tributi", non esplodere');
 
   // gli eventi del calendario portano con sé la categoria corretta (periodiche via
@@ -981,13 +981,81 @@ async function main() {
   assert(qa('.cal-giorno-lista .voce').length === gruppiPrimaCella.length, 'il click su una cella del calendario non apre il modal con il numero corretto di voci (gruppi) di quel giorno');
   click(q('[data-action="chiudi-modal"]'));
   await wait(20);
+  // Task #141: un giorno SENZA eventi ora è comunque cliccabile e apre direttamente il modale
+  // "Nuovo evento" (creazione appuntamento/scadenza ricorrente), non più nessun modal.
   const celleSenzaEventi = qa('.cal-day').filter(el => el.classList.contains('altromese') === false && !el.classList.contains('has-eventi') && el.querySelector('.num'));
   if (celleSenzaEventi.length) {
     click(celleSenzaEventi[0]);
     await wait(20);
-    assert(!q('#modalRoot').children.length, 'una cella del calendario senza scadenze non deve aprire alcun modal');
+    assert(q('#nuovoEventoForm'), 'il click su un giorno senza eventi deve aprire il modale "Nuovo evento"');
+    click(q('[data-action="chiudi-modal"]'));
+    await wait(20);
   }
-  console.log('=== Click su cella calendario: apre il modal giorno solo se ci sono scadenze, con il numero corretto di voci (gruppi) OK');
+  console.log('=== Click su cella calendario: apre il modal giorno se ci sono eventi (numero corretto di voci/gruppi), o il modale "Nuovo evento" se il giorno è vuoto OK');
+
+  // ---------- 8a-bis) Calendario: creazione evento (appuntamento + scadenza ricorrente, task #141) ----------
+  {
+    const celleTarget = qa('.cal-day').filter(el => el.classList.contains('altromese') === false && el.querySelector('.num'));
+    assert(celleTarget.length > 0, 'nessuna cella cliccabile per testare la creazione evento');
+    const dataTarget = celleTarget[0].dataset.data;
+    click(celleTarget[0]);
+    await wait(20);
+    assert(q('#nuovoEventoForm'), 'manca il form del modale "Nuovo evento"');
+
+    // Appuntamento con cliente
+    const clienteSelect = q('#nevCliente');
+    assert(clienteSelect, 'manca il select cliente nel form appuntamento');
+    const primaOpzione = clienteSelect.options[1];
+    if (primaOpzione) clienteSelect.value = primaOpzione.value;
+    q('#nevOggetto').value = 'Incontro di prova';
+    const nAppPrima = (window.getSTATE().appuntamenti || []).length;
+    click(q('[data-action="nuovo-evento-salva-appuntamento"]'));
+    await wait(20);
+    assert((window.getSTATE().appuntamenti || []).length === nAppPrima + 1, 'la creazione dell\'appuntamento non ha aggiunto la voce a STATE.appuntamenti');
+    const appCreato = window.getSTATE().appuntamenti[window.getSTATE().appuntamenti.length - 1];
+    assert(appCreato.data === dataTarget, 'l\'appuntamento creato non ha la data del giorno cliccato');
+    assert(appCreato.oggetto === 'Incontro di prova', 'l\'oggetto dell\'appuntamento creato non corrisponde');
+    assert(!q('#modalRoot').children.length, 'il modale non si è chiuso dopo la creazione dell\'appuntamento');
+
+    // L'appuntamento appena creato deve comparire come evento nel calendario
+    const eventiCalDopo = window.eventiCalendarioPerGiorno();
+    const eventiGiornoDopo = eventiCalDopo[dataTarget] || [];
+    assert(eventiGiornoDopo.some(e => e.kind === 'appuntamento' && e.id === appCreato.id), 'l\'appuntamento creato non compare tra gli eventi calendario del giorno');
+
+    // Apertura/modifica/eliminazione dal dettaglio
+    window.apriModalAppuntamento(appCreato.id);
+    await wait(10);
+    assert(q('[data-action="app-elimina"]'), 'manca il pulsante elimina nel dettaglio appuntamento');
+    click(q('[data-action="app-elimina"]'));
+    await wait(20);
+    assert(!window.getSTATE().appuntamenti.find(a => a.id === appCreato.id), 'l\'appuntamento non è stato rimosso da STATE dopo "Elimina"');
+
+    // Scadenza ricorrente: crea un tipo nel catalogo periodico e attiva il flag sul primo cliente selezionato.
+    // Riapre il modale via funzione diretta invece di ricliccare la cella calendario: dopo i render()
+    // precedenti il riferimento DOM a celleTarget[0] è ormai staccato dal documento.
+    window.apriModalNuovoEvento(dataTarget);
+    await wait(20);
+    click(q('[data-action="nuovo-evento-tipo"][data-tipo="scadenza"]'));
+    await wait(20);
+    assert(q('#nevScadNome'), 'manca il form scadenza ricorrente dopo lo switch di tipo');
+    q('#nevScadNome').value = 'Comunicazione di prova';
+    const primaCheckbox = q('[data-multi-cliente="nuovo-evento-scadenza"]');
+    if (primaCheckbox) primaCheckbox.checked = true;
+    const nCatalogoPrima = window.getSTATE().catalogoPeriodico.length;
+    click(q('[data-action="nuovo-evento-salva-scadenza"]'));
+    await wait(20);
+    assert(window.getSTATE().catalogoPeriodico.length === nCatalogoPrima + 1, 'la creazione della scadenza ricorrente non ha aggiunto la voce al catalogo periodico');
+    const tipoCreato = window.getSTATE().catalogoPeriodico[window.getSTATE().catalogoPeriodico.length - 1];
+    assert(tipoCreato.nome === 'Comunicazione di prova', 'il nome della scadenza ricorrente creata non corrisponde');
+    if (primaCheckbox) {
+      const clienteFlaggato = window.getSTATE().clienti.find(c => c.id === primaCheckbox.value);
+      assert(clienteFlaggato && clienteFlaggato.flags && clienteFlaggato.flags[tipoCreato.flag] === true, 'il flag della nuova scadenza ricorrente non è stato attivato sul cliente selezionato');
+    }
+    assert(!q('#modalRoot').children.length, 'il modale non si è chiuso dopo la creazione della scadenza ricorrente');
+    // Pulizia: rimuove il tipo di prova dal catalogo per non alterare gli altri test a valle
+    window.getSTATE().catalogoPeriodico = window.getSTATE().catalogoPeriodico.filter(t => t.id !== tipoCreato.id);
+  }
+  console.log('=== Calendario: creazione evento (appuntamento + scadenza ricorrente) OK');
 
   // ---------- 8b) Clienti: filtro "mostra cessati" ----------
   click(q('[data-nav="clienti"]'));

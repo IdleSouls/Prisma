@@ -22,6 +22,7 @@
   --grigio:#565E6D; --grigio-bg:#EAECF0;
   --arancio:#C2540A; --arancio-bg:#FCE6D3;
   --ciano:#0E7C86; --ciano-bg:#DAF1F0;
+  --rosa:#B3268E; --rosa-bg:#FBE3F2;
   --bg:#F3F5F9; --card-bg:#ffffff; --border:#E4E8F0; --text:#161B26; --text-mut:#6B7385;
   --sidebar-w:230px;
   --shadow-sm:0 1px 2px rgba(19,42,76,.06);
@@ -291,6 +292,7 @@ tr.riga-selezionata{background:var(--blu-light);}
 .cal-day .ev.cat-camerali{background:var(--ciano-bg);color:var(--ciano);border-left-color:var(--ciano);}
 .cal-day .ev.cat-altri{background:var(--arancio-bg);color:var(--arancio);border-left-color:var(--arancio);}
 .cal-day .ev.cat-task-team{background:var(--grigio-bg);color:var(--grigio);border-left-color:var(--grigio);}
+.cal-day .ev.cat-appuntamento{background:var(--rosa-bg);color:var(--rosa);border-left-color:var(--rosa);}
 .cal-gruppo{display:contents;}
 /* "Scaduto" NON deve più cancellare il colore di categoria (era il bug segnalato da Matteo: "ci
    sono i colori ma non sono applicati" - ogni evento passato diventava rosso indipendentemente
@@ -8809,6 +8811,7 @@ let CAL_MESE = new Date().getMonth();
    sono visivamente distinti dagli adempimenti fiscali. "colore" qui serve solo per il puntino
    nella legenda/nel modal (dove serve un valore esadecimale diretto, non una classe). */
 const CATEGORIA_TASK_TEAM_CAL = 'Task team';
+const CATEGORIA_APPUNTAMENTO_CAL = 'Appuntamenti';
 const COLORE_CATEGORIA_CALENDARIO = {
   'Imposte dirette':                { classe: 'cat-imposte-dirette',   colore: '#B3261E' },
   'Imposte indirette':              { classe: 'cat-imposte-indirette', colore: '#2E63C7' },
@@ -8818,6 +8821,7 @@ const COLORE_CATEGORIA_CALENDARIO = {
   'Adempimenti camerali/societari': { classe: 'cat-camerali',          colore: '#0E7C86' },
   'Altri tributi':                  { classe: 'cat-altri',             colore: '#C2540A' },
   [CATEGORIA_TASK_TEAM_CAL]:        { classe: 'cat-task-team',         colore: '#565E6D' },
+  [CATEGORIA_APPUNTAMENTO_CAL]:     { classe: 'cat-appuntamento',      colore: '#B3268E' },
 };
 function infoCategoriaCalendario(categoria) {
   return COLORE_CATEGORIA_CALENDARIO[categoria] || COLORE_CATEGORIA_CALENDARIO['Altri tributi'];
@@ -8825,14 +8829,18 @@ function infoCategoriaCalendario(categoria) {
 /* Un evento è "chiuso" con vocabolari di stato diversi a seconda della provenienza: scadenze
    periodiche/annuali usano STATI_SCADENZA_CHIUSI, i task team solo "Fatto". */
 function eventoCalendarioChiuso(kind, stato) {
-  return kind === 'task' ? stato === 'Fatto' : STATI_SCADENZA_CHIUSI.includes(stato);
+  if (kind === 'task') return stato === 'Fatto';
+  if (kind === 'appuntamento') return stato === 'Concluso' || stato === 'Annullato';
+  return STATI_SCADENZA_CHIUSI.includes(stato);
 }
 /* Etichetta del "titolare" dell'evento: nome cliente, oppure un'etichetta esplicita per i task
-   team senza cliente collegato (non "(cliente eliminato)", che ha senso solo se l'id punta
-   davvero a un cliente rimosso). */
+   team/appuntamenti senza cliente collegato (non "(cliente eliminato)", che ha senso solo se
+   l'id punta davvero a un cliente rimosso). */
 function etichettaClienteEvento(kind, clienteId) {
   if (clienteId) return nomeCliente(clienteId);
-  return kind === 'task' ? 'Task interno (studio)' : '(cliente eliminato)';
+  if (kind === 'task') return 'Task interno (studio)';
+  if (kind === 'appuntamento') return 'Nessun cliente collegato';
+  return '(cliente eliminato)';
 }
 
 /* Costruisce la mappa data ISO -> EVENTI GREZZI del mese: scadenze periodiche, adempimenti
@@ -8862,6 +8870,10 @@ function eventiCalendarioPerGiorno() {
     kind: 'task', id: t.id, clienteId: t.clienteId || null, titolo: t.titolo, stato: t.stato || 'Da fare',
     categoria: CATEGORIA_TASK_TEAM_CAL, assegnatoA: t.assegnatoA,
   }); });
+  (STATE.appuntamenti || []).forEach(a => { if (a.data) aggiungiEvento(a.data, {
+    kind: 'appuntamento', id: a.id, clienteId: a.clienteId || null, titolo: a.oggetto || 'Appuntamento',
+    stato: a.stato || 'Programmato', categoria: CATEGORIA_APPUNTAMENTO_CAL, ora: a.ora,
+  }); });
   return eventiPerGiorno;
 }
 
@@ -8874,7 +8886,7 @@ function eventiCalendarioPerGiorno() {
    col conteggio, espandibile nel modal giorno. L'ordine segue quello della legenda (le 7 categorie
    fiscali, poi Task team), poi il titolo: prevedibile e coerente con le altre viste. */
 function raggruppaEventiGiorno(eventi) {
-  const ordineCategoria = TIPI_ADEMPIMENTO.concat([CATEGORIA_TASK_TEAM_CAL]);
+  const ordineCategoria = TIPI_ADEMPIMENTO.concat([CATEGORIA_TASK_TEAM_CAL, CATEGORIA_APPUNTAMENTO_CAL]);
   const gruppi = new Map();
   eventi.forEach(e => {
     const chiave = `${e.kind}::${e.categoria}::${e.titolo}`;
@@ -8911,7 +8923,7 @@ function renderCalendario() {
     <button class="btn ghost" data-action="cal-oggi">Vai a oggi</button>
   </div>`;
 
-  const legenda = `<div class="cal-legenda">${TIPI_ADEMPIMENTO.concat([CATEGORIA_TASK_TEAM_CAL]).map(t => {
+  const legenda = `<div class="cal-legenda">${TIPI_ADEMPIMENTO.concat([CATEGORIA_TASK_TEAM_CAL, CATEGORIA_APPUNTAMENTO_CAL]).map(t => {
     const info = infoCategoriaCalendario(t);
     return `<div class="voce"><span class="dot" style="background:${info.colore};"></span>${escapeHtml(t)}</div>`;
   }).join('')}</div>`;
@@ -8936,7 +8948,12 @@ function renderCalendario() {
     }).join('');
     const extra = gruppi.length > 4 ? `<div class="cal-piu">+${gruppi.length-4} altre</div>` : '';
     const hasEventi = eventi.length > 0;
-    const azione = hasEventi ? `data-action="cal-espandi-giorno" data-data="${dataISO}"` : '';
+    /* Task #141: prima solo i giorni con eventi erano cliccabili. Ora ogni giorno è cliccabile —
+       un giorno pieno apre l'espansione (con un pulsante "+ Nuovo evento" al suo interno), un
+       giorno vuoto apre direttamente il modale di creazione evento. */
+    const azione = hasEventi
+      ? `data-action="cal-espandi-giorno" data-data="${dataISO}"`
+      : `data-action="cal-nuovo-evento" data-data="${dataISO}"`;
     return `<div class="cal-day ${isOggi?'oggi':''} ${hasEventi?'has-eventi':''}" ${azione}><div class="num">${g}</div>${evHtml}${extra}</div>`;
   }).join('');
 
@@ -8950,6 +8967,7 @@ function renderCalendario() {
 function pulsanteEventoCalendario(it) {
   if (it.kind === 'scadenza' && it.id) return `<button class="btn small" data-action="apri-dettaglio-scadenza" data-id="${it.id}">Apri scadenza</button>`;
   if (it.kind === 'task') return `<button class="btn small" data-action="apri-dettaglio-task-team" data-id="${it.id}">Apri task</button>`;
+  if (it.kind === 'appuntamento') return `<button class="btn small" data-action="apri-dettaglio-appuntamento" data-id="${it.id}">Apri appuntamento</button>`;
   return `<button class="btn small" data-action="apri-cliente" data-id="${it.clienteId}">Apri cliente</button>`;
 }
 /* Una riga evento nel modal giorno: "compatto" (gruppo con un solo evento) mostra "Cliente —
@@ -9020,7 +9038,199 @@ function apriModalGiornoCalendario(dataISO) {
         <div><h2>${escapeHtml(fmtData(dataISO))}</h2><div class="modal-sub">${eventi.length} ${eventi.length===1?'evento':'eventi'} in questa data${gruppi.length!==eventi.length?` · ${gruppi.length} ${gruppi.length===1?'voce':'voci'} in elenco`:''}</div></div>
         <button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button>
       </div>
+      <div class="toolbar" style="margin:8px 0 0 0;">
+        <button type="button" class="btn small" data-action="cal-nuovo-evento" data-data="${dataISO}">+ Nuovo evento</button>
+      </div>
       <div class="cal-giorno-lista" style="max-height:420px;overflow-y:auto;margin-top:6px;">${righe}</div>
+    </div>
+  </div>`;
+  document.getElementById('modalRoot').innerHTML = html;
+}
+
+/* -------------------- CALENDARIO: creazione eventi (task #141) --------------------
+   Cliccare su un giorno (vuoto o pieno) apre una scelta tra due tipi di evento:
+   - "Appuntamento con cliente": evento puntuale, salvato in STATE.appuntamenti.
+   - "Scadenza ricorrente": crea un nuovo tipo nel catalogo scadenze periodiche (stesso
+     motore/flags già usato dall'app) con un prospetto guidato (nome, tipo, frequenza,
+     giorno, clienti a cui si applica) al posto del vecchio prompt() di
+     aggiungiTipoPeriodicoCustom, e attiva subito il flag sui clienti scelti invece di
+     richiedere un secondo passaggio manuale in anagrafica. */
+const STATI_APPUNTAMENTO = ['Programmato', 'Concluso', 'Annullato'];
+
+function trovaAppuntamento(id) {
+  return (STATE.appuntamenti || []).find(a => a.id === id);
+}
+function aggiungiAppuntamento(dati) {
+  const a = {
+    id: uid('app'), clienteId: dati.clienteId || null, data: dati.data, ora: dati.ora || '',
+    oggetto: (dati.oggetto || '').trim() || 'Appuntamento', note: (dati.note || '').trim(),
+    responsabile: operatoreCorrente() || '', stato: 'Programmato', creatoIl: new Date().toISOString(),
+  };
+  STATE.appuntamenti = STATE.appuntamenti || [];
+  STATE.appuntamenti.push(a);
+  salvaStato();
+  return a;
+}
+function aggiornaAppuntamento(id, patch) {
+  const a = trovaAppuntamento(id);
+  if (!a) return;
+  Object.assign(a, patch);
+  if (!STATI_APPUNTAMENTO.includes(a.stato)) a.stato = STATI_APPUNTAMENTO[0];
+  salvaStato();
+}
+function rimuoviAppuntamento(id) {
+  STATE.appuntamenti = (STATE.appuntamenti || []).filter(a => a.id !== id);
+  salvaStato();
+}
+
+/* Modale "Nuovo evento": due pulsanti per scegliere il tipo, poi un form dedicato sotto. Lo stato
+   del form vive negli input del DOM (nessuna variabile duplicata) — i pulsanti "Crea" leggono i
+   campi visibili al momento del click, come negli altri modali di creazione dell'app. Solo il TIPO
+   scelto (appuntamento/scadenza) è tenuto in una variabile di modulo, perché serve a scegliere
+   quale form disegnare. */
+let NUOVO_EVENTO_TIPO = 'appuntamento';
+let CAL_NUOVO_EVENTO_DATA = null;
+function apriModalNuovoEvento(dataISO) {
+  NUOVO_EVENTO_TIPO = 'appuntamento';
+  CAL_NUOVO_EVENTO_DATA = dataISO;
+  const html = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
+    <div class="modal" style="max-width:560px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div><h2>Nuovo evento</h2><div class="modal-sub">${escapeHtml(fmtData(dataISO))}</div></div>
+        <button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button>
+      </div>
+      <div class="toolbar" style="margin:10px 0;">
+        <button type="button" class="btn small primary" id="nevBtnApp" data-action="nuovo-evento-tipo" data-tipo="appuntamento">Appuntamento con cliente</button>
+        <button type="button" class="btn small ghost" id="nevBtnScad" data-action="nuovo-evento-tipo" data-tipo="scadenza">Scadenza ricorrente</button>
+      </div>
+      <div id="nuovoEventoForm"></div>
+    </div>
+  </div>`;
+  document.getElementById('modalRoot').innerHTML = html;
+  renderFormNuovoEvento(dataISO);
+}
+function renderFormNuovoEvento(dataISO) {
+  const el = document.getElementById('nuovoEventoForm');
+  if (!el) return;
+  const btnApp = document.getElementById('nevBtnApp'), btnScad = document.getElementById('nevBtnScad');
+  if (btnApp) btnApp.className = 'btn small ' + (NUOVO_EVENTO_TIPO === 'appuntamento' ? 'primary' : 'ghost');
+  if (btnScad) btnScad.className = 'btn small ' + (NUOVO_EVENTO_TIPO === 'scadenza' ? 'primary' : 'ghost');
+  const attivi = STATE.clienti.filter(c => c.stato !== 'cessato').sort((a,b) => a.ragioneSociale.localeCompare(b.ragioneSociale));
+
+  if (NUOVO_EVENTO_TIPO === 'appuntamento') {
+    el.innerHTML = `
+      <div class="grid2">
+        <div class="field full" style="grid-column:1/-1;"><label>Cliente (opzionale)</label>
+          <select id="nevCliente"><option value="">— nessun cliente —</option>${attivi.map(c=>`<option value="${c.id}">${escapeHtml(c.ragioneSociale)}</option>`).join('')}</select>
+        </div>
+        <div class="field"><label>Ora</label><input type="time" id="nevOra"></div>
+        <div class="field"><label>Oggetto</label><input type="text" id="nevOggetto" placeholder="es. Incontro bilancio, consulenza IVA..."></div>
+        <div class="field full" style="grid-column:1/-1;"><label>Note</label><input type="text" id="nevNote" placeholder="facoltative"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" data-action="chiudi-modal">Annulla</button>
+        <button class="btn primary" data-action="nuovo-evento-salva-appuntamento" data-data="${dataISO}">Crea appuntamento</button>
+      </div>`;
+  } else {
+    const dataObj = dataISO ? new Date(dataISO + 'T00:00:00') : new Date();
+    el.innerHTML = `
+      <div class="grid2">
+        <div class="field full" style="grid-column:1/-1;"><label>Nome scadenza</label><input type="text" id="nevScadNome" placeholder='es. &quot;Comunicazione dati liquidazioni periodiche&quot;'></div>
+        <div class="field"><label>Tipo/categoria</label><select id="nevScadTipo">${TIPI_ADEMPIMENTO.map(t=>`<option value="${escapeHtml(t)}" ${t===TIPO_ADEMPIMENTO_DEFAULT?'selected':''}>${escapeHtml(t)}</option>`).join('')}</select></div>
+        <div class="field"><label>Frequenza</label>
+          <select id="nevScadFrequenza" data-action="nuovo-evento-scad-frequenza">
+            <option value="mensile">Mensile</option>
+            <option value="trimestrale">Trimestrale (mar/giu/set/dic)</option>
+            <option value="annuale" selected>Annuale</option>
+          </select>
+        </div>
+        <div class="field" id="nevScadMeseWrap"><label>Mese</label>
+          <select id="nevScadMese">${MESI_COMPLETI.map((m,i)=>`<option value="${i+1}" ${i+1===dataObj.getMonth()+1?'selected':''}>${m}</option>`).join('')}</select>
+        </div>
+        <div class="field"><label>Giorno del mese</label><input type="number" id="nevScadGiorno" min="1" max="31" value="${dataObj.getDate()}"></div>
+        <div class="field full" style="grid-column:1/-1;">
+          <label>Clienti a cui si applica</label>
+          <input type="text" id="nevScadCerca" placeholder="Cerca cliente..." style="margin-bottom:6px;" data-action="nuovo-evento-scad-cerca" autocomplete="off">
+          <div id="nevScadClientiLista" style="max-height:170px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:8px;display:flex;flex-direction:column;">
+            ${attivi.map(c=>`<label class="checkline" data-nome-ricerca="${escapeHtml(c.ragioneSociale.toLowerCase())}"><input type="checkbox" data-multi-cliente="nuovo-evento-scadenza" value="${c.id}"> ${escapeHtml(c.ragioneSociale)}</label>`).join('')}
+            <div id="nevScadClientiVuoto" class="empty" style="display:none;padding:10px 4px;">Nessun cliente trovato.</div>
+          </div>
+          <div class="helptext" style="margin-top:4px;">Puoi lasciare la lista vuota e attivare la scadenza in anagrafica in un secondo momento.</div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" data-action="chiudi-modal">Annulla</button>
+        <button class="btn primary" data-action="nuovo-evento-salva-scadenza">Crea scadenza ricorrente</button>
+      </div>`;
+    aggiornaVisibilitaMeseScadenzaRicorrente();
+  }
+}
+function aggiornaVisibilitaMeseScadenzaRicorrente() {
+  const freq = document.getElementById('nevScadFrequenza');
+  const wrap = document.getElementById('nevScadMeseWrap');
+  if (!freq || !wrap) return;
+  wrap.style.display = freq.value === 'annuale' ? '' : 'none';
+}
+function salvaNuovoAppuntamento(dataISO) {
+  const clienteId = document.getElementById('nevCliente').value || null;
+  const ora = document.getElementById('nevOra').value || '';
+  const oggetto = document.getElementById('nevOggetto').value;
+  const note = document.getElementById('nevNote').value;
+  aggiungiAppuntamento({ clienteId, data: dataISO, ora, oggetto, note });
+  chiudiModal(); render();
+  toast('Appuntamento creato.');
+}
+function salvaNuovaScadenzaRicorrente() {
+  const nome = document.getElementById('nevScadNome').value.trim();
+  if (!nome) { toast('Serve un nome per la scadenza.'); return; }
+  const tipo = document.getElementById('nevScadTipo').value;
+  const frequenza = document.getElementById('nevScadFrequenza').value;
+  const giorno = Math.min(31, Math.max(1, Number(document.getElementById('nevScadGiorno').value) || 1));
+  const meseAnnuale = Number(document.getElementById('nevScadMese').value) || 1;
+  const clientiIds = Array.from(document.querySelectorAll('[data-multi-cliente="nuovo-evento-scadenza"]:checked')).map(i => i.value);
+
+  let mesi;
+  if (frequenza === 'mensile') mesi = [1,2,3,4,5,6,7,8,9,10,11,12];
+  else if (frequenza === 'trimestrale') mesi = [3,6,9,12];
+  else mesi = [meseAnnuale];
+
+  const flag = 'custom_' + uid('').replace(/^_/, '');
+  STATE.catalogoPeriodico.push({
+    id: flag, flag, nome, attivo: true, personalizzato: true, tipo,
+    occorrenze: mesi.map(m => ({ m, g: giorno, nota: nome })),
+  });
+  clientiIds.forEach(cid => {
+    const c = STATE.clienti.find(x => x.id === cid);
+    if (!c) return;
+    c.flags = c.flags || {};
+    c.flags[flag] = true;
+  });
+  salvaStato(); chiudiModal(); render();
+  toast(clientiIds.length
+    ? `Scadenza ricorrente creata e attivata su ${clientiIds.length} client${clientiIds.length===1?'e':'i'}.`
+    : 'Scadenza ricorrente creata. Nessun cliente selezionato: attivala in anagrafica quando serve.');
+}
+
+/* Dettaglio/modifica di un appuntamento: stato, ora, oggetto, note, più eliminazione. */
+function apriModalAppuntamento(id) {
+  const a = trovaAppuntamento(id);
+  if (!a) return;
+  const html = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
+    <div class="modal" style="max-width:520px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div><h2>Appuntamento</h2><div class="modal-sub">${escapeHtml(fmtData(a.data))}${a.ora?` · ${escapeHtml(a.ora)}`:''} — ${escapeHtml(etichettaClienteEvento('appuntamento', a.clienteId))}</div></div>
+        <button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button>
+      </div>
+      <div class="grid2">
+        <div class="field"><label>Stato</label><select data-action="app-cambia-stato" data-id="${a.id}">${STATI_APPUNTAMENTO.map(s=>`<option value="${s}" ${a.stato===s?'selected':''}>${s}</option>`).join('')}</select></div>
+        <div class="field"><label>Ora</label><input type="time" value="${escapeHtml(a.ora||'')}" data-action="app-cambia-ora" data-id="${a.id}"></div>
+        <div class="field full" style="grid-column:1/-1;"><label>Oggetto</label><input type="text" value="${escapeHtml(a.oggetto||'')}" data-action="app-cambia-oggetto" data-id="${a.id}"></div>
+        <div class="field full" style="grid-column:1/-1;"><label>Note</label><textarea rows="3" data-action="app-cambia-note" data-id="${a.id}">${escapeHtml(a.note||'')}</textarea></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" data-action="app-elimina" data-id="${a.id}" style="color:var(--rosso);">Elimina</button>
+        <button class="btn primary" data-action="chiudi-modal">Fatto</button>
+      </div>
     </div>
   </div>`;
   document.getElementById('modalRoot').innerHTML = html;
@@ -11078,6 +11288,7 @@ function onClickDelegato(e) {
 
     case 'scad-apri-solleciti': SCAD_SUBMODAL_DA_DETTAGLIO = false; modalSolleciti(el.dataset.id); break;
     case 'apri-dettaglio-scadenza': modalDettaglioScadenza(id); break;
+    case 'apri-dettaglio-appuntamento': apriModalAppuntamento(id); break;
     case 'scad-apri-controllo': SCAD_SUBMODAL_DA_DETTAGLIO = false; modalControlloImposta(el.dataset.id); break;
     // Stesse due sopra, ma raggiunte da dentro modalDettaglioScadenza (task #117): segna il
     // sotto-modale come "aperto dal dettaglio" così può offrire "← Indietro" invece di solo Chiudi.
@@ -11239,6 +11450,11 @@ function onClickDelegato(e) {
     case 'cal-next': CAL_MESE = (CAL_MESE + 1) % 12; render(); break;
     case 'cal-oggi': CAL_MESE = new Date().getMonth(); render(); break;
     case 'cal-espandi-giorno': apriModalGiornoCalendario(el.dataset.data); break;
+    case 'cal-nuovo-evento': apriModalNuovoEvento(el.dataset.data); break;
+    case 'nuovo-evento-tipo': NUOVO_EVENTO_TIPO = el.dataset.tipo; renderFormNuovoEvento(CAL_NUOVO_EVENTO_DATA); break;
+    case 'nuovo-evento-salva-appuntamento': salvaNuovoAppuntamento(el.dataset.data); break;
+    case 'nuovo-evento-salva-scadenza': salvaNuovaScadenzaRicorrente(); break;
+    case 'app-elimina': if (confirm('Eliminare questo appuntamento?')) { rimuoviAppuntamento(id); chiudiModal(); render(); } break;
     case 'cal-toggle-gruppo': {
       const chiave = el.dataset.chiave;
       if (CAL_GRUPPI_ESPANSI.has(chiave)) CAL_GRUPPI_ESPANSI.delete(chiave); else CAL_GRUPPI_ESPANSI.add(chiave);
@@ -11513,6 +11729,14 @@ function onChangeDelegato(e) {
     case 'scad-detail-cambia-stato': aggiornaScadenza(id, { stato: el.value }); render(); modalDettaglioScadenza(id); break;
     case 'scad-detail-cambia-resp': aggiornaScadenza(id, { responsabile: el.value }); render(); modalDettaglioScadenza(id); break;
 
+    // Modale dettaglio appuntamento (task #141): stato aggiorna anche la vista sotto (badge/colore
+    // in calendario), gli altri campi no render — stesso motivo di scad-cambia-importo.
+    case 'app-cambia-stato': aggiornaAppuntamento(id, { stato: el.value }); render(); break;
+    case 'app-cambia-ora': aggiornaAppuntamento(id, { ora: el.value }); break;
+    case 'app-cambia-oggetto': aggiornaAppuntamento(id, { oggetto: el.value }); break;
+    case 'app-cambia-note': aggiornaAppuntamento(id, { note: el.value }); break;
+    case 'nuovo-evento-scad-frequenza': aggiornaVisibilitaMeseScadenzaRicorrente(); break;
+
     case 'rit-filtro-cliente': RIT_FILTRO_CLIENTE = el.value; resetPagina('ritenute'); render(); break;
     case 'rit-cambia-stato': {
       const r = STATE.ritenuteRighe.find(x => x.id === id);
@@ -11730,6 +11954,21 @@ function onInputDelegato(e) {
         if (match) visibili++;
       });
       const vuoto = h('sClientiVuoto');
+      if (vuoto) vuoto.style.display = visibili === 0 ? '' : 'none';
+      break;
+    }
+    // Stessa ricerca DOM-only del caso 'socio-clienti-cerca' qui sopra, applicata alla checklist
+    // clienti del modale "Nuova scadenza ricorrente" (task #141).
+    case 'nuovo-evento-scad-cerca': {
+      const q = el.value.trim().toLowerCase();
+      const righe = document.querySelectorAll('#nevScadClientiLista .checkline');
+      let visibili = 0;
+      righe.forEach(r => {
+        const match = !q || (r.dataset.nomeRicerca || '').includes(q);
+        r.style.display = match ? '' : 'none';
+        if (match) visibili++;
+      });
+      const vuoto = h('nevScadClientiVuoto');
       if (vuoto) vuoto.style.display = visibili === 0 ? '' : 'none';
       break;
     }
