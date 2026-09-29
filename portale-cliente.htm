@@ -1,0 +1,1394 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Il tuo spazio</title>
+<link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAE/0lEQVR42q1WTYscVRQ9576q6o/pmZ7JzBjzYSKDH0gU1ARFSYhBTYwSFYKuRBcBlQHJXheGCcF/IUHcutONCAoSAoYYRBNIJKBJJoTJV3dPpqqrq967Lqqqu3p6Embh21R19X333Hfuufc+olhiAi+YFL9GGjL7RkCh2SsxvFSVIAhAkT1UodamURq3nO31XQCAF0z4tWnSAAoolIBm/gcO2H8bbESBX4KmqkuiW2mvA8Bk3oOxjdTcMUgQILNfKHvHCMAAHNDMQgmaYFxd6mwsFN+vTUMdqCS1TwAUVBCa80Nk/2rfXYGkA6ziTwWcX5um+CaoThuvBlWQ0OIEAPIPg/gGoWYGHOaGWRQAgWwjDUFP/DrgSmxmyUIpyzkYAIhAhyxRJiw30ix9gIpfE9LkPJYoJoYQ++/shkkaltJJ9AnMXWtGZgZPelKyHtqWA7GQp/HSsN38aOHV3Qu9qE2agbEq7rMIyBrBjrBM46FzV/Ycch8eeeupI8888kbYa0mu6aES0cFhmalRBo50FD57CnoxZjbJ0a9cbNPUvffCiUZlQ+oSQIZrj4PDF+6kr2VdzVSRbIp2V2T+OLZulJ7GNt0yue3Qs593ex2hDMXVrxdV1VwCon2dlIWhiqzMjNHOHXn9fR58m50URoyYlTjZ++QHO7a+FvbaQm91DrQQLQGFcLjMwRxDARXRuMuHtsj8MfQcDft0kzy8c6Hij1mXjrapsl6GVZSdsUgwKeiG/PiYbp5l7JRZEUBEuklvbvaJ/TuORr2W0MNwLZdjFnBNdQHG0+W7svcdvvkullN4Bgo4dU5VIWJW4nT/jk8end3VTZaLQFkugqygZQgyy4wqSE16nJzh/DFaJQgHGGBM6hWPoHNqrat4lcM7F4ZKuix0VQDGr05htD8aD/fuyvwJ7tnDTgrPYIyMYH9qB2eubm42xyq+VXTTZNuG7a3w9qUbpyr+mK5SekaEX5ta1bZoPL3X5q598tlxRhYTPmLFLys82cbp5YuXz55fvEqahyea9SDoWbt95vlzV76Peh0j3mqqCeNXpoanBWEtxJgvv+b2GY2UpyKebMmvIXpgFdXw5koU/rl47eKNG57xZsbHN443RKZ+/+e7wG/kE7DUI41fnRrojIAYXVmWT7/ggYP4scVvO/w5ZKRaFxihc1xeNNTA89tR+MeVK5dvLgF8cW739fbFa3fO+151uPRyhfWnI2EdGjVWnubxLi84+EBDoYADWBSlqoP1jQRGrt5uf3Pz3Ll/bzUqj5M/FENQ8xarynpzrmhYqpp1T4euYX2nzB5g7SWYTYDChYClWu/6WbgE8IgK4BRLTv+6F/+mWAy8YFAQhThZb86VB0XRRxUuVOfob5b6y2zsZ+05mCnaFW/xDB0UHaeXUnfWur8Vy0IfCFarKOOk3pwrT8Vc1CQgAKExNAI8Bo+xsU/qr5ib52162uoFp0sAyApgSjWMVYdgrTnHta495ZkBKDSC60ImQKiGZBXwARTjdnTlAN4DvWfHtADAKrw61AIgx5Hn/YH7CFWIU4t1LcXA0o2OpzVPr2rFJWGO9b+ujH+XhJLELVWXyXSd+9ZhpCRVXRq3DNRBrRdMFEpgSUi47yR5AHimdZokXLJpZAA6G6tLjFeHrHFRWC8f2r9hiqom4VJ2+S2NHgm86qTxalzdFDFSImsrEqS61CZRGrecy6/v/wF6S16hbpzz/AAAAABJRU5ErkJggg==">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --blu-scuro:#132A4C; --blu-mid:#2E63C7; --blu-light:#E7EEFC; --blu-accent:#4F7CFF;
+  --verde:#1B7A43; --verde-bg:#DEF5E7;
+  --giallo:#9C6500; --giallo-bg:#FFF1CC;
+  --rosso:#B3261E; --rosso-bg:#FBE2E1;
+  --viola:#5b2d90; --viola-bg:#EFE3F9;
+  --grigio:#565E6D; --grigio-bg:#EAECF0;
+  --bg:#F3F5F9; --card-bg:#ffffff; --border:#E4E8F0; --text:#161B26; --text-mut:#6B7385;
+  --shadow-sm:0 1px 2px rgba(19,42,76,.06);
+  --shadow-md:0 6px 20px rgba(19,42,76,.10);
+  --radius:14px;
+  --tabbar-h:64px;
+}
+*{box-sizing:border-box;}
+body{margin:0;font-family:"Plus Jakarta Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);font-size:14.5px;-webkit-font-smoothing:antialiased;padding-bottom:calc(var(--tabbar-h) + env(safe-area-inset-bottom));}
+a{color:var(--blu-mid);}
+button{font-family:inherit;cursor:pointer;}
+::-webkit-scrollbar{width:10px;height:10px;}
+::-webkit-scrollbar-thumb{background:#c9d0dd;border-radius:20px;}
+
+/* ---------- stato pieno-schermo (caricamento / errore) ---------- */
+#statoPieno{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--bg);padding:24px;text-align:center;z-index:50;}
+#statoPieno .box{max-width:360px;}
+#statoPieno .spinner{width:30px;height:30px;border:3px solid var(--border);border-top-color:var(--blu-mid);border-radius:50%;margin:0 auto 16px auto;animation:sp .7s linear infinite;}
+@keyframes sp{to{transform:rotate(360deg);}}
+#statoPieno h1{font-size:17px;margin:0 0 8px 0;color:var(--blu-scuro);}
+#statoPieno p{font-size:13.5px;line-height:1.55;color:var(--text-mut);margin:0;}
+#statoPieno button{margin-top:16px;padding:10px 20px;border-radius:9px;border:1px solid var(--blu-mid);background:var(--blu-mid);color:#fff;font-size:13.5px;font-weight:700;}
+#statoPieno button:hover{background:var(--blu-scuro);border-color:var(--blu-scuro);}
+[hidden]{display:none!important;}
+
+/* ---------- hero ---------- */
+#hero{background:linear-gradient(135deg,var(--blu-scuro) 0%,#0B1226 100%);color:#fff;padding:22px 18px 26px 18px;}
+#hero .eyebrow{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;opacity:.7;font-weight:700;margin-bottom:8px;}
+#hero .riga{display:flex;align-items:center;gap:14px;}
+#hero .iniziali{width:46px;height:46px;border-radius:13px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.24);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;flex:none;}
+#hero h1{font-size:19px;margin:0;font-weight:800;letter-spacing:-.01em;}
+#hero .sub{font-size:12.5px;opacity:.82;margin-top:3px;line-height:1.4;}
+#hero .stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:18px;}
+#hero .stat{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:11px;padding:11px 13px;}
+#hero .stat .n{font-size:20px;font-weight:800;line-height:1;}
+#hero .stat .l{font-size:10.5px;margin-top:5px;opacity:.78;font-weight:600;}
+
+/* ---------- contenuto ---------- */
+#corpo{padding:16px;max-width:720px;margin:0 auto;}
+.panel{background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow-sm);}
+.panel + .panel{margin-top:12px;}
+.panel h2{font-size:14px;margin:0 0 12px 0;display:flex;align-items:center;gap:8px;font-weight:800;letter-spacing:-.005em;}
+.panel h2 .ic{width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex:none;}
+.panel h2 .ic svg{width:15px;height:15px;}
+.panel h2 .cnt{margin-left:auto;font-weight:600;color:var(--text-mut);font-size:12px;}
+.kv-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px;}
+.kv .k{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-mut);font-weight:700;margin-bottom:2px;}
+.kv .v{font-size:13.5px;font-weight:600;word-break:break-word;}
+.empty{color:var(--text-mut);font-size:13px;padding:6px 0;}
+.item{padding:11px 0;border-top:1px solid var(--border);}
+.item:first-child{border-top:none;padding-top:0;}
+.item .t{font-size:13.5px;font-weight:700;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+.item .s{font-size:12px;color:var(--text-mut);margin-top:3px;line-height:1.5;white-space:pre-wrap;}
+.badge{display:inline-block;font-size:9.5px;font-weight:800;padding:2px 7px;border-radius:20px;text-transform:uppercase;letter-spacing:.02em;}
+.badge.nuova{background:var(--rosso-bg);color:var(--rosso);}
+.badge.info{background:var(--blu-light);color:var(--blu-mid);}
+.badge.chiusa{background:var(--verde-bg);color:var(--verde);}
+.pill{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:20px;}
+.pill.scaduto{background:var(--rosso-bg);color:var(--rosso);}
+.pill.oggi{background:var(--giallo-bg);color:var(--giallo);}
+.pill.vicino{background:var(--giallo-bg);color:var(--giallo);}
+.pill.lontano{background:var(--verde-bg);color:var(--verde);}
+.mini-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+.mini-stat{border-radius:10px;padding:10px;text-align:center;}
+.mini-stat .n{font-size:18px;font-weight:800;}
+.mini-stat .l{font-size:9.5px;font-weight:700;margin-top:3px;text-transform:uppercase;opacity:.85;}
+.mini-stat.aperte{background:var(--rosso-bg);color:var(--rosso);}
+.mini-stat.corso{background:var(--giallo-bg);color:var(--giallo);}
+.mini-stat.chiuse{background:var(--verde-bg);color:var(--verde);}
+.allegato-link{display:inline-flex;align-items:center;gap:5px;margin-top:7px;font-size:12px;font-weight:600;}
+details summary{cursor:pointer;font-size:10.5px;font-weight:700;color:var(--text-mut);text-transform:uppercase;letter-spacing:.03em;margin-top:6px;}
+.cartella-doc{border-top:1px solid var(--border);padding:9px 0;}
+.cartella-doc:first-child{border-top:none;padding-top:0;}
+.cartella-doc summary{font-size:12.5px;color:var(--text);text-transform:none;letter-spacing:normal;margin-top:0;list-style:none;display:flex;align-items:center;gap:6px;}
+.cartella-doc summary::-webkit-details-marker{display:none;}
+.cartella-doc .cnt-cartella{margin-left:auto;font-size:10.5px;font-weight:700;color:var(--text-mut);background:var(--bg);border-radius:20px;padding:1px 8px;}
+.cartella-doc .item{padding:9px 0 9px 22px;border-top:1px solid var(--border);}
+.cartella-doc .item:first-child{border-top:none;}
+.progress{height:7px;background:var(--border);border-radius:20px;overflow:hidden;margin-top:6px;}
+.progress > div{height:100%;background:var(--verde);border-radius:20px;}
+/* Matteo: "ai grafici manca qualcosa" - il valore ora è sempre visibile sopra la barra (.v), non
+   solo al passaggio del mouse (vedi fmtEuroCompatto sopra). .track porta l'altezza fissa di cui .b
+   ha bisogno per calcolare la sua altezza in %; .v e .lab restano fuori da quella percentuale. */
+.bars{display:flex;align-items:flex-end;gap:6px;margin-top:10px;}
+.bars .col{flex:1;display:flex;flex-direction:column;align-items:center;min-width:0;}
+.bars .col .v{font-size:9.5px;font-weight:800;color:var(--text);margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;}
+.bars .col .track{width:100%;height:80px;display:flex;align-items:flex-end;justify-content:center;}
+.bars .col .b{width:100%;max-width:26px;border-radius:4px 4px 0 0;background:var(--blu-accent);min-height:2px;}
+.bars .col .b.neg{background:var(--rosso);}
+.bars .col .lab{font-size:9px;color:var(--text-mut);margin-top:5px;text-align:center;}
+
+/* Risultato del simulatore di ravvedimento (Matteo: "è bruttino" - prima era un'unica riga generica
+   con sfondo giallo piatto, stesso trattamento di un item di lista qualsiasi, senza dare risalto al
+   numero che conta davvero: il totale da versare). Ora una vera mini-card: un "hero" col totale in
+   grande, poi il dettaglio (imposta/sanzione/interessi) come righe leggibili sotto. */
+.rav-risultato{border-radius:12px;overflow:hidden;border:1px solid var(--border);}
+.rav-hero{background:linear-gradient(135deg,var(--giallo-bg) 0%,#fff 140%);padding:14px 16px;}
+.rav-hero-l{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--giallo);}
+.rav-hero-n{font-size:27px;font-weight:800;color:var(--blu-scuro);margin-top:3px;line-height:1.1;}
+.rav-hero-sub{font-size:12px;color:var(--text-mut);margin-top:5px;}
+.rav-breakdown{padding:2px 16px 10px 16px;}
+.rav-riga{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-top:1px solid var(--border);font-size:12.5px;}
+.rav-riga:first-child{border-top:none;}
+.rav-riga span{color:var(--text-mut);}
+.rav-riga strong{font-weight:700;}
+.rav-nota{padding:0 16px 12px 16px;font-size:11.5px;color:var(--text-mut);line-height:1.4;}
+
+/* Tab Andamento: schede numeriche (Matteo: "dati di cui ha bisogno l'imprenditore a colpo
+   d'occhio") - due colonne su telefono, valore grande + etichetta + una riga di contesto. */
+.kpi-cards{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:2px;}
+.kpi-card{background:var(--bg);border-radius:10px;padding:10px 12px;}
+.kpi-card .v{font-size:16.5px;font-weight:800;}
+.kpi-card .l{font-size:9.5px;font-weight:700;color:var(--text-mut);text-transform:uppercase;letter-spacing:.02em;margin-top:2px;}
+.kpi-card .h{font-size:10.5px;color:var(--text-mut);margin-top:4px;line-height:1.4;}
+
+/* ---------- compose / thread / risposte (task #88) ---------- */
+.compose-box textarea, .risposta-box textarea{width:100%;border:1px solid var(--border);border-radius:9px;padding:9px 11px;font-family:inherit;font-size:13px;resize:vertical;min-height:64px;background:var(--bg);color:var(--text);}
+.compose-box textarea:focus, .risposta-box textarea:focus{outline:none;border-color:var(--blu-accent);}
+.btn-invia{margin-top:8px;padding:9px 16px;border-radius:9px;border:1px solid var(--blu-mid);background:var(--blu-mid);color:#fff;font-size:13px;font-weight:700;}
+.btn-invia:hover{background:var(--blu-scuro);border-color:var(--blu-scuro);}
+.btn-invia:disabled{opacity:.55;cursor:default;}
+.btn-secondario{padding:7px 12px;border-radius:8px;border:1px solid var(--border);background:var(--card-bg);color:var(--blu-mid);font-size:12px;font-weight:700;}
+.btn-secondario:hover{background:var(--blu-light);}
+.esito-invio{font-size:12px;margin-top:6px;}
+.esito-invio.ok{color:var(--verde);}
+.esito-invio.errore{color:var(--rosso);}
+
+/* Banner coda offline: richieste (messaggi, risposte, segnalazioni ritenuta) salvate su questo
+   dispositivo perché il server dello studio non era raggiungibile al momento dell'invio, in attesa
+   di essere spedite da sole appena torna raggiungibile - vedi accodaInvio/svuotaCoda. */
+#bannerCoda{max-width:720px;margin:10px auto 0 auto;padding:0 16px;}
+#bannerCoda .box{background:var(--giallo-bg);color:var(--giallo);border-radius:11px;padding:10px 14px;font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:8px;}
+
+/* Ritenute d'acconto in attesa che il cliente segnali il pagamento della fattura */
+.ritenuta-riga{padding:11px 0;border-top:1px solid var(--border);}
+.ritenuta-riga:first-child{border-top:none;}
+.ritenuta-riga .rig-data{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px;}
+.ritenuta-riga input[type="date"]{font-family:inherit;font-size:12.5px;padding:6px 9px;border-radius:8px;border:1px solid var(--border);}
+/* Thread di una comunicazione come vere bolle di chat (Matteo: la struttura andava bene, la
+   grafica no - prima erano righe di testo piatte separate da un filo verticale, poco leggibili
+   come conversazione). Cliente a destra, studio a sinistra, come qualunque app di messaggistica -
+   l'autore resta comunque scritto sopra il testo (MAIUSCOLETTO piccolo) perché su desktop, dove le
+   due colonne sono più larghe, il solo allineamento non basta a distinguerli a colpo d'occhio. */
+.thread-risposte{margin-top:10px;padding-left:0;border-left:none;display:flex;flex-direction:column;gap:7px;}
+.thread-risposte .risp{max-width:88%;padding:8px 12px;border-radius:13px;font-size:12.5px;line-height:1.45;}
+.thread-risposte .risp .aut{font-weight:800;font-size:9.5px;text-transform:uppercase;letter-spacing:.03em;margin-bottom:2px;opacity:.75;}
+.thread-risposte .risp.cliente{align-self:flex-end;background:var(--blu-light);color:var(--blu-scuro);border-bottom-right-radius:4px;}
+.thread-risposte .risp.cliente .aut{color:var(--blu-mid);}
+.thread-risposte .risp.studio{align-self:flex-start;background:var(--card-bg);border:1px solid var(--border);border-bottom-left-radius:4px;}
+.thread-risposte .risp.studio .aut{color:var(--viola);}
+.risposta-toggle{margin-top:8px;font-size:12px;font-weight:700;color:var(--blu-mid);background:none;border:none;padding:0;}
+.scad-rif{display:inline-block;font-size:11px;background:var(--blu-light);color:var(--blu-mid);padding:2px 8px;border-radius:20px;margin-top:5px;}
+
+/* Comunicazioni: il titolo si clicca per aprire/chiudere il dettaglio (task segnalato da Matteo -
+   prima tutto era sempre espanso, poco leggibile con tante comunicazioni). Ogni comunicazione è
+   ora una sua mini-card (non solo una riga separata da un filo, come .item da solo dava altrove) -
+   bordo colorato a sinistra secondo lo stato, cliccabile con un hover chiaro, così il tab si legge
+   come un elenco di conversazioni invece che come una tabella. */
+.item.com-item{border-top:none;border:1px solid var(--border);border-left:3px solid var(--border);border-radius:10px;padding:11px 13px;margin-top:8px;transition:background .12s,border-color .12s;}
+.item.com-item:first-child{margin-top:0;}
+.item.com-item:hover{background:var(--bg);}
+.item.com-item.non-letta{border-left-color:var(--rosso);}
+.com-titolo{cursor:pointer;user-select:none;}
+.com-freccia{display:inline-block;font-size:10px;color:var(--text-mut);transition:transform .15s;width:10px;}
+.item.aperto .com-freccia{transform:rotate(90deg);}
+.com-dettaglio{overflow:hidden;}
+/* Anteprima dell'ultimo messaggio, visibile anche a card chiusa (vedi cardComunicazione). */
+.com-anteprima{font-size:12px;color:var(--text-mut);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.aut-inline{font-weight:700;}
+.aut-inline.cliente{color:var(--blu-mid);}
+.aut-inline.studio{color:var(--viola);}
+/* Conferma di lettura esplicita (pulsante "Ho visto"), opt-in per comunicazione. */
+.conferma-richiesta{margin-top:10px;padding:10px 12px;background:var(--rosso-bg);border-radius:8px;}
+.conferma-vista{margin-top:10px;padding:8px 12px;background:var(--verde-bg);color:var(--verde);border-radius:8px;font-size:12.5px;font-weight:600;}
+
+/* ---------- tab bar ---------- */
+#tabbar{position:fixed;left:0;right:0;bottom:0;height:var(--tabbar-h);padding-bottom:env(safe-area-inset-bottom);background:#fff;border-top:1px solid var(--border);display:flex;box-shadow:0 -2px 10px rgba(19,42,76,.06);z-index:20;}
+#tabbar .tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:var(--text-mut);font-size:10px;font-weight:700;border:none;background:none;position:relative;}
+#tabbar .tab svg{width:20px;height:20px;}
+#tabbar .tab.active{color:var(--blu-mid);}
+#tabbar .tab .puntino{position:absolute;top:6px;right:calc(50% - 16px);width:7px;height:7px;border-radius:50%;background:var(--rosso);}
+
+/* ---------- da tablet in su: la tab bar diventa una barra orizzontale in alto ---------- */
+@media (min-width:700px){
+  body{padding-bottom:0;}
+  #hero{padding:26px 30px 22px 30px;}
+  #hero .stats{grid-template-columns:repeat(4,1fr);max-width:640px;}
+  #corpo{padding:20px 30px 50px 30px;max-width:880px;}
+  #tabbar{position:static;height:auto;box-shadow:none;border-top:none;border-bottom:1px solid rgba(255,255,255,.14);background:transparent;padding:0 30px;margin-top:18px;gap:4px;}
+  #tabbar .tab{flex:none;flex-direction:row;padding:9px 14px;border-radius:9px 9px 0 0;color:rgba(255,255,255,.72);font-size:12.5px;}
+  #tabbar .tab svg{width:16px;height:16px;}
+  #tabbar .tab.active{color:#fff;background:rgba(255,255,255,.12);}
+  #tabbar .tab .puntino{top:7px;right:8px;}
+  #hero{padding-bottom:0;}
+  #tabbarWrap{background:linear-gradient(135deg,var(--blu-scuro) 0%,#0B1226 100%);}
+  #footerBrand{max-width:880px;padding:0 30px;}
+}
+
+/* ---------- firma in calce (task #113): il portale resta "lo spazio del cliente col suo
+   commercialista" - lo studio è il brand che conta in tutta la pagina (eyebrow/hero sopra) - ma
+   una riga minima e defilata in fondo dice con cosa è fatto, come un "powered by" discreto. */
+#footerBrand{max-width:720px;margin:20px auto 14px auto;padding:0 16px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:11px;color:var(--text-mut);opacity:.6;}
+#footerBrand img{width:14px;height:14px;border-radius:4px;flex:none;}
+</style>
+</head>
+<body>
+
+<div id="statoPieno">
+  <div class="box">
+    <div class="spinner" id="spCaricamento"></div>
+    <h1 id="statoTitolo">Apertura in corso...</h1>
+    <p id="statoTesto">Sto recuperando i tuoi dati.</p>
+    <button id="btnRiprova" hidden onclick="avvia()">Riprova</button>
+  </div>
+</div>
+
+<div id="appRoot" hidden>
+  <div id="tabbarWrap">
+    <div id="hero">
+      <div class="eyebrow" id="eyebrowStudio">Il tuo spazio</div>
+      <div class="riga">
+        <div class="iniziali" id="iniziali">?</div>
+        <div>
+          <h1 id="titoloCiao">Ciao</h1>
+          <div class="sub">Qui trovi comunicazioni, scadenze e documenti che ti riguardano, sempre aggiornati.</div>
+        </div>
+      </div>
+      <div class="stats" id="heroStats"></div>
+    </div>
+    <div id="tabbar"></div>
+  </div>
+  <div id="bannerCoda" hidden></div>
+  <div id="corpo"></div>
+  <div id="footerBrand"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAB5ElEQVR42m1STWtTQRQ95868ryRtWqFUqbgoNqi1VlyJq4orwYWrbqw/QFF33YvgP3Ah/go3/oAiEujKXcAWV1IMjW1MTF+SN2+ui7wkjXiZgXthzrn3njkEYMP5IL5ACibB4hahquqz/okbdowN58LSMkkQxQFA4RSgIEgxQUV9ZqLyJVKgOuUT8a7vvTMmhHoAIKEKQkwkpBlxTF8PzpKLtepSzWVnpIAcDwnSyKgnFCBBwqs3rOy+3956Rz/ix/ndZKY2Ft1T82Q33Vy7MX/9wfqLdHgitJPVoRMAARHtdbhxlzvPTcf1cvfw1quVxY2B+1PwkjgnJeE9xPLZW84FiBkYU03Kj++8zn0+VVnVBPEiAFirp8fy9KXsbPPbMPvYTvcPFkrJ7SvXmp0fh816FFQUCpKl6ipEtJ+ytilvPnGvzc9ddpw73i9b3Ftbv7my/GHv0e/0p5Fw3IGEd1y4zHpVvpYZLyFC3Pvlc9s4OjxofgG/p1lbaAFlqbpaCDpIwRyVq5JsSXLftBq5qysbA3dEhFZChUInAAAjAXwfmkLmAaimZEQEhaIAVK2qJw2AsQsiSALNAZAVQBW+cBSomhtoboLK7H/q/xICzNKW8flQvRMTz9j7H7xSNc/Slht2/wLKpMzaBkYJkQAAAABJRU5ErkJggg==" alt="">Gestito con Prisma</div>
+</div>
+
+<script>
+/* Portale cliente esterno (task #87): pagina volutamente leggera e SEPARATA dal gestionale
+   interno (nessuna riga di codice dello studio finisce qui) - tutto quel che sa fare è chiedere
+   la vista già filtrata di UN cliente a /api/portale-vista/<token> (il token è l'ultimo segmento
+   di questo stesso URL) e mostrarla. Sola lettura per ora: l'interattività (contattare lo studio,
+   solleciti, domande - task #88) arriverà in un secondo momento. */
+const TOKEN = decodeURIComponent(location.pathname.replace(/^.*\/portale\//, '').replace(/\/+$/, ''));
+let VISTA = null;
+let TAB = 'panoramica';
+// Task #88 - area cliente interattiva: se non null, la prossima apertura della tab Comunicazioni
+// mostra il box "scrivi" già pre-compilato con il riferimento a questa scadenza (vedi "Chiedi info
+// su questa scadenza" in renderScadenze). Torna a null dopo l'invio o se il cliente cambia tab.
+let composePrefill = null;
+// Bug segnalato da Matteo: dopo un po' una comunicazione aperta "si chiude da sola". Causa: aperto/
+// chiuso era solo l'attributo "hidden" sul DOM (vedi 'apri-comunicazione' più sotto), mai salvato da
+// nessuna parte - il refresh in background ogni POLL_MS (ricaricaVista -> renderCorpo) ricrea tutto
+// il contenuto di #corpo da zero, perdendo quello stato. Questo Set tiene traccia di quali id sono
+// aperti; riapriComunicazioniAperte() li riapre subito dopo ogni renderCorpo(), poll compreso.
+let COM_APERTE = new Set();
+// Filtro anno sui Documenti (richiesto da Matteo: con tanti documenti nel tempo la lista diventa
+// lunga da scorrere). 'Tutti' = nessun filtro. Persiste finché il cliente resta su questa tab.
+let DOC_ANNO_FILTRO = 'Tutti';
+function annoDocumentoPortale(d) { return d.dataCaricamento ? d.dataCaricamento.slice(0, 4) : null; }
+function filtraDocumentiAnno(valore) { DOC_ANNO_FILTRO = valore; renderCorpo(); }
+let pollTimer = null;
+const POLL_MS = 45000; // aggiornamento leggero in background, non invasivo: niente spinner/flash
+
+// Stesso ordine di CATEGORIE_DOCUMENTO in gestionale.htm (duplicato qui apposta: questa pagina è
+// pensata per restare separata dal gestionale interno, nessuna riga di codice dello studio finisce
+// qui - vedi commento sopra). Usato solo per ordinare le cartelle nel tab Documenti; una categoria
+// non in elenco (dato più vecchio, o cambiato lato studio) finisce comunque in fondo, non sparisce.
+const ORDINE_CATEGORIE_DOCUMENTO = ['Anagrafica', 'Visura camerale', 'Atto costitutivo/Statuto', 'Contratto', 'Bilancio', 'Dichiarazione fiscale', 'F24', 'Registro contabile', 'Busta paga', 'Certificazione', 'Corrispondenza Enti', 'Polizza assicurativa', 'Pratiche', 'Altro'];
+
+// Aree per la struttura a cartelle e sottocartelle del tab Documenti (task richiesto da Matteo:
+// "tipo contabilità, fiscale, libri e registri, pratiche") - raggruppano le categorie sopra in
+// cartelle più ampie. Duplicata in gestionale.htm (AREE_DOCUMENTI_PORTALE, usata anche
+// nell'anteprima schermo intero dello studio) per la stessa ragione di file-indipendenza di
+// ORDINE_CATEGORIE_DOCUMENTO: se cambi una delle due copie, cambia anche l'altra.
+const AREE_DOCUMENTI_PORTALE = [
+  { area: 'Anagrafica e società', categorie: ['Anagrafica', 'Visura camerale', 'Atto costitutivo/Statuto'] },
+  { area: 'Contabilità e bilanci', categorie: ['Bilancio', 'Busta paga'] },
+  { area: 'Fiscale', categorie: ['Dichiarazione fiscale', 'F24', 'Certificazione'] },
+  { area: 'Libri e registri', categorie: ['Registro contabile'] },
+  { area: 'Pratiche e contratti', categorie: ['Contratto', 'Corrispondenza Enti', 'Polizza assicurativa', 'Pratiche'] },
+  { area: 'Altro', categorie: ['Altro'] },
+];
+function areaPerCategoriaDocumento(categoria) {
+  const trovata = AREE_DOCUMENTI_PORTALE.find(a => a.categorie.includes(categoria));
+  return trovata ? trovata.area : 'Altro';
+}
+
+const ICONE = {
+  panoramica: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>',
+  comunicazioni: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>',
+  scadenze: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.2 2"/></svg>',
+  documenti: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 2.5h8l5 5v13.5a1 1 0 0 1-1 1h-12a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1z"/><path d="M14.5 2.5v5h5"/></svg>',
+  andamento: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V10M10 19V5M16 19v-8M22 19H2"/></svg>',
+};
+const SCHERMATE = [
+  { v: 'panoramica', l: 'Panoramica' },
+  { v: 'comunicazioni', l: 'Comunicazioni' },
+  { v: 'scadenze', l: 'Scadenze' },
+  { v: 'documenti', l: 'Documenti' },
+  { v: 'andamento', l: 'Andamento' },
+];
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function fmtData(iso) {
+  if (!iso) return '—';
+  const [y, m, g] = String(iso).split('-');
+  if (!y || !m || !g) return iso;
+  return `${g}/${m}/${y}`;
+}
+// Solo l'orario HH:MM da un timestamp ISO (oraCreazione) - per differenziare comunicazioni/risposte
+// dello stesso giorno (Matteo: "mettiamo anche il timestamp dell'ora così possiamo differenziarle").
+function fmtOraSemplice(isoDataOra) {
+  if (!isoDataOra) return '';
+  const d = new Date(isoDataOra);
+  if (isNaN(d.getTime())) return '';
+  return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+}
+function fmtEuro(n) {
+  if (n === null || n === undefined || isNaN(n)) return 'n/d';
+  return Number(n).toLocaleString('it-IT', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
+}
+function fmtPct(n) {
+  if (n === null || n === undefined || isNaN(n)) return 'n/d';
+  return (n * 100).toLocaleString('it-IT', { maximumFractionDigits: 1 }) + '%';
+}
+// Valori sopra le barre dei grafici Andamento (Matteo: "ai grafici manca qualcosa" - il valore
+// esatto si vedeva SOLO al passaggio del mouse sulla barra/title, e il cliente guarda il portale
+// quasi sempre da telefono, dove l'hover non esiste: restavano solo altezze senza numeri). Formato
+// compatto (125k € invece di 125.430 €) per restare leggibile anche in colonne strette - il valore
+// esatto resta comunque nel title, per chi passa il mouse da desktop.
+function fmtEuroCompatto(n) {
+  if (n === null || n === undefined || isNaN(n)) return 'n/d';
+  const abs = Math.abs(n);
+  const segno = n < 0 ? '-' : '';
+  if (abs >= 1000000) return segno + (abs / 1000000).toLocaleString('it-IT', { maximumFractionDigits: 1 }) + 'M €';
+  if (abs >= 10000) return segno + Math.round(abs / 1000) + 'k €';
+  if (abs >= 1000) return segno + (abs / 1000).toLocaleString('it-IT', { maximumFractionDigits: 1 }) + 'k €';
+  return fmtEuro(n);
+}
+function statoPieno(titolo, testo, { spinner = true, riprova = false } = {}) {
+  document.getElementById('appRoot').hidden = true;
+  document.getElementById('statoPieno').style.display = 'flex';
+  document.getElementById('statoTitolo').textContent = titolo;
+  document.getElementById('statoTesto').textContent = testo;
+  document.getElementById('spCaricamento').hidden = !spinner;
+  document.getElementById('btnRiprova').hidden = !riprova;
+}
+
+async function avvia() {
+  if (!TOKEN) {
+    statoPieno('Link non valido', 'Questo indirizzo non contiene un link di accesso riconoscibile. Controlla di aver copiato l\'intero link ricevuto dallo studio.');
+    return;
+  }
+  statoPieno('Apertura in corso...', 'Sto recuperando i tuoi dati.');
+  let risp;
+  try {
+    risp = await fetch('/api/portale-vista/' + encodeURIComponent(TOKEN));
+  } catch (err) {
+    statoPieno('Non riesco a collegarmi', 'Verifica la connessione a internet e riprova. Se il problema persiste, contatta lo studio.', { spinner: false, riprova: true });
+    return;
+  }
+  if (risp.status === 404) {
+    statoPieno('Link non valido', 'Questo link non è valido o non è più attivo. Contatta il tuo commercialista per un nuovo link di accesso.', { spinner: false });
+    return;
+  }
+  if (!risp.ok) {
+    let msg = 'Il servizio non è al momento disponibile. Riprova tra qualche minuto.';
+    try { const j = await risp.json(); if (j && j.errore) msg = j.errore; } catch (e) {}
+    statoPieno('Non disponibile', msg, { spinner: false, riprova: true });
+    return;
+  }
+  const dati = await risp.json().catch(() => null);
+  if (!dati || !dati.ok || !dati.vista) {
+    statoPieno('Link non valido', 'Questo link non è valido o non è più attivo. Contatta il tuo commercialista per un nuovo link di accesso.', { spinner: false });
+    return;
+  }
+  VISTA = dati.vista;
+  document.getElementById('statoPieno').style.display = 'none';
+  document.getElementById('appRoot').hidden = false;
+  renderHero();
+  renderTabbar();
+  renderCorpo();
+  aggiornaBannerCoda();
+  svuotaCoda(); // riprova subito eventuali invii rimasti in coda da una visita precedente
+  iniziaPolling();
+}
+
+// ---------- scrittura dal portale (task #88): messaggi nuovi e risposte ai thread ----------
+
+// ---------- coda offline (task richiesto da Matteo): il PC dello studio con server.js può essere
+// spento nel momento in cui il cliente invia qualcosa da qui. Invece di far sparire nel nulla un
+// messaggio/una risposta/una segnalazione di pagamento ritenuta, la si tiene salvata in questo
+// browser (localStorage) e si riprova da sola più avanti - il cliente non deve rifare nulla, né
+// pensare (a torto) che sia già arrivata allo studio. La coda è VOLUTAMENTE per-dispositivo: se il
+// cliente prova da un altro telefono/PC nel frattempo, quella coda è separata - accettabile, è un
+// caso limite, meglio che complicare la sincronizzazione fra dispositivi diversi per un cliente. */
+const CODA_KEY = 'portaleClienteCodaInvii_v1';
+function leggiCoda() {
+  try { return JSON.parse(localStorage.getItem(CODA_KEY) || '[]'); } catch (e) { return []; }
+}
+function scriviCoda(coda) {
+  try { localStorage.setItem(CODA_KEY, JSON.stringify(coda)); } catch (e) { /* storage pieno/non disponibile: si perde solo la coda offline, nulla di grave */ }
+}
+function accodaInvio(url, corpo) {
+  const coda = leggiCoda();
+  coda.push({ url, corpo });
+  scriviCoda(coda);
+  aggiornaBannerCoda();
+}
+function aggiornaBannerCoda() {
+  const el = document.getElementById('bannerCoda');
+  if (!el) return;
+  const n = leggiCoda().length;
+  if (!n) { el.hidden = true; el.innerHTML = ''; return; }
+  el.hidden = false;
+  el.innerHTML = `<div class="box">⏳ ${n === 1 ? 'Hai una richiesta' : 'Hai ' + n + ' richieste'} in attesa di essere inviata allo studio (il server non è raggiungibile in questo momento) — riproveremo da soli, non serve rifare nulla.</div>`;
+}
+// Riprova a spedire tutto quello che è in coda, in ordine. Se la prima fallisce ancora per motivi
+// di rete (server ancora irraggiungibile) ci si ferma subito: le successive fallirebbero allo stesso
+// modo, non ha senso insistere ora. Se invece il server risponde ma RIFIUTA una richiesta (errore
+// applicativo, es. "fattura già segnalata" da un altro dispositivo nel frattempo) quella si scarta e
+// si passa alla successiva, altrimenti resterebbe in coda per sempre senza mai poter andare a buon fine.
+async function svuotaCoda() {
+  let coda = leggiCoda();
+  if (!coda.length) return;
+  let cambiato = false;
+  while (coda.length) {
+    const voce = coda[0];
+    try {
+      await postJSON(voce.url, voce.corpo, { accodabile: false });
+      coda = coda.slice(1);
+      cambiato = true;
+    } catch (err) {
+      if (err instanceof TypeError) break; // di nuovo irraggiungibile: si riprova più tardi
+      coda = coda.slice(1);
+      cambiato = true;
+    }
+  }
+  scriviCoda(coda);
+  aggiornaBannerCoda();
+  if (cambiato) { try { await ricaricaVista(); } catch (e) {} }
+}
+
+function postJSON(url, corpo, opzioni) {
+  opzioni = opzioni || {};
+  return fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(corpo),
+  }).then(async (risp) => {
+    let dati = null;
+    try { dati = await risp.json(); } catch (e) {}
+    if (!risp.ok || !dati || !dati.ok) {
+      throw new Error((dati && dati.errore) || 'Il servizio non è al momento disponibile. Riprova tra qualche minuto.');
+    }
+    return dati;
+  }).catch((err) => {
+    // Un TypeError da fetch (non un Error nostro lanciato sopra) è la firma di una richiesta che
+    // non è proprio riuscita a raggiungere il server - tipicamente il PC dello studio spento, o la
+    // connessione del cliente caduta - a differenza di un errore applicativo, dove il server ha
+    // risposto e ha detto di no: quello non va mai rimesso in coda, ripeterlo identico darebbe lo
+    // stesso rifiuto.
+    if (opzioni.accodabile !== false && err instanceof TypeError) {
+      accodaInvio(url, corpo);
+      return { ok: true, accodato: true };
+    }
+    throw err;
+  });
+}
+
+// Non interrompiamo mai un aggiornamento in background se il cliente ha una bozza non ancora
+// inviata in un campo di testo dentro il corpo della pagina - perderla sarebbe molto peggio di una
+// vista per qualche secondo non aggiornatissima. Lo stesso vale se ha già scelto un file da
+// allegare (task #108) ma non ha ancora premuto Invia: un refresh che ricrea il corpo perderebbe
+// anche quella selezione, non solo il testo.
+function corpoHaBozzaInCorso() {
+  const aree = document.querySelectorAll('#corpo textarea');
+  for (const a of aree) { if (a.value.trim()) return true; }
+  const file = document.querySelectorAll('#corpo input[type="file"]');
+  for (const f of file) { if (f.files && f.files.length) return true; }
+  // Simulatore ravvedimento (task richiesto da Matteo): stessa cautela della bozza di risposta -
+  // un refresh in background non deve far sparire un calcolo che il cliente sta preparando o ha
+  // appena ottenuto, altrimenti il risultato sparisce a metà lettura senza preavviso (esattamente
+  // il bug già segnalato più volte sulla textarea di risposta, da non ripetere qui).
+  const risultatoRav = document.getElementById('ravRisultatoPortale');
+  if (risultatoRav && risultatoRav.textContent.trim()) return true;
+  const liberoImporto = document.getElementById('ravLiberoImporto');
+  if (liberoImporto && liberoImporto.value.trim()) return true;
+  const liberoScadenza = document.getElementById('ravLiberoScadenza');
+  if (liberoScadenza && liberoScadenza.value) return true;
+  return false;
+}
+
+// Legge un file scelto dal cliente come base64 (senza il prefisso "data:...;base64,") da mandare
+// a /api/portale-messaggio o /api/portale-risposta - stesso schema usato dal gestionale interno
+// per gli upload reali (uploadFileReale).
+function leggiFileBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Errore di lettura del file.'));
+    reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+    reader.readAsDataURL(file);
+  });
+}
+
+async function ricaricaVista() {
+  try {
+    const risp = await fetch('/api/portale-vista/' + encodeURIComponent(TOKEN));
+    if (!risp.ok) return;
+    const dati = await risp.json().catch(() => null);
+    if (!dati || !dati.ok || !dati.vista) return;
+    VISTA = dati.vista;
+    renderHero();
+    renderTabbar();
+    if (!corpoHaBozzaInCorso()) renderCorpo();
+  } catch (err) { /* refresh in background: un errore qui non deve disturbare il cliente */ }
+}
+function iniziaPolling() {
+  if (pollTimer) return;
+  pollTimer = setInterval(() => { ricaricaVista(); svuotaCoda(); }, POLL_MS);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { ricaricaVista(); svuotaCoda(); } });
+  // Il browser stesso sa quando la connessione torna disponibile - non serve aspettare il prossimo
+  // giro di polling (fino a 45s) per riprovare la coda.
+  window.addEventListener('online', svuotaCoda);
+}
+
+function renderHero() {
+  const a = VISTA.azienda;
+  const iniziali = (a.ragioneSociale || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('') || '?';
+  document.getElementById('eyebrowStudio').textContent = 'Il tuo spazio con ' + a.nomeStudio;
+  document.getElementById('iniziali').textContent = iniziali;
+  document.getElementById('titoloCiao').textContent = 'Ciao, ' + a.ragioneSociale;
+  document.title = a.ragioneSociale + ' · ' + a.nomeStudio;
+
+  const n = VISTA.numeri;
+  const stat = (val, lab) => `<div class="stat"><div class="n">${escapeHtml(val)}</div><div class="l">${escapeHtml(lab)}</div></div>`;
+  document.getElementById('heroStats').innerHTML =
+    stat(n.scadenzeAperte, n.scadenzeAperte === 1 ? 'Scadenza aperta' : 'Scadenze aperte') +
+    stat(n.comunicazioniDaLeggere, n.comunicazioniDaLeggere === 1 ? 'Comunicazione da leggere' : 'Comunicazioni da leggere') +
+    stat(n.documentiCondivisi, n.documentiCondivisi === 1 ? 'Documento condiviso' : 'Documenti condivisi') +
+    stat(n.percorsoOnboardingCompletato + '%', 'Percorso con noi');
+}
+
+function renderTabbar() {
+  const badgeTab = { comunicazioni: VISTA.numeri.comunicazioniDaLeggere > 0 };
+  document.getElementById('tabbar').innerHTML = SCHERMATE.map(s => `
+    <button class="tab ${TAB === s.v ? 'active' : ''}" data-tab="${s.v}">
+      ${badgeTab[s.v] ? '<span class="puntino"></span>' : ''}
+      ${ICONE[s.v]}
+      <span>${escapeHtml(s.l)}</span>
+    </button>`).join('');
+  document.getElementById('tabbar').querySelectorAll('[data-tab]').forEach(btn => {
+    btn.addEventListener('click', () => { TAB = btn.dataset.tab; renderTabbar(); renderCorpo(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
+  });
+}
+
+function panelHeader(icona, sfondo, colore, titolo, conteggio) {
+  return `<h2><span class="ic" style="background:${sfondo};color:${colore};">${icona}</span>${escapeHtml(titolo)}${conteggio != null ? `<span class="cnt">${conteggio}</span>` : ''}</h2>`;
+}
+
+function linkDocumento(documentoToken) {
+  return '/api/portale-documento/' + encodeURIComponent(TOKEN) + '/' + encodeURIComponent(documentoToken);
+}
+
+function panelRitenute() {
+  if (!VISTA.ritenuteInAttesa || !VISTA.ritenuteInAttesa.length) return '';
+  const oggi = new Date().toISOString().slice(0, 10);
+  const righe = VISTA.ritenuteInAttesa.map(r => `
+    <div class="ritenuta-riga" data-rit-id="${escapeHtml(r.id)}">
+      <div class="t">${escapeHtml(r.percipiente)}${r.numeroFattura ? ' · fatt. ' + escapeHtml(r.numeroFattura) : ''}</div>
+      <div class="s">Fattura del ${fmtData(r.dataFattura)} · Ritenuta ${fmtEuro(r.importo)}</div>
+      <div class="rig-data">
+        <label for="ritDataPag_${escapeHtml(r.id)}" style="font-size:12px;color:var(--text-mut);">Pagata il</label>
+        <input type="date" id="ritDataPag_${escapeHtml(r.id)}" value="${oggi}" max="${oggi}">
+        <button class="btn-invia" style="margin-top:0;" data-action="segnala-pagamento-ritenuta" data-id="${escapeHtml(r.id)}">Ho pagato questa fattura</button>
+      </div>
+      <div class="esito-invio" id="esitoRitenuta_${escapeHtml(r.id)}"></div>
+    </div>`).join('');
+  return `<div class="panel">${panelHeader(ICONE.scadenze, 'var(--giallo-bg)', 'var(--giallo)', 'Fatture con ritenuta da segnalare', VISTA.ritenuteInAttesa.length)}
+    <div class="empty" style="padding-bottom:8px;">Quando paghi una di queste fatture, segnalacelo qui: generiamo subito la scadenza per il versamento della ritenuta, senza bisogno di scriverci.</div>
+    ${righe}
+  </div>`;
+}
+
+function rigaPagamentoF24Html(f24Id, riga) {
+  const residuo = Math.max(0, (Number(riga.importo) || 0) - (Number(riga.importoPagato) || 0));
+  const saldata = residuo <= 0.004;
+  const etichetta = riga.codiceTributo ? `${escapeHtml(riga.codiceTributo)} · ${escapeHtml(riga.descrizione || 'tributo')}` : escapeHtml(riga.descrizione || 'Tributo');
+  return `
+    <div class="f24-riga-pag" data-riga-id="${escapeHtml(riga.id)}" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0;border-top:1px solid var(--bordo,#eee);">
+      <div style="flex:1 1 160px;min-width:140px;">
+        <div style="font-size:13px;">${etichetta}</div>
+        <div style="font-size:12px;color:var(--text-mut);">${saldata ? 'Pagata' : `Residuo ${fmtEuro(residuo)} di ${fmtEuro(riga.importo)}`}</div>
+      </div>
+      ${saldata ? '<div class="badge chiusa" style="flex:0 0 auto;">✓ Pagata</div>' : `
+      <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-mut);flex:0 0 auto;">
+        <input type="checkbox" class="f24-riga-paga-check" data-riga-id="${escapeHtml(riga.id)}" checked>
+        Paga ora
+      </label>
+      <input type="number" class="f24-riga-importo" data-riga-id="${escapeHtml(riga.id)}" min="0.01" max="${residuo.toFixed(2)}" step="0.01" value="${residuo.toFixed(2)}" style="width:100px;flex:0 0 auto;">
+      `}
+    </div>`;
+}
+
+function panelF24() {
+  if (!VISTA.f24InAttesa || !VISTA.f24InAttesa.length) return '';
+  const righe = VISTA.f24InAttesa.map(f => {
+    let azioni;
+    if (!f.modalitaPagamento) {
+      // Non ha ancora scelto come vuole gestirlo: le due opzioni previste dal workflow reale
+      // dello studio (task richiesto da Matteo) - non un riepilogo, l'F24 stesso è già quello
+      // vero, la scelta è solo su CHI materialmente lo versa.
+      azioni = `<div class="rig-data">
+        <button class="btn-invia" style="margin-top:0;" data-action="scelta-modalita-f24" data-id="${escapeHtml(f.id)}" data-modalita="autonomo">Pago da solo</button>
+        <button class="btn-secondario" data-action="scelta-modalita-f24" data-id="${escapeHtml(f.id)}" data-modalita="addebito">Fate voi l'addebito</button>
+      </div>`;
+    } else if (f.modalitaPagamento === 'autonomo') {
+      const righeF24 = Array.isArray(f.righe) && f.righe.length ? f.righe : [{ id: 'legacy', codiceTributo: '', descrizione: f.descrizione || f.tipo, importo: f.importo, importoPagato: f.importoPagato || 0 }];
+      const righeHtml = righeF24.map(r => rigaPagamentoF24Html(f.id, r)).join('');
+      // Cambio scelta (Matteo: pagamento misto - il cliente paga da solo un tributo, poi lascia il
+      // resto in addebito allo studio invece di doverlo pagare tutto lui) - le righe già segnalate
+      // pagate restano acquisite, cambia solo chi si occupa di quelle ancora aperte.
+      azioni = `
+        <div class="s" style="margin-top:6px;">Puoi pagare ogni voce per intero, in parte, o lasciarla per dopo: segnala solo quello che hai effettivamente versato.</div>
+        ${righeHtml}
+        <div class="rig-data" style="margin-top:6px;">
+          <button class="btn-invia" style="margin-top:0;" data-action="segnala-pagamento-f24" data-id="${escapeHtml(f.id)}">Segnala il pagamento</button>
+        </div>
+        <button type="button" class="btn-secondario" style="margin-top:8px;" data-action="scelta-modalita-f24" data-id="${escapeHtml(f.id)}" data-modalita="addebito">Ho cambiato idea: fate voi l'addebito per il resto</button>`;
+    } else {
+      azioni = `<div class="s" style="margin-top:8px;">Addebito richiesto: ce ne occupiamo noi, non devi fare nient'altro.</div>
+        <button type="button" class="btn-secondario" style="margin-top:8px;" data-action="scelta-modalita-f24" data-id="${escapeHtml(f.id)}" data-modalita="autonomo">Ho cambiato idea: pago io</button>`;
+    }
+    return `
+    <div class="ritenuta-riga" data-f24-id="${escapeHtml(f.id)}">
+      <div class="t">${escapeHtml(f.descrizione || ('F24 ' + f.tipo))}</div>
+      <div class="s">${fmtData(f.data)} · <span class="badge ${f.tipo==='Debito'?'nuova':'info'}">${escapeHtml(f.tipo)}</span> · ${fmtEuro(f.importo)}${f.stato==='Pagato parzialmente' ? ` · <span class="badge nuova">Pagato in parte</span>` : ''}</div>
+      ${azioni}
+      <div class="esito-invio" id="esitoF24_${escapeHtml(f.id)}"></div>
+    </div>`;
+  }).join('');
+  return `<div class="panel">${panelHeader(ICONE.documenti, 'var(--rosso-bg)', 'var(--rosso)', 'F24 da pagare', VISTA.f24InAttesa.length)}
+    <div class="empty" style="padding-bottom:8px;">Per ogni F24 scegli se pagarlo tu stesso entro la data indicata o se preferisci che sia lo studio a fare l'addebito. Per qualsiasi dubbio, scrivici da "Comunicazioni".</div>
+    ${righe}
+  </div>`;
+}
+
+// Simulatore di ravvedimento operoso (task richiesto da Matteo): puro calcolo, non tocca nessun
+// pagamento/stato - il cliente vede quanto costerebbe regolarizzare una scadenza saltata (sanzione
+// ridotta + interessi) prima di versare, agganciandosi a un F24 già registrato oppure inserendo un
+// importo libero con le sue date. Entrambe le forme restano sempre nel DOM (si passa dall'una
+// all'altra solo mostrando/nascondendo, MAI con un re-render) proprio per non perdere quello che il
+// cliente ha già digitato durante un refresh in background - vedi corpoHaBozzaInCorso più sotto,
+// esteso apposta per questo pannello dopo il bug già segnalato da Matteo sulla bozza di risposta.
+function panelRavvedimento() {
+  const eleggibili = (VISTA.f24Tutti || []).filter(f => f.stato !== 'Pagato');
+  const oggi = new Date().toISOString().slice(0, 10);
+  const modalitaIniziale = eleggibili.length ? 'f24' : 'libero';
+  const opzioniF24 = eleggibili.map(f => {
+    const residuo = Math.max(0, (Number(f.importo) || 0) - (Number(f.importoPagato) || 0));
+    return `<option value="${escapeHtml(f.id)}">${escapeHtml(f.descrizione || ('F24 ' + f.tipo))} — ${fmtData(f.data)} — residuo ${fmtEuro(residuo)}</option>`;
+  }).join('');
+  return `<div class="panel">
+    ${panelHeader(ICONE.scadenze, 'var(--giallo-bg)', 'var(--giallo)', 'Simulatore ravvedimento', null)}
+    <div class="empty" style="padding-bottom:8px;">Hai saltato una scadenza? Calcola in anticipo quanto costa regolarizzarla (sanzione ridotta + interessi), prima di versare. È solo un calcolo indicativo: per il versamento vero aspetta le istruzioni dello studio, o scrivici da "Comunicazioni".</div>
+    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+      <button type="button" class="${modalitaIniziale==='f24'?'btn-invia':'btn-secondario'}" id="ravBtnF24" style="margin-top:0;" data-action="rav-modalita" data-modalita="f24">Da un F24 esistente</button>
+      <button type="button" class="${modalitaIniziale==='libero'?'btn-invia':'btn-secondario'}" id="ravBtnLibero" style="margin-top:0;" data-action="rav-modalita" data-modalita="libero">Importo libero</button>
+    </div>
+    <div id="ravFormF24" style="${modalitaIniziale==='f24'?'':'display:none;'}">
+      ${eleggibili.length ? `
+      <div class="field"><label style="font-size:12px;color:var(--text-mut);">F24</label>
+        <select id="ravF24Select" style="width:100%;">${opzioniF24}</select>
+      </div>
+      <div class="field" style="margin-top:6px;"><label style="font-size:12px;color:var(--text-mut);">Data di versamento desiderata</label>
+        <input type="date" id="ravF24Versamento" value="${oggi}" min="${oggi}">
+      </div>` : `<div class="helptext">Nessun F24 in attesa a cui agganciare il calcolo — usa "Importo libero".</div>`}
+    </div>
+    <div id="ravFormLibero" style="${modalitaIniziale==='libero'?'':'display:none;'}">
+      <div class="field"><label style="font-size:12px;color:var(--text-mut);">Importo (€)</label><input type="number" step="0.01" id="ravLiberoImporto" placeholder="0.00"></div>
+      <div class="field" style="margin-top:6px;"><label style="font-size:12px;color:var(--text-mut);">Data di scadenza originaria</label><input type="date" id="ravLiberoScadenza"></div>
+      <div class="field" style="margin-top:6px;"><label style="font-size:12px;color:var(--text-mut);">Data di versamento desiderata</label><input type="date" id="ravLiberoVersamento" value="${oggi}"></div>
+    </div>
+    <div class="rig-data" style="margin-top:8px;">
+      <button class="btn-invia" style="margin-top:0;" data-action="rav-calcola">Calcola</button>
+    </div>
+    <div id="ravRisultatoPortale" style="margin-top:10px;"></div>
+  </div>`;
+}
+
+function renderPanoramica() {
+  const a = VISTA.azienda;
+  const kv = (k, v) => `<div class="kv"><div class="k">${escapeHtml(k)}</div><div class="v">${v ? escapeHtml(v) : '<span style="color:var(--text-mut);font-weight:400;">—</span>'}</div></div>`;
+  const panelAzienda = `<div class="panel">${panelHeader(ICONE.panoramica, 'var(--blu-light)', 'var(--blu-mid)', 'Dati azienda')}
+    <div class="kv-grid">
+      ${kv('Forma giuridica', a.tipo)}
+      ${kv('Regime fiscale', a.regimeFiscale)}
+      ${kv('Settore', a.settore)}
+      ${kv('Cliente dal', a.clienteDal ? String(a.clienteDal) : '')}
+      ${kv('Partita IVA', a.partitaIva)}
+      ${kv('Codice fiscale', a.codiceFiscale)}
+      ${kv('Sede legale', a.sede)}
+      ${kv('Email', a.email)}
+      ${kv('Telefono', a.telefono)}
+      ${kv('PEC', a.pec)}
+      ${kv('Referente in studio', a.referenteStudio)}
+    </div>
+  </div>`;
+
+  const inCorso = VISTA.comunicazioni.length - VISTA.numeri.comunicazioniDaLeggere;
+  const panelCom = `<div class="panel">${panelHeader(ICONE.comunicazioni, 'var(--blu-light)', 'var(--blu-mid)', 'Comunicazioni', VISTA.comunicazioni.length + VISTA.comunicazioniArchiviate.length)}
+    <div class="mini-stats">
+      <div class="mini-stat aperte"><div class="n">${VISTA.numeri.comunicazioniDaLeggere}</div><div class="l">Nuove</div></div>
+      <div class="mini-stat corso"><div class="n">${inCorso}</div><div class="l">In corso</div></div>
+      <div class="mini-stat chiuse"><div class="n">${VISTA.comunicazioniArchiviate.length}</div><div class="l">Archiviate</div></div>
+    </div>
+  </div>`;
+
+  let panelNumeri;
+  if (!VISTA.andamento) {
+    panelNumeri = `<div class="panel">${panelHeader(ICONE.andamento, 'var(--verde-bg)', 'var(--verde)', 'Numeri chiave')}
+      <div class="empty">Percorso con noi completato al ${VISTA.numeri.percorsoOnboardingCompletato}%${VISTA.numeri.documentiCondivisi ? ' · ' + VISTA.numeri.documentiCondivisi + (VISTA.numeri.documentiCondivisi === 1 ? ' documento condiviso' : ' documenti condivisi') : ''}. Non appena disponibili i dati di bilancio, qui trovi anche ricavi, utile e i principali indicatori.</div>
+    </div>`;
+  } else {
+    const d = VISTA.andamento;
+    panelNumeri = `<div class="panel">${panelHeader(ICONE.andamento, 'var(--verde-bg)', 'var(--verde)', 'Numeri chiave')}
+      <div style="font-size:10px;font-weight:700;color:var(--text-mut);text-transform:uppercase;margin:0 0 8px;">${escapeHtml(d.etichettaUltimoPeriodo)}</div>
+      <div class="item"><div class="t">Ricavi</div><div class="s">${fmtEuro(d.ricavi)}</div></div>
+      <div class="item"><div class="t">Utile netto</div><div class="s">${fmtEuro(d.utileNetto)}</div></div>
+      <div class="item"><div class="t">ROE</div><div class="s">${fmtPct(d.roe)}</div></div>
+    </div>`;
+  }
+  return panelF24() + panelRavvedimento() + panelRitenute() + panelAzienda + panelCom + panelNumeri;
+}
+
+// Una "bolla" di messaggio, usata sia per il testo iniziale della comunicazione sia per ogni
+// risposta successiva: stesso trattamento (autore in maiuscolo colorato, testo, eventuale
+// allegato, data) per tutti, così il thread si legge come una conversazione unica invece che come
+// un messaggio "staccato" seguito da risposte con un altro stile (Matteo: "il testo le date e il
+// resto sono un po' messi a casaccio").
+function bollaMessaggio(autoreClasse, testo, data, oraCreazione, allegatoHtml) {
+  return `<div class="risp ${autoreClasse}">
+    <div class="aut">${autoreClasse === 'cliente' ? 'Tu' : 'Studio'}</div>
+    ${testo ? `<div>${escapeHtml(testo)}</div>` : ''}
+    ${allegatoHtml || ''}
+    <div class="s" style="margin-top:1px;">${fmtData(data)}${oraCreazione ? ' ' + fmtOraSemplice(oraCreazione) : ''}</div>
+  </div>`;
+}
+// Estratto breve di un testo (per l'anteprima dell'ultimo messaggio sulla card collassata) - taglia
+// senza spezzare a metà troppo brutalmente e normalizza gli "a capo" in uno spazio solo.
+function anteprimaTesto(testo, max) {
+  const t = String(testo || '').replace(/\s+/g, ' ').trim();
+  return t.length > max ? t.slice(0, max).trimEnd() + '…' : t;
+}
+function cardComunicazione(c) {
+  const allegatoIniziale = c.allegato ? `<div class="allegato-link">📎 <a href="${linkDocumento(c.allegato.documentoToken)}" target="_blank" rel="noopener">${escapeHtml(c.allegato.nome)}</a></div>` : '';
+  const rif = c.scadenzaRif ? `<div class="scad-rif">Su: ${escapeHtml(c.scadenzaRif.nome)} (${fmtData(c.scadenzaRif.data)})</div>` : '';
+  const nRisposte = (c.risposte || []).length;
+  const bollaIniziale = c.corpo ? bollaMessaggio(c.direzione === 'cliente' ? 'cliente' : 'studio', c.corpo, c.data, c.oraCreazione, allegatoIniziale) : '';
+  const bolleRisposte = nRisposte
+    ? c.risposte.map(r => bollaMessaggio(r.autore, r.testo, r.data, r.oraCreazione, r.allegato ? `<div class="allegato-link">📎 <a href="${linkDocumento(r.allegato.documentoToken)}" target="_blank" rel="noopener">${escapeHtml(r.allegato.nome)}</a></div>` : '')).join('')
+    : '';
+  const thread = (bollaIniziale || bolleRisposte) ? `<div class="thread-risposte">${bollaIniziale}${bolleRisposte}</div>` : '';
+  // Anteprima dell'ultimo messaggio del thread (chi ha scritto per ultimo + un estratto), sempre
+  // visibile anche a card chiusa (Matteo: "non è molto chiaro quando una comunicazione è risposta,
+  // solo il tab nuova non basta") - così si capisce a colpo d'occhio se ha risposto lo studio senza
+  // dover aprire ogni card.
+  const ultimoMsg = nRisposte ? c.risposte[nRisposte - 1] : (c.corpo ? { autore: c.direzione, testo: c.corpo } : null);
+  const anteprima = ultimoMsg
+    ? `<div class="com-anteprima"><span class="aut-inline ${ultimoMsg.autore === 'cliente' ? 'cliente' : 'studio'}">${ultimoMsg.autore === 'cliente' ? 'Tu' : 'Studio'}:</span> ${escapeHtml(anteprimaTesto(ultimoMsg.testo, 90))}</div>`
+    : '';
+  // Una richiesta chiusa dallo studio non si riapre scrivendo dal portale (Matteo) - il box di
+  // risposta lascia semplicemente il posto a un avviso.
+  const areaRisposta = c.richiestaChiusa
+    ? `<div class="s" style="margin-top:8px;font-style:italic;">Questa richiesta è stata chiusa dallo studio. Se hai bisogno di altro, scrivi un nuovo messaggio da "Scrivi allo studio".</div>`
+    : `<button class="risposta-toggle" data-action="toggla-risposta" data-id="${escapeHtml(c.id)}">Rispondi</button>
+      <div class="risposta-box" id="rispostaBox_${escapeHtml(c.id)}" hidden style="margin-top:8px;">
+        <textarea id="rispostaTesto_${escapeHtml(c.id)}" placeholder="Scrivi la tua risposta..."></textarea>
+        <input type="file" id="rispostaFile_${escapeHtml(c.id)}" style="margin-top:6px;font-size:12.5px;display:block;">
+        <div><button class="btn-invia" data-action="invia-risposta" data-id="${escapeHtml(c.id)}">Invia risposta</button></div>
+        <div class="esito-invio" id="esitoRisposta_${escapeHtml(c.id)}"></div>
+      </div>`;
+  // Conferma di lettura esplicita (task Matteo: per bilanci/documenti importanti lo studio può
+  // chiedere un "Ho visto" attivo, non solo l'apertura automatica) - opt-in per comunicazione
+  // (c.richiedeConferma), mai mostrata sulle altre.
+  const areaConferma = !c.richiedeConferma ? '' : (c.confermaLetturaData
+    ? `<div class="conferma-vista">✓ Hai confermato di aver visto questa comunicazione il ${fmtData(c.confermaLetturaData.slice(0,10))} alle ${fmtOraSemplice(c.confermaLetturaData)}</div>`
+    : `<div class="conferma-richiesta">
+        <div class="s" style="margin-bottom:6px;">Lo studio ti chiede di confermare di aver visto questa comunicazione.</div>
+        <button class="btn-invia" data-action="conferma-lettura-comunicazione" data-id="${escapeHtml(c.id)}">✓ Ho visto, confermo</button>
+        <div class="esito-invio" id="esitoConferma_${escapeHtml(c.id)}"></div>
+      </div>`);
+  // Il dettaglio (testo, allegato, thread, risposta) resta chiuso finché il cliente non clicca sul
+  // titolo: con tante comunicazioni tutte sempre aperte diventava illeggibile. Il click è anche il
+  // momento in cui la comunicazione viene segnata come vista (vedi 'apri-comunicazione' più sotto).
+  return `<div class="item com-item${c.nuova ? ' non-letta' : ''}" data-com-id="${escapeHtml(c.id)}">
+    <div class="t com-titolo" data-action="apri-comunicazione" data-id="${escapeHtml(c.id)}"><span class="com-freccia">▸</span> ${escapeHtml(c.oggetto)}${c.nuova ? ' <span class="badge nuova">Nuova</span>' : ''}${c.richiestaChiusa ? ' <span class="badge chiusa">Chiusa</span>' : ''}${nRisposte ? ` <span class="badge info">${nRisposte} risp.</span>` : ''}${c.richiedeConferma ? (c.confermaLetturaData ? ' <span class="badge chiusa">✓ Visto</span>' : ' <span class="badge nuova">Conferma richiesta</span>') : ''}</div>
+    <div class="s">${fmtData(c.data)}${c.oraCreazione ? ' ' + fmtOraSemplice(c.oraCreazione) : ''} · <span class="badge info">${escapeHtml(c.categoria)}</span></div>
+    ${anteprima}
+    <div class="com-dettaglio" id="dettaglio_${escapeHtml(c.id)}" hidden>
+      ${rif}
+      ${thread}
+      ${areaConferma}
+      ${areaRisposta}
+    </div>
+  </div>`;
+}
+function boxComponiMessaggio() {
+  const rif = composePrefill ? `<div class="scad-rif">Su: ${escapeHtml(composePrefill.nome)}</div>` : '';
+  return `<div class="panel compose-box">
+    ${panelHeader(ICONE.comunicazioni, 'var(--blu-light)', 'var(--blu-mid)', composePrefill ? 'Chiedi info su questa scadenza' : 'Scrivi allo studio')}
+    ${rif}
+    <textarea id="testoNuovoMessaggio" placeholder="Scrivi qui il tuo messaggio..."></textarea>
+    <input type="file" id="fileNuovoMessaggio" style="margin-top:6px;font-size:12.5px;display:block;">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;">
+      <button class="btn-invia" data-action="invia-nuovo-messaggio">Invia</button>
+      ${composePrefill ? `<button class="btn-secondario" data-action="annulla-prefill">Annulla riferimento</button>` : ''}
+    </div>
+    <div class="esito-invio" id="esitoNuovoMessaggio"></div>
+  </div>`;
+}
+function renderComunicazioni() {
+  const compose = boxComponiMessaggio();
+  const attive = VISTA.comunicazioni.length
+    ? VISTA.comunicazioni.map(cardComunicazione).join('')
+    : `<div class="empty">Nessuna comunicazione ricevuta per ora.</div>`;
+  const archiviate = VISTA.comunicazioniArchiviate.length
+    ? `<details><summary>Archiviate (${VISTA.comunicazioniArchiviate.length})</summary><div style="margin-top:8px;">${VISTA.comunicazioniArchiviate.map(cardComunicazione).join('')}</div></details>`
+    : '';
+  return compose + `<div class="panel">${panelHeader(ICONE.comunicazioni, 'var(--blu-light)', 'var(--blu-mid)', 'Comunicazioni', VISTA.comunicazioni.length)}${attive}${archiviate}</div>`;
+}
+
+function renderScadenze() {
+  const items = VISTA.scadenze.length
+    ? VISTA.scadenze.map(s => `<div class="item">
+        <div class="t">${escapeHtml(s.nome)}</div>
+        <div class="s">Entro il ${fmtData(s.data)} · <span class="pill ${s.delta.cls}">${escapeHtml(s.delta.txt)}</span>${s.importo != null ? ' · ' + fmtEuro(s.importo) : ''}</div>
+        <button class="btn-secondario" style="margin-top:8px;" data-action="chiedi-info-scadenza" data-id="${escapeHtml(s.id)}" data-nome="${escapeHtml(s.nome)}">Chiedi info su questa scadenza</button>
+      </div>`).join('')
+    : `<div class="empty">Nessuna scadenza imminente.</div>`;
+  const pctAnn = VISTA.numeri.adempimentiAnnualiTotali
+    ? Math.round((VISTA.numeri.adempimentiAnnualiCompletati / VISTA.numeri.adempimentiAnnualiTotali) * 100) : 100;
+  const annuali = VISTA.numeri.adempimentiAnnualiTotali ? `<div class="item" style="margin-top:2px;">
+      <div class="t">Adempimenti annuali</div>
+      <div class="s">${VISTA.numeri.adempimentiAnnualiCompletati}/${VISTA.numeri.adempimentiAnnualiTotali} completati</div>
+      <div class="progress"><div style="width:${pctAnn}%;"></div></div>
+    </div>` : '';
+  return `<div class="panel">${panelHeader(ICONE.scadenze, 'var(--giallo-bg)', 'var(--giallo)', 'Scadenze e adempimenti', VISTA.scadenze.length)}${items}${annuali}</div>` + panelF24Storico();
+}
+
+// Storico F24 (pagati e non), richiesto da Matteo dentro il tab Scadenze: a differenza del blocco
+// "F24 da pagare" in Panoramica (solo quelli che aspettano una scelta/segnalazione del cliente),
+// qui il cliente vede tutti gli F24, compresi quelli già saldati - una specie di estratto conto.
+function panelF24Storico() {
+  if (!VISTA.f24Tutti || !VISTA.f24Tutti.length) return '';
+  const labelModalita = { autonomo: 'paga da solo', addebito: 'addebito studio' };
+  const righe = VISTA.f24Tutti.map(f => {
+    const pagato = f.stato === 'Pagato';
+    const badgeStato = pagato ? '<span class="badge chiusa">Pagato</span>' : '<span class="badge nuova">Da pagare</span>';
+    const modalita = f.modalitaPagamento && labelModalita[f.modalitaPagamento] ? ' · ' + escapeHtml(labelModalita[f.modalitaPagamento]) : '';
+    return `<div class="item">
+      <div class="t">${escapeHtml(f.descrizione || ('F24 ' + f.tipo))} ${badgeStato}</div>
+      <div class="s">${fmtData(f.data)} · <span class="badge info">${escapeHtml(f.tipo)}</span> · ${fmtEuro(f.importo)}${modalita}</div>
+    </div>`;
+  }).join('');
+  return `<div class="panel">${panelHeader(ICONE.scadenze, 'var(--blu-light)', 'var(--blu-mid)', 'I tuoi F24', VISTA.f24Tutti.length)}${righe}</div>`;
+}
+
+function renderDocumenti() {
+  if (!VISTA.documenti.length) {
+    return `<div class="panel">${panelHeader(ICONE.documenti, 'var(--viola-bg)', 'var(--viola)', 'Documenti', 0)}<div class="empty">Nessun documento condiviso per ora.</div></div>`;
+  }
+  const anniDisponibili = Array.from(new Set(VISTA.documenti.map(annoDocumentoPortale).filter(Boolean))).sort((a, b) => b.localeCompare(a));
+  const selettoreAnno = anniDisponibili.length > 1 ? `<div style="margin:-4px 0 12px;">
+    <select onchange="filtraDocumentiAnno(this.value)" style="border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:13px;font-family:inherit;">
+      <option value="Tutti"${DOC_ANNO_FILTRO === 'Tutti' ? ' selected' : ''}>Tutti gli anni</option>
+      ${anniDisponibili.map(a => `<option value="${a}"${DOC_ANNO_FILTRO === a ? ' selected' : ''}>${a}</option>`).join('')}
+    </select>
+  </div>` : '';
+  const documentiFiltrati = DOC_ANNO_FILTRO === 'Tutti' ? VISTA.documenti : VISTA.documenti.filter(d => annoDocumentoPortale(d) === DOC_ANNO_FILTRO);
+  if (!documentiFiltrati.length) {
+    return `<div class="panel">${panelHeader(ICONE.documenti, 'var(--viola-bg)', 'var(--viola)', 'Documenti', VISTA.documenti.length)}${selettoreAnno}<div class="empty">Nessun documento per l'anno selezionato.</div></div>`;
+  }
+  // Cartelle per AREA e dentro sottocartelle per categoria (task richiesto da Matteo: "cartelle e
+  // sottocartelle, tipo contabilità, fiscale, libri e registri, pratiche") - molto più leggibile
+  // di un'unica lista/di una sola cartella per categoria quando ci sono tanti documenti diversi.
+  // La prima area (quella col documento più recente) parte già aperta, le altre chiuse.
+  const gruppiArea = new Map();
+  documentiFiltrati.forEach(d => {
+    const cat = d.categoria || 'Altro';
+    const area = areaPerCategoriaDocumento(cat);
+    if (!gruppiArea.has(area)) gruppiArea.set(area, new Map());
+    const gruppiCat = gruppiArea.get(area);
+    if (!gruppiCat.has(cat)) gruppiCat.set(cat, []);
+    gruppiCat.get(cat).push(d);
+  });
+  const cartelle = AREE_DOCUMENTI_PORTALE.filter(a => gruppiArea.has(a.area)).map((a, ia) => {
+    const gruppiCat = gruppiArea.get(a.area);
+    const nDocArea = [...gruppiCat.values()].reduce((s, arr) => s + arr.length, 0);
+    const categorieOrdinate = [...gruppiCat.keys()].sort((x, y) => {
+      const ix = ORDINE_CATEGORIE_DOCUMENTO.indexOf(x), iy = ORDINE_CATEGORIE_DOCUMENTO.indexOf(y);
+      if (ix === -1 && iy === -1) return x.localeCompare(y);
+      if (ix === -1) return 1;
+      if (iy === -1) return -1;
+      return ix - iy;
+    });
+    const sottocartelle = categorieOrdinate.map(cat => {
+      const docs = gruppiCat.get(cat);
+      const righe = docs.map(d => `<div class="item">
+          <div class="t">${escapeHtml(d.nome)}</div>
+          <div class="s">caricato il ${fmtData(d.dataCaricamento)}${d.dataScadenza ? ' · scade ' + fmtData(d.dataScadenza) : ''}</div>
+          ${d.documentoToken ? `<div class="allegato-link">📎 <a href="${linkDocumento(d.documentoToken)}" target="_blank" rel="noopener">Apri documento</a></div>` : ''}
+        </div>`).join('');
+      return `<details class="cartella-doc" style="margin-left:14px;">
+        <summary>📁 ${escapeHtml(cat)} <span class="cnt-cartella">${docs.length}</span></summary>
+        <div style="margin-top:6px;">${righe}</div>
+      </details>`;
+    }).join('');
+    return `<details class="cartella-doc"${ia === 0 ? ' open' : ''}>
+      <summary>📁 ${escapeHtml(a.area)} <span class="cnt-cartella">${nDocArea}</span></summary>
+      <div style="margin-top:6px;">${sottocartelle}</div>
+    </details>`;
+  }).join('');
+  return `<div class="panel">${panelHeader(ICONE.documenti, 'var(--viola-bg)', 'var(--viola)', 'Documenti', VISTA.documenti.length)}${selettoreAnno}${cartelle}</div>`;
+}
+
+function grafico(punti) {
+  if (!punti || !punti.length) return '<div class="empty">Dati non disponibili.</div>';
+  const max = Math.max(1, ...punti.map(p => Math.abs(p.valore)));
+  // .v e .lab stanno FUORI da .track apposta: .b calcola la sua altezza in % rispetto ai soli 80px
+  // di .track (altezza fissa, necessaria perché una % si risolve solo contro un'altezza definita) -
+  // se il valore ci fosse dentro, la barra più alta spingerebbe l'etichetta fuori dal grafico.
+  return `<div class="bars">${punti.map(p => `<div class="col">
+    <div class="v">${escapeHtml(fmtEuroCompatto(p.valore))}</div>
+    <div class="track"><div class="b${p.valore < 0 ? ' neg' : ''}" style="height:${Math.max(2, Math.round((Math.abs(p.valore) / max) * 100))}%;" title="${escapeHtml(p.etichetta)}: ${escapeHtml(fmtEuro(p.valore))}"></div></div>
+    <div class="lab">${escapeHtml(p.etichetta)}</div>
+  </div>`).join('')}</div>`;
+}
+const COLORI_TORTA_PORTALE = ['var(--blu-mid,#2d5bff)','var(--viola,#7b5fe0)','var(--verde,#1fa262)','var(--giallo,#e0a800)','var(--rosso,#d9483e)','#6c7a92'];
+// Torta per una COMPOSIZIONE in un solo periodo (task Matteo: "per la differenziazione dei tipi di
+// costi usa grafici a torta") - a differenza di grafico() sopra, che serve per un andamento nel
+// tempo (più periodi, stessa metrica), qui confrontiamo voci diverse nello stesso periodo: si
+// costruisce con conic-gradient (CSS puro, nessuna libreria) invece di SVG, coerente con lo stile
+// del resto del portale cliente.
+function graficoTorta(punti) {
+  const validi = (punti || []).filter(p => (p.valore || 0) > 0);
+  const totale = validi.reduce((s, p) => s + p.valore, 0);
+  if (!validi.length || totale <= 0) return '<div class="empty">Nessun valore positivo da rappresentare.</div>';
+  let accumulo = 0;
+  const tratti = validi.map((p, i) => {
+    const colore = COLORI_TORTA_PORTALE[i % COLORI_TORTA_PORTALE.length];
+    const da = (accumulo / totale) * 360;
+    accumulo += p.valore;
+    const a = (accumulo / totale) * 360;
+    return `${colore} ${da.toFixed(2)}deg ${a.toFixed(2)}deg`;
+  }).join(', ');
+  const legenda = validi.map((p, i) => {
+    const colore = COLORI_TORTA_PORTALE[i % COLORI_TORTA_PORTALE.length];
+    const quota = Math.round((p.valore / totale) * 100);
+    return `<div style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:5px;">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${colore};flex-shrink:0;"></span>
+      <span style="flex:1;">${escapeHtml(p.etichetta)}</span>
+      <span style="font-weight:700;white-space:nowrap;">${escapeHtml(fmtEuro(p.valore))} · ${quota}%</span>
+    </div>`;
+  }).join('');
+  return `<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;">
+    <div style="width:110px;height:110px;border-radius:50%;flex-shrink:0;background:conic-gradient(${tratti});"></div>
+    <div style="flex:1;min-width:160px;">${legenda}</div>
+  </div>`;
+}
+// Variazione % vs periodo precedente e semaforo di lettura rapida (task Matteo, dopo ricerca su
+// Fathom/Spotlight Reporting/Syft Analytics: mostrano sempre il delta accanto al numero, non solo il
+// valore nudo) - stessi campi calcolati lato studio in calcolaAndamentoPortale (gestionale.htm).
+function badgeVariazione(v) {
+  if (v == null) return '';
+  const positivo = v >= 0;
+  const colore = positivo ? 'var(--verde)' : 'var(--rosso)';
+  const sfondo = positivo ? 'var(--verde-bg)' : 'var(--rosso-bg)';
+  return `<span style="display:inline-block;margin-left:6px;padding:1px 6px;border-radius:20px;font-size:10px;font-weight:800;color:${colore};background:${sfondo};">${positivo?'▲':'▼'} ${fmtPct(Math.abs(v))}</span>`;
+}
+function dotSemaforo(colore) {
+  if (!colore) return '';
+  const mappa = { verde: 'var(--verde)', giallo: 'var(--giallo)', rosso: 'var(--rosso)' };
+  return `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${mappa[colore]};margin-right:5px;"></span>`;
+}
+function kpiCard(valore, label, sottotesto, variazione, semaforo) {
+  return `<div class="kpi-card"><div class="v">${valore}${badgeVariazione(variazione)}</div><div class="l">${dotSemaforo(semaforo)}${escapeHtml(label)}</div>${sottotesto ? `<div class="h">${escapeHtml(sottotesto)}</div>` : ''}</div>`;
+}
+// Rifatto su richiesta di Matteo: prima era una sola riga di numeri più due grafici, "brutto e poco
+// intuitivo, non dà all'imprenditore quei dati di cui ha bisogno". Ora: una griglia di numeri chiave
+// leggibili a colpo d'occhio (ricavi, utile, patrimonio netto, ROE, liquidità, giorni medi di
+// incasso crediti e pagamento debiti, magazzino se presente) seguita dagli andamenti nel tempo e da
+// come si dividono i costi nell'ultimo periodo - vedi andamento in costruisciVistaPortaleClienteEsterna.
+function renderAndamento() {
+  if (!VISTA.andamento) {
+    return `<div class="panel">${panelHeader(ICONE.andamento, 'var(--verde-bg)', 'var(--verde)', 'Andamento')}
+      <div class="empty">Non appena disponibili i dati del bilancio, qui trovi ricavi, utile, patrimonio netto e i principali indicatori nel tempo.</div>
+    </div>`;
+  }
+  const d = VISTA.andamento;
+  const letturaLiquidita = d.currentRatio == null ? '' : (d.currentRatio >= 1 ? 'Copri i debiti a breve con le risorse disponibili.' : 'Sotto 1: attenzione alla liquidità a breve termine.');
+  const kpi = `<div class="kpi-cards">
+    ${kpiCard(fmtEuro(d.ricavi), 'Ricavi', d.etichettaUltimoPeriodo, d.variazioneRicavi)}
+    ${kpiCard(fmtEuro(d.utileNetto), 'Utile netto', d.etichettaUltimoPeriodo, d.variazioneUtileNetto)}
+    ${kpiCard(fmtEuro(d.patrimonioNetto), 'Patrimonio netto', 'Capitale proprio in azienda', d.variazionePatrimonioNetto)}
+    ${kpiCard(fmtPct(d.roe), 'ROE', 'Rendimento del capitale dei soci', null, d.semaforoRedditivita)}
+    ${d.roi != null ? kpiCard(fmtPct(d.roi), 'ROI', 'Rendimento della gestione caratteristica') : ''}
+    ${d.ros != null ? kpiCard(fmtPct(d.ros), 'ROS', 'Margine operativo sul fatturato') : ''}
+    ${d.ebitdaMargin != null ? kpiCard(fmtPct(d.ebitdaMargin), 'Margine EBITDA', 'Marginalità operativa lorda') : ''}
+    ${d.currentRatio != null ? kpiCard(d.currentRatio.toLocaleString('it-IT', { maximumFractionDigits: 2 }), 'Liquidità (current ratio)', letturaLiquidita, null, d.semaforoLiquidita) : ''}
+    ${d.indiceIndebitamento != null ? kpiCard(d.indiceIndebitamento.toLocaleString('it-IT', { maximumFractionDigits: 2 }), 'Indice di indebitamento', 'Debiti rispetto al capitale proprio', null, d.semaforoSolidita) : ''}
+    ${d.giorniIncassoCrediti != null ? kpiCard(Math.round(d.giorniIncassoCrediti) + ' gg', 'Incasso medio crediti', 'Tempo medio per farsi pagare') : ''}
+    ${d.giorniPagamentoDebiti != null ? kpiCard(Math.round(d.giorniPagamentoDebiti) + ' gg', 'Pagamento medio debiti', 'Tempo medio per pagare i fornitori') : ''}
+    ${d.magazzino != null ? kpiCard(fmtEuro(d.magazzino), 'Magazzino', 'Valore rimanenze a fine periodo') : ''}
+  </div>`;
+  const sezione = (titolo, serie) => `<div style="font-size:10px;font-weight:700;color:var(--text-mut);text-transform:uppercase;margin:16px 0 6px;">${escapeHtml(titolo)}</div>${grafico(serie)}`;
+  const ripartizione = (d.ripartizioneCosti && d.ripartizioneCosti.length)
+    ? `<div style="font-size:10px;font-weight:700;color:var(--text-mut);text-transform:uppercase;margin:16px 0 6px;">Come si dividono i costi (${escapeHtml(d.etichettaUltimoPeriodo)})</div>${graficoTorta(d.ripartizioneCosti)}`
+    : '';
+  return `<div class="panel">${panelHeader(ICONE.andamento, 'var(--verde-bg)', 'var(--verde)', 'Andamento')}
+    ${kpi}
+    ${sezione('Andamento ricavi', d.serieRicavi)}
+    ${sezione('Andamento utile netto', d.serieUtile)}
+    ${sezione('Andamento patrimonio netto', d.seriePatrimonioNetto)}
+    ${sezione('Andamento costi', d.serieCosti)}
+    ${ripartizione}
+  </div>`;
+}
+
+function renderCorpo() {
+  const fn = { panoramica: renderPanoramica, comunicazioni: renderComunicazioni, scadenze: renderScadenze, documenti: renderDocumenti, andamento: renderAndamento }[TAB] || renderPanoramica;
+  document.getElementById('corpo').innerHTML = fn();
+  riapriComunicazioniAperte();
+}
+// Vedi il commento su COM_APERTE più sopra: richiamata dopo OGNI renderCorpo() (cambio tab, invio
+// messaggio, refresh in background...), non solo dal polling - innocua se il tab attivo non è
+// Comunicazioni, semplicemente non trova nessun "dettaglio_<id>" e non fa nulla.
+function riapriComunicazioniAperte() {
+  if (!COM_APERTE.size) return;
+  COM_APERTE.forEach(id => {
+    const dettaglio = document.getElementById('dettaglio_' + id);
+    if (!dettaglio) return;
+    dettaglio.hidden = false;
+    const item = dettaglio.closest('.item');
+    if (item) item.classList.add('aperto');
+  });
+}
+
+// ---------- gestore unico dei click dentro il corpo (task #88) ----------
+// Il contenuto di #corpo viene ricreato con innerHTML ad ogni render: un listener sui singoli
+// pulsanti andrebbe perso ogni volta, quindi si delega tutto a UN SOLO listener sul contenitore
+// stabile #corpo, esattamente come fa gestionale.htm con onClickDelegato.
+function gestisciClicCorpo(e) {
+  const el = e.target.closest('[data-action]');
+  if (!el) return;
+  const azione = el.dataset.action;
+  const id = el.dataset.id;
+
+  if (azione === 'chiedi-info-scadenza') {
+    composePrefill = { id: el.dataset.id, nome: el.dataset.nome };
+    TAB = 'comunicazioni';
+    renderTabbar();
+    renderCorpo();
+    const box = document.getElementById('testoNuovoMessaggio');
+    if (box) { box.scrollIntoView({ behavior: 'smooth', block: 'center' }); box.focus(); }
+    return;
+  }
+
+  if (azione === 'annulla-prefill') {
+    composePrefill = null;
+    renderCorpo();
+    return;
+  }
+
+  if (azione === 'invia-nuovo-messaggio') {
+    const campo = document.getElementById('testoNuovoMessaggio');
+    const campoFile = document.getElementById('fileNuovoMessaggio');
+    const esitoEl = document.getElementById('esitoNuovoMessaggio');
+    const testo = campo ? campo.value.trim() : '';
+    if (!testo) {
+      if (esitoEl) { esitoEl.textContent = 'Scrivi qualcosa prima di inviare.'; esitoEl.className = 'esito-invio errore'; }
+      return;
+    }
+    const file = campoFile && campoFile.files && campoFile.files[0];
+    el.disabled = true;
+    if (esitoEl) { esitoEl.textContent = file ? 'Caricamento allegato in corso...' : 'Invio in corso...'; esitoEl.className = 'esito-invio'; }
+    (file ? leggiFileBase64(file) : Promise.resolve(null))
+      .then((base64) => postJSON('/api/portale-messaggio', {
+        token: TOKEN, testo, scadenzaId: composePrefill ? composePrefill.id : null,
+        nomeFile: file ? file.name : undefined, contenutoBase64: base64 || undefined,
+      }))
+      .then((dati) => {
+        composePrefill = null;
+        // Stesso motivo del fix in invia-risposta: va svuotato sempre, non solo nel ramo "accodato",
+        // altrimenti corpoHaBozzaInCorso() blocca il re-render e il pulsante resta bloccato.
+        if (campo) campo.value = '';
+        if (campoFile) campoFile.value = '';
+        if (dati && dati.accodato) {
+          el.disabled = false;
+          toastEsitoInvio('Il server dello studio non è raggiungibile ora: il messaggio resta pronto su questo dispositivo e verrà inviato da solo appena possibile.');
+          return;
+        }
+        return ricaricaVista().then(() => toastEsitoInvio('Messaggio inviato. Lo studio ti risponderà qui.'));
+      })
+      .catch((err) => {
+        el.disabled = false;
+        const e2 = document.getElementById('esitoNuovoMessaggio');
+        if (e2) { e2.textContent = err.message; e2.className = 'esito-invio errore'; }
+      });
+    return;
+  }
+
+  if (azione === 'segnala-pagamento-ritenuta') {
+    const campoData = document.getElementById('ritDataPag_' + id);
+    const esitoEl = document.getElementById('esitoRitenuta_' + id);
+    const dataPagamento = campoData ? campoData.value : '';
+    if (!dataPagamento) {
+      if (esitoEl) { esitoEl.textContent = 'Indica la data in cui hai pagato la fattura.'; esitoEl.className = 'esito-invio errore'; }
+      return;
+    }
+    el.disabled = true;
+    if (esitoEl) { esitoEl.textContent = 'Invio in corso...'; esitoEl.className = 'esito-invio'; }
+    postJSON('/api/portale-ritenuta-pagamento', { token: TOKEN, ritenutaId: id, dataPagamento })
+      .then((dati) => {
+        if (dati && dati.accodato) {
+          // Resta disabilitato apposta: la riga sparirà da sola non appena la segnalazione in coda
+          // verrà davvero inviata (ricaricaVista, chiamata da svuotaCoda) - reinviarla nel frattempo
+          // creerebbe solo un secondo tentativo inutile per la stessa fattura.
+          if (esitoEl) { esitoEl.textContent = 'Il server dello studio non è raggiungibile ora: la segnalazione resta pronta su questo dispositivo e verrà inviata da sola appena possibile.'; esitoEl.className = 'esito-invio ok'; }
+          return;
+        }
+        return ricaricaVista().then(() => toastEsitoInvio('Pagamento segnalato. La scadenza per il versamento è già stata generata.'));
+      })
+      .catch((err) => {
+        el.disabled = false;
+        if (esitoEl) { esitoEl.textContent = err.message; esitoEl.className = 'esito-invio errore'; }
+      });
+    return;
+  }
+
+  if (azione === 'scelta-modalita-f24') {
+    const modalita = el.dataset.modalita;
+    const esitoEl = document.getElementById('esitoF24_' + id);
+    el.disabled = true;
+    // Disabilita anche l'altro pulsante della stessa riga (pago da solo / fate l'addebito), così
+    // non si può cliccarne uno e poi ripensarci cliccando l'altro mentre l'invio è in corso.
+    const riga = document.querySelector('.ritenuta-riga[data-f24-id="' + id + '"]');
+    if (riga) riga.querySelectorAll('[data-action="scelta-modalita-f24"]').forEach((b) => { b.disabled = true; });
+    if (esitoEl) { esitoEl.textContent = 'Invio in corso...'; esitoEl.className = 'esito-invio'; }
+    postJSON('/api/portale-f24-modalita', { token: TOKEN, f24Id: id, modalita })
+      .then((dati) => {
+        if (dati && dati.accodato) {
+          if (esitoEl) { esitoEl.textContent = 'Il server dello studio non è raggiungibile ora: la scelta resta pronta su questo dispositivo e verrà inviata da sola appena possibile.'; esitoEl.className = 'esito-invio ok'; }
+          return;
+        }
+        return ricaricaVista().then(() => toastEsitoInvio(modalita === 'addebito' ? 'Richiesta di addebito inviata allo studio.' : 'Scelta registrata: potrai segnalarci quando avrai pagato.'));
+      })
+      .catch((err) => {
+        if (riga) riga.querySelectorAll('[data-action="scelta-modalita-f24"]').forEach((b) => { b.disabled = false; });
+        if (esitoEl) { esitoEl.textContent = err.message; esitoEl.className = 'esito-invio errore'; }
+      });
+    return;
+  }
+
+  if (azione === 'segnala-pagamento-f24') {
+    const esitoEl = document.getElementById('esitoF24_' + id);
+    const blocco = document.querySelector('.ritenuta-riga[data-f24-id="' + id + '"]');
+    // Pagamento misto: raccogliamo, per ogni riga con la checkbox "Paga ora" spuntata, l'importo
+    // inserito - una riga lasciata deselezionata (o senza importo) viene semplicemente ignorata,
+    // esattamente come vuole Matteo: si può pagare un tributo per intero, lasciarne un altro non
+    // pagato, o pagarne uno solo in parte, tutto nello stesso invio.
+    const pagamenti = [];
+    if (blocco) {
+      blocco.querySelectorAll('.f24-riga-paga-check').forEach((chk) => {
+        if (!chk.checked) return;
+        const rigaId = chk.dataset.rigaId;
+        const input = blocco.querySelector('.f24-riga-importo[data-riga-id="' + rigaId + '"]');
+        const importo = input ? Number(input.value) : 0;
+        if (rigaId && importo > 0) pagamenti.push({ rigaId, importo });
+      });
+    }
+    if (!pagamenti.length) {
+      if (esitoEl) { esitoEl.textContent = 'Seleziona almeno una voce da pagare, con un importo maggiore di zero.'; esitoEl.className = 'esito-invio errore'; }
+      return;
+    }
+    el.disabled = true;
+    if (esitoEl) { esitoEl.textContent = 'Invio in corso...'; esitoEl.className = 'esito-invio'; }
+    postJSON('/api/portale-f24-pagamento', { token: TOKEN, f24Id: id, pagamenti })
+      .then((dati) => {
+        if (dati && dati.accodato) {
+          if (esitoEl) { esitoEl.textContent = 'Il server dello studio non è raggiungibile ora: la segnalazione resta pronta su questo dispositivo e verrà inviata da sola appena possibile.'; esitoEl.className = 'esito-invio ok'; }
+          return;
+        }
+        return ricaricaVista().then(() => toastEsitoInvio('Pagamento segnalato, grazie.'));
+      })
+      .catch((err) => {
+        el.disabled = false;
+        if (esitoEl) { esitoEl.textContent = err.message; esitoEl.className = 'esito-invio errore'; }
+      });
+    return;
+  }
+
+  if (azione === 'rav-modalita') {
+    // Puro toggle di visibilità fra le due forme (mai un re-render): entrambe restano nel DOM così
+    // non si perde quello che il cliente ha già digitato nell'altra, se torna indietro a cambiarla.
+    const modalita = el.dataset.modalita;
+    const formF24 = document.getElementById('ravFormF24');
+    const formLibero = document.getElementById('ravFormLibero');
+    const btnF24 = document.getElementById('ravBtnF24');
+    const btnLibero = document.getElementById('ravBtnLibero');
+    if (formF24) formF24.style.display = modalita === 'f24' ? '' : 'none';
+    if (formLibero) formLibero.style.display = modalita === 'libero' ? '' : 'none';
+    if (btnF24) btnF24.className = modalita === 'f24' ? 'btn-invia' : 'btn-secondario';
+    if (btnLibero) btnLibero.className = modalita === 'libero' ? 'btn-invia' : 'btn-secondario';
+    return;
+  }
+
+  if (azione === 'rav-calcola') {
+    const risultatoEl = document.getElementById('ravRisultatoPortale');
+    const formF24 = document.getElementById('ravFormF24');
+    const inModalitaF24 = formF24 && formF24.style.display !== 'none' && document.getElementById('ravF24Select');
+    let corpo;
+    if (inModalitaF24) {
+      const f24Id = document.getElementById('ravF24Select').value;
+      const dataVersamento = document.getElementById('ravF24Versamento').value;
+      if (!dataVersamento) { if (risultatoEl) { risultatoEl.innerHTML = '<div class="esito-invio errore">Scegli una data di versamento.</div>'; } return; }
+      corpo = { token: TOKEN, f24Id, dataVersamento };
+    } else {
+      const importo = Number(document.getElementById('ravLiberoImporto').value);
+      const dataScadenza = document.getElementById('ravLiberoScadenza').value;
+      const dataVersamento = document.getElementById('ravLiberoVersamento').value;
+      if (!importo || importo <= 0 || !dataScadenza || !dataVersamento) {
+        if (risultatoEl) { risultatoEl.innerHTML = '<div class="esito-invio errore">Inserisci importo, data di scadenza originaria e data di versamento.</div>'; }
+        return;
+      }
+      corpo = { token: TOKEN, importo, dataScadenza, dataVersamento };
+    }
+    el.disabled = true;
+    if (risultatoEl) risultatoEl.innerHTML = '<div class="esito-invio">Calcolo in corso...</div>';
+    postJSON('/api/portale-ravvedimento-simula', corpo, { accodabile: false })
+      .then((dati) => {
+        el.disabled = false;
+        const r = dati && dati.risultato;
+        if (!r) { if (risultatoEl) risultatoEl.innerHTML = '<div class="esito-invio errore">Con queste date non risulta un ritardo da ravvedere (il versamento è alla scadenza o in anticipo).</div>'; return; }
+        if (risultatoEl) risultatoEl.innerHTML = `
+          <div class="rav-risultato">
+            <div class="rav-hero">
+              <div class="rav-hero-l">Totale da versare</div>
+              <div class="rav-hero-n">${fmtEuro(r.totale)}</div>
+              <div class="rav-hero-sub">${r.giorniRitardo} ${r.giorniRitardo === 1 ? 'giorno' : 'giorni'} di ritardo · fascia ${escapeHtml(r.fasciaLabel)}</div>
+            </div>
+            <div class="rav-breakdown">
+              <div class="rav-riga"><span>Imposta</span><strong>${fmtEuro(r.importo)}</strong></div>
+              <div class="rav-riga"><span>Sanzione ridotta</span><strong>${fmtEuro(r.sanzione)}</strong></div>
+              <div class="rav-riga"><span>Interessi</span><strong>${fmtEuro(r.interessi)}</strong></div>
+            </div>
+            <div class="rav-nota">Calcolo indicativo — per il versamento vero aspetta le istruzioni dello studio, o scrivici da "Comunicazioni".</div>
+          </div>`;
+      })
+      .catch((err) => {
+        el.disabled = false;
+        if (risultatoEl) risultatoEl.innerHTML = `<div class="esito-invio errore">${escapeHtml(err.message)}</div>`;
+      });
+    return;
+  }
+
+  if (azione === 'apri-comunicazione') {
+    const item = el.closest('.item');
+    const dettaglio = document.getElementById('dettaglio_' + id);
+    if (dettaglio) dettaglio.hidden = !dettaglio.hidden;
+    if (item) item.classList.toggle('aperto', dettaglio ? !dettaglio.hidden : false);
+    if (dettaglio && !dettaglio.hidden) COM_APERTE.add(id); else COM_APERTE.delete(id);
+    // Segna come vista (fa sparire il badge "Nuova") solo la prima volta che si apre: in locale
+    // subito, per un feedback immediato, e in background sul server perché resti così anche in
+    // un'altra visita/dispositivo. Silenzioso: se il POST fallisce il badge resta acceso e basta,
+    // niente da mostrare al cliente per un'azione così secondaria.
+    const c = (VISTA.comunicazioni || []).concat(VISTA.comunicazioniArchiviate || []).find(x => x.id === id);
+    if (c && c.nuova) {
+      c.nuova = false;
+      if (VISTA.numeri && VISTA.numeri.comunicazioniDaLeggere > 0) VISTA.numeri.comunicazioniDaLeggere--;
+      const badge = el.querySelector('.badge.nuova');
+      if (badge) badge.remove();
+      renderTabbar();
+      postJSON('/api/portale-segna-letta', { token: TOKEN, comunicazioneId: id }).catch(() => {});
+    }
+    return;
+  }
+
+  if (azione === 'toggla-risposta') {
+    const box = document.getElementById('rispostaBox_' + id);
+    if (box) {
+      box.hidden = !box.hidden;
+      if (!box.hidden) { const t = document.getElementById('rispostaTesto_' + id); if (t) t.focus(); }
+    }
+    return;
+  }
+
+  if (azione === 'invia-risposta') {
+    const campo = document.getElementById('rispostaTesto_' + id);
+    const campoFile = document.getElementById('rispostaFile_' + id);
+    const esitoEl = document.getElementById('esitoRisposta_' + id);
+    const testo = campo ? campo.value.trim() : '';
+    if (!testo) {
+      if (esitoEl) { esitoEl.textContent = 'Scrivi qualcosa prima di rispondere.'; esitoEl.className = 'esito-invio errore'; }
+      return;
+    }
+    const file = campoFile && campoFile.files && campoFile.files[0];
+    el.disabled = true;
+    if (esitoEl) { esitoEl.textContent = file ? 'Caricamento allegato in corso...' : 'Invio in corso...'; esitoEl.className = 'esito-invio'; }
+    (file ? leggiFileBase64(file) : Promise.resolve(null))
+      .then((base64) => postJSON('/api/portale-risposta', {
+        token: TOKEN, comunicazioneId: id, testo,
+        nomeFile: file ? file.name : undefined, contenutoBase64: base64 || undefined,
+      }))
+      .then((dati) => {
+        // Svuotare SEMPRE il campo prima di ricaricaVista() - non solo nel ramo "accodato" qui sotto.
+        // Bug segnalato da Matteo: se il testo resta nella textarea, corpoHaBozzaInCorso() lo scambia
+        // per una bozza non ancora inviata e salta il re-render del corpo, lasciando il pulsante
+        // bloccato su "Invio in corso..." per sempre anche se il messaggio è già arrivato allo studio.
+        if (campo) campo.value = '';
+        if (campoFile) campoFile.value = '';
+        if (dati && dati.accodato) {
+          el.disabled = false;
+          toastEsitoInvio('Il server dello studio non è raggiungibile ora: la risposta resta pronta su questo dispositivo e verrà inviata da sola appena possibile.');
+          return;
+        }
+        return ricaricaVista().then(() => toastEsitoInvio('Risposta inviata.'));
+      })
+      .catch((err) => {
+        el.disabled = false;
+        const e2 = document.getElementById('esitoRisposta_' + id);
+        if (e2) { e2.textContent = err.message; e2.className = 'esito-invio errore'; }
+      });
+    return;
+  }
+
+  // Conferma di lettura esplicita (task Matteo: "Ho visto" attivo, per comunicazioni con allegati
+  // importanti come i bilanci) - nessun campo di testo coinvolto, quindi niente da svuotare prima
+  // di ricaricaVista() come per invia-risposta qui sopra.
+  if (azione === 'conferma-lettura-comunicazione') {
+    const esitoEl = document.getElementById('esitoConferma_' + id);
+    el.disabled = true;
+    if (esitoEl) { esitoEl.textContent = 'Invio in corso...'; esitoEl.className = 'esito-invio'; }
+    postJSON('/api/portale-conferma-lettura', { token: TOKEN, comunicazioneId: id })
+      .then((dati) => {
+        if (dati && dati.accodato) {
+          if (esitoEl) { esitoEl.textContent = 'Il server dello studio non è raggiungibile ora: la conferma resta pronta su questo dispositivo e verrà inviata da sola appena possibile.'; esitoEl.className = 'esito-invio ok'; }
+          return;
+        }
+        return ricaricaVista().then(() => toastEsitoInvio('Conferma inviata allo studio.'));
+      })
+      .catch((err) => {
+        el.disabled = false;
+        if (esitoEl) { esitoEl.textContent = err.message; esitoEl.className = 'esito-invio errore'; }
+      });
+    return;
+  }
+}
+
+// Un breve messaggio di conferma "fluttuante": qui non c'è un box fisso adatto perché il corpo
+// viene appena ricreato dal refresh della vista, quindi un piccolo avviso in alto è più robusto
+// che cercare un elemento che potrebbe essere già scomparso dal DOM.
+function toastEsitoInvio(testo) {
+  const t = document.createElement('div');
+  t.textContent = testo;
+  t.style.cssText = 'position:fixed;top:14px;left:50%;transform:translateX(-50%);background:var(--verde);color:#fff;padding:9px 18px;border-radius:20px;font-size:12.5px;font-weight:700;box-shadow:var(--shadow-md);z-index:60;';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3200);
+}
+
+document.getElementById('corpo').addEventListener('click', gestisciClicCorpo);
+avvia();
+</script>
+</body>
+</html>

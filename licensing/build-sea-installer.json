@@ -1,0 +1,5 @@
+{
+  "main": "installer.js",
+  "output": "Installa-Prisma.exe",
+  "disableExperimentalSEAWarning": true
+}

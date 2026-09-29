@@ -1,0 +1,52 @@
+# ============================================================================
+#  Prisma - .gitignore
+#  Tre categorie escluse di proposito: dati reali/sensibili, segreti di
+#  licensing, e roba costruita/rigenerabile (non è codice sorgente).
+# ============================================================================
+
+# --- Dati reali dello studio e dei clienti: MAI in repository, nemmeno privata
+#     (segreto professionale / GDPR) ---
+dati-studio.json
+prisma-import-clienti-reali.json
+report-import-clienti.md
+documenti-clienti/
+backup/
+logs/
+license.json
+# export live per il server MCP locale (rigenerato automaticamente da
+# aggiornaVistaMCPInTempoReale() a ogni salvataggio): stessa classe di
+# dati-studio.json, contiene ragioni sociali e dati contabili reali dei clienti
+mcp-server/gestionale-mcp.json
+# password vere di accesso remoto/portale (ngrok): mai in un repository
+password-accesso-remoto-team.txt
+password-portale-esterno.txt
+
+# --- Segreti di licensing: la chiave privata firma le licenze del software -
+#     se esce, chiunque può generarne una valida. Il resto di licensing/ (gli
+#     script) è codice sorgente normale e resta versionato. Il registro delle
+#     licenze EMESSE contiene fingerprint macchina e nomi di studi clienti
+#     reali (dati di clienti di Prisma stesso, non solo dello studio) - stessa
+#     logica di dati-studio.json. ---
+licensing/chiave-privata.pem
+licensing/emesse/
+
+# --- Cartelle di consegna/staging per clienti reali: contengono copie
+#     eseguibili pronte + a volte una chiave pubblica di quel cliente, sono
+#     un "pacco già pronto da consegnare", non sorgente da versionare ---
+clienti-prisma/
+ACCESSI/
+DA-CANCELLARE/
+
+# --- Dipendenze npm: si rigenerano con "npm install", non si versionano mai ---
+node_modules/
+
+# --- Output di build: si rigenerano con la build, non sorgente ---
+electron-app/dist/
+*.exe
+*.mcpb
+
+# --- Log applicativi ---
+*.log
+
+# --- Token di push automatico verso GitHub: MAI in repository ---
+.git-credentials

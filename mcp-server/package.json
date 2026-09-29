@@ -1,0 +1,15 @@
+{
+  "name": "gestionale-mcp-server",
+  "version": "1.0.0",
+  "description": "Server MCP locale (sola lettura) per il gestionale studio: legge gestionale-mcp.json esportato dall'app ed espone scadenze, clienti, contabilità e task a Claude.",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "zod": "^4.5.4"
+  }
+}

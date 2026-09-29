@@ -1,0 +1,8 @@
+{
+  "appId": "it.studioquadra.prismarete",
+  "productName": "Prisma Rete",
+  "extraMetadata": { "main": "main-collegamento.js" },
+  "files": ["main-collegamento.js", "icona.ico", "package.json"],
+  "win": { "target": "portable", "icon": "icona.ico" },
+  "portable": { "artifactName": "Prisma Rete.exe" }
+}

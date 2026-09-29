@@ -1,0 +1,8 @@
+{
+  "appId": "it.studioquadra.prisma",
+  "productName": "Prisma",
+  "extraMetadata": { "main": "main.js" },
+  "files": ["main.js", "icona.ico", "package.json"],
+  "win": { "target": "portable", "icon": "icona.ico" },
+  "portable": { "artifactName": "Prisma.exe" }
+}
