@@ -2990,6 +2990,59 @@ function placeholderPersonalizzatiModello(corpo) {
   const riservati = new Set(PLACEHOLDER_RISERVATI);
   return estraiPlaceholder(corpo).filter(k => !auto.has(k) && !riservati.has(k));
 }
+/* Compilazione guidata dei campi personalizzati di un modello (Matteo, sullo screenshot del
+   modale AML: "i campi... senza una direzione precisa", con etichette illeggibili tipo
+   "ESECUTORENOME" — la chiave grezza del segnaposto {{esecutoreNome}} maiuscolata di peso dal
+   CSS, senza spazi tra le parole). Due correzioni indipendenti, entrambe puramente di
+   presentazione (la chiave salvata in valoriCustom/{{segnaposto}} resta sempre quella grezza,
+   invariata — cambia solo come viene MOSTRATA nel form):
+   1) etichettaCampoPersonalizzato spezza il camelCase/snake_case in parole leggibili
+      ("esecutoreNome" -> "Esecutore Nome") invece di lasciarlo tutto attaccato.
+   2) raggruppaCampiPersonalizzatiModello raccoglie sotto un'unica intestazione i campi che
+      condividono lo stesso primo termine (esecutoreNome/esecutoreCf/esecutoreNascita/... ->
+      sezione "Esecutore" con le sole etichette "Nome"/"Cf"/"Nascita"...), così un blocco di
+      textarea uguali senza gerarchia diventa un mini-modulo con una direzione riconoscibile. Un
+      prefisso condiviso da un solo campo non genera una sezione fittizia di una riga sola: resta
+      un campo normale con l'etichetta completa. */
+function separaParoleChiaveCampo(chiave) {
+  return String(chiave || '')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_\-]+/g, ' ')
+    .trim();
+}
+function capitalizzaParola(p) { return p ? p.charAt(0).toUpperCase() + p.slice(1).toLowerCase() : p; }
+function etichettaCampoPersonalizzato(chiave) {
+  const parole = separaParoleChiaveCampo(chiave).split(/\s+/).filter(Boolean);
+  return parole.map(capitalizzaParola).join(' ') || chiave;
+}
+function raggruppaCampiPersonalizzatiModello(chiavi) {
+  const contaPrefisso = new Map();
+  chiavi.forEach(chiave => {
+    const parole = separaParoleChiaveCampo(chiave).split(/\s+/).filter(Boolean);
+    if (parole.length > 1) contaPrefisso.set(parole[0].toLowerCase(), (contaPrefisso.get(parole[0].toLowerCase()) || 0) + 1);
+  });
+  const vistiGruppi = new Set();
+  const risultato = [];
+  chiavi.forEach(chiave => {
+    const parole = separaParoleChiaveCampo(chiave).split(/\s+/).filter(Boolean);
+    const prefisso = parole.length > 1 ? parole[0].toLowerCase() : null;
+    if (prefisso && contaPrefisso.get(prefisso) >= 2) {
+      if (vistiGruppi.has(prefisso)) return;
+      vistiGruppi.add(prefisso);
+      const campiGruppo = chiavi.filter(k => {
+        const p = separaParoleChiaveCampo(k).split(/\s+/).filter(Boolean);
+        return p.length > 1 && p[0].toLowerCase() === prefisso;
+      }).map(k => {
+        const p = separaParoleChiaveCampo(k).split(/\s+/).filter(Boolean);
+        return { chiave: k, label: p.slice(1).map(capitalizzaParola).join(' ') || capitalizzaParola(p[0]) };
+      });
+      risultato.push({ tipo: 'gruppo', label: capitalizzaParola(parole[0]), campi: campiGruppo });
+    } else {
+      risultato.push({ tipo: 'campo', chiave, label: etichettaCampoPersonalizzato(chiave) });
+    }
+  });
+  return risultato;
+}
 /* Sostituisce tutti i segnaposto: quelli noti con i valori automatici, quelli personalizzati con
    il valore fornito dall'utente; un segnaposto personalizzato non ancora compilato resta visibile
    tra parentesi quadre invece di sparire in silenzio — meglio un vuoto evidente in una bozza che
@@ -6219,11 +6272,24 @@ function modalPreventivo(id, clienteIdCorrente, soloAml, modelloIdForzato, clien
   const selettoreModello = editing
     ? `<div class="field"><label>Modello</label><div class="helptext" style="padding-top:6px;">${modello ? escapeHtml(modello.categoria + ' — ' + modello.nome) : 'Modello non più disponibile'}</div></div>`
     : `<div class="field"><label>Modello *</label><select id="pModello" data-action="docm-cambia-modello">${modelliDisponibili.map(m=>`<option value="${m.id}" ${modello.id===m.id?'selected':''}>${escapeHtml(m.categoria + ' — ' + m.nome)}</option>`).join('')}</select></div>`;
-  const campiHtml = campiPersonalizzati.map(chiave => `
-    <div class="field full" style="grid-column:1/-1;">
-      <label>${escapeHtml(chiave)}</label>
-      <textarea data-campo-custom data-chiave="${escapeHtml(chiave)}" ${chiave === 'dettaglioAttivita' ? 'id="campoDettaglioAttivita"' : ''} rows="2" style="min-height:44px;">${escapeHtml(valoriCustomEsistenti[chiave] || '')}</textarea>
-    </div>`).join('');
+  const campiHtml = raggruppaCampiPersonalizzatiModello(campiPersonalizzati).map(voce => {
+    if (voce.tipo === 'gruppo') {
+      // Sotto-modulo per un gruppo di campi con lo stesso prefisso (es. "esecutoreNome",
+      // "esecutoreCf", "esecutoreNascita"...): campi brevi e identitari, un input su una riga
+      // sola invece di una textarea alta — meno peso visivo su un blocco che è già raggruppato.
+      const righeGruppo = voce.campi.map(campo => `
+        <div class="field"><label>${escapeHtml(campo.label)}</label>
+        <input type="text" data-campo-custom data-chiave="${escapeHtml(campo.chiave)}" value="${escapeHtml(valoriCustomEsistenti[campo.chiave] || '')}"></div>`).join('');
+      return `<div class="field full" style="grid-column:1/-1;border:1px solid var(--border);border-radius:8px;padding:10px 12px;background:var(--bg);">
+        <div style="font-size:11px;font-weight:700;color:var(--text-mut);text-transform:uppercase;letter-spacing:.03em;margin-bottom:8px;">${escapeHtml(voce.label)}</div>
+        <div class="grid2">${righeGruppo}</div>
+      </div>`;
+    }
+    return `<div class="field full" style="grid-column:1/-1;">
+      <label>${escapeHtml(voce.label)}</label>
+      <textarea data-campo-custom data-chiave="${escapeHtml(voce.chiave)}" ${voce.chiave === 'dettaglioAttivita' ? 'id="campoDettaglioAttivita"' : ''} rows="2" style="min-height:44px;">${escapeHtml(valoriCustomEsistenti[voce.chiave] || '')}</textarea>
+    </div>`;
+  }).join('');
 
   // Attività a listino (task #138): solo in creazione e fuori dal contesto AML — selezionandole si
   // calcola da sole l'importo e (se il modello ha un campo "dettaglioAttivita", come i modelli

@@ -1528,6 +1528,37 @@ async function main() {
   assert(window.categoriaEAml('AML - Dichiarazione cliente') && window.categoriaEAml('aml - test') && !window.categoriaEAml('Preventivo'), 'la convenzione di naming "AML*" per categoriaEAml non funziona come atteso');
   console.log('=== Motore modelli documento: segnaposto riservati esclusi dai campi personalizzati, sostituzione automatica/personalizzata OK, placeholder mancante visibile, convenzione naming AML OK');
 
+  // ---------- 8d-ter-bis) Compilazione guidata campi modello AML (richiesto da Matteo: etichette
+  // leggibili + raggruppamento invece di caselle tipo "ESECUTORENOME" senza direzione) ----------
+  {
+    const raggruppati = window.raggruppaCampiPersonalizzatiModello(['clienteRea', 'esecutoreNome', 'esecutoreCf', 'esecutoreNascita', 'esecutoreCittadinanza', 'esecutoreResidenza', 'esecutoreDocumento', 'scopoPrestazione']);
+    const gruppoEsecutore = raggruppati.find(v => v.tipo === 'gruppo' && v.label === 'Esecutore');
+    assert(gruppoEsecutore, 'i 6 campi "esecutore*" del modello AML dovrebbero formare un gruppo "Esecutore"');
+    assert(gruppoEsecutore.campi.length === 6, `attesi 6 campi nel gruppo "Esecutore", trovati ${gruppoEsecutore.campi.length}`);
+    assert(gruppoEsecutore.campi.find(c => c.chiave === 'esecutoreNascita' && c.label === 'Nascita'), 'il campo "esecutoreNascita" dentro il gruppo dovrebbe avere l\'etichetta breve "Nascita", non la chiave grezza');
+    const campoRea = raggruppati.find(v => v.tipo === 'campo' && v.chiave === 'clienteRea');
+    assert(campoRea && campoRea.label === 'Cliente Rea', `"clienteRea" (unico col suo prefisso) dovrebbe restare un campo singolo con etichetta leggibile "Cliente Rea", trovato: ${campoRea && campoRea.label}`);
+    const campoScopo = raggruppati.find(v => v.tipo === 'campo' && v.chiave === 'scopoPrestazione');
+    assert(campoScopo && campoScopo.label === 'Scopo Prestazione', `"scopoPrestazione" dovrebbe restare un campo singolo con etichetta leggibile, trovato: ${campoScopo && campoScopo.label}`);
+    console.log('=== raggruppaCampiPersonalizzatiModello (unit): campi con prefisso condiviso raggruppati, campi isolati con etichetta leggibile OK');
+
+    // Stessa cosa, ma nel modale vero: apre "Nuovo documento" per il modello AML e verifica che il
+    // form mostri davvero la sezione "Esecutore" raggruppata invece delle textarea grezze.
+    window.modalPreventivo(null, null, true);
+    await wait(20);
+    assert(q('#formPreventivo'), 'form nuovo documento AML non renderizzato');
+    const testoForm = q('#formPreventivo').textContent;
+    assert(testoForm.includes('Esecutore'), 'il form del documento AML dovrebbe mostrare l\'intestazione di gruppo "Esecutore"');
+    assert(testoForm.includes('Nascita') && !testoForm.includes('ESECUTORENASCITA') && !testoForm.includes('esecutoreNascita'), 'dentro il gruppo l\'etichetta dovrebbe essere la breve "Nascita", non la chiave grezza del segnaposto');
+    const campoNascitaInput = qa('#formPreventivo [data-campo-custom]').find(el => el.dataset.chiave === 'esecutoreNascita');
+    assert(campoNascitaInput && campoNascitaInput.tagName === 'INPUT', 'i campi dentro un gruppo dovrebbero essere input su una riga, non textarea');
+    const campoScopoInput = qa('#formPreventivo [data-campo-custom]').find(el => el.dataset.chiave === 'scopoPrestazione');
+    assert(campoScopoInput && campoScopoInput.tagName === 'TEXTAREA', 'un campo isolato come "scopoPrestazione" dovrebbe restare una textarea, non essere convertito a input');
+    click(q('[data-action="chiudi-modal"]'));
+    await wait(20);
+    console.log('=== Modale "Nuovo documento" AML: sezione "Esecutore" raggruppata renderizzata correttamente nel form OK');
+  }
+
   // ---------- 8d-quater) Preventivi e mandati sul motore a modelli (task #121, riscritto #125) ----------
   click(q('[data-nav="preventivi"]'));
   await wait(20);
