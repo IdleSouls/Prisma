@@ -1812,6 +1812,25 @@ function operatoreCorrente() {
 // responsabili visti negli ultimi 30 secondi.
 let PRESENZA_ONLINE = {};
 function operatoreOnline(nome) { return !!(nome && PRESENZA_ONLINE[nome]); }
+/* Guardia condivisa contro i re-render "in background" (polling presenza, sync stato remoto): un
+   render() ricostruisce tutto il DOM da zero, quindi qualunque stato che vive SOLO nel DOM invece
+   che in una variabile JS sparisce silenziosamente. Oltre a "si sta scrivendo" (INPUT/TEXTAREA, già
+   gestito prima) questo copre due bug segnalati da Matteo:
+   - un <select> con il menu a tendina aperto (focus sul <select> mentre il browser mostra le
+     opzioni): ricostruire l'elemento sotto al dito lo chiude di scatto.
+   - un <details> aperto a mano (es. la spiegazione di un indice in Bilanci&KPI, o "utente e
+     password" in Accesso esterno): l'attributo "open" è nativo del browser, non tracciato in
+     nessuna variabile, quindi un re-render lo richiude sempre, anche se l'utente lo sta ancora
+     leggendo ("molti menù a tendina si chiudono da soli poco dopo averli aperti").
+   Non copre i casi con logica ad hoc più fine (es. applicaStatoRemotoSeLibero fa un'eccezione per
+   #chatTesto): quei punti mantengono il proprio controllo aggiuntivo oltre a questo. */
+function staModificandoQualcosa() {
+  const el = document.activeElement;
+  const inCampo = el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') && document.body.contains(el);
+  if (inCampo) return true;
+  if (document.querySelector('#content details[open], #modalRoot details[open]')) return true;
+  return false;
+}
 // Interroga il server ogni 8 secondi per sapere chi è online in questo momento - gira anche per chi
 // non ha ancora scelto un operatore (basta vedere i pallini altrui), l'invio del PROPRIO heartbeat
 // è avviaHeartbeatOperatore() sotto, separato apposta.
@@ -1828,11 +1847,11 @@ function avviaPollingPresenza() {
       // e qualunque testo digitato ma non ancora salvato in STATE (es. i campi di "Nuova
       // comunicazione", che si leggono solo al salvataggio, non ad ogni tasto) va perso, anche se
       // l'utente non ha smesso di scrivere da 8 secondi interi: basta che il giro scatti a metà
-      // frase. Stessa guardia di applicaStatoRemotoSeLibero(): se si sta scrivendo in un campo,
-      // i pallini online/offline aspettano il giro successivo (8s dopo) invece di rompere il modulo.
-      const elAttivo = document.activeElement;
-      const staScrivendo = elAttivo && (elAttivo.tagName === 'INPUT' || elAttivo.tagName === 'TEXTAREA') && document.body.contains(elAttivo);
-      if (staScrivendo) return;
+      // frase. Stessa guardia di applicaStatoRemotoSeLibero() (vedi staModificandoQualcosa sopra):
+      // se si sta scrivendo in un campo, c'è un menu a tendina aperto o un <details> espanso a
+      // mano, i pallini online/offline aspettano il giro successivo (8s dopo) invece di rompere
+      // quello che si sta guardando o scrivendo.
+      if (staModificandoQualcosa()) return;
       render();
     }).catch(() => { /* un giro perso non è un problema, si ritenta al prossimo */ });
   };
@@ -1954,7 +1973,10 @@ function modalSelettoreOperatore() {
       <h2>Chi sta usando questo PC?</h2>
       <div class="modal-sub">Serve solo per sapere chi ha risposto a un cliente o creato una comunicazione — non è un vero login: chiunque sulla rete dello studio ha comunque accesso completo, come oggi.</div>
       <div style="display:flex;flex-direction:column;gap:8px;margin:14px 0;">
-        ${STATE.meta.responsabili.map(r => `<button class="btn" data-action="operatore-scegli" data-nome="${escapeHtml(r)}" style="text-align:left;">${escapeHtml(r)}</button>`).join('')}
+        ${STATE.meta.responsabili.map(r => `<button class="btn" data-action="operatore-scegli" data-nome="${escapeHtml(r)}" style="text-align:left;display:flex;align-items:center;gap:8px;">
+          <span class="chat-pallino ${operatoreOnline(r)?'online':'offline'}" style="position:static;flex:none;" title="${operatoreOnline(r)?'Online adesso':'Offline'}"></span>
+          ${escapeHtml(r)}
+        </button>`).join('')}
       </div>
       <div class="modal-actions"><button class="btn" data-action="chiudi-modal">Non ora</button></div>
     </div>
@@ -1982,9 +2004,8 @@ function impostaBadgeSync(testo, titolo) {
 function applicaStatoRemotoSeLibero() {
   if (!DB_STATO_REMOTO_PENDENTE) return;
   const el = document.activeElement;
-  const inCampoTesto = el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') && document.body.contains(el);
   const eraChatTesto = el && el.id === 'chatTesto';
-  if (inCampoTesto && !eraChatTesto) return;
+  if (staModificandoQualcosa() && !eraChatTesto) return;
   const bozzaChat = eraChatTesto ? { valore: el.value, inizio: el.selectionStart, fine: el.selectionEnd } : null;
   const remoto = DB_STATO_REMOTO_PENDENTE;
   DB_STATO_REMOTO_PENDENTE = null;
@@ -9987,61 +10008,6 @@ function ripristinaBackupServer(file) {
     })
     .catch(() => toast('⚠️ Impossibile contattare il server locale per il ripristino.', true));
 }
-/* Indirizzi di rete per far collegare i colleghi in studio da un altro PC (task #132): stesso
-   pattern di caricaElencoBackupServer sopra - cache a livello di modulo, un fetch alla volta,
-   nessun nuovo fetch finché non si azzera esplicitamente altrove. */
-let INDIRIZZI_RETE_CACHE = null;
-let INDIRIZZI_RETE_CARICAMENTO = false;
-function caricaIndirizziRete() {
-  if (!HTTP_SYNC_ATTIVO || INDIRIZZI_RETE_CARICAMENTO || INDIRIZZI_RETE_CACHE !== null) return;
-  INDIRIZZI_RETE_CARICAMENTO = true;
-  // timeout difensivo: questa chiamata non deve MAI restare appesa (es. rete instabile) e bloccare
-  // il resto della UI di Impostazioni - dopo pochi secondi si arrende e mostra l'errore.
-  const controllerIndirizzi = new AbortController();
-  const timerIndirizzi = setTimeout(() => controllerIndirizzi.abort(), 4000);
-  fetch('/api/indirizzi-rete', { signal: controllerIndirizzi.signal })
-    .then(r => { clearTimeout(timerIndirizzi); return r.json(); })
-    .then(info => { INDIRIZZI_RETE_CACHE = (info && info.ok) ? info : 'errore'; })
-    .catch(() => { INDIRIZZI_RETE_CACHE = 'errore'; })
-    .finally(() => {
-      INDIRIZZI_RETE_CARICAMENTO = false;
-      if (VIEW === 'impostazioni') render();
-    });
-}
-/* Blocco "Accesso da altri PC dello studio" dentro la card Responsabili: indirizzi copiabili +
-   download del file di collegamento auto-connettente (vedi scriviLauncherCollegamento in
-   server.js). Riusa l'azione generica "portale-copia-link" (copia el.dataset.link), già usata per
-   il link del portale cliente - stesso meccanismo, nessun nuovo case nel dispatcher. */
-function cardAccessoColleghi() {
-  if (!HTTP_SYNC_ATTIVO) {
-    return `<div class="helptext" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">Per far accedere i colleghi da un altro PC dello studio serve il server locale acceso (server.js): apri il gestionale dall'indirizzo del server (es. http://localhost:8420) invece che come file, poi torna in questa pagina.</div>`;
-  }
-  caricaIndirizziRete();
-  let corpo;
-  if (INDIRIZZI_RETE_CACHE === null || INDIRIZZI_RETE_CARICAMENTO) {
-    corpo = `<div class="helptext">Caricamento indirizzi di rete…</div>`;
-  } else if (INDIRIZZI_RETE_CACHE === 'errore') {
-    corpo = `<div class="helptext">⚠️ Non sono riuscito a leggere gli indirizzi di rete dal server locale.</div>`;
-  } else {
-    const info = INDIRIZZI_RETE_CACHE;
-    const urlHostname = `http://${info.hostname}:${info.porta}/`;
-    const urlIp = (info.indirizzi || []).map(ip => `http://${ip}:${info.porta}/`);
-    const tuttiGliUrl = [urlHostname].concat(urlIp);
-    corpo = `<div class="helptext" style="margin-bottom:8px;">Dagli altri PC dello studio, sulla stessa rete WiFi/LAN, si collegano a Prisma aprendo uno di questi indirizzi (il primo di solito è il più stabile):</div>
-      <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px;">
-        ${tuttiGliUrl.map(u => `<div style="display:flex;align-items:center;gap:8px;">
-          <code style="background:var(--bg);border-radius:6px;padding:4px 8px;font-size:12.5px;">${escapeHtml(u)}</code>
-          <button class="btn small ghost" data-action="portale-copia-link" data-link="${escapeHtml(u)}">Copia</button>
-        </div>`).join('')}
-      </div>
-      <div class="helptext" style="margin-bottom:8px;">In alternativa, manda loro (una volta sola, via email/chat) questo file: a ogni doppio click provano a collegarsi da soli a questo PC, e se il server non è acceso lo dicono chiaramente invece di un errore tecnico.</div>
-      <a class="btn small" href="/api/link-colleghi" download="Apri Gestionale (rete studio).html">⬇ Scarica il link da inviare ai colleghi</a>`;
-  }
-  return `<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
-    <div style="font-weight:600;font-size:13.5px;margin-bottom:6px;">Accesso da altri PC dello studio</div>
-    ${corpo}
-  </div>`;
-}
 /* -------------------- Aggiornamenti e log (task #158) --------------------
    Stesso schema di caching di BACKUP_SERVER_ELENCO qui sopra: un fetch alla volta, non a ogni
    render. Il controllo versione è SEMPRE manuale (bottone "Verifica aggiornamenti") - Prisma non
@@ -10157,17 +10123,43 @@ function cardBackupAutomatici() {
 /* -------------------- IMPOSTAZIONI: accesso esterno via ngrok (clienti + collaboratori) -------------------- */
 let ACCESSO_ESTERNO_CACHE = null;
 let ACCESSO_ESTERNO_CARICAMENTO = false;
+/* BUG segnalato da Matteo ("scrivo utente e password e non succede nulla, il pulsante non si
+   illumina, poi i dati scritti si cancellano"): il pulsante "Attiva porta" era disabilitato in base
+   a dati.utente/dati.password letti dalla CACHE del server (ACCESSO_ESTERNO_CACHE) — che restano
+   vuoti finché non si salva, quindi il pulsante non poteva MAI accendersi scrivendo (il salvataggio
+   che avrebbe aggiornato la cache è esattamente ciò che il pulsante disabilitato impediva: un
+   vicolo cieco). In più, l'input leggeva il proprio value="..." dalla stessa cache statica: al primo
+   render "in background" (es. il polling presenza ogni 8s, se il focus è momentaneamente altrove)
+   il campo tornava al valore vecchio, cancellando quanto digitato. Questo buffer separato
+   (inizializzato una sola volta dalla cache, MAI più sovrascritto da un re-render) rompe entrambi i
+   problemi: l'input riflette sempre l'ultimo valore digitato, e il pulsante si abilita/disabilita
+   dal vivo via oninput (vedi aggiornaBottoneAccessoEsterno), senza aspettare un giro di salvataggio. */
+let ACCESSO_ESTERNO_DRAFT = null;
 function caricaStatoAccessoEsterno() {
   if (!HTTP_SYNC_ATTIVO || ACCESSO_ESTERNO_CARICAMENTO || ACCESSO_ESTERNO_CACHE !== null) return;
   ACCESSO_ESTERNO_CARICAMENTO = true;
   fetch('/api/accesso-esterno')
     .then(r => r.json())
-    .then(info => { ACCESSO_ESTERNO_CACHE = (info && info.ok) ? info : 'errore'; })
+    .then(info => {
+      ACCESSO_ESTERNO_CACHE = (info && info.ok) ? info : 'errore';
+      if (ACCESSO_ESTERNO_CACHE !== 'errore' && !ACCESSO_ESTERNO_DRAFT) {
+        ACCESSO_ESTERNO_DRAFT = {
+          clienti: { utente: info.clienti.utente || '', password: info.clienti.password || '' },
+          team: { utente: info.team.utente || '', password: info.team.password || '' },
+        };
+      }
+    })
     .catch(() => { ACCESSO_ESTERNO_CACHE = 'errore'; })
     .finally(() => {
       ACCESSO_ESTERNO_CARICAMENTO = false;
       if (VIEW === 'impostazioni') render();
     });
+}
+function aggiornaBottoneAccessoEsterno(tipo) {
+  const btn = document.querySelector(`[data-action="salva-accesso-esterno"][data-tipo="${tipo}"]`);
+  if (!btn || !ACCESSO_ESTERNO_DRAFT) return;
+  const d = ACCESSO_ESTERNO_DRAFT[tipo];
+  btn.disabled = !(d.utente.trim() && d.password.trim());
 }
 function cardAccessoEsterno() {
   if (!HTTP_SYNC_ATTIVO) {
@@ -10191,7 +10183,11 @@ function cardAccessoEsterno() {
   // porta è aperta adesso, e un pulsante dedicato per spegnerla/riaccenderla senza dover ritoccare
   // le credenziali. Il form utente/password resta sotto, per chi deve cambiarle.
   const rigaTipo = (tipo, titolo, spiegazione, dati, porta) => {
-    const credenzialiPronte = !!(dati.utente && dati.password);
+    // Valori mostrati/validati per il pulsante: sempre il DRAFT (ultimo digitato da questa
+    // postazione), mai "dati" (istantanea del server, aggiornata solo dopo un salvataggio) - vedi
+    // il commento su ACCESSO_ESTERNO_DRAFT più sopra.
+    const draft = ACCESSO_ESTERNO_DRAFT[tipo];
+    const credenzialiPronte = !!(draft.utente.trim() && draft.password.trim());
     const comando = `ngrok http ${porta}`;
     return `
     <div style="margin-bottom:24px;border:1px solid var(--border);border-radius:10px;padding:14px;">
@@ -10206,12 +10202,12 @@ function cardAccessoEsterno() {
           : `<button class="btn primary" data-action="salva-accesso-esterno" data-tipo="${tipo}" ${credenzialiPronte ? '' : 'disabled title="Imposta prima utente e password qui sotto"'}>⏻ Attiva porta ${titolo.toLowerCase()}</button>`}
         <button class="btn small" data-action="copia-comando-ngrok" data-testo="${escapeHtml(comando)}">📋 Copia comando ngrok</button>
       </div>
-      ${!credenzialiPronte && !dati.attivo ? `<div class="helptext" style="margin-bottom:10px;color:var(--arancio,#c0790c);">⚠️ Imposta prima utente e password qui sotto, poi premi "Attiva porta".</div>` : ''}
+      ${!credenzialiPronte && !dati.attivo ? `<div class="helptext" style="margin-bottom:10px;color:var(--arancio,#c0790c);">⚠️ Imposta utente e password qui sotto: il pulsante "Attiva porta" si accende appena sono entrambi compilati.</div>` : ''}
       <details ${dati.attivo ? '' : 'open'}>
         <summary style="cursor:pointer;font-size:12px;font-weight:600;color:var(--text-mut);margin-bottom:8px;">Utente e password di accesso</summary>
         <div class="grid2" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;max-width:480px;margin-top:8px;">
-          <div class="field"><label>Utente</label><input type="text" id="accEst_${tipo}_utente" value="${escapeHtml(dati.utente || '')}" placeholder="es. studio"></div>
-          <div class="field"><label>Password</label><input type="text" id="accEst_${tipo}_password" value="${escapeHtml(dati.password || '')}" placeholder="scegli una password"></div>
+          <div class="field"><label>Utente</label><input type="text" id="accEst_${tipo}_utente" value="${escapeHtml(draft.utente)}" placeholder="es. studio" data-action="accesso-esterno-campo" data-tipo="${tipo}" data-campo="utente"></div>
+          <div class="field"><label>Password</label><input type="text" id="accEst_${tipo}_password" value="${escapeHtml(draft.password)}" placeholder="scegli una password" data-action="accesso-esterno-campo" data-tipo="${tipo}" data-campo="password"></div>
         </div>
         <div class="helptext" style="margin-top:6px;">Cambiare qui utente/password e premere di nuovo "Attiva porta ${titolo.toLowerCase()}" aggiorna le credenziali sulla porta già aperta, senza doverla spegnere prima.</div>
       </details>
@@ -10586,7 +10582,6 @@ function renderImpostazioniTeam() {
       <button class="icon-x" data-action="elimina-responsabile" data-idx="${i}" title="Rimuovi responsabile">✕</button>
     </div>`).join('')}
     <button class="btn small" data-action="aggiungi-responsabile">+ Aggiungi responsabile</button>
-    ${cardAccessoColleghi()}
   </div>
   ${cardAccessoEsterno()}`;
 }
@@ -11500,6 +11495,7 @@ function onClickDelegato(e) {
         body: JSON.stringify({ tipo, utente: utente.trim(), password }),
       }).then(r => r.json()).then(() => {
         ACCESSO_ESTERNO_CACHE = null;
+        ACCESSO_ESTERNO_DRAFT = null; // si reinizializza dalla cache fresca appena riletta, vedi caricaStatoAccessoEsterno
         render();
         toast('Accesso esterno salvato e attivato.');
       }).catch(() => toast('Errore nel salvare l\'accesso esterno.'));
@@ -11513,6 +11509,7 @@ function onClickDelegato(e) {
         body: JSON.stringify({ tipo, utente: '', password: '' }),
       }).then(r => r.json()).then(() => {
         ACCESSO_ESTERNO_CACHE = null;
+        ACCESSO_ESTERNO_DRAFT = null;
         render();
         toast('Accesso esterno disattivato.');
       }).catch(() => toast('Errore nel disattivare l\'accesso esterno.'));
@@ -12693,6 +12690,12 @@ function onInputDelegato(e) {
     case 'onboard-filtro-q': ONBOARD_FILTRO_Q = el.value; render(); restoreFocus('[data-action="onboard-filtro-q"]'); break;
     case 'aml-filtro-q': AML_FILTRO_Q = el.value; render(); restoreFocus('[data-action="aml-filtro-q"]'); break;
     case 'proc-filtro-q': PROC_FILTRO_Q = el.value; render(); restoreFocus('[data-action="proc-filtro-q"]'); break;
+    case 'accesso-esterno-campo': {
+      const tipo = el.dataset.tipo, campo = el.dataset.campo;
+      if (ACCESSO_ESTERNO_DRAFT && ACCESSO_ESTERNO_DRAFT[tipo]) ACCESSO_ESTERNO_DRAFT[tipo][campo] = el.value;
+      aggiornaBottoneAccessoEsterno(tipo); // niente render(): accenderebbe/spegnerebbe il pulsante senza perdere il focus sul campo
+      break;
+    }
     case 'dc-tipo-change': apriModalDocumentoContabile(el.dataset.cliente, el.value); break;
     case 'f24-chiave-change': aggiornaSuggerimentoImportoF24(); break;
     case 'f24-cliente-change': aggiornaSuggerimentoImportoF24(); break;
