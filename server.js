@@ -924,15 +924,44 @@ function notificaRiavvioImminente(secondi) {
     try { res.write(payload); } catch (err) { /* client ormai disconnesso, ignorato */ }
   });
 }
-// Chi ha già premuto "Ho visto, va bene" durante il conto alla rovescia attuale del riavvio -
-// azzerato a ogni nuovo riavvio richiesto (vedi /api/server/riavvia). Solo per far vedere agli
-// altri operatori chi ha già confermato, mai per decidere se/quando riavviare davvero.
+// Task Matteo (revisione del flusso: "se viene accettato da tutti avviene subito, se uno rifiuta si
+// blocca"): chi ha già premuto "Ho visto, va bene" durante il conto alla rovescia attuale del
+// riavvio - azzerato a ogni nuovo riavvio richiesto (vedi /api/server/riavvia). RIAVVIO_ONLINE_ATTESI
+// è la lista di chi era online nel momento in cui il riavvio è stato richiesto: quando TUTTI quei
+// nomi risultano in RIAVVIO_CONFERME, il riavvio parte subito invece di aspettare i 60 secondi
+// interi. RIAVVIO_TIMER è il timeout in corso, così un rifiuto (vedi /api/server/riavvio-rifiuta)
+// può annullarlo del tutto.
 let RIAVVIO_CONFERME = [];
+let RIAVVIO_ONLINE_ATTESI = [];
+let RIAVVIO_TIMER = null;
 function notificaRiavvioConferme() {
   const payload = 'data: ' + JSON.stringify({ tipo: 'riavvioConferme', conferme: RIAVVIO_CONFERME }) + '\n\n';
   clientiSSE.forEach((res) => {
     try { res.write(payload); } catch (err) { /* client ormai disconnesso, ignorato */ }
   });
+}
+function notificaRiavvioAnnullato(daOperatore) {
+  const payload = 'data: ' + JSON.stringify({ tipo: 'riavvioAnnullato', da: daOperatore || null }) + '\n\n';
+  clientiSSE.forEach((res) => {
+    try { res.write(payload); } catch (err) { /* client ormai disconnesso, ignorato */ }
+  });
+}
+// Riavvio anticipato (tutti hanno confermato prima dei 60s): avvisa anche chi NON ha ancora
+// confermato/rifiutato che il conto alla rovescia si è interrotto perché si riavvia già, così il
+// suo banner passa subito allo stato "sto ricaricando" invece di continuare a contare da solo fino
+// al proprio timer locale (che tanto non corrisponderebbe più a quando il server si riavvia davvero).
+function notificaRiavvioSubito() {
+  const payload = 'data: ' + JSON.stringify({ tipo: 'riavvioSubito' }) + '\n\n';
+  clientiSSE.forEach((res) => {
+    try { res.write(payload); } catch (err) { /* client ormai disconnesso, ignorato */ }
+  });
+}
+// Esegue davvero il riavvio (rilancio del processo + uscita) - richiamata sia dal timeout dei 60
+// secondi sia, in anticipo, quando tutti gli online al momento della richiesta hanno confermato.
+function eseguiRiavvioServerOra() {
+  RIAVVIO_TIMER = null;
+  rilanciaProcesso();
+  process.exit(0);
 }
 
 // ---------------------------------------------------------------------------
@@ -1438,26 +1467,29 @@ function gestisciRichiesta(req, res) {
   // non a sorpresa), fa un backup di sicurezza, POI rilancia se stesso come nuovo processo (vedi
   // rilanciaProcesso più sopra) e SOLO DOPO chiude quello attuale - un vero riavvio con un click,
   // non solo una chiusura (task Matteo: "il riavvio del server non funziona, si chiude e basta").
-  // Task Matteo: 60 secondi (non 5) per dare tempo reale a chi ha lavoro in corso di salvare, con
-  // un pulsante "Ho visto, va bene" che ogni operatore può premere (vedi RIAVVIO_CONFERME e
-  // /api/server/riavvio-conferma sotto) - ma la conferma è solo per dare un riscontro a chi lavora,
-  // NON blocca né accelera il riavvio: "se non lo fanno il server si riavvia lo stesso" (parole di
-  // Matteo), sempre e solo allo scadere dei 60 secondi.
+  // Task Matteo (revisione): 60 secondi di preavviso MASSIMO, ma se TUTTI gli operatori che erano
+  // online nel momento della richiesta confermano ("Ho visto, va bene") prima che scadano, il
+  // riavvio parte subito, senza aspettare oltre - vedi eseguiRiavvioServerOra e RIAVVIO_ONLINE_ATTESI.
+  // Se invece anche un solo operatore rifiuta (/api/server/riavvio-rifiuta), il riavvio è annullato
+  // del tutto: va richiesto di nuovo da Impostazioni quando si è pronti.
   if (url === '/api/server/riavvia' && req.method === 'POST') {
     const online = Object.keys(presenzaOnlineElenco());
     const secondiAttesa = 60;
     RIAVVIO_CONFERME = [];
+    RIAVVIO_ONLINE_ATTESI = online.slice();
+    if (RIAVVIO_TIMER) clearTimeout(RIAVVIO_TIMER);
     notificaRiavvioImminente(secondiAttesa);
     scriviLog('Riavvio manuale del server richiesto' + (online.length ? (' (utenti online: ' + online.join(', ') + ')') : '') + '.');
     eseguiBackup('prima di un riavvio manuale del server');
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify({ ok: true, secondi: secondiAttesa, online }));
-    setTimeout(() => { rilanciaProcesso(); process.exit(0); }, secondiAttesa * 1000);
+    RIAVVIO_TIMER = setTimeout(eseguiRiavvioServerOra, secondiAttesa * 1000);
     return;
   }
 
   // Conferma di un operatore ("ho visto, va bene procedere") durante il conto alla rovescia del
-  // riavvio - solo per riscontro/tranquillità reciproca, vedi commento sopra: non altera i tempi.
+  // riavvio. Se con questa conferma TUTTI quelli che erano online alla richiesta hanno ormai
+  // confermato, il riavvio parte subito invece di aspettare lo scadere dei 60 secondi.
   if (url === '/api/server/riavvio-conferma' && req.method === 'POST') {
     leggiCorpoRichiesta(req, (corpo) => {
       let dati = {};
@@ -1465,8 +1497,41 @@ function gestisciRichiesta(req, res) {
       const operatore = dati && typeof dati.operatore === 'string' ? dati.operatore.trim() : '';
       if (operatore && !RIAVVIO_CONFERME.includes(operatore)) RIAVVIO_CONFERME.push(operatore);
       notificaRiavvioConferme();
+      const tuttiConfermato = RIAVVIO_TIMER && RIAVVIO_ONLINE_ATTESI.length > 0
+        && RIAVVIO_ONLINE_ATTESI.every((n) => RIAVVIO_CONFERME.includes(n));
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify({ ok: true, conferme: RIAVVIO_CONFERME }));
+      res.end(JSON.stringify({ ok: true, conferme: RIAVVIO_CONFERME, subito: !!tuttiConfermato }));
+      if (tuttiConfermato) {
+        scriviLog('Tutti gli operatori online (' + RIAVVIO_ONLINE_ATTESI.join(', ') + ') hanno confermato: riavvio anticipato.');
+        clearTimeout(RIAVVIO_TIMER);
+        notificaRiavvioSubito();
+        // Piccolo ritardo per dare tempo a questa risposta di uscire sul socket prima che il
+        // processo termini - altrimenti il fetch del client che ha appena confermato rischia di
+        // vedersi la connessione interrotta invece della risposta ok:true.
+        setTimeout(eseguiRiavvioServerOra, 300);
+      }
+    });
+    return;
+  }
+
+  // Rifiuto di un operatore ("non ora"): a differenza della conferma, questo BLOCCA davvero il
+  // riavvio - viene annullato del tutto, non solo rimandato, e va richiesto di nuovo da Impostazioni
+  // quando tutti sono pronti (task Matteo: "se uno rifiuta si blocca").
+  if (url === '/api/server/riavvio-rifiuta' && req.method === 'POST') {
+    leggiCorpoRichiesta(req, (corpo) => {
+      let dati = {};
+      try { dati = JSON.parse(corpo); } catch (err) { /* corpo vuoto o malformato */ }
+      const operatore = dati && typeof dati.operatore === 'string' ? dati.operatore.trim() : '';
+      const cEraUnRiavvioInCorso = !!RIAVVIO_TIMER;
+      if (RIAVVIO_TIMER) { clearTimeout(RIAVVIO_TIMER); RIAVVIO_TIMER = null; }
+      RIAVVIO_CONFERME = [];
+      RIAVVIO_ONLINE_ATTESI = [];
+      if (cEraUnRiavvioInCorso) {
+        scriviLog('Riavvio manuale annullato' + (operatore ? (' da ' + operatore) : '') + '.');
+        notificaRiavvioAnnullato(operatore);
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ ok: true, annullato: cEraUnRiavvioInCorso }));
     });
     return;
   }

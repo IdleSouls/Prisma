@@ -2278,6 +2278,8 @@ async function inizializzaSyncViaServerLocale() {
       if (dati && dati.tipo === 'comandoMcp') { eseguiComandoMCP(dati.comando); return; }
       if (dati && dati.tipo === 'riavvioImminente') { mostraAvvisoRiavvioServer(dati.secondi); return; }
       if (dati && dati.tipo === 'riavvioConferme') { aggiornaConfermeRiavvioServer(dati.conferme || []); return; }
+      if (dati && dati.tipo === 'riavvioSubito') { avviaFaseFinaleRiavvio(); return; }
+      if (dati && dati.tipo === 'riavvioAnnullato') { gestisciRiavvioAnnullato(dati.da); return; }
       if (dati && dati.origine === HTTP_CLIENT_ID) return; // eco della propria scrittura: già applicata in locale
       fetch('/api/stato').then(r => r.json()).then(remoto => {
         if (remoto && Array.isArray(remoto.clienti)) {
@@ -2499,13 +2501,34 @@ function confermaAzione(msg) {
 /* Banner di avviso "il server sta per riavviarsi" (task Matteo: pulsante Riavvia server con avviso
    agli utenti online) - creato direttamente su document.body, non dentro #content, così resta
    visibile qualunque sia la vista aperta e sopravvive ai render() successivi. */
-// Task Matteo: 60 secondi di preavviso (non più 5) con un pulsante "Ho visto, va bene" che ogni
-// operatore collegato può premere - la conferma è solo un riscontro reciproco ("Confermato da:
-// ..."), MAI un blocco: allo scadere del tempo il server si riavvia comunque, con o senza conferme
-// (lo decide solo il countdown lato server, questo banner si limita a rifletterlo).
+// Task Matteo (revisione del flusso): fino a 60 secondi di preavviso, ma con due pulsanti invece di
+// uno solo - "✓ Ho visto, va bene" (se lo premono TUTTI gli operatori online il riavvio parte
+// subito, senza aspettare il resto del countdown - lo decide il server, vedi 'subito' nella
+// risposta e l'evento SSE riavvioSubito) e "✕ Rifiuta" (un solo rifiuto ANNULLA il riavvio del
+// tutto, vedi l'evento SSE riavvioAnnullato - a differenza della vecchia versione, qui blocca
+// davvero, non è solo un riscontro). Durante la fase finale (countdown a zero, o riavvio anticipato)
+// un overlay a schermo intero blocca ogni interazione con l'app, invece di lasciare che i click
+// vadano a vuoto contro un server che nel frattempo si sta riavviando (task Matteo: "non si può
+// accedere mentre sta aggiornando").
 let RIAVVIO_CONFERME_RICEVUTE = [];
+let RIAVVIO_TIMER_CLIENT = null;
+function creaOverlayBloccoRiavvio() {
+  let overlay = document.getElementById('overlayBloccoRiavvio');
+  if (overlay) return overlay;
+  overlay = document.createElement('div');
+  overlay.id = 'overlayBloccoRiavvio';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:9998;background:rgba(10,14,24,.55);display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML = '<div style="background:#fff;border-radius:12px;padding:22px 28px;max-width:320px;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.25);"><div style="font-size:28px;margin-bottom:8px;">🔄</div><div style="font-weight:700;margin-bottom:4px;">Aggiornamento in corso</div><div style="font-size:13px;color:var(--text-mut);">Il gestionale si sta riavviando: non puoi lavorare per qualche secondo, la pagina si ricarica da sola.</div></div>';
+  document.body.appendChild(overlay);
+  return overlay;
+}
+function rimuoviOverlayBloccoRiavvio() {
+  const overlay = document.getElementById('overlayBloccoRiavvio');
+  if (overlay) overlay.remove();
+}
 function mostraAvvisoRiavvioServer(secondi) {
   RIAVVIO_CONFERME_RICEVUTE = [];
+  if (RIAVVIO_TIMER_CLIENT) { clearInterval(RIAVVIO_TIMER_CLIENT); RIAVVIO_TIMER_CLIENT = null; }
   let box = document.getElementById('avvisoRiavvioServer');
   if (!box) {
     box = document.createElement('div');
@@ -2513,30 +2536,53 @@ function mostraAvvisoRiavvioServer(secondi) {
     box.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:var(--arancio,#e08a2c);color:#fff;text-align:center;padding:10px 16px;font-weight:600;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;';
     document.body.appendChild(box);
   }
+  box.style.background = 'var(--arancio,#e08a2c)';
   let restante = Number(secondi) || 60;
   const disegna = () => {
     box.innerHTML = `<span id="avvisoRiavvioServerTesto">⚠️ Il server sta per riavviarsi tra ${restante} secondi — salva eventuali modifiche in corso.</span>` +
       `<button class="btn small" data-action="conferma-riavvio-server" style="background:#fff;color:var(--arancio,#e08a2c);border:none;">✓ Ho visto, va bene</button>` +
+      `<button class="btn small" data-action="rifiuta-riavvio-server" style="background:transparent;color:#fff;border:1px solid #fff;">✕ Rifiuta</button>` +
       `<span id="avvisoRiavvioServerConferme" style="font-size:12px;opacity:.9;"></span>`;
     aggiornaTestoConfermeRiavvio();
   };
   disegna();
-  const timer = setInterval(() => {
+  RIAVVIO_TIMER_CLIENT = setInterval(() => {
     restante -= 1;
     if (restante <= 0) {
-      clearInterval(timer);
-      box.innerHTML = '🔄 Server riavviato, sto ricaricando la pagina tra qualche secondo...';
-      box.style.background = 'var(--rosso,#c0392b)';
-      // Il server ora si rilancia davvero da solo (non solo si chiude) - proviamo a ricaricare in
-      // automatico dopo che ha avuto il tempo di ripartire, invece di lasciare che sia l'utente a
-      // doverlo ricordare/fare a mano; se il server non fosse ancora pronto il reload fallisce in
-      // modo silenzioso e la pagina resta quella vecchia con questo banner ancora visibile.
-      setTimeout(() => { try { window.location.reload(); } catch (err) { /* niente da fare qui */ } }, 6000);
+      avviaFaseFinaleRiavvio();
     } else {
       const t = document.getElementById('avvisoRiavvioServerTesto');
       if (t) t.textContent = `⚠️ Il server sta per riavviarsi tra ${restante} secondi — salva eventuali modifiche in corso.`;
     }
   }, 1000);
+}
+// Fase finale, sia per countdown naturale a zero sia per riavvio anticipato (tutti hanno confermato,
+// vedi evento SSE riavvioSubito): banner rosso + overlay a schermo intero che blocca ogni click,
+// poi un reload automatico una volta dato tempo al server di essere di nuovo pronto.
+function avviaFaseFinaleRiavvio() {
+  if (RIAVVIO_TIMER_CLIENT) { clearInterval(RIAVVIO_TIMER_CLIENT); RIAVVIO_TIMER_CLIENT = null; }
+  const box = document.getElementById('avvisoRiavvioServer');
+  if (box) {
+    box.innerHTML = '🔄 Server in riavvio, sto ricaricando la pagina tra qualche secondo...';
+    box.style.background = 'var(--rosso,#c0392b)';
+  }
+  creaOverlayBloccoRiavvio();
+  // Il server si rilancia davvero da solo (non solo si chiude) - proviamo a ricaricare in automatico
+  // dopo che ha avuto il tempo di ripartire, invece di lasciare che sia l'utente a doverlo ricordare/
+  // fare a mano; se il server non fosse ancora pronto il reload fallisce in modo silenzioso e la
+  // pagina resta quella vecchia con banner/overlay ancora visibili (nessun rischio di lavorare "a
+  // vuoto" nel frattempo, dato che l'overlay blocca comunque ogni interazione).
+  setTimeout(() => { try { window.location.reload(); } catch (err) { /* niente da fare qui */ } }, 6000);
+}
+// Un riavvio richiesto è stato ANNULLATO (un operatore ha premuto "Rifiuta") - a differenza della
+// vecchia versione qui è un vero blocco, non solo un avviso: il banner sparisce e non c'è nessun
+// riavvio in corso finché qualcuno non lo richiede di nuovo da Impostazioni.
+function gestisciRiavvioAnnullato(daOperatore) {
+  if (RIAVVIO_TIMER_CLIENT) { clearInterval(RIAVVIO_TIMER_CLIENT); RIAVVIO_TIMER_CLIENT = null; }
+  const box = document.getElementById('avvisoRiavvioServer');
+  if (box) box.remove();
+  rimuoviOverlayBloccoRiavvio();
+  toast(`🛑 Riavvio del server annullato${daOperatore ? (' da ' + daOperatore) : ''}.`);
 }
 function aggiornaTestoConfermeRiavvio() {
   const el = document.getElementById('avvisoRiavvioServerConferme');
@@ -2552,8 +2598,24 @@ function confermaVistaRiavvioServer() {
   const btn = document.querySelector('#avvisoRiavvioServer [data-action="conferma-riavvio-server"]');
   if (btn) { btn.disabled = true; btn.textContent = '✓ Confermato'; }
   fetch('/api/server/riavvio-conferma', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operatore: nome }) })
-    .then(r => r.json()).then(d => { if (d && d.ok) aggiornaConfermeRiavvioServer(d.conferme || []); })
+    .then(r => r.json()).then(d => {
+      if (!d || !d.ok) return;
+      aggiornaConfermeRiavvioServer(d.conferme || []);
+      // Tutti gli online al momento della richiesta hanno confermato: il server sta per riavviarsi
+      // subito, non serve aspettare il resto del countdown locale (l'evento SSE riavvioSubito
+      // arriverebbe comunque, ma passare subito qui evita una finestra morta se la connessione SSE
+      // avesse un ritardo).
+      if (d.subito) avviaFaseFinaleRiavvio();
+    })
     .catch(() => {});
+}
+function rifiutaRiavvioServer() {
+  const nome = operatoreCorrente() || 'un operatore';
+  const btn = document.querySelector('#avvisoRiavvioServer [data-action="rifiuta-riavvio-server"]');
+  if (btn) { btn.disabled = true; }
+  fetch('/api/server/riavvio-rifiuta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operatore: nome }) })
+    .then(r => r.json()).then(d => { if (d && d.ok) gestisciRiavvioAnnullato(nome); })
+    .catch(() => { gestisciRiavvioAnnullato(nome); }); // server irraggiungibile: comunque non ha senso restare in un countdown fantasma qui
 }
 /* Copia negli appunti con ripiego: l'API moderna (navigator.clipboard) richiede un contesto
    sicuro (HTTPS o localhost) e potrebbe non essere disponibile su una rete studio raggiunta via
@@ -12549,6 +12611,7 @@ function onClickDelegato(e) {
       break;
     }
     case 'conferma-riavvio-server': confermaVistaRiavvioServer(); break;
+    case 'rifiuta-riavvio-server': rifiutaRiavvioServer(); break;
     case 'carica-demo':
       if (confermaAzione('Aggiunge clienti ed esempi di prova ai dati attuali. Continuare?')) {
         const demo = generaDatiEsempio();
