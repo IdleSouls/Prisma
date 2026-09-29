@@ -587,6 +587,12 @@ async function ricaricaVista() {
     if (dati.vista.richiedePassword) {
       // La password è cambiata o è stata rimossa dallo studio nel frattempo: non ha senso continuare
       // a mostrare dati potenzialmente non più corretti in background, si richiede di nuovo l'accesso.
+      // MA, stessa cautela usata per il resto del polling in background (vedi corpoHaBozzaInCorso più
+      // sotto): se il cliente sta scrivendo un messaggio/una risposta non ancora inviata, o ha appena
+      // calcolato un ravvedimento, non lo si interrompe di colpo nascondendo tutto il corpo pagina -
+      // si aspetta il prossimo giro (o che cambi tab/finisca di scrivere) prima di chiedere di nuovo
+      // la password.
+      if (corpoHaBozzaInCorso()) return;
       scriviPasswordPortale('');
       if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
       mostraStatoPassword('Per continuare, inserisci di nuovo la password.');

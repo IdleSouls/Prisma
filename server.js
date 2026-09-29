@@ -1507,8 +1507,13 @@ function gestisciRichiesta(req, res) {
         notificaRiavvioSubito();
         // Piccolo ritardo per dare tempo a questa risposta di uscire sul socket prima che il
         // processo termini - altrimenti il fetch del client che ha appena confermato rischia di
-        // vedersi la connessione interrotta invece della risposta ok:true.
-        setTimeout(eseguiRiavvioServerOra, 300);
+        // vedersi la connessione interrotta invece della risposta ok:true. Il nuovo timer va
+        // riassegnato a RIAVVIO_TIMER (non lasciato "libero"): altrimenti un rifiuto arrivato in
+        // questa finestra di 300ms vedrebbe ancora l'id del VECCHIO timer (già scaduto/cancellato),
+        // lo cancellerebbe inutilmente e notificherebbe "annullato" a tutti - ma il riavvio, non più
+        // tracciato da nessuna variabile, avverrebbe comunque 300ms dopo: client convinti che sia
+        // stato annullato, mentre il server si riavvia lo stesso.
+        RIAVVIO_TIMER = setTimeout(eseguiRiavvioServerOra, 300);
       }
     });
     return;
@@ -2033,6 +2038,17 @@ setInterval(() => {
     else rateLimitContatori.set(chiave, filtrata);
   }
 }, RATE_LIMIT_FINESTRA_MS).unref();
+// Stessa pulizia periodica per le sessioni esclusive dei referenti (vedi sessioneAttivaPerNome più
+// sopra): senza questa, una sessione scaduta (nessun heartbeat da più di SESSIONE_ESCLUSIVA_TTL_MS)
+// resterebbe comunque in memoria finché non si sovrascrive lo stesso nome - non è un leak concreto
+// (la mappa ha al più un numero di chiavi pari ai referenti configurati) ma è coerente con
+// rateLimitContatori tenerla ripulita lo stesso.
+setInterval(() => {
+  const ora = Date.now();
+  for (const [nome, sess] of sessioneAttivaPerNome) {
+    if (ora - sess.ultimoHeartbeat > SESSIONE_ESCLUSIVA_TTL_MS) sessioneAttivaPerNome.delete(nome);
+  }
+}, SESSIONE_ESCLUSIVA_TTL_MS).unref();
 
 function autenticazioneBasicOk(req, tipo) {
   const cfg = leggiConfigAccessoEsterno()[tipo];
