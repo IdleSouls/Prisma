@@ -10171,9 +10171,10 @@ function caricaStatoAccessoEsterno() {
     .then(r => r.json())
     .then(info => {
       ACCESSO_ESTERNO_CACHE = (info && info.ok) ? info : 'errore';
+      // Solo la porta team ha ancora un login condiviso da digitare qui - la porta clienti è sempre
+      // attiva da sola e non ha più credenziali proprie (vedi cardAccessoEsterno).
       if (ACCESSO_ESTERNO_CACHE !== 'errore' && !ACCESSO_ESTERNO_DRAFT) {
         ACCESSO_ESTERNO_DRAFT = {
-          clienti: { utente: info.clienti.utente || '', password: info.clienti.password || '' },
           team: { utente: info.team.utente || '', password: info.team.password || '' },
         };
       }
@@ -10242,10 +10243,25 @@ function cardAccessoEsterno() {
       </details>
     </div>`;
   };
+  // Porta clienti: nessun login condiviso da attivare - è sempre in ascolto da sola sul PC dello
+  // studio, la protezione è ormai per singolo cliente (link personale + password scelta per lui
+  // nella sua scheda, vedi cardPasswordPortaleCliente). Qui resta solo il comando ngrok da lanciare
+  // quando serve renderla raggiungibile da internet.
+  const rigaClienti = `
+    <div style="margin-bottom:24px;border:1px solid var(--border);border-radius:10px;padding:14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
+        <div style="font-size:12px;font-weight:700;color:var(--text-mut);text-transform:uppercase;letter-spacing:.03em;">Porta clienti · porta ${info.portaClienti}</div>
+        ${info.clienti.attivo ? '<span class="badge ok">🟢 Sempre attiva</span>' : '<span class="badge">⚪ Non attiva</span>'}
+      </div>
+      <div class="helptext" style="margin-bottom:12px;">Espone SOLO il portale cliente (link personali /portale/&lt;codice&gt;), mai i dati completi dello studio. Si avvia da sola con il server, senza bisogno di attivarla: ogni cliente ha il proprio link e, se gliel'hai impostata, la propria password (vedi la sua scheda anagrafica).</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn small" data-action="copia-comando-ngrok" data-testo="${escapeHtml(`ngrok http ${info.portaClienti}`)}">📋 Copia comando ngrok</button>
+      </div>
+    </div>`;
   return `<div class="card">
     <div class="section-title">Accesso esterno (ngrok)</div>
-    <div class="helptext" style="margin-bottom:16px;">Le porte qui sotto sono già aperte sul PC dello studio quando le attivi — quello che manca è solo il "megafono" verso internet: scarica <a href="https://ngrok.com/download" target="_blank" rel="noopener">ngrok</a> una volta, poi ogni volta che serve lancia da terminale il comando copiato col pulsante 📋 (es. <code>ngrok http 8421</code> per i clienti). Ngrok ti darà un indirizzo pubblico (es. https://xxxx.ngrok-free.app) da comunicare a chi deve collegarsi — resta valido finché tieni ngrok aperto. Ogni porta è protetta da utente/password (richiesti dal browser al primo accesso) più un limite automatico di richieste per bloccare bot/scanner.</div>
-    ${rigaTipo('clienti', 'Porta clienti', 'Espone SOLO il portale cliente (link personali /portale/&lt;codice&gt;), mai i dati completi dello studio.', info.clienti, info.portaClienti)}
+    <div class="helptext" style="margin-bottom:16px;">Le porte qui sotto sono già aperte sul PC dello studio — quello che manca è solo il "megafono" verso internet: scarica <a href="https://ngrok.com/download" target="_blank" rel="noopener">ngrok</a> una volta, poi ogni volta che serve lancia da terminale il comando copiato col pulsante 📋 (es. <code>ngrok http 8421</code> per i clienti). Ngrok ti darà un indirizzo pubblico (es. https://xxxx.ngrok-free.app) da comunicare a chi deve collegarsi — resta valido finché tieni ngrok aperto.</div>
+    ${rigaClienti}
     ${rigaTipo('team', 'Porta collaboratori', 'Espone il gestionale completo, come se si fosse in studio: usala solo con collaboratori di fiducia e una password robusta.', info.team, info.portaTeam)}
   </div>`;
 }

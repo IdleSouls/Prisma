@@ -1232,7 +1232,9 @@ function gestisciRichiesta(req, res) {
       ok: true,
       portaClienti: PORTA_ESTERNA_CLIENTI,
       portaTeam: PORTA_ESTERNA_TEAM,
-      clienti: { utente: cfg.clienti.utente, password: cfg.clienti.password, attivo: serverEsternoClienti.listening },
+      // clienti: nessuna credenziale condivisa - la porta è sempre attiva da sola (vedi
+      // avviaServerEsterniSeConfigurati), la protezione è per singolo cliente.
+      clienti: { attivo: serverEsternoClienti.listening },
       team: { utente: cfg.team.utente, password: cfg.team.password, attivo: serverEsternoTeam.listening },
     }));
     return;
@@ -1242,15 +1244,22 @@ function gestisciRichiesta(req, res) {
     leggiCorpoRichiesta(req, (corpo) => {
       try {
         const dati = JSON.parse(corpo);
-        const tipo = dati.tipo === 'team' ? 'team' : 'clienti';
+        // La porta clienti non si configura più da qui (niente più login condiviso): questa route
+        // resta solo per la porta team.
+        if (dati.tipo === 'clienti') {
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ ok: true, attivo: serverEsternoClienti.listening }));
+          return;
+        }
+        const tipo = 'team';
         const utente = String(dati.utente || '').trim();
         const password = String(dati.password || '');
         const cfg = leggiConfigAccessoEsterno();
         cfg[tipo] = { utente, password };
         scriviConfigAccessoEsterno(cfg);
 
-        const srv = tipo === 'clienti' ? serverEsternoClienti : serverEsternoTeam;
-        const porta = tipo === 'clienti' ? PORTA_ESTERNA_CLIENTI : PORTA_ESTERNA_TEAM;
+        const srv = serverEsternoTeam;
+        const porta = PORTA_ESTERNA_TEAM;
         const finisci = () => {
           if (utente && password) {
             srv.listen(porta, '0.0.0.0', () => {
@@ -1825,7 +1834,14 @@ function creaServerEsterno(porta, tipo, realm) {
       res.end('Troppe richieste. Riprova tra un minuto.');
       return;
     }
-    if (!autenticazioneBasicOk(req, tipo)) {
+    // La porta clienti NON ha più un login condiviso: l'unica cosa che vi si può raggiungere è il
+    // portale di UN cliente alla volta (whitelist di percorsi qui sotto), protetto individualmente
+    // dal suo token nel link + l'eventuale password che lo studio gli ha assegnato (vedi
+    // costruisciVistaPortaleClienteEsterna/portalePassword in gestionale.htm) - un login studio
+    // unico per tutti i clienti non aveva senso "per cliente" ed è quello che Matteo ha chiesto di
+    // togliere ("il portale clienti deve avviarsi ogni volta da solo"). La porta team resta invece
+    // protetta da utente/password unica dello studio, come richiesto esplicitamente.
+    if (tipo === 'team' && !autenticazioneBasicOk(req, tipo)) {
       chiediBasicAuth(res, realm);
       return;
     }
@@ -1854,7 +1870,9 @@ const serverEsternoTeam = creaServerEsterno(PORTA_ESTERNA_TEAM, 'team', 'Accesso
 
 function avviaServerEsterniSeConfigurati() {
   const cfg = leggiConfigAccessoEsterno();
-  if (cfg.clienti.utente && cfg.clienti.password) {
+  // La porta clienti si avvia SEMPRE da sola, senza bisogno di credenziali salvate: non ha più un
+  // login condiviso, la protezione è ormai per singolo cliente (token del link + password propria).
+  if (!serverEsternoClienti.listening) {
     serverEsternoClienti.listen(PORTA_ESTERNA_CLIENTI, '0.0.0.0', () => {
       console.log('  Accesso esterno CLIENTI attivo su porta ' + PORTA_ESTERNA_CLIENTI + ' (collega ngrok a questa porta).');
     });
