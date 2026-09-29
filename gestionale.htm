@@ -10311,6 +10311,64 @@ function cardBackupAutomatici() {
   </div>`;
 }
 
+/* Task #97 (Matteo, dopo l'incidente del rollback aggiornamento del 25/09/2026: un manifesto GitHub
+   di test dimenticato aveva sovrascritto gestionale.htm/server.js con una versione vecchissima, e
+   non c'era NESSUNO snapshot del codice da cui recuperare, solo dei dati): stesso schema di
+   BACKUP_SERVER_ELENCO/cardBackupAutomatici qui sopra, ma per gli snapshot del CODICE della
+   piattaforma (vedi eseguiBackupPiattaforma/elencoBackupPiattaforma in server.js), non dei dati -
+   una card separata perché sono due cose diverse (dati dei clienti vs. file dell'app) con rischio e
+   frequenza di modifica molto diversi. */
+let BACKUP_PIATTAFORMA_ELENCO = null;
+let BACKUP_PIATTAFORMA_CARICAMENTO = false;
+function caricaElencoBackupPiattaforma() {
+  if (!HTTP_SYNC_ATTIVO || BACKUP_PIATTAFORMA_CARICAMENTO || BACKUP_PIATTAFORMA_ELENCO !== null) return;
+  BACKUP_PIATTAFORMA_CARICAMENTO = true;
+  fetch('/api/backup/elenco-piattaforma')
+    .then(r => r.json())
+    .then(lista => { BACKUP_PIATTAFORMA_ELENCO = Array.isArray(lista) ? lista : 'errore'; })
+    .catch(() => { BACKUP_PIATTAFORMA_ELENCO = 'errore'; })
+    .finally(() => {
+      BACKUP_PIATTAFORMA_CARICAMENTO = false;
+      if (VIEW === 'impostazioni') render();
+    });
+}
+function ripristinaBackupPiattaforma(timestamp) {
+  if (!HTTP_SYNC_ATTIVO || !timestamp) return;
+  if (!confermaAzione('Ripristinare il CODICE di Prisma (gestionale.htm/server.js/portale-cliente.htm) a questo punto nel tempo? Il codice attuale viene comunque salvato prima di sovrascrivere (anche questa operazione è reversibile), ma dopo il ripristino serve chiudere e riaprire Prisma perché il nuovo codice venga usato davvero - il processo in corso continua a girare con quello attuale finché non lo riavvii.')) return;
+  fetch('/api/backup/ripristina-piattaforma', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ timestamp }) })
+    .then(r => r.json())
+    .then(esito => {
+      if (esito && esito.ok) { toast('✅ Codice ripristinato (' + esito.file.join(', ') + '). Riavvia Prisma per usarlo.'); BACKUP_PIATTAFORMA_ELENCO = null; render(); }
+      else toast('⚠️ ' + ((esito && esito.errore) || 'Ripristino non riuscito.'), true);
+    })
+    .catch(() => toast('⚠️ Impossibile contattare il server locale per il ripristino.', true));
+}
+function cardBackupPiattaforma() {
+  if (!HTTP_SYNC_ATTIVO) return ''; // stessa card di sopra già spiega il perché quando manca il server locale, non serve ripeterlo due volte
+  caricaElencoBackupPiattaforma();
+  let corpo;
+  if (BACKUP_PIATTAFORMA_ELENCO === null || BACKUP_PIATTAFORMA_CARICAMENTO) {
+    corpo = `<div class="helptext">Caricamento elenco…</div>`;
+  } else if (BACKUP_PIATTAFORMA_ELENCO === 'errore') {
+    corpo = `<div class="helptext">⚠️ Non è stato possibile leggere l'elenco degli snapshot dal server locale.</div>`;
+  } else if (BACKUP_PIATTAFORMA_ELENCO.length === 0) {
+    corpo = `<div class="helptext">Nessuno snapshot di codice ancora presente (il primo si crea al prossimo orario fisso — 8:00, 12:00, 16:00 — o al prossimo avvio del server).</div>`;
+  } else {
+    corpo = `<table class="compact backup-elenco-tabella"><thead><tr><th>Data e ora</th><th>File inclusi</th><th></th></tr></thead><tbody>
+      ${BACKUP_PIATTAFORMA_ELENCO.map(v => `<tr>
+        <td>${fmtDataOra(v.data)}</td>
+        <td>${v.file.map(f => escapeHtml(f.nomeOriginale)).join(', ')}</td>
+        <td><button class="btn small danger" data-action="ripristina-backup-piattaforma" data-timestamp="${escapeHtml(v.timestamp)}">Ripristina</button></td>
+      </tr>`).join('')}
+    </tbody></table>`;
+  }
+  return `<div class="card">
+    <div class="section-title">Backup del codice (server locale)<span class="cnt">ultimi 30 giorni</span></div>
+    <div class="helptext" style="margin-bottom:10px;">Snapshot automatici di gestionale.htm, server.js e portale-cliente.htm — non i dati dei clienti (quelli sono nella card sopra), ma il codice stesso della piattaforma. Servono per tornare indietro con un clic se un aggiornamento installa per sbaglio una versione rotta o vecchia, senza dover recuperare i file a mano.</div>
+    ${corpo}
+  </div>`;
+}
+
 /* -------------------- IMPOSTAZIONI: accesso esterno via ngrok (clienti + collaboratori) -------------------- */
 let ACCESSO_ESTERNO_CACHE = null;
 let ACCESSO_ESTERNO_CARICAMENTO = false;
@@ -10860,7 +10918,8 @@ function renderImpostazioniDati() {
     </div>
   </div>
 
-  ${cardBackupAutomatici()}`;
+  ${cardBackupAutomatici()}
+  ${cardBackupPiattaforma()}`;
 }
 
 function renderImpostazioniCatalogo() {
@@ -12578,6 +12637,7 @@ function onClickDelegato(e) {
     }
 
     case 'ripristina-backup-server': ripristinaBackupServer(el.dataset.file); break;
+    case 'ripristina-backup-piattaforma': ripristinaBackupPiattaforma(el.dataset.timestamp); break;
     case 'esporta-mcp': esportaMCP(); break;
     case 'verifica-aggiornamenti': verificaAggiornamenti(); break;
     case 'applica-aggiornamento': applicaAggiornamentoConferma(); break;
