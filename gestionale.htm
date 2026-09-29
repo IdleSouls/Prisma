@@ -260,7 +260,13 @@ tr.riga-selezionata{background:var(--blu-light);}
 
 .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;}
 .cal-head{font-size:11px;font-weight:700;color:var(--text-mut);text-align:center;padding-bottom:4px;text-transform:uppercase;}
-.cal-day{min-height:86px;border:1px solid var(--border);border-radius:7px;padding:5px;font-size:11px;background:#fff;}
+/* Bug segnalato da Matteo: "le caselle del calendario sono tutte diverse" - con solo min-height
+   ogni riga (settimana) cresceva in base a quanti impegni conteneva quella settimana rispetto alle
+   altre, quindi le caselle non erano mai allineate a griglia uniforme. Altezza fissa + overflow
+   nascosto: il conteggio "+N altre" (già esistente più sotto, max 4 eventi visibili) resta l'unico
+   modo per vedere impegni oltre lo spazio disponibile, ma ogni casella ha sempre le stesse dimensioni
+   a prescindere dal contenuto. */
+.cal-day{height:112px;border:1px solid var(--border);border-radius:7px;padding:5px;font-size:11px;background:#fff;overflow:hidden;}
 .cal-day.oggi{border-color:var(--blu-mid);box-shadow:0 0 0 1px var(--blu-mid) inset;}
 .cal-day.has-eventi{cursor:pointer;}
 .cal-day.has-eventi:hover{border-color:var(--blu-mid);box-shadow:0 0 0 1px var(--blu-mid) inset;}
