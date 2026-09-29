@@ -2226,6 +2226,91 @@ async function main() {
     await wait(20);
   }
 
+  // ---------- 8e-ter-bis) Password portale per singolo cliente (task Matteo #153): richiedePassword,
+  // confronto a tempo costante (confrontoTempoCostante), nessun blocco per chi non ha password ----------
+  {
+    const clientePassword = window.getSTATE().clienti.filter(c => c.stato !== 'cessato')[6];
+    assert(clientePassword, 'serve almeno 7 clienti attivi per questo test');
+    assert(!clientePassword.portaleToken, 'precondizione: il cliente scelto per il test password non deve avere già un accesso attivo');
+
+    window.setHttpSyncAttivoTest(true);
+    window.render();
+    await wait(20);
+    setVal(q('[data-action="portal-seleziona-cliente"]'), clientePassword.id);
+    await wait(20);
+    click(q('#cardAccessoPortaleReale [data-action="portale-attiva-accesso"]'));
+    await wait(20);
+    const tokenPw = window.clienteById(clientePassword.id).portaleToken;
+    assert(tokenPw, 'token non generato per il test password');
+
+    // nessuna password impostata sul cliente: la vista è quella completa, nessun richiedePassword
+    const vistaSenzaPw = window.costruisciVistaPortaleClienteEsterna(tokenPw);
+    assert(vistaSenzaPw && !vistaSenzaPw.richiedePassword && vistaSenzaPw.azienda, 'senza password impostata sul cliente, la vista deve essere quella completa (nessuna richiesta password)');
+    console.log('=== Password portale: cliente senza password impostata, nessun blocco OK');
+
+    // impostiamo una password direttamente sullo STATE (equivalente a cardPasswordPortaleCliente + salvataggio)
+    window.clienteById(clientePassword.id).portalePassword = 'SegretoDelCliente123';
+
+    const vistaSenzaPassword = window.costruisciVistaPortaleClienteEsterna(tokenPw);
+    assert(vistaSenzaPassword && vistaSenzaPassword.richiedePassword === true && !vistaSenzaPassword.azienda, 'senza inserire nessuna password deve tornare richiedePassword:true e nessun dato del cliente');
+
+    const vistaPasswordSbagliata = window.costruisciVistaPortaleClienteEsterna(tokenPw, 'password-sbagliata');
+    assert(vistaPasswordSbagliata && vistaPasswordSbagliata.richiedePassword === true && !vistaPasswordSbagliata.azienda, 'con la password sbagliata deve tornare richiedePassword:true e nessun dato del cliente');
+
+    const vistaPasswordPrefisso = window.costruisciVistaPortaleClienteEsterna(tokenPw, 'SegretoDelCliente12');
+    assert(vistaPasswordPrefisso && vistaPasswordPrefisso.richiedePassword === true, 'una password che è un prefisso esatto di quella giusta (più corta) deve comunque essere rifiutata, non solo quelle di lunghezza uguale');
+
+    const vistaPasswordCorretta = window.costruisciVistaPortaleClienteEsterna(tokenPw, 'SegretoDelCliente123');
+    assert(vistaPasswordCorretta && !vistaPasswordCorretta.richiedePassword && vistaPasswordCorretta.azienda && vistaPasswordCorretta.azienda.ragioneSociale === clientePassword.ragioneSociale, 'con la password corretta deve tornare la vista completa del cliente giusto');
+    console.log('=== Password portale: richiedePassword su password mancante/sbagliata/più corta, vista completa solo con la password corretta OK');
+
+    // rimuovendo la password (stringa vuota) il link torna a essere l'unica protezione, come prima
+    window.clienteById(clientePassword.id).portalePassword = '';
+    const vistaDopoRimozione = window.costruisciVistaPortaleClienteEsterna(tokenPw);
+    assert(vistaDopoRimozione && !vistaDopoRimozione.richiedePassword && vistaDopoRimozione.azienda, 'dopo aver rimosso la password, il link deve tornare a funzionare senza richiederla');
+    console.log('=== Password portale: rimuovendo la password il link torna a funzionare senza richiederla OK');
+
+    // pulizia: disattiva accesso per non sporcare i test successivi
+    window.clienteById(clientePassword.id).portaleToken = null;
+    window.setHttpSyncAttivoTest(false);
+    window.render();
+    await wait(20);
+  }
+
+  // ---------- 8e-ter-ter) Sessione operatore locale: token esclusivo per referente con password (task #154) ----------
+  {
+    const nomeResp = window.getSTATE().meta.responsabili[0];
+    assert(nomeResp, 'serve almeno un responsabile per questo test');
+
+    // impostare un operatore SENZA passare da eseguiLoginOperatore non deve mai lasciare un token residuo
+    window.setSessioneOperatoreTokenTest(null);
+    window.impostaOperatore(nomeResp);
+    assert(window.getSessioneOperatoreTokenTest() === null, 'impostare un operatore senza login non deve creare un token di sessione');
+    console.log('=== Sessione operatore: nessun token residuo per un operatore scelto senza password OK');
+
+    // un token salvato per un nome resta valido finché l'operatore corrente resta quel nome
+    window.setSessioneOperatoreTokenTest({ nome: nomeResp, token: 'token-di-prova-123' });
+    window.impostaOperatore(nomeResp);
+    assert(window.getSessioneOperatoreTokenTest() && window.getSessioneOperatoreTokenTest().token === 'token-di-prova-123', 'scegliere di nuovo lo stesso nome non deve scartare un token già valido per quel nome');
+
+    const altroNomeResp = window.getSTATE().meta.responsabili.find(n => n !== nomeResp);
+    if (altroNomeResp) {
+      window.impostaOperatore(altroNomeResp);
+      assert(window.getSessioneOperatoreTokenTest() === null, 'cambiare operatore deve scartare un token di sessione che apparteneva al nome precedente');
+      console.log('=== Sessione operatore: un token residuo di un nome diverso viene scartato al cambio operatore OK');
+      window.impostaOperatore(nomeResp); // ripristina per non alterare l'operatore corrente per i test successivi
+    }
+
+    // responsabileHaPassword legge dalla cache dei nomi protetti (mai la password stessa)
+    window.setResponsabiliConPasswordTest([nomeResp]);
+    assert(window.responsabileHaPassword(nomeResp) === true, 'responsabileHaPassword deve risultare true per un nome presente nella cache');
+    assert(window.responsabileHaPassword('Nome Che Di Sicuro Non Esiste Come Responsabile') === false, 'responsabileHaPassword deve risultare false per un nome non presente nella cache');
+    window.setResponsabiliConPasswordTest([]);
+    console.log('=== Sessione operatore: responsabileHaPassword coerente con la cache dei referenti protetti OK');
+
+    window.setSessioneOperatoreTokenTest(null);
+  }
+
   // ---------- 8e-quater) Area cliente interattiva (task #88): messaggi/risposte dal portale + thread studio ----------
   {
     const attiviQuater = window.getSTATE().clienti.filter(c => c.stato !== 'cessato');
