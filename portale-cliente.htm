@@ -289,8 +289,17 @@ function scriviPasswordPortale(valore) {
   try { sessionStorage.setItem(PORTALE_PASSWORD_KEY, valore); } catch (e) { /* storage non disponibile: si richiederà di nuovo la password a ogni apertura, nulla di grave */ }
 }
 function urlVistaPortale() {
-  const pw = leggiPasswordPortale();
-  return '/api/portale-vista/' + encodeURIComponent(TOKEN) + (pw ? '?password=' + encodeURIComponent(pw) : '');
+  return '/api/portale-vista/' + encodeURIComponent(TOKEN);
+}
+// Task (audit): la password viaggia nel BODY di una POST, non più in query string - non finisce così
+// nei log di accesso del server né nella cronologia del browser (il token nel path invece sì, ma è
+// lo stesso link che lo studio manda al cliente, non un segreto aggiuntivo di per sé).
+function fetchVistaPortale() {
+  return fetch(urlVistaPortale(), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password: leggiPasswordPortale() }),
+  });
 }
 let VISTA = null;
 let TAB = 'panoramica';
@@ -427,7 +436,7 @@ async function avvia() {
   statoPieno('Apertura in corso...', 'Sto recuperando i tuoi dati.');
   let risp;
   try {
-    risp = await fetch(urlVistaPortale());
+    risp = await fetchVistaPortale();
   } catch (err) {
     statoPieno('Non riesco a collegarmi', 'Verifica la connessione a internet e riprova. Se il problema persiste, contatta lo studio.', { spinner: false, riprova: true });
     return;
@@ -587,7 +596,7 @@ function leggiFileBase64(file) {
 
 async function ricaricaVista() {
   try {
-    const risp = await fetch(urlVistaPortale());
+    const risp = await fetchVistaPortale();
     if (!risp.ok) return;
     const dati = await risp.json().catch(() => null);
     if (!dati || !dati.ok || !dati.vista) return;

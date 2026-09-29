@@ -1739,29 +1739,38 @@ function gestisciRichiesta(req, res) {
     return;
   }
 
-  if (url.indexOf('/api/portale-vista/') === 0 && req.method === 'GET') {
+  // Task (audit): la password del portale cliente viaggiava prima come query string
+  // (?password=...), quindi finiva nei log di accesso del server e nella cronologia del browser -
+  // canale non ideale per un segreto, anche se già correttamente urlencoded. Ora è POST con la
+  // password nel body JSON, come già fatto per /api/operatore-login. Il token resta nel path
+  // (identifica QUALE cliente, non è di per sé il segreto) e nella cronologia - è lo stesso link che
+  // lo studio manda al cliente, non evitabile senza cambiare tutto lo schema dei link.
+  if (url.indexOf('/api/portale-vista/') === 0 && req.method === 'POST') {
     const token = decodeURIComponent(url.slice('/api/portale-vista/'.length)).trim();
-    const queryGrezza = (req.url.split('?')[1] || '');
-    const password = new URLSearchParams(queryGrezza).get('password') || '';
-    const { vista, errore } = vistaPortaleCliente(token, password);
-    if (errore) {
-      // Il dettaglio (es. "manca jsdom") resta SOLO nel log del server per chi amministra il
-      // gestionale: a un visitatore esterno del link basta sapere che il portale non è al momento
-      // disponibile, non i dettagli della configurazione interna del server.
-      console.error('[gestionale] Portale cliente non disponibile:', errore);
-      res.writeHead(503, { 'Content-Type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify({ ok: false, errore: 'Il portale cliente non è al momento disponibile. Riprova più tardi o contatta lo studio.' }));
-      return;
-    }
-    if (!vista) {
-      // Risposta VOLUTAMENTE generica (mai "token quasi giusto"/"cliente disattivato"/ecc.): un
-      // token che non corrisponde a nessun accesso attivo è indistinguibile da uno mai esistito.
-      res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify({ ok: false, errore: 'Link non valido o non più attivo.' }));
-      return;
-    }
-    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-    res.end(JSON.stringify({ ok: true, vista }));
+    leggiCorpoRichiesta(req, (corpo) => {
+      let dati = {};
+      try { dati = JSON.parse(corpo || '{}'); } catch (err) { /* corpo vuoto o malformato: nessuna password */ }
+      const password = typeof dati.password === 'string' ? dati.password : '';
+      const { vista, errore } = vistaPortaleCliente(token, password);
+      if (errore) {
+        // Il dettaglio (es. "manca jsdom") resta SOLO nel log del server per chi amministra il
+        // gestionale: a un visitatore esterno del link basta sapere che il portale non è al momento
+        // disponibile, non i dettagli della configurazione interna del server.
+        console.error('[gestionale] Portale cliente non disponibile:', errore);
+        res.writeHead(503, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, errore: 'Il portale cliente non è al momento disponibile. Riprova più tardi o contatta lo studio.' }));
+        return;
+      }
+      if (!vista) {
+        // Risposta VOLUTAMENTE generica (mai "token quasi giusto"/"cliente disattivato"/ecc.): un
+        // token che non corrisponde a nessun accesso attivo è indistinguibile da uno mai esistito.
+        res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, errore: 'Link non valido o non più attivo.' }));
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ ok: true, vista }));
+    });
     return;
   }
 
