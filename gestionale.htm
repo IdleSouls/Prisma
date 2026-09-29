@@ -1913,7 +1913,7 @@ function avviaPollingPresenza() {
     }).catch(() => { /* un giro perso non è un problema, si ritenta al prossimo */ });
   };
   aggiorna();
-  setInterval(aggiorna, 8000);
+  setInterval(aggiorna, 4000); // Matteo: "il semaforo è molto lento" - ridotto da 8s
 }
 // Manda "sono qui" ogni 15 secondi per l'operatore corrente - separata dal polling sopra perché
 // senza un operatore scelto non c'è nessun nome da segnalare (STATE.meta.responsabili < 2, o
@@ -1939,7 +1939,8 @@ function avviaHeartbeatOperatore() {
       }).catch(() => {});
   };
   invia();
-  setInterval(invia, 15000);
+  setInterval(invia, 8000); // Matteo: "il semaforo è molto lento" - ridotto da 15s (vedi anche
+  // PRESENZA_TTL_MS in server.js, ridotto in proporzione per mantenere lo stesso margine)
 }
 function mostraAvvisoOperatoreOccupatoAltrove(nome) {
   if (OPERATORE_AVVISO_OCCUPATO_MOSTRATO === nome) return; // un avviso solo, non ad ogni giro di 15s
@@ -1962,12 +1963,21 @@ function tentaSceltaOperatore(nome) {
   // Referente con password impostata: sessione esclusiva VERA, si passa da /api/operatore-login
   // invece del controllo "soft" qui sotto - vedi modalPasswordOperatore.
   if (responsabileHaPassword(nome)) { modalPasswordOperatore(nome); return; }
-  fetch('/api/presenza/verifica', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operatore: nome, deviceId: DEVICE_ID }) })
+  // BUG (segnalato da Matteo: "sono riuscito ad accedere due volte con lo stesso utente"): prima
+  // qui si faceva un controllo di sola lettura (/api/presenza/verifica) e SOLO SE libero si
+  // impostava l'operatore in locale - la vera "prenotazione" del nome sul server avveniva solo al
+  // giro successivo di avviaHeartbeatOperatore, fino a 15s dopo. In quella finestra due dispositivi
+  // potevano controllare entrambi "libero" e scegliere lo stesso nome insieme. Ora si chiama
+  // DIRETTAMENTE POST /api/presenza (controllo+prenotazione nella STESSA richiesta, atomico lato
+  // server - vedi il case in server.js, nessun'altra richiesta può inserirsi in mezzo) invece del
+  // solo controllo: il nome viene occupato nello stesso istante in cui si verifica che sia libero.
+  fetch('/api/presenza', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operatore: nome, deviceId: DEVICE_ID }) })
     .then(r => r.json())
     .then(d => {
       if (d && d.ok && d.occupato) {
         toast(`⚠ ${nome} è già collegato da un altro dispositivo in questo momento: riprova tra qualche secondo (si libera da solo se quella postazione resta inattiva).`, true);
       } else {
+        if (d && d.ok) PRESENZA_ONLINE = d.online || {}; // niente da aspettare: già aggiornato dalla stessa risposta
         OPERATORE_AVVISO_OCCUPATO_MOSTRATO = null;
         impostaOperatore(nome);
         chiudiModal();

@@ -50,7 +50,10 @@ const { exec, execFile, execFileSync, spawn } = require('child_process');
 // (avviaHeartbeatOperatore in gestionale.htm), chi non lo manda da più di PRESENZA_TTL_MS viene
 // considerato offline. Sufficiente per uno studio di poche persone sulla stessa rete locale, senza
 // bisogno di WebSocket o altro.
-const PRESENZA_TTL_MS = 30 * 1000;
+const PRESENZA_TTL_MS = 20 * 1000; // Matteo: "il semaforo è molto lento" - ridotto da 30s, insieme a
+// heartbeat 15s->8s e polling 8s->4s lato client (vedi avviaHeartbeatOperatore/avviaPollingPresenza
+// in gestionale.htm): margine di sicurezza comunque ampio (TTL 2.5x l'intervallo di heartbeat,
+// tollera un heartbeat perso senza far sparire nessuno online per errore).
 const presenzaOperatori = new Map(); // nome operatore -> { ts: timestamp ultimo heartbeat, deviceId }
 function presenzaOnlineElenco() {
   const ora = Date.now();
@@ -1348,22 +1351,6 @@ function gestisciRichiesta(req, res) {
     return;
   }
 
-  if (url === '/api/presenza/verifica' && req.method === 'POST') {
-    leggiCorpoRichiesta(req, (corpo) => {
-      try {
-        const dati = JSON.parse(corpo);
-        const nome = String(dati.operatore || '').trim();
-        const deviceId = String(dati.deviceId || '').trim() || null;
-        const occupato = nome ? presenzaOccupataDaAltroDispositivo(nome, deviceId) : false;
-        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ ok: true, occupato }));
-      } catch (err) {
-        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ ok: false, errore: err.message }));
-      }
-    });
-    return;
-  }
 
   if (url === '/api/accesso-esterno' && req.method === 'GET') {
     const cfg = leggiConfigAccessoEsterno();
