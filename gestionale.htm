@@ -175,7 +175,12 @@ select.statoSel.stato-non-applicabile{background:var(--grigio-bg);color:var(--gr
 tr.riga-selezionata{background:var(--blu-light);}
 .field{display:flex;flex-direction:column;gap:4px;min-width:0;}
 .field label{font-size:11.5px;font-weight:600;color:var(--text-mut);text-transform:uppercase;letter-spacing:.02em;}
-.field input, .field select, .field textarea{width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:6px;background:#fff;min-width:150px;}
+/* Bug segnalato da Matteo ("la spunta Mostra cessati è formattata male"): questa regola non
+   escludeva type="checkbox"/"radio", quindi un checkbox dentro un .field (es. il filtro "Mostra
+   cessati" in Clienti, dentro un .checkline) ereditava width:100%, min-width:150px e un padding
+   pensato per un campo di testo - risultato una casellina deformata/enorme invece di un normale
+   checkbox. :not() esclude i due tipi che devono restare nativi e piccoli. */
+.field input:not([type="checkbox"]):not([type="radio"]), .field select, .field textarea{width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:6px;background:#fff;min-width:150px;}
 .field textarea{min-width:260px;}
 .field.grow input, .field.grow select{min-width:220px;}
 /* flex-shrink:0 è il pezzo che mancava per il layout "Destinatari" segnalato da Matteo (e lo stesso
@@ -6587,8 +6592,14 @@ function modalSocio(id) {
           <div class="field"><label>Telefono</label><input id="sTelefono" value="${editing?escapeHtml(editing.telefono||''):''}"></div>
           <div class="field full" style="grid-column:1/-1;">
             <label>Clienti collegati</label>
-            <div style="max-height:150px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:8px;">
-              ${attivi.map(c=>`<label class="checkline"><input type="checkbox" data-multi-cliente="socio" value="${c.id}" ${clienteIdsMulti.includes(c.id)?'checked':''}> ${escapeHtml(c.ragioneSociale)}</label>`).join('')}
+            <input type="text" id="sClientiCerca" placeholder="Cerca cliente..." style="margin-bottom:6px;" data-action="socio-clienti-cerca" autocomplete="off">
+            <!-- Bug segnalato da Matteo: le righe erano etichette inline che si accavallavano a
+                 cascata (oltre alla checkbox deformata, corretta a monte togliendo type=checkbox
+                 dalla regola ".field input"). display:flex;flex-direction:column qui forza ogni
+                 riga cliente sulla propria linea, una sotto l'altra. -->
+            <div id="sClientiLista" style="max-height:170px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:8px;display:flex;flex-direction:column;">
+              ${attivi.map(c=>`<label class="checkline" data-nome-ricerca="${escapeHtml(c.ragioneSociale.toLowerCase())}"><input type="checkbox" data-multi-cliente="socio" value="${c.id}" ${clienteIdsMulti.includes(c.id)?'checked':''}> ${escapeHtml(c.ragioneSociale)}</label>`).join('')}
+              <div id="sClientiVuoto" class="empty" style="display:none;padding:10px 4px;">Nessun cliente trovato.</div>
             </div>
           </div>
           <div class="field full" style="grid-column:1/-1;"><label>Note</label><input id="sNote" value="${editing?escapeHtml(editing.note||''):''}"></div>
@@ -11571,6 +11582,24 @@ function onInputDelegato(e) {
     case 'f24-chiave-change': aggiornaSuggerimentoImportoF24(); break;
     case 'f24-cliente-change': aggiornaSuggerimentoImportoF24(); break;
     case 'f24-cliente-cerca': F24_CLIENTE_QUERY = el.value; h('fCliente').value = ''; renderRisultatiClienteF24(); break;
+    // Task richiesto da Matteo: barra di ricerca nella checklist "Clienti collegati" del modale
+    // Socio/referente. Filtro puramente sul DOM (mostra/nasconde le righe già renderizzate),
+    // niente render()/STATE: con tanti clienti scorrerli tutti sarebbe scomodo, ma le spunte già
+    // fatte non devono mai sparire solo perché si digita nella ricerca - un render() qui
+    // ricostruirebbe la lista dal DOM e perderebbe lo stato "checked" non ancora salvato.
+    case 'socio-clienti-cerca': {
+      const q = el.value.trim().toLowerCase();
+      const righe = document.querySelectorAll('#sClientiLista .checkline');
+      let visibili = 0;
+      righe.forEach(r => {
+        const match = !q || (r.dataset.nomeRicerca || '').includes(q);
+        r.style.display = match ? '' : 'none';
+        if (match) visibili++;
+      });
+      const vuoto = h('sClientiVuoto');
+      if (vuoto) vuoto.style.display = visibili === 0 ? '' : 'none';
+      break;
+    }
     case 'f24-riga-input': {
       const idx = Number(el.dataset.idx);
       const campo = el.dataset.campo;

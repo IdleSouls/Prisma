@@ -73,6 +73,22 @@ let finestraPrincipale = null;
 let tray = null;
 let staChiudendoDavvero = false;
 
+// Bug segnalato da Matteo: cliccando l'icona di Prisma appuntata nella barra delle applicazioni
+// (con Prisma già aperto) Windows apriva quella che SEMBRAVA una seconda istanza, invece di
+// riportare in primo piano quella già attiva - come invece fa Claude desktop, la cui icona
+// appuntata risulta "attiva" con un click. La causa non era il single-instance-lock qui sotto
+// (quello funziona già: un secondo processo si chiude subito e richiama in primo piano quello
+// vero) - il problema è che Prisma.exe è un eseguibile "portable" che si scompatta in una
+// cartella TEMPORANEA DIVERSA a ogni avvio (vedi commento in cima al file). Senza un ID
+// applicazione esplicito, Windows raggruppa le icone della barra in base al percorso del file
+// in esecuzione: ogni lancio, avendo un percorso diverso, viene visto come un programma diverso
+// dal punto di vista del taskbar, anche se sotto è davvero la stessa app con lo stesso lock.
+// setAppUserModelId (stesso valore di "appId" in build-prisma.json) dice esplicitamente a
+// Windows "questi lanci sono tutti la stessa applicazione", a prescindere dal percorso reale -
+// va chiamato PRIMA di app.whenReady()/creaFinestra() perché è lì che Windows associa l'ID
+// alle finestre create da questo processo.
+app.setAppUserModelId('it.studioquadra.prisma');
+
 // Impedisce di avere due Prisma aperti insieme (es. doppio click accidentale, o
 // click di nuovo sull'icona mentre e' gia' in esecuzione): il secondo tentativo
 // di avvio si chiude subito e fa solo riapparire la finestra di quello già
