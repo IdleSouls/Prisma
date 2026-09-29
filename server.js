@@ -624,7 +624,17 @@ function convertiFileConSoffice(percorsoInput, formatoDestinazione, cartellaOutp
     const argomentoFormato = formatoDestinazione === 'pdfa'
       ? `pdf:${filtroPdfExportPer(estensioneOrigine)}:SelectPdfVersion=1`
       : formatoDestinazione;
-    execFile(SOFFICE_PATH, ['--headless', '--convert-to', argomentoFormato, '--outdir', cartellaOutput, percorsoInput], { timeout: 120000 }, (err, stdout, stderr) => {
+    const argomenti = ['--headless', '--convert-to', argomentoFormato];
+    // Bug (Matteo: "no export filter for ...docx found, aborting"): un .pdf, aperto da LibreOffice
+    // senza indicazioni, viene importato come disegno (filtro draw_pdf_import, stesso motore di
+    // Draw/Impress) - e Draw non ha NESSUN filtro di esportazione verso .docx, da cui l'errore.
+    // Serve dire esplicitamente di importarlo come testo (Writer) quando la destinazione è Word.
+    // Per pdfa invece va bene il comportamento di default: si esporta di nuovo in pdf (stesso motore
+    // di importazione, nessuna conversione di "tipo" di documento) e filtroPdfExportPer sceglie già
+    // il filtro Draw giusto per quel caso.
+    if (estensioneOrigine === 'pdf' && formatoDestinazione === 'docx') argomenti.push('--infilter=writer_pdf_import');
+    argomenti.push('--outdir', cartellaOutput, percorsoInput);
+    execFile(SOFFICE_PATH, argomenti, { timeout: 120000 }, (err, stdout, stderr) => {
       if (err) { reject(new Error('Conversione non riuscita: ' + (String(stderr || err.message).split('\n')[0]))); return; }
       resolve();
     });
