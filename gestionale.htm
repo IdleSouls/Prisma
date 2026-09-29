@@ -51,6 +51,15 @@ input,select,textarea{font-family:inherit;font-size:14px;}
 #sidebar .navitem.active{background:#fff;color:var(--blu-scuro);font-weight:700;box-shadow:var(--shadow-md);}
 #sidebar .navitem.active .ic{opacity:1;}
 #sidebar .navgroup{padding:16px 22px 6px 22px;font-size:10px;text-transform:uppercase;letter-spacing:.08em;opacity:.6;font-weight:700;color:#c3d1e8;}
+/* Task #142: intestazioni di gruppo cliccabili per collassare/espandere (troppe voci tutte
+   visibili spaesavano chi apriva Prisma per la prima volta). display:flex per allineare
+   chevron/etichetta/badge sulla stessa riga; hover/opacità più alta segnala che è cliccabile,
+   a differenza delle intestazioni statiche di prima. */
+#sidebar .navgroup.collassabile{display:flex;align-items:center;gap:6px;cursor:pointer;opacity:.75;padding-top:14px;padding-bottom:8px;user-select:none;}
+#sidebar .navgroup.collassabile:hover{opacity:1;color:#fff;}
+#sidebar .navgroup.collassabile .chev{font-size:9px;opacity:.8;width:10px;flex:none;}
+#sidebar .navgroup.collassabile .nav-badge{margin-left:0;}
+.navgroup-items.chiuso{display:none;}
 #sidebar .navitem .nav-badge{margin-left:auto;background:var(--rosso,#d33);color:#fff;font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:20px;min-width:16px;text-align:center;}
 .nav-badge{background:var(--rosso,#d33);color:#fff;font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:20px;min-width:16px;text-align:center;flex:none;}
 /* Chat interna (task Matteo) */
@@ -174,8 +183,22 @@ select.statoSel.stato-non-applicabile{background:var(--grigio-bg);color:var(--gr
 .f24-cliente-riga:hover{background:#f2f4f7;}
 .f24-cliente-vuoto{padding:7px 10px;font-size:12.5px;color:var(--text-mut);}
 /* Righe F24 (codici tributo + pagamento misto) */
+/* Task richiesto da Matteo: "sistema la formattazione dei riquadri nella finestra per aggiungere
+   degli F24" (vedi screenshot: le 4 caselle di una riga F24 sballottate senza etichetta sopra, e
+   più in generale un vuoto sotto "Data" perché era sola nella sua colonna del grid2). Le larghezze
+   qui sotto sono condivise CON l'intestazione (.f24-righe-header, stessi valori) così le colonne
+   restano allineate anche quando compare/scompare il pulsante "rimuovi riga" (26px riservati anche
+   quando assente, con visibility:hidden invece di non renderlo — altrimenti le righe successive
+   "scalano" a sinistra quando c'è una sola riga). */
 .riga-f24-modal{display:flex;gap:6px;align-items:center;margin-bottom:6px;}
-.riga-f24-modal input{border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12.5px;font-family:inherit;}
+.riga-f24-modal input{border:1px solid var(--border);border-radius:6px;padding:7px 9px;font-size:12.5px;font-family:inherit;}
+.riga-f24-modal .col-tributo, .f24-righe-header .col-tributo{width:90px;flex:none;}
+.riga-f24-modal .col-descrizione, .f24-righe-header .col-descrizione{flex:1 1 140px;min-width:0;}
+.riga-f24-modal .col-importo, .f24-righe-header .col-importo{width:100px;flex:none;}
+.riga-f24-modal .col-pagato, .f24-righe-header .col-pagato{width:90px;flex:none;}
+.riga-f24-modal .col-rimuovi{width:26px;flex:none;display:flex;justify-content:center;}
+.f24-righe-header{display:flex;gap:6px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-mut);margin-bottom:4px;padding:0 1px;}
+#f24RigheContainer{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;}
 
 .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px;}
 .paginazione{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 4px 2px;}
@@ -1654,6 +1677,37 @@ function caricaOperatoreLocale() {
     const salvato = (typeof localStorage !== 'undefined') && localStorage.getItem(LS_KEY_OPERATORE);
     OPERATORE = salvato || null;
   } catch (err) { OPERATORE = null; }
+}
+
+/* Task #142 (feedback di Federico: troppe voci di menu tutte visibili per chi non conosce già
+   Prisma): i gruppi della sidebar sono collassabili. Come OPERATORE/DEVICE_ID qui sopra, è una
+   preferenza di INTERFACCIA per questo dispositivo/browser, non un dato dello studio — resta
+   quindi in una chiave di localStorage separata, mai in STATE/sincronizzata via server, altrimenti
+   un operatore che chiude un gruppo lo chiuderebbe per tutti. Di default solo "Panoramica" è
+   aperto: è dove vivono dashboard/azioni/calendario, i punti d'ingresso più usati. Qualunque
+   gruppo contenga la pagina attualmente aperta viene comunque mostrato espanso (vedi renderNav),
+   quindi non si perde mai di vista "dove sono" navigando dai link diretti (es. "Vai alla scheda
+   cliente"). */
+const LS_KEY_NAV_APERTI = 'gestionaleNavGruppiAperti_v1';
+let NAV_GRUPPI_APERTI = null;
+function caricaNavGruppiApertiLocale() {
+  try {
+    const raw = (typeof localStorage !== 'undefined') && localStorage.getItem(LS_KEY_NAV_APERTI);
+    const arr = raw ? JSON.parse(raw) : null;
+    NAV_GRUPPI_APERTI = new Set(Array.isArray(arr) ? arr : ['Panoramica']);
+  } catch (err) { NAV_GRUPPI_APERTI = new Set(['Panoramica']); }
+}
+function salvaNavGruppiApertiLocale() {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(LS_KEY_NAV_APERTI, JSON.stringify(Array.from(NAV_GRUPPI_APERTI)));
+  } catch (err) { /* preferenza di UI, non blocca nulla se non si salva */ }
+}
+function toggleNavGruppo(nomeGruppo) {
+  if (!NAV_GRUPPI_APERTI) caricaNavGruppiApertiLocale();
+  if (NAV_GRUPPI_APERTI.has(nomeGruppo)) NAV_GRUPPI_APERTI.delete(nomeGruppo);
+  else NAV_GRUPPI_APERTI.add(nomeGruppo);
+  salvaNavGruppiApertiLocale();
 }
 // Si auto-corregge se il nome scelto non è (più) tra i responsabili configurati (es. rinominato o
 // rimosso in Impostazioni) - meglio tornare a "nessuno" che continuare ad attribuire a un nome che
@@ -3451,18 +3505,44 @@ const PAGE_TITLES = {
   chat: ['Chat interna', 'Messaggi diretti tra i responsabili dello studio'],
 };
 
+function badgeVoceNav(it) {
+  if (it.id === 'chat') return chatTotaleNonLetti();
+  if (it.id === 'taskteam') return taskTeamNonVistiConteggio();
+  if (it.id === 'comunicazioni') return comunicazioniDaLeggereConteggio();
+  return 0;
+}
+/* Task #142: gruppi della sidebar collassabili (feedback di Federico — troppe voci tutte
+   visibili spaesano chi non conosce già Prisma). Un gruppo è mostrato espanso se l'operatore lo
+   ha aperto (NAV_GRUPPI_APERTI, per dispositivo — vedi caricaNavGruppiApertiLocale) OPPURE se
+   contiene la pagina attualmente aperta, così non si perde mai "dove sono" arrivando da un link
+   diretto verso una voce dentro un gruppo chiuso. Un gruppo chiuso con notifiche non lette al suo
+   interno mostra comunque un pallino/numero sull'intestazione, così un badge non sparisce solo
+   perché il gruppo è collassato. */
 function renderNav() {
+  if (!NAV_GRUPPI_APERTI) caricaNavGruppiApertiLocale();
   const nav = document.getElementById('navMenu');
   let html = '';
   for (const g of NAV) {
-    html += `<div class="navgroup">${escapeHtml(g.group)}</div>`;
+    const contieneViewCorrente = g.items.some(it => it.id === VIEW);
+    const aperto = NAV_GRUPPI_APERTI.has(g.group) || contieneViewCorrente;
+    const badgeGruppo = g.items.reduce((s, it) => s + badgeVoceNav(it), 0);
+    html += `<div class="navgroup collassabile" data-action="nav-toggle-gruppo" data-gruppo="${escapeHtml(g.group)}">
+      <span class="chev">${aperto ? '▾' : '▸'}</span>
+      <span style="flex:1;">${escapeHtml(g.group)}</span>
+      ${(!aperto && badgeGruppo) ? `<span class="nav-badge">${badgeGruppo}</span>` : ''}
+    </div>`;
+    // Le voci restano SEMPRE nel DOM (mai omesse), anche a gruppo chiuso: solo nascoste via CSS
+    // (display:none su .navgroup-items.chiuso). Necessario perché in tutta l'app diversi bottoni
+    // di scorciatoia (es. "Vai agli adempimenti annuali →" in dashboard/scheda cliente) e la
+    // suite di test navigano chiamando data-nav="..." direttamente: se l'elemento non esistesse
+    // affatto nel DOM a gruppo chiuso, quei link smetterebbero di funzionare invece di limitarsi
+    // a espandere il gruppo. Un utente reale non può comunque cliccare qualcosa che non vede.
+    html += `<div class="navgroup-items ${aperto ? '' : 'chiuso'}">`;
     for (const it of g.items) {
-      const badgeChat = it.id === 'chat' ? chatTotaleNonLetti() : 0;
-      const badgeTask = it.id === 'taskteam' ? taskTeamNonVistiConteggio() : 0;
-      const badgeCom = it.id === 'comunicazioni' ? comunicazioniDaLeggereConteggio() : 0;
-      const badge = badgeChat || badgeTask || badgeCom;
+      const badge = badgeVoceNav(it);
       html += `<div class="navitem ${VIEW===it.id?'active':''}" data-nav="${it.id}"><span class="ic">${it.ic||''}</span>${escapeHtml(it.label)}${badge ? `<span class="nav-badge">${badge}</span>` : ''}</div>`;
     }
+    html += `</div>`;
   }
   nav.innerHTML = html;
   document.getElementById('brandSub').textContent = STATE.meta.studioNome || 'Studio';
@@ -5004,6 +5084,12 @@ function renderAnnuali() {
 /* -------------------- RENDER: ONBOARDING -------------------- */
 let ONBOARD_SELECTED = null;
 
+// Task richiesto da Matteo: con più di 100 clienti scorrere la colonna a sinistra per trovarne
+// uno era uno spreco di tempo, sia in Onboarding sia in Antiriciclaggio (stesso layout a due
+// colonne). Persistita come le altre variabili di filtro dell'app (es. CLI_FILTRO): sopravvive ai
+// render() successivi (es. quando si spunta una voce della checklist), il campo resta a fuoco
+// grazie a restoreFocus (stesso pattern di 'cli-filtro-q').
+let ONBOARD_FILTRO_Q = '';
 function renderOnboarding() {
   if (VIEW_PARAMS.clienteId) { ONBOARD_SELECTED = VIEW_PARAMS.clienteId; VIEW_PARAMS = {}; }
   const attivi = STATE.clienti.filter(c => c.stato !== 'cessato').sort((a,b)=>a.ragioneSociale.localeCompare(b.ragioneSociale));
@@ -5012,14 +5098,17 @@ function renderOnboarding() {
   }
   if (!ONBOARD_SELECTED || !attivi.find(c=>c.id===ONBOARD_SELECTED)) ONBOARD_SELECTED = attivi[0].id;
 
-  const listaHtml = attivi.map(c => {
+  const q = ONBOARD_FILTRO_Q.trim().toLowerCase();
+  const filtrati = q ? attivi.filter(c => c.ragioneSociale.toLowerCase().includes(q)) : attivi;
+  const ricerca = `<input type="text" value="${escapeHtml(ONBOARD_FILTRO_Q)}" placeholder="Cerca cliente..." data-action="onboard-filtro-q" autocomplete="off" style="margin-bottom:8px;">`;
+  const listaHtml = filtrati.length ? filtrati.map(c => {
     const pct = percentualeOnboarding(STATE.onboarding[c.id]);
     const sel = c.id === ONBOARD_SELECTED;
     return `<div class="client-row" style="${sel?'border-color:var(--blu-mid);background:#f4f8fc;':''}margin-bottom:6px;" data-action="onboard-seleziona" data-id="${c.id}">
       <div><div class="name" style="font-size:12.5px;">${escapeHtml(c.ragioneSociale)}</div></div>
       <div class="right"><div style="width:70px;"><div class="progress"><div style="width:${pct}%"></div></div></div><div style="width:32px;text-align:right;font-weight:700;font-size:12px;">${pct}%</div></div>
     </div>`;
-  }).join('');
+  }).join('') : `<div class="empty" style="padding:14px 4px;">Nessun cliente trovato.</div>`;
 
   const cliente = clienteById(ONBOARD_SELECTED);
   const voci = STATE.onboarding[ONBOARD_SELECTED] || nuovoOnboarding();
@@ -5034,7 +5123,7 @@ function renderOnboarding() {
     </div>`).join('');
 
   return `<div style="display:grid;grid-template-columns:280px 1fr;gap:18px;align-items:flex-start;">
-    <div class="card">${listaHtml}</div>
+    <div class="card">${ricerca}${listaHtml}</div>
     <div class="card">
       <div class="section-title">${escapeHtml(cliente.ragioneSociale)} <span class="cnt">${pct}% completato</span></div>
       <div class="progress" style="margin-bottom:16px;"><div style="width:${pct}%"></div></div>
@@ -5059,6 +5148,7 @@ function classeRischioAml(profilo) {
   return 'info';
 }
 
+let AML_FILTRO_Q = '';
 function renderAntiriciclaggio() {
   if (VIEW_PARAMS.clienteId) { AML_SELECTED = VIEW_PARAMS.clienteId; VIEW_PARAMS = {}; }
   const attivi = STATE.clienti.filter(c => c.stato !== 'cessato').sort((a,b)=>a.ragioneSociale.localeCompare(b.ragioneSociale));
@@ -5084,7 +5174,10 @@ function renderAntiriciclaggio() {
     ${kpiRiga(revisioneScaduta, 'Revisioni scadute', revisioneScaduta ? 'kpi-riga-allerta' : '')}
   </div>`;
 
-  const listaHtml = attivi.map(c => {
+  const qAml = AML_FILTRO_Q.trim().toLowerCase();
+  const filtratiAml = qAml ? attivi.filter(c => c.ragioneSociale.toLowerCase().includes(qAml)) : attivi;
+  const ricercaAml = `<input type="text" value="${escapeHtml(AML_FILTRO_Q)}" placeholder="Cerca cliente..." data-action="aml-filtro-q" autocomplete="off" style="margin-bottom:8px;">`;
+  const listaHtml = filtratiAml.length ? filtratiAml.map(c => {
     const f = STATE.antiriciclaggio[c.id];
     const pct = percentualeAntiriciclaggio(f);
     const sel = c.id === AML_SELECTED;
@@ -5093,7 +5186,7 @@ function renderAntiriciclaggio() {
       <div><div class="name" style="font-size:12.5px;">${escapeHtml(c.ragioneSociale)}</div><span class="badge ${classeRischioAml(rischio)}" style="font-size:9.5px;margin-top:3px;display:inline-block;">${escapeHtml(rischio)}</span></div>
       <div class="right"><div style="width:60px;"><div class="progress"><div style="width:${pct}%"></div></div></div><div style="width:32px;text-align:right;font-weight:700;font-size:12px;">${pct}%</div></div>
     </div>`;
-  }).join('');
+  }).join('') : `<div class="empty" style="padding:14px 4px;">Nessun cliente trovato.</div>`;
 
   const cliente = clienteById(AML_SELECTED);
   const fascicolo = fascicoloAntiriciclaggio(AML_SELECTED);
@@ -5133,7 +5226,7 @@ function renderAntiriciclaggio() {
     : `<div class="helptext" style="margin-top:8px;">Nessun modello antiriciclaggio attivo — <button type="button" class="btn small" data-action="vai-modelli">crea un modello</button> (es. Dichiarazione cliente, Nota di accettazione incarico).</div>`;
 
   return `<div style="display:grid;grid-template-columns:280px 1fr;gap:18px;align-items:flex-start;">
-    <div class="card">${kpi}${listaHtml}</div>
+    <div class="card">${kpi}${ricercaAml}${listaHtml}</div>
     <div class="card">
       <div class="section-title">${escapeHtml(cliente.ragioneSociale)} <span class="cnt">${pct}% completato</span></div>
       <div class="progress" style="margin-bottom:16px;"><div style="width:${pct}%"></div></div>
@@ -6311,12 +6404,18 @@ function renderRisultatiClienteF24() {
 }
 function nuovaRigaF24Modal() { return { id: uid('f24r'), codiceTributo: '', descrizione: '', importo: null, importoPagato: 0 }; }
 function rigaF24ModalHtml(r, idx) {
+  // Il pulsante "rimuovi" occupa sempre lo spazio della sua colonna (visibility:hidden quando
+  // assente, non un'assenza dal markup): altrimenti con una sola riga i campi si allargano di 26px
+  // rispetto a quando ce ne sono due o più, e le colonne non restano allineate con l'intestazione.
+  const rimuovi = F24_RIGHE_MODAL.length > 1
+    ? `<button type="button" class="icon-x" data-action="f24-riga-rimuovi" data-idx="${idx}" title="Rimuovi riga">✕</button>`
+    : `<span style="visibility:hidden;">✕</span>`;
   return `<div class="riga-f24-modal" data-idx="${idx}">
-    <input placeholder="Cod. tributo" value="${escapeHtml(r.codiceTributo || '')}" data-action="f24-riga-input" data-idx="${idx}" data-campo="codiceTributo" style="width:90px;">
-    <input placeholder="Descrizione (es. IVA saldo 2025)" value="${escapeHtml(r.descrizione || '')}" data-action="f24-riga-input" data-idx="${idx}" data-campo="descrizione" style="flex:1 1 140px;">
-    <input type="number" step="0.01" placeholder="0.00" value="${r.importo != null ? r.importo : ''}" data-action="f24-riga-input" data-idx="${idx}" data-campo="importo" style="width:100px;" title="Importo dovuto">
-    <input type="number" step="0.01" placeholder="Pagato" value="${r.importoPagato ? r.importoPagato : ''}" data-action="f24-riga-input" data-idx="${idx}" data-campo="importoPagato" style="width:90px;" title="Quanto è già stato pagato su questa riga - editabile per registrare a mano un pagamento parziale/totale comunicato dal cliente (es. per telefono o bonifico), senza passare dal portale">
-    ${F24_RIGHE_MODAL.length > 1 ? `<button type="button" class="icon-x" data-action="f24-riga-rimuovi" data-idx="${idx}" title="Rimuovi riga">✕</button>` : ''}
+    <input class="col-tributo" placeholder="es. 6099" value="${escapeHtml(r.codiceTributo || '')}" data-action="f24-riga-input" data-idx="${idx}" data-campo="codiceTributo">
+    <input class="col-descrizione" placeholder="es. IVA saldo 2025" value="${escapeHtml(r.descrizione || '')}" data-action="f24-riga-input" data-idx="${idx}" data-campo="descrizione">
+    <input class="col-importo" type="number" step="0.01" placeholder="0,00" value="${r.importo != null ? r.importo : ''}" data-action="f24-riga-input" data-idx="${idx}" data-campo="importo" title="Importo dovuto">
+    <input class="col-pagato" type="number" step="0.01" placeholder="0,00" value="${r.importoPagato ? r.importoPagato : ''}" data-action="f24-riga-input" data-idx="${idx}" data-campo="importoPagato" title="Quanto è già stato pagato su questa riga - editabile per registrare a mano un pagamento parziale/totale comunicato dal cliente (es. per telefono o bonifico), senza passare dal portale">
+    <span class="col-rimuovi">${rimuovi}</span>
   </div>`;
 }
 function renderRigheF24Modal() {
@@ -6359,11 +6458,18 @@ function modalF24(id, clienteIdPreselezionato) {
             <div class="helptext" id="f24SuggerimentoImporto" style="margin-top:4px;"></div>
           </div>` : ''}
           <div class="field"><label>Data *</label><input type="date" id="fData" value="${editing?editing.data:oggiISO()}"></div>
-          <div class="field full" style="grid-column:1/-1;"><label>Descrizione generale (opzionale)</label><input id="fDescrizione" value="${editing?escapeHtml(editing.descrizione||''):''}" placeholder="es. Saldo IVA 2025, ritenute dicembre..."></div>
+          <div class="field"><label>Descrizione generale (opzionale)</label><input id="fDescrizione" value="${editing?escapeHtml(editing.descrizione||''):''}" placeholder="es. Saldo IVA 2025..."></div>
           <div class="field full" style="grid-column:1/-1;">
             <label>Righe / codici tributo *</label>
+            <div class="f24-righe-header">
+              <span class="col-tributo">Cod. tributo</span>
+              <span class="col-descrizione">Descrizione</span>
+              <span class="col-importo">Importo</span>
+              <span class="col-pagato">Pagato</span>
+              <span class="col-rimuovi"></span>
+            </div>
             <div id="f24RigheContainer"></div>
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
               <button type="button" class="btn small" data-action="f24-riga-aggiungi">+ Aggiungi riga</button>
               <strong id="f24RigheTotale" style="font-size:13px;"></strong>
             </div>
@@ -10492,6 +10598,7 @@ function onClickDelegato(e) {
   const id = el.dataset.id;
 
   switch (action) {
+    case 'nav-toggle-gruppo': toggleNavGruppo(el.dataset.gruppo); renderNav(); break;
     case 'nuovo-cliente': modalCliente(null); break;
     case 'apri-cliente': chiudiModal(); SCHEDA_CLIENTE = id; setView('schedacliente'); break;
     case 'modifica-cliente': modalCliente(id); break;
@@ -11935,6 +12042,12 @@ function onInputDelegato(e) {
     case 'rubrica-filtro-q': RUBRICA_FILTRO.q = el.value; resetPagina('rubrica'); render(); restoreFocus('[data-action="rubrica-filtro-q"]'); break;
     case 'cred-filtro-q': CRED_FILTRO.q = el.value; resetPagina('credenziali'); render(); restoreFocus('[data-action="cred-filtro-q"]'); break;
     case 'scad-filtro-q': SCAD_FILTRO.q = el.value; resetPagina('scadenze'); render(); restoreFocus('[data-action="scad-filtro-q"]'); break;
+    // Ricerca cliente in Onboarding/Antiriciclaggio (Matteo: con 100+ clienti scorrere la colonna
+    // a sinistra per trovarne uno era uno spreco di tempo). render() completo (non filtro DOM-only
+    // come in altri casi) perché qui, a differenza di una checklist di checkbox, non c'è stato non
+    // salvato da perdere — restoreFocus tiene comunque il campo a fuoco dopo il ridisegno.
+    case 'onboard-filtro-q': ONBOARD_FILTRO_Q = el.value; render(); restoreFocus('[data-action="onboard-filtro-q"]'); break;
+    case 'aml-filtro-q': AML_FILTRO_Q = el.value; render(); restoreFocus('[data-action="aml-filtro-q"]'); break;
     case 'dc-tipo-change': apriModalDocumentoContabile(el.dataset.cliente, el.value); break;
     case 'f24-chiave-change': aggiornaSuggerimentoImportoF24(); break;
     case 'f24-cliente-change': aggiornaSuggerimentoImportoF24(); break;
@@ -12335,6 +12448,7 @@ function init() {
   caricaStato();
   caricaOperatoreLocale();
   caricaDeviceIdLocale();
+  caricaNavGruppiApertiLocale();
   generaComunicazioniRicorrentiDovute();
   document.body.addEventListener('click', onClickDelegato);
   document.body.addEventListener('change', onChangeDelegato);
