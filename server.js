@@ -75,24 +75,11 @@ function presenzaOccupataDaAltroDispositivo(nome, deviceId) {
 // Task Matteo (accesso ai referenti individuale, non solo il login unico di studio sulla porta
 // team): sopra questo file di presenza "soft" (nessuna password, solo un avviso aggirabile) si
 // aggiunge qui un livello OPZIONALE per referente - se un responsabile ha una password impostata
-// (vedi FILE_RESPONSABILI_PASSWORD sotto), scegliere quel nome richiede quella password E la
-// sessione diventa VERAMENTE esclusiva: un secondo dispositivo che prova a usare lo stesso nome
-// mentre la sessione è ancora viva (heartbeat recente) viene RIFIUTATO, non solo avvisato - "due pc
-// non possono accedere a Matteo insieme" (parole di Matteo). Un responsabile senza password
-// impostata continua a funzionare esattamente come prima (comportamento invariato, retrocompatibile).
-const FILE_RESPONSABILI_PASSWORD = path.join(CARTELLA, 'responsabili-password.json');
-function leggiResponsabiliPassword() {
-  try {
-    const raw = fs.readFileSync(FILE_RESPONSABILI_PASSWORD, 'utf8');
-    const cfg = JSON.parse(raw);
-    return (cfg && typeof cfg === 'object') ? cfg : {};
-  } catch (err) {
-    return {};
-  }
-}
-function scriviResponsabiliPassword(cfg) {
-  fs.writeFileSync(FILE_RESPONSABILI_PASSWORD, JSON.stringify(cfg, null, 2), 'utf8');
-}
+// (vedi FILE_RESPONSABILI_PASSWORD più sotto, definito dopo CARTELLA), scegliere quel nome richiede
+// quella password E la sessione diventa VERAMENTE esclusiva: un secondo dispositivo che prova a
+// usare lo stesso nome mentre la sessione è ancora viva (heartbeat recente) viene RIFIUTATO, non
+// solo avvisato - "due pc non possono accedere a Matteo insieme" (parole di Matteo). Un responsabile
+// senza password impostata continua a funzionare esattamente come prima (invariato, retrocompatibile).
 // nome -> { token, deviceId, ultimoHeartbeat }. Solo in memoria (come presenzaOperatori): un
 // riavvio del server chiude tutte le sessioni esclusive, chi era collegato dovrà solo reinserire la
 // password al prossimo heartbeat/scelta operatore, nessun dato perso.
@@ -1920,6 +1907,22 @@ const server = http.createServer(gestisciRichiesta);
 const PORTA_ESTERNA_CLIENTI = 8421;
 const PORTA_ESTERNA_TEAM = 8422;
 const FILE_ACCESSO_ESTERNO = path.join(CARTELLA, 'accesso-esterno.json');
+
+// Password personale opzionale per referente (vedi commento su sessioneAttivaPerNome più sopra) -
+// stesso schema di FILE_ACCESSO_ESTERNO: JSON in chiaro nella cartella dell'app, nome -> password.
+const FILE_RESPONSABILI_PASSWORD = path.join(CARTELLA, 'responsabili-password.json');
+function leggiResponsabiliPassword() {
+  try {
+    const raw = fs.readFileSync(FILE_RESPONSABILI_PASSWORD, 'utf8');
+    const cfg = JSON.parse(raw);
+    return (cfg && typeof cfg === 'object') ? cfg : {};
+  } catch (err) {
+    return {};
+  }
+}
+function scriviResponsabiliPassword(cfg) {
+  fs.writeFileSync(FILE_RESPONSABILI_PASSWORD, JSON.stringify(cfg, null, 2), 'utf8');
+}
 
 function leggiConfigAccessoEsterno() {
   try {
