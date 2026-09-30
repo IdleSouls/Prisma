@@ -1,0 +1,52 @@
+/* Service worker del portale cliente (task PWA, richiesta Matteo: "l'app come alternativa al
+   portale su pc"). Deliberatamente minimale: serve solo a rendere il portale installabile
+   ("Aggiungi a schermata Home"/"Installa app") e a far ripartire più in fretta il "guscio" della
+   pagina (l'HTML/CSS/JS statico), MAI a mettere in cache i dati del cliente.
+
+   Regola non negoziabile: ogni richiesta verso /api/ (comunicazioni, scadenze, documenti, F24,
+   andamento - tutto ciò che questo file gestisce) passa SEMPRE e SOLO dalla rete, mai dalla cache.
+   Cachare quei dati vorrebbe dire rischiare di mostrare a un cliente informazioni vecchie o,
+   peggio, un fascicolo altrui rimasto in cache da una sessione precedente sullo stesso dispositivo
+   condiviso — inaccettabile per dati di questo tipo. Lo stesso vale per qualunque richiesta che non
+   sia una GET: non si intercettano mai POST (le scritture del cliente - nuovo messaggio, risposta,
+   invio password - devono sempre arrivare al server, mai essere "assorbite" da questo file). */
+const CACHE_NOME = 'portale-guscio-v1';
+
+self.addEventListener('install', (evento) => {
+  self.skipWaiting();
+  evento.waitUntil(
+    caches.open(CACHE_NOME)
+      .then((cache) => cache.addAll(['./']))
+      .catch(() => { /* primo avvio senza rete, o browser che nega la cache: non blocca l'installazione */ })
+  );
+});
+
+self.addEventListener('activate', (evento) => {
+  evento.waitUntil(
+    caches.keys()
+      .then((chiavi) => Promise.all(chiavi.filter((k) => k !== CACHE_NOME).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener('fetch', (evento) => {
+  const richiesta = evento.request;
+  if (richiesta.method !== 'GET') return; // mai le POST verso /api/portale-*: sempre e solo rete
+  let url;
+  try { url = new URL(richiesta.url); } catch (e) { return; }
+  if (url.origin !== self.location.origin) return; // mai intercettare Google Fonts o altro cross-origin
+  if (url.pathname.indexOf('/api/') === 0) return; // mai i dati: sempre rete, nessuna cache
+
+  // Solo il guscio (la pagina/manifest/service worker stessi): rete-prima con ripiego sulla cache
+  // solo se davvero offline, così il cliente vede comunque un'app che si apre (anche se poi la
+  // richiesta dati fallirà con il messaggio "portale non disponibile" già gestito dalla pagina).
+  evento.respondWith(
+    fetch(richiesta)
+      .then((risposta) => {
+        const copia = risposta.clone();
+        caches.open(CACHE_NOME).then((cache) => cache.put(richiesta, copia)).catch(() => {});
+        return risposta;
+      })
+      .catch(() => caches.match(richiesta))
+  );
+});

@@ -150,6 +150,7 @@ const FILE_MCP_VISTA_TMP = path.join(CARTELLA_MCP_SERVER, 'gestionale-mcp.json.t
 const FILE_LAUNCHER_COLLEGA = path.join(CARTELLA, 'Apri Gestionale (rete studio).html');
 const CARTELLA_DOCUMENTI = path.join(CARTELLA, 'documenti-clienti');
 const FILE_PORTALE_CLIENTE = path.join(CARTELLA, 'portale-cliente.htm');
+const FILE_PORTALE_SW = path.join(CARTELLA, 'portale-sw.js'); // task PWA: service worker statico del portale
 
 // ---------------------------------------------------------------------------
 // Log su file (task #158): senza questo, un problema all'avvio (es. licenza non valida) capitato
@@ -1784,6 +1785,60 @@ function gestisciRichiesta(req, res) {
     return;
   }
 
+  // ---------------------------------------------------------------------------
+  // PWA del portale cliente (richiesta Matteo: "l'app come alternativa al portale su pc"). Il
+  // manifest è generato AL VOLO invece di essere un file statico perché start_url/scope devono
+  // puntare al link del cliente specifico (?token=...), non a un generico "/" - un manifest
+  // statico servito da un URL fisso non potrebbe farlo, vedi il commento nello script di
+  // portale-cliente.htm che imposta questo href. Senza un token valido nella query, un fallback
+  // neutro (start_url "/") evita comunque un errore.
+  // ---------------------------------------------------------------------------
+  if (url === '/portale-manifest.json' && req.method === 'GET') {
+    const tokenQuery = (req.url.split('?')[1] || '').split('&').map((p) => p.split('=')).find((p) => p[0] === 'token');
+    const token = tokenQuery && tokenQuery[1] ? decodeURIComponent(tokenQuery[1]) : '';
+    const percorsoApp = token ? '/portale/' + encodeURIComponent(token) : '/';
+    // Stessa icona già incorporata come favicon in portale-cliente.htm, riusata qui come data URI
+    // (supportato per le icone del manifest dai browser Chromium/Android che contano per
+    // l'installabilità) - piccola e sgranata se ingrandita, ma funzionale; un logo più curato può
+    // sostituirla in futuro senza toccare altro.
+    const iconaBase64 = 'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAE/0lEQVR42q1WTYscVRQ9576q6o/pmZ7JzBjzYSKDH0gU1ARFSYhBTYwSFYKuRBcBlQHJXheGCcF/IUHcutONCAoSAoYYRBNIJKBJJoTJV3dPpqqrq967Lqqqu3p6Embh21R19X333Hfuufc+olhiAi+YFL9GGjL7RkCh2SsxvFSVIAhAkT1UodamURq3nO31XQCAF0z4tWnSAAoolIBm/gcO2H8bbESBX4KmqkuiW2mvA8Bk3oOxjdTcMUgQILNfKHvHCMAAHNDMQgmaYFxd6mwsFN+vTUMdqCS1TwAUVBCa80Nk/2rfXYGkA6ziTwWcX5um+CaoThuvBlWQ0OIEAPIPg/gGoWYGHOaGWRQAgWwjDUFP/DrgSmxmyUIpyzkYAIhAhyxRJiw30ix9gIpfE9LkPJYoJoYQ++/shkkaltJJ9AnMXWtGZgZPelKyHtqWA7GQp/HSsN38aOHV3Qu9qE2agbEq7rMIyBrBjrBM46FzV/Ycch8eeeupI8888kbYa0mu6aES0cFhmalRBo50FD57CnoxZjbJ0a9cbNPUvffCiUZlQ+oSQIZrj4PDF+6kr2VdzVSRbIp2V2T+OLZulJ7GNt0yue3Qs593ex2hDMXVrxdV1VwCon2dlIWhiqzMjNHOHXn9fR58m50URoyYlTjZ++QHO7a+FvbaQm91DrQQLQGFcLjMwRxDARXRuMuHtsj8MfQcDft0kzy8c6Hij1mXjrapsl6GVZSdsUgwKeiG/PiYbp5l7JRZEUBEuklvbvaJ/TuORr2W0MNwLZdjFnBNdQHG0+W7svcdvvkullN4Bgo4dU5VIWJW4nT/jk8end3VTZaLQFkugqygZQgyy4wqSE16nJzh/DFaJQgHGGBM6hWPoHNqrat4lcM7F4ZKuix0VQDGr05htD8aD/fuyvwJ7tnDTgrPYIyMYH9qB2eubm42xyq+VXTTZNuG7a3w9qUbpyr+mK5SekaEX5ta1bZoPL3X5q598tlxRhYTPmLFLys82cbp5YuXz55fvEqahyea9SDoWbt95vlzV76Peh0j3mqqCeNXpoanBWEtxJgvv+b2GY2UpyKebMmvIXpgFdXw5koU/rl47eKNG57xZsbHN443RKZ+/+e7wG/kE7DUI41fnRrojIAYXVmWT7/ggYP4scVvO/w5ZKRaFxihc1xeNNTA89tR+MeVK5dvLgF8cW739fbFa3fO+151uPRyhfWnI2EdGjVWnubxLi84+EBDoYADWBSlqoP1jQRGrt5uf3Pz3Ll/bzUqj5M/FENQ8xarynpzrmhYqpp1T4euYX2nzB5g7SWYTYDChYClWu/6WbgE8IgK4BRLTv+6F/+mWAy8YFAQhThZb86VB0XRRxUuVOfob5b6y2zsZ+05mCnaFW/xDB0UHaeXUnfWur8Vy0IfCFarKOOk3pwrT8Vc1CQgAKExNAI8Bo+xsU/qr5ib52162uoFp0sAyApgSjWMVYdgrTnHta495ZkBKDSC60ImQKiGZBXwARTjdnTlAN4DvWfHtADAKrw61AIgx5Hn/YH7CFWIU4t1LcXA0o2OpzVPr2rFJWGO9b+ujH+XhJLELVWXyXSd+9ZhpCRVXRq3DNRBrRdMFEpgSUi47yR5AHimdZokXLJpZAA6G6tLjFeHrHFRWC8f2r9hiqom4VJ2+S2NHgm86qTxalzdFDFSImsrEqS61CZRGrecy6/v/wF6S16hbpzz/AAAAABJRU5ErkJggg==';
+    let nomeStudio = 'Studio';
+    try {
+      const { win } = motorePortale();
+      if (win) { ricaricaDatiMotorePortale(win); nomeStudio = (win.getSTATE().meta || {}).studioNome || 'Studio'; }
+    } catch (e) { /* manifest deve funzionare comunque, con il nome generico */ }
+    const manifest = {
+      name: 'Portale Cliente - ' + nomeStudio,
+      short_name: 'Portale',
+      description: 'Il tuo spazio con lo studio: comunicazioni, scadenze e documenti.',
+      start_url: percorsoApp,
+      scope: percorsoApp,
+      display: 'standalone',
+      orientation: 'portrait',
+      background_color: '#F3F5F9',
+      theme_color: '#132A4C',
+      lang: 'it',
+      icons: [
+        { src: 'data:image/png;base64,' + iconaBase64, sizes: '192x192', type: 'image/png' },
+        { src: 'data:image/png;base64,' + iconaBase64, sizes: '512x512', type: 'image/png' },
+      ],
+    };
+    res.writeHead(200, { 'Content-Type': 'application/manifest+json; charset=utf-8' });
+    res.end(JSON.stringify(manifest));
+    return;
+  }
+  if (url === '/portale-sw.js' && req.method === 'GET') {
+    fs.readFile(FILE_PORTALE_SW, (err, contenuto) => {
+      if (err) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('Service worker non trovato.'); return; }
+      // Service-Worker-Allowed non serve qui (lo scope resta sotto /portale/<token>, coperto di
+      // default dato che il file è servito dalla radice) - Content-Type javascript è l'unico
+      // requisito perché il browser accetti di registrarlo.
+      res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-cache' });
+      res.end(contenuto);
+    });
+    return;
+  }
+
   // Task (audit): la password del portale cliente viaggiava prima come query string
   // (?password=...), quindi finiva nei log di accesso del server e nella cronologia del browser -
   // canale non ideale per un segreto, anche se già correttamente urlencoded. Ora è POST con la
@@ -2110,7 +2165,7 @@ function creaServerEsterno(porta, tipo, realm) {
     const url = req.url.split('?')[0];
     if (tipo === 'clienti') {
       // sulla porta clienti si accede SOLO al portale (mai all'app completa/dati di altri clienti)
-      const permesso = url === '/' || url.indexOf('/portale/') === 0 || url.indexOf('/api/portale-') === 0;
+      const permesso = url === '/' || url.indexOf('/portale/') === 0 || url.indexOf('/api/portale-') === 0 || url === '/portale-manifest.json' || url === '/portale-sw.js';
       if (!permesso) {
         res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
         res.end('Accesso non consentito su questa porta.');

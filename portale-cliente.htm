@@ -5,6 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Il tuo spazio</title>
 <link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAE/0lEQVR42q1WTYscVRQ9576q6o/pmZ7JzBjzYSKDH0gU1ARFSYhBTYwSFYKuRBcBlQHJXheGCcF/IUHcutONCAoSAoYYRBNIJKBJJoTJV3dPpqqrq967Lqqqu3p6Embh21R19X333Hfuufc+olhiAi+YFL9GGjL7RkCh2SsxvFSVIAhAkT1UodamURq3nO31XQCAF0z4tWnSAAoolIBm/gcO2H8bbESBX4KmqkuiW2mvA8Bk3oOxjdTcMUgQILNfKHvHCMAAHNDMQgmaYFxd6mwsFN+vTUMdqCS1TwAUVBCa80Nk/2rfXYGkA6ziTwWcX5um+CaoThuvBlWQ0OIEAPIPg/gGoWYGHOaGWRQAgWwjDUFP/DrgSmxmyUIpyzkYAIhAhyxRJiw30ix9gIpfE9LkPJYoJoYQ++/shkkaltJJ9AnMXWtGZgZPelKyHtqWA7GQp/HSsN38aOHV3Qu9qE2agbEq7rMIyBrBjrBM46FzV/Ycch8eeeupI8888kbYa0mu6aES0cFhmalRBo50FD57CnoxZjbJ0a9cbNPUvffCiUZlQ+oSQIZrj4PDF+6kr2VdzVSRbIp2V2T+OLZulJ7GNt0yue3Qs593ex2hDMXVrxdV1VwCon2dlIWhiqzMjNHOHXn9fR58m50URoyYlTjZ++QHO7a+FvbaQm91DrQQLQGFcLjMwRxDARXRuMuHtsj8MfQcDft0kzy8c6Hij1mXjrapsl6GVZSdsUgwKeiG/PiYbp5l7JRZEUBEuklvbvaJ/TuORr2W0MNwLZdjFnBNdQHG0+W7svcdvvkullN4Bgo4dU5VIWJW4nT/jk8end3VTZaLQFkugqygZQgyy4wqSE16nJzh/DFaJQgHGGBM6hWPoHNqrat4lcM7F4ZKuix0VQDGr05htD8aD/fuyvwJ7tnDTgrPYIyMYH9qB2eubm42xyq+VXTTZNuG7a3w9qUbpyr+mK5SekaEX5ta1bZoPL3X5q598tlxRhYTPmLFLys82cbp5YuXz55fvEqahyea9SDoWbt95vlzV76Peh0j3mqqCeNXpoanBWEtxJgvv+b2GY2UpyKebMmvIXpgFdXw5koU/rl47eKNG57xZsbHN443RKZ+/+e7wG/kE7DUI41fnRrojIAYXVmWT7/ggYP4scVvO/w5ZKRaFxihc1xeNNTA89tR+MeVK5dvLgF8cW739fbFa3fO+151uPRyhfWnI2EdGjVWnubxLi84+EBDoYADWBSlqoP1jQRGrt5uf3Pz3Ll/bzUqj5M/FENQ8xarynpzrmhYqpp1T4euYX2nzB5g7SWYTYDChYClWu/6WbgE8IgK4BRLTv+6F/+mWAy8YFAQhThZb86VB0XRRxUuVOfob5b6y2zsZ+05mCnaFW/xDB0UHaeXUnfWur8Vy0IfCFarKOOk3pwrT8Vc1CQgAKExNAI8Bo+xsU/qr5ib52162uoFp0sAyApgSjWMVYdgrTnHta495ZkBKDSC60ImQKiGZBXwARTjdnTlAN4DvWfHtADAKrw61AIgx5Hn/YH7CFWIU4t1LcXA0o2OpzVPr2rFJWGO9b+ujH+XhJLELVWXyXSd+9ZhpCRVXRq3DNRBrRdMFEpgSUi47yR5AHimdZokXLJpZAA6G6tLjFeHrHFRWC8f2r9hiqom4VJ2+S2NHgm86qTxalzdFDFSImsrEqS61CZRGrecy6/v/wF6S16hbpzz/AAAAABJRU5ErkJggg==">
+<!-- PWA (richiesta Matteo: "l'app come alternativa al portale su pc"): manifest dinamico (dipende
+     dal token nell'URL, va risolto lato client) impostato dallo script più sotto, subito dopo aver
+     letto TOKEN. Meta Apple perché Safari/iOS non supporta bene il manifest per "Aggiungi a Home" -
+     usa ancora le sue vecchie meta proprietarie. -->
+<link rel="manifest" id="pwaManifestLink">
+<meta name="theme-color" content="#132A4C">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Portale">
+<link rel="apple-touch-icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAE/0lEQVR42q1WTYscVRQ9576q6o/pmZ7JzBjzYSKDH0gU1ARFSYhBTYwSFYKuRBcBlQHJXheGCcF/IUHcutONCAoSAoYYRBNIJKBJJoTJV3dPpqqrq967Lqqqu3p6Embh21R19X333Hfuufc+olhiAi+YFL9GGjL7RkCh2SsxvFSVIAhAkT1UodamURq3nO31XQCAF0z4tWnSAAoolIBm/gcO2H8bbESBX4KmqkuiW2mvA8Bk3oOxjdTcMUgQILNfKHvHCMAAHNDMQgmaYFxd6mwsFN+vTUMdqCS1TwAUVBCa80Nk/2rfXYGkA6ziTwWcX5um+CaoThuvBlWQ0OIEAPIPg/gGoWYGHOaGWRQAgWwjDUFP/DrgSmxmyUIpyzkYAIhAhyxRJiw30ix9gIpfE9LkPJYoJoYQ++/shkkaltJJ9AnMXWtGZgZPelKyHtqWA7GQp/HSsN38aOHV3Qu9qE2agbEq7rMIyBrBjrBM46FzV/Ycch8eeeupI8888kbYa0mu6aES0cFhmalRBo50FD57CnoxZjbJ0a9cbNPUvffCiUZlQ+oSQIZrj4PDF+6kr2VdzVSRbIp2V2T+OLZulJ7GNt0yue3Qs593ex2hDMXVrxdV1VwCon2dlIWhiqzMjNHOHXn9fR58m50URoyYlTjZ++QHO7a+FvbaQm91DrQQLQGFcLjMwRxDARXRuMuHtsj8MfQcDft0kzy8c6Hij1mXjrapsl6GVZSdsUgwKeiG/PiYbp5l7JRZEUBEuklvbvaJ/TuORr2W0MNwLZdjFnBNdQHG0+W7svcdvvkullN4Bgo4dU5VIWJW4nT/jk8end3VTZaLQFkugqygZQgyy4wqSE16nJzh/DFaJQgHGGBM6hWPoHNqrat4lcM7F4ZKuix0VQDGr05htD8aD/fuyvwJ7tnDTgrPYIyMYH9qB2eubm42xyq+VXTTZNuG7a3w9qUbpyr+mK5SekaEX5ta1bZoPL3X5q598tlxRhYTPmLFLys82cbp5YuXz55fvEqahyea9SDoWbt95vlzV76Peh0j3mqqCeNXpoanBWEtxJgvv+b2GY2UpyKebMmvIXpgFdXw5koU/rl47eKNG57xZsbHN443RKZ+/+e7wG/kE7DUI41fnRrojIAYXVmWT7/ggYP4scVvO/w5ZKRaFxihc1xeNNTA89tR+MeVK5dvLgF8cW739fbFa3fO+151uPRyhfWnI2EdGjVWnubxLi84+EBDoYADWBSlqoP1jQRGrt5uf3Pz3Ll/bzUqj5M/FENQ8xarynpzrmhYqpp1T4euYX2nzB5g7SWYTYDChYClWu/6WbgE8IgK4BRLTv+6F/+mWAy8YFAQhThZb86VB0XRRxUuVOfob5b6y2zsZ+05mCnaFW/xDB0UHaeXUnfWur8Vy0IfCFarKOOk3pwrT8Vc1CQgAKExNAI8Bo+xsU/qr5ib52162uoFp0sAyApgSjWMVYdgrTnHta495ZkBKDSC60ImQKiGZBXwARTjdnTlAN4DvWfHtADAKrw61AIgx5Hn/YH7CFWIU4t1LcXA0o2OpzVPr2rFJWGO9b+ujH+XhJLELVWXyXSd+9ZhpCRVXRq3DNRBrRdMFEpgSUi47yR5AHimdZokXLJpZAA6G6tLjFeHrHFRWC8f2r9hiqom4VJ2+S2NHgm86qTxalzdFDFSImsrEqS61CZRGrecy6/v/wF6S16hbpzz/AAAAABJRU5ErkJggg==">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -277,6 +288,24 @@ details summary{cursor:pointer;font-size:10.5px;font-weight:700;color:var(--text
    di questo stesso URL) e mostrarla. Sola lettura per ora: l'interattività (contattare lo studio,
    solleciti, domande - task #88) arriverà in un secondo momento. */
 const TOKEN = decodeURIComponent(location.pathname.replace(/^.*\/portale\//, '').replace(/\/+$/, ''));
+// PWA (richiesta Matteo: "l'app come alternativa al portale su pc"): il manifest deve avere
+// start_url/scope legati AL LINK DI QUESTO CLIENTE, non a un generico "/" - altrimenti "Aggiungi a
+// Home" installerebbe un'icona che riapre la pagina sbagliata (o quella neutra sulla porta clienti,
+// vedi server.js). Per questo il manifest è generato al volo da server.js leggendo il token dalla
+// query string, invece di essere un file statico - vedi /portale-manifest.json in server.js.
+(function impostaManifestPwa() {
+  const link = document.getElementById('pwaManifestLink');
+  if (link && TOKEN) link.href = '/portale-manifest.json?token=' + encodeURIComponent(TOKEN);
+})();
+// Service worker: SOLO per l'installabilità e per far ricaricare più in fretta il "guscio" (la
+// pagina stessa) - non mette MAI in cache le chiamate /api/portale-* (dati del cliente, sempre
+// live), vedi portale-sw.js. Se la registrazione fallisce (browser non supportato, contesto non
+// sicuro) l'app continua a funzionare identica, solo senza l'icona installabile.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/portale-sw.js').catch(() => {});
+  });
+}
 // Password del portale (opzionale, impostata dallo studio per singolo cliente - vedi
 // cardPasswordPortaleCliente in gestionale.htm): tenuta in sessionStorage, per-tab, così il cliente
 // non deve reinserirla a ogni refresh di pagina finché resta su questa scheda del browser, ma un
