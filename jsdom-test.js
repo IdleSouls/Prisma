@@ -2277,6 +2277,76 @@ async function main() {
     await wait(20);
   }
 
+  // ---------- 8e-ter-quater) Accessi portale diversificati (richiesta Matteo): accesso principale
+  // invariato, accesso secondario limitato a sole sezioni scelte, negato a quelle non consentite,
+  // isolamento tra clienti diversi ----------
+  {
+    const clienti = window.getSTATE().clienti.filter(c => c.stato !== 'cessato');
+    const clienteA = clienti[8], clienteB = clienti[9];
+    assert(clienteA && clienteB, 'servono almeno 10 clienti attivi per questo test');
+
+    window.attivaPortaleCliente(clienteA.id);
+    const tokenPrincipale = window.clienteById(clienteA.id).portaleToken;
+    assert(tokenPrincipale, 'token principale non generato');
+
+    // l'accesso principale deve continuare a funzionare esattamente come prima (ruolo 'completo',
+    // tutte le sezioni presenti) — nessuna regressione introdotta dal refactor su trovaAccessoPortale.
+    const vistaPrincipale = window.costruisciVistaPortaleClienteEsterna(tokenPrincipale);
+    assert(vistaPrincipale && !vistaPrincipale.richiedePassword && vistaPrincipale.azienda, 'accesso principale: deve funzionare come prima');
+    assert(vistaPrincipale.accesso && vistaPrincipale.accesso.ruolo === 'completo', 'accesso principale: ruolo deve essere completo');
+    assert(vistaPrincipale.accesso.sezioniConsentite.includes('andamento'), 'accesso principale: sezioniConsentite deve includere andamento (nessuna restrizione)');
+    console.log('=== Accessi portale diversificati: accesso principale invariato (ruolo completo, nessuna sezione nascosta) OK');
+
+    // accesso secondario limitato a comunicazioni+scadenze+documenti (preset di default), NON andamento
+    const accessoLim = window.nuovoAccessoSecondarioPortale(clienteA.id, 'Amministrazione');
+    assert(accessoLim && accessoLim.token && accessoLim.ruolo === 'limitato', 'accesso secondario non creato correttamente');
+    assert(accessoLim.tabConsentiti.includes('comunicazioni') && accessoLim.tabConsentiti.includes('scadenze') && accessoLim.tabConsentiti.includes('documenti') && !accessoLim.tabConsentiti.includes('andamento'), 'preset di default inatteso per un nuovo accesso limitato');
+
+    const vistaLimitata = window.costruisciVistaPortaleClienteEsterna(accessoLim.token);
+    assert(vistaLimitata && !vistaLimitata.richiedePassword && vistaLimitata.azienda && vistaLimitata.azienda.ragioneSociale === clienteA.ragioneSociale, 'accesso limitato: deve comunque risolvere il cliente giusto');
+    assert(vistaLimitata.andamento === null, 'accesso limitato: andamento non deve essere incluso nel payload (sezione non consentita)');
+    assert(Array.isArray(vistaLimitata.scadenze), 'accesso limitato: scadenze deve essere presente come array (sezione consentita)');
+    assert(Array.isArray(vistaLimitata.documenti), 'accesso limitato: documenti deve essere presente come array (sezione consentita)');
+    console.log('=== Accessi portale diversificati: accesso limitato vede solo le sezioni consentite (andamento nascosto) OK');
+
+    // togliendo anche "documenti" dalle sezioni consentite, il payload documenti deve azzerarsi
+    window.aggiornaAccessoSecondarioPortale(clienteA.id, accessoLim.id, { tabConsentiti: ['comunicazioni'] });
+    const vistaAncoraPiuLimitata = window.costruisciVistaPortaleClienteEsterna(accessoLim.token);
+    assert(vistaAncoraPiuLimitata.documenti.length === 0 && vistaAncoraPiuLimitata.scadenze.length === 0 && vistaAncoraPiuLimitata.andamento === null, 'restringendo le sezioni consentite, i dati esclusi non devono comparire nel payload');
+    assert(vistaAncoraPiuLimitata.comunicazioni !== undefined, 'la sezione ancora consentita (comunicazioni) deve restare presente');
+    console.log('=== Accessi portale diversificati: restringere le sezioni consentite aggiorna subito cosa viene esposto OK');
+
+    // un token disattivato non deve più risolvere nulla, anche se la stringa è ancora quella giusta
+    window.aggiornaAccessoSecondarioPortale(clienteA.id, accessoLim.id, { attivo: false });
+    assert(window.costruisciVistaPortaleClienteEsterna(accessoLim.token) === null, 'un accesso secondario disattivato non deve più risolvere alcuna vista');
+    window.aggiornaAccessoSecondarioPortale(clienteA.id, accessoLim.id, { attivo: true, tabConsentiti: ['comunicazioni', 'scadenze', 'documenti'] });
+
+    // password propria dell'accesso secondario, indipendente da quella (assente) dell'accesso principale
+    window.aggiornaAccessoSecondarioPortale(clienteA.id, accessoLim.id, { password: 'Amministrazione2026' });
+    assert(window.costruisciVistaPortaleClienteEsterna(accessoLim.token).richiedePassword === true, 'con password impostata sull\'accesso secondario, senza inserirla deve tornare richiedePassword');
+    assert(window.costruisciVistaPortaleClienteEsterna(tokenPrincipale) && !window.costruisciVistaPortaleClienteEsterna(tokenPrincipale).richiedePassword, 'la password del secondario non deve in alcun modo richiedersi anche sul principale');
+    assert(!window.costruisciVistaPortaleClienteEsterna(accessoLim.token, 'Amministrazione2026').richiedePassword, 'con la password corretta dell\'accesso secondario, deve funzionare');
+    console.log('=== Accessi portale diversificati: password propria dell\'accesso secondario, indipendente dal principale OK');
+
+    // isolamento: un accesso secondario del cliente A non deve MAI risolvere dati del cliente B
+    window.attivaPortaleCliente(clienteB.id);
+    const risolto = window.trovaAccessoPortale(accessoLim.token);
+    assert(risolto && risolto.cliente.id === clienteA.id, 'un accesso secondario deve risolvere sempre e solo il proprio cliente, mai un altro');
+    console.log('=== Accessi portale diversificati: isolamento tra clienti diversi OK');
+
+    // eliminazione: il token smette di funzionare
+    window.eliminaAccessoSecondarioPortale(clienteA.id, accessoLim.id);
+    assert(window.costruisciVistaPortaleClienteEsterna(accessoLim.token) === null, 'dopo l\'eliminazione, l\'accesso non deve più risolvere nulla');
+    console.log('=== Accessi portale diversificati: eliminazione revoca subito l\'accesso OK');
+
+    // pulizia
+    window.clienteById(clienteA.id).portaleToken = null;
+    window.clienteById(clienteA.id).accessiSecondari = [];
+    window.clienteById(clienteB.id).portaleToken = null;
+    window.render();
+    await wait(20);
+  }
+
   // ---------- 8e-ter-ter) Sessione operatore locale: token esclusivo per referente con password (task #154) ----------
   {
     const nomeResp = window.getSTATE().meta.responsabili[0];

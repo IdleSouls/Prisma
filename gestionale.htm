@@ -3833,6 +3833,74 @@ function disattivaPortaleCliente(id) {
   return c;
 }
 
+/* -------------------- ACCESSI PORTALE DIVERSIFICATI (richiesta Matteo) --------------------
+   L'accesso "principale" sopra (c.portaleToken/c.portalePassword) resta invariato: è chi ha
+   accesso completo (tipicamente il legale rappresentante), e tutto il comportamento esistente
+   per lui non cambia di una virgola. Qui si aggiunge, in modo puramente ADDITIVO, la possibilità
+   di dare allo stesso cliente uno o più accessi SECONDARI con un proprio link/password e visibili
+   solo su un sottoinsieme di sezioni del portale (es. "amministrazione": solo comunicazioni,
+   scadenze/F24 e documenti, non l'andamento economico) — c.accessiSecondari è un array, letto
+   sempre difensivamente con `|| []` come già fatto altrove in questo file per campi opzionali, non
+   serve una migrazione: un cliente esistente semplicemente non ne ha ancora nessuno. */
+const SEZIONI_PORTALE_LIMITABILI = [
+  { id: 'comunicazioni', label: 'Comunicazioni' },
+  { id: 'scadenze', label: 'Scadenze e F24' },
+  { id: 'documenti', label: 'Documenti' },
+  { id: 'andamento', label: 'Andamento (bilanci e KPI)' },
+];
+function nuovoAccessoSecondarioPortale(clienteId, nome) {
+  const c = clienteById(clienteId);
+  if (!c) return null;
+  if (!Array.isArray(c.accessiSecondari)) c.accessiSecondari = [];
+  const accesso = {
+    id: uid('accp'), nome: (nome || '').trim() || 'Accesso limitato',
+    token: generaTokenPortale(), password: null,
+    ruolo: 'limitato', tabConsentiti: ['comunicazioni', 'scadenze', 'documenti'],
+    attivo: true, creatoIl: oggiISO(),
+  };
+  c.accessiSecondari.push(accesso);
+  salvaStato();
+  return accesso;
+}
+function aggiornaAccessoSecondarioPortale(clienteId, accessoId, patch) {
+  const c = clienteById(clienteId);
+  const a = c && (c.accessiSecondari || []).find(x => x.id === accessoId);
+  if (!a) return null;
+  Object.assign(a, patch);
+  salvaStato();
+  return a;
+}
+function rigeneraAccessoSecondarioPortale(clienteId, accessoId) {
+  return aggiornaAccessoSecondarioPortale(clienteId, accessoId, { token: generaTokenPortale() });
+}
+function eliminaAccessoSecondarioPortale(clienteId, accessoId) {
+  const c = clienteById(clienteId);
+  if (!c) return;
+  c.accessiSecondari = (c.accessiSecondari || []).filter(x => x.id !== accessoId);
+  salvaStato();
+}
+/* Risolve un token del portale esterno in {cliente, accesso}, cercando prima nell'accesso
+   principale (comportamento invariato) e poi negli accessi secondari attivi di ogni cliente. Per
+   l'accesso principale costruisce un oggetto "accesso" sintetico con ruolo 'completo' — così tutto
+   il resto del codice (costruisciVistaPortaleClienteEsterna, risolviDocumentoPortaleEsterno, ecc.)
+   può trattare i due casi in modo identico invece di duplicare la logica. */
+function trovaAccessoPortale(token) {
+  if (!token || typeof token !== 'string') return null;
+  for (const c of STATE.clienti) {
+    if (c.portaleToken && c.portaleToken === token) {
+      return { cliente: c, accesso: { id: null, nome: 'Accesso principale', ruolo: 'completo', tabConsentiti: [], password: c.portalePassword || null } };
+    }
+    const extra = (c.accessiSecondari || []).find(a => a.attivo !== false && a.token === token);
+    if (extra) return { cliente: c, accesso: extra };
+  }
+  return null;
+}
+function accessoPortalePuoVedere(accesso, sezione) {
+  if (!accesso) return false;
+  if (accesso.ruolo === 'completo') return true;
+  return (accesso.tabConsentiti || []).includes(sezione);
+}
+
 /* -------------------- 4) RENDER — shell + nav -------------------- */
 const NAV = [
   { group: 'Panoramica', items: [
@@ -9126,12 +9194,15 @@ function confrontoTempoCostante(a, b) {
 }
 function costruisciVistaPortaleClienteEsterna(token, password) {
   if (!token || typeof token !== 'string') return null;
-  const cliente = STATE.clienti.find(c => c.portaleToken && c.portaleToken === token);
-  if (!cliente) return null;
-  // Password per-cliente (task Matteo, vedi cardPasswordPortaleCliente): se non impostata il link
+  const trovato = trovaAccessoPortale(token);
+  if (!trovato) return null;
+  const { cliente, accesso } = trovato;
+  // Password per-accesso (task Matteo, vedi cardPasswordPortaleCliente): se non impostata il link
   // segreto resta l'unica protezione, come prima - nessuna richiesta di password quindi nessun
-  // ostacolo per i clienti già attivi a cui non ne è stata data una.
-  if (cliente.portalePassword && !confrontoTempoCostante(cliente.portalePassword, password || '')) {
+  // ostacolo per i clienti già attivi a cui non ne è stata data una. Per l'accesso principale è la
+  // stessa identica password di sempre (trovaAccessoPortale la riporta su accesso.password), per un
+  // accesso secondario è la sua propria.
+  if (accesso.password && !confrontoTempoCostante(accesso.password, password || '')) {
     return { richiedePassword: true };
   }
 
@@ -9206,21 +9277,27 @@ function costruisciVistaPortaleClienteEsterna(token, password) {
     };
   }
 
+  // Accessi limitati (task Matteo: "amministrazione" con visibilità solo su alcune sezioni): i dati
+  // delle sezioni non consentite non vengono nemmeno mandati fuori (non solo nascosti in UI), sia
+  // per i pannelli sia per i relativi contatori in "numeri" - stessa cautela già usata altrove in
+  // questo file (es. risolviDocumentoPortaleEsterno) di non fidarsi della sola interfaccia.
+  const puoVedere = (sezione) => accessoPortalePuoVedere(accesso, sezione);
   return {
     azienda,
+    accesso: { nome: accesso.nome, ruolo: accesso.ruolo, sezioniConsentite: accesso.ruolo === 'completo' ? SEZIONI_PORTALE_LIMITABILI.map(s => s.id) : (accesso.tabConsentiti || []) },
     numeri: {
-      scadenzeAperte: scadenzeClienteTutte.length,
-      comunicazioniDaLeggere: comClienteNonLette,
-      documentiCondivisi: docCliente.length,
+      scadenzeAperte: puoVedere('scadenze') ? scadenzeClienteTutte.length : 0,
+      comunicazioniDaLeggere: puoVedere('comunicazioni') ? comClienteNonLette : 0,
+      documentiCondivisi: puoVedere('documenti') ? docCliente.length : 0,
       percorsoOnboardingCompletato: pctOnboarding,
       adempimentiAnnualiCompletati: annualiCliente.length - annualiIncompleti,
       adempimentiAnnualiTotali: annualiCliente.length,
     },
-    comunicazioni,
-    comunicazioniArchiviate,
-    scadenze,
-    documenti,
-    andamento,
+    comunicazioni: puoVedere('comunicazioni') ? comunicazioni : [],
+    comunicazioniArchiviate: puoVedere('comunicazioni') ? comunicazioniArchiviate : [],
+    scadenze: puoVedere('scadenze') ? scadenze : [],
+    documenti: puoVedere('documenti') ? documenti : [],
+    andamento: puoVedere('andamento') ? andamento : null,
   };
 }
 
@@ -9231,17 +9308,21 @@ function costruisciVistaPortaleClienteEsterna(token, password) {
    di un documento altrui potrebbe scaricarlo passando solo il proprio token valido. */
 function risolviDocumentoPortaleEsterno(token, documentoToken) {
   if (!token || !documentoToken || typeof documentoToken !== 'string') return null;
-  const cliente = STATE.clienti.find(c => c.portaleToken && c.portaleToken === token);
-  if (!cliente) return null;
+  const trovato = trovaAccessoPortale(token);
+  if (!trovato) return null;
+  const { cliente, accesso } = trovato;
   if (documentoToken.indexOf('doc_') === 0) {
+    if (!accessoPortalePuoVedere(accesso, 'documenti')) return null;
     const docId = documentoToken.slice(4);
     const d = STATE.documenti.find(x => x.id === docId && x.clienteId === cliente.id);
     if (d && d.filePercorso) return { filePercorso: d.filePercorso, nomeFile: d.nome };
   } else if (documentoToken.indexOf('com_') === 0) {
+    if (!accessoPortalePuoVedere(accesso, 'comunicazioni')) return null;
     const comId = documentoToken.slice(4);
     const c = STATE.comunicazioni.find(x => x.id === comId && x.clienteId === cliente.id && x.visibilePortale !== false);
     if (c && c.filePercorso) return { filePercorso: c.filePercorso, nomeFile: c.fileNome || 'Allegato' };
   } else if (documentoToken.indexOf('risp_') === 0) {
+    if (!accessoPortalePuoVedere(accesso, 'comunicazioni')) return null;
     // Allegato su UNA RISPOSTA (task #108, non sulla comunicazione originale): va cercato dentro
     // le risposte di una comunicazione che appartenga davvero a questo cliente e sia visibile nel
     // portale — stessa cautela di sopra, solo un livello più in profondità.
@@ -9294,12 +9375,13 @@ function aggiungiRispostaComunicazione(id, testo, autore, fileInfo) {
    sicurezza (non è codice eseguibile), solo per evitare che un campo libero cresca senza limiti. */
 function aggiungiMessaggioPortaleClienteEsterno(token, testo, scadenzaIdRif, fileInfo) {
   if (!token || typeof token !== 'string') return null;
-  const cliente = STATE.clienti.find(c => c.portaleToken && c.portaleToken === token);
+  const trovato = trovaAccessoPortale(token);
+  if (!trovato || !accessoPortalePuoVedere(trovato.accesso, 'comunicazioni')) return null;
   // La creazione vera e propria (validazione testo, ricalcolo scadenzaRif dal motore di
   // derivazione - mai fidandosi di nome/data passati dall'esterno) è condivisa con l'anteprima
   // interna (messaggioClientePreview più sopra): vedi _creaMessaggioCliente. fileInfo (task #108)
   // arriva già scritto su disco da server.js - qui si limita ad essere attaccato al messaggio.
-  return _creaMessaggioCliente(cliente, testo, scadenzaIdRif, fileInfo);
+  return _creaMessaggioCliente(trovato.cliente, testo, scadenzaIdRif, fileInfo);
 }
 
 /* Risposta di un cliente esterno a un thread ESISTENTE (una comunicazione che lo studio gli ha
@@ -9309,9 +9391,9 @@ function aggiungiMessaggioPortaleClienteEsterno(token, testo, scadenzaIdRif, fil
    indovinandone l'id. */
 function aggiungiRispostaPortaleClienteEsterno(token, comunicazioneId, testo, fileInfo) {
   if (!token || !comunicazioneId) return null;
-  const cliente = STATE.clienti.find(c => c.portaleToken && c.portaleToken === token);
-  if (!cliente) return null;
-  const c = STATE.comunicazioni.find(x => x.id === comunicazioneId && x.clienteId === cliente.id && x.visibilePortale !== false);
+  const trovato = trovaAccessoPortale(token);
+  if (!trovato || !accessoPortalePuoVedere(trovato.accesso, 'comunicazioni')) return null;
+  const c = STATE.comunicazioni.find(x => x.id === comunicazioneId && x.clienteId === trovato.cliente.id && x.visibilePortale !== false);
   if (!c) return null;
   return aggiungiRispostaComunicazione(comunicazioneId, testo, 'cliente', fileInfo);
 }
@@ -9576,7 +9658,7 @@ function renderPortaleCliente() {
     <div class="field" style="align-self:flex-end;"><button class="btn small" data-action="portal-schermo-intero">Anteprima a schermo intero</button></div>
   </div>`;
 
-  return tabellaAccesso + banner + toolbar + cardAccessoPortaleReale(cliente);
+  return tabellaAccesso + banner + toolbar + cardAccessoPortaleReale(cliente) + cardAccessiSecondariPortale(cliente);
 }
 
 /* Card "Accesso portale reale" (task #87): a differenza dell'anteprima sopra (che gira SEMPRE,
@@ -9631,6 +9713,48 @@ function cardPasswordPortaleCliente(cliente) {
       <button class="btn small" data-action="portale-password-salva" data-id="${cliente.id}">Salva</button>
       ${attiva ? `<button class="btn small ghost" data-action="portale-password-rimuovi" data-id="${cliente.id}">Rimuovi</button>` : ''}
     </div>
+  </div>`;
+}
+
+/* Accessi secondari al portale (richiesta Matteo: dare all'amministrazione un accesso limitato a
+   sole comunicazioni/scadenze-F24/documenti, senza l'andamento economico riservato al legale
+   rappresentante) — un link/password propri per ciascun accesso, in aggiunta al link principale
+   sopra che resta ad accesso completo e non cambia comportamento. Stesso pattern-draft per la
+   password (PORTALE_PASSWORD_DRAFT_SEC, chiave accessoId invece di clienteId). */
+let PORTALE_PASSWORD_DRAFT_SEC = {}; // accessoId -> valore digitato, non ancora salvato
+function cardAccessiSecondariPortale(cliente) {
+  if (!HTTP_SYNC_ATTIVO) return '';
+  const accessi = cliente.accessiSecondari || [];
+  const righe = accessi.map(a => {
+    const link = location.origin + '/portale/' + a.token;
+    const valorePwd = Object.prototype.hasOwnProperty.call(PORTALE_PASSWORD_DRAFT_SEC, a.id) ? PORTALE_PASSWORD_DRAFT_SEC[a.id] : (a.password || '');
+    const pwdAttiva = !!a.password;
+    const sezioniHtml = SEZIONI_PORTALE_LIMITABILI.map(s => `<label class="checkline" style="white-space:nowrap;font-size:12px;">
+        <input type="checkbox" data-action="accp-toggle-sezione" data-cliente="${cliente.id}" data-accesso="${a.id}" data-sezione="${s.id}" ${(a.tabConsentiti||[]).includes(s.id)?'checked':''}> ${escapeHtml(s.label)}
+      </label>`).join('');
+    return `<div class="cat-tipo ${a.attivo===false?'disattivo':''}" style="padding:10px 14px;margin-bottom:8px;">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+        <input type="text" value="${escapeHtml(a.nome)}" data-action="accp-rinomina" data-cliente="${cliente.id}" data-accesso="${a.id}" style="flex:1;min-width:140px;border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:12.5px;">
+        <span class="badge ${a.attivo===false?'':'stato-inviato-telematicamente'}">${a.attivo===false?'Disattivato':'Attivo'}</span>
+        <button class="btn small" data-action="portale-copia-link" data-link="${escapeHtml(link)}">Copia link</button>
+        <button class="btn small" data-action="accp-rigenera" data-cliente="${cliente.id}" data-accesso="${a.id}" title="Genera un nuovo link: quello vecchio smette subito di funzionare">Rigenera</button>
+        <button class="btn small ${a.attivo===false?'':'ghost'}" data-action="accp-toggle-attivo" data-cliente="${cliente.id}" data-accesso="${a.id}">${a.attivo===false?'Riattiva':'Disattiva'}</button>
+        <button class="btn small danger" data-action="accp-elimina" data-cliente="${cliente.id}" data-accesso="${a.id}">Elimina</button>
+      </div>
+      <div class="helptext" style="margin-bottom:6px;">Sezioni visibili con questo accesso:</div>
+      <div style="display:flex;gap:4px 14px;flex-wrap:wrap;margin-bottom:8px;">${sezioniHtml}</div>
+      <div style="display:flex;gap:8px;max-width:420px;flex-wrap:wrap;">
+        <input type="text" value="${escapeHtml(valorePwd)}" placeholder="Password (facoltativa)" data-action="accp-password-campo" data-cliente="${cliente.id}" data-accesso="${a.id}" style="flex:1;min-width:160px;font-size:12.5px;padding:6px 8px;border:1px solid var(--border);border-radius:8px;">
+        <button class="btn small" data-action="accp-password-salva" data-cliente="${cliente.id}" data-accesso="${a.id}">Salva password</button>
+        ${pwdAttiva ? `<button class="btn small ghost" data-action="accp-password-rimuovi" data-cliente="${cliente.id}" data-accesso="${a.id}">Rimuovi</button>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+  return `<div class="card">
+    <div class="section-title">Accessi aggiuntivi al portale</div>
+    <div class="helptext" style="margin-bottom:10px;">Per dare a qualcun altro (es. l'amministrazione della società) un link diverso da quello sopra, limitato solo ad alcune sezioni — il link principale resta comunque ad accesso completo.</div>
+    ${righe || '<div class="helptext" style="margin-bottom:10px;">Nessun accesso aggiuntivo per questo cliente.</div>'}
+    <button class="btn small primary" data-action="accp-nuovo" data-cliente="${cliente.id}">+ Nuovo accesso limitato</button>
   </div>`;
 }
 
@@ -12703,6 +12827,69 @@ function onClickDelegato(e) {
       }
       break;
     }
+    case 'accp-nuovo': {
+      const nome = window.prompt('Nome di questo accesso (es. "Amministrazione"):');
+      if (nome && nome.trim()) {
+        nuovoAccessoSecondarioPortale(el.dataset.cliente, nome.trim());
+        render();
+        toast('Accesso creato: scegli le sezioni visibili e copia il link.');
+      }
+      break;
+    }
+    case 'accp-rigenera':
+      if (confermaAzione('Rigenerare il link di questo accesso? Quello attuale smette di funzionare subito.')) {
+        rigeneraAccessoSecondarioPortale(el.dataset.cliente, el.dataset.accesso);
+        render();
+        toast('Nuovo link generato.');
+      }
+      break;
+    case 'accp-toggle-attivo': {
+      const c = clienteById(el.dataset.cliente);
+      const a = c && (c.accessiSecondari || []).find(x => x.id === el.dataset.accesso);
+      if (!a) return;
+      aggiornaAccessoSecondarioPortale(el.dataset.cliente, el.dataset.accesso, { attivo: a.attivo === false });
+      render();
+      break;
+    }
+    case 'accp-elimina':
+      if (confermaAzione('Eliminare questo accesso? Il link smette subito di funzionare e l\'azione non si può annullare.')) {
+        eliminaAccessoSecondarioPortale(el.dataset.cliente, el.dataset.accesso);
+        render();
+        toast('Accesso eliminato.');
+      }
+      break;
+    case 'accp-toggle-sezione': {
+      const c = clienteById(el.dataset.cliente);
+      const a = c && (c.accessiSecondari || []).find(x => x.id === el.dataset.accesso);
+      if (!a) return;
+      if (!Array.isArray(a.tabConsentiti)) a.tabConsentiti = [];
+      const sez = el.dataset.sezione;
+      const idx = a.tabConsentiti.indexOf(sez);
+      if (el.checked && idx === -1) a.tabConsentiti.push(sez);
+      else if (!el.checked && idx !== -1) a.tabConsentiti.splice(idx, 1);
+      salvaStato();
+      break;
+    }
+    case 'accp-password-salva': {
+      const accessoId = el.dataset.accesso;
+      const valore = (Object.prototype.hasOwnProperty.call(PORTALE_PASSWORD_DRAFT_SEC, accessoId) ? PORTALE_PASSWORD_DRAFT_SEC[accessoId] : (h('accpPwd_' + accessoId) || {}).value || '').trim();
+      if (!valore) { toast('Scrivi una password prima di salvare (o usa "Rimuovi" per toglierla).'); return; }
+      aggiornaAccessoSecondarioPortale(el.dataset.cliente, accessoId, { password: valore });
+      delete PORTALE_PASSWORD_DRAFT_SEC[accessoId];
+      render();
+      toast('Password salvata.');
+      break;
+    }
+    case 'accp-password-rimuovi': {
+      const accessoId = el.dataset.accesso;
+      if (confermaAzione('Rimuovere la password di questo accesso? Il link da solo tornerà a bastare.')) {
+        aggiornaAccessoSecondarioPortale(el.dataset.cliente, accessoId, { password: null });
+        delete PORTALE_PASSWORD_DRAFT_SEC[accessoId];
+        render();
+        toast('Password rimossa.');
+      }
+      break;
+    }
     case 'responsabile-password-salva': {
       const nome = el.dataset.nome;
       const valore = (Object.prototype.hasOwnProperty.call(RESPONSABILE_PASSWORD_DRAFT, nome) ? RESPONSABILE_PASSWORD_DRAFT[nome] : (h('respPassword_' + nome) || {}).value || '').trim();
@@ -13607,6 +13794,12 @@ function onInputDelegato(e) {
     case 'proc-filtro-q': PROC_FILTRO_Q = el.value; render(); restoreFocus('[data-action="proc-filtro-q"]'); break;
     case 'portale-password-campo': PORTALE_PASSWORD_DRAFT[el.dataset.id] = el.value; break;
     case 'responsabile-password-campo': RESPONSABILE_PASSWORD_DRAFT[el.dataset.nome] = el.value; break;
+    case 'accp-password-campo': PORTALE_PASSWORD_DRAFT_SEC[el.dataset.accesso] = el.value; break;
+    case 'accp-rinomina': {
+      const nuovoNome = el.value.trim();
+      if (nuovoNome) aggiornaAccessoSecondarioPortale(el.dataset.cliente, el.dataset.accesso, { nome: nuovoNome });
+      break;
+    }
     case 'accesso-esterno-campo': {
       const tipo = el.dataset.tipo, campo = el.dataset.campo;
       if (ACCESSO_ESTERNO_DRAFT && ACCESSO_ESTERNO_DRAFT[tipo]) ACCESSO_ESTERNO_DRAFT[tipo][campo] = el.value;
@@ -14094,6 +14287,12 @@ window.costruisciVistaPortaleClienteEsterna = costruisciVistaPortaleClienteEster
 window.risolviDocumentoPortaleEsterno = risolviDocumentoPortaleEsterno;
 window.attivaPortaleCliente = attivaPortaleCliente;
 window.disattivaPortaleCliente = disattivaPortaleCliente;
+// Accessi secondari (richiesta Matteo: accessi diversificati per cliente).
+window.nuovoAccessoSecondarioPortale = nuovoAccessoSecondarioPortale;
+window.aggiornaAccessoSecondarioPortale = aggiornaAccessoSecondarioPortale;
+window.rigeneraAccessoSecondarioPortale = rigeneraAccessoSecondarioPortale;
+window.eliminaAccessoSecondarioPortale = eliminaAccessoSecondarioPortale;
+window.trovaAccessoPortale = trovaAccessoPortale;
 /* Area cliente interattiva (task #88): stessa logica di sopra, ma in scrittura. */
 window.aggiungiMessaggioPortaleClienteEsterno = aggiungiMessaggioPortaleClienteEsterno;
 window.aggiungiRispostaPortaleClienteEsterno = aggiungiRispostaPortaleClienteEsterno;
