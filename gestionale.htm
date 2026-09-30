@@ -7636,11 +7636,17 @@ const CATALOGO_VOCI_BILANCIO = [
   { chiave:'ammortamenti', label:'Ammortamenti e svalutazioni' },
   { chiave:'oneriFinanziari', label:'Oneri finanziari netti' },
   { chiave:'imposte', label:'Imposte sul reddito' },
+  // Task #157 (Matteo, da PDF didattico su business plan/cash flow): campo facoltativo, serve SOLO
+  // per calcolare il DSCR (copertura del servizio del debito) — quota capitale + interessi in
+  // scadenza nell'esercizio sui finanziamenti. Se non compilato il DSCR resta "n/d", tutto il resto
+  // degli indici funziona comunque senza questo dato.
+  { chiave:'rataDebitiFinanziari', label:'Rata annua debiti finanziari (quota capitale + interessi, facoltativo per DSCR)' },
 ];
 const GRUPPO_VOCE_BILANCIO = {
   immobImmateriali:'Attivo', immobMateriali:'Attivo', immobFinanziarie:'Attivo', rimanenze:'Attivo', creditiClienti:'Attivo', liquidita:'Attivo', altreAttivita:'Attivo',
   patrimonioNetto:'Passivo', debitiLungo:'Passivo', debitiBreve:'Passivo', altrePassivita:'Passivo',
   ricavi:'Conto economico', costiEsterni:'Conto economico', costoPersonale:'Conto economico', ammortamenti:'Conto economico', oneriFinanziari:'Conto economico', imposte:'Conto economico',
+  rataDebitiFinanziari:'Dati aggiuntivi',
 };
 /* Riconosce una voce di una stampa "grezza" dalla contabilità (bilancio di verifica, situazione
    contabile...) e la raggruppa in una delle 17 voci semplificate sopra, per parole chiave — stessa
@@ -7767,6 +7773,20 @@ const CATALOGO_INDICI_BILANCIO = [
   { chiave: 'incidenzaPersonale', nome: 'Incidenza costo personale', categoria: 'Efficienza', formato: 'pct', direzione: 'min', sogliaVerde: 0.30, sogliaGiallo: 0.45,
     spiegazione: 'Peso del costo del personale sui ricavi. Molto dipendente dal settore (un\'attività di servizi labour-intensive ha fisiologicamente un\'incidenza più alta di una commerciale) — va sempre letto nel contesto del cliente.',
     consiglio: 'Se è alto rispetto al settore del cliente: valutare la produttività per dipendente, l\'organizzazione dei turni/carichi di lavoro, eventuali margini di automazione — mai una lettura solo numerica, va discussa col cliente.' },
+  // Task #157 (da PDF didattico su business plan/cash flow, Matteo: "usa questo file per potenziare
+  // la parte di bilanci e kpi"): categoria dedicata alla solidità finanziaria "dinamica" - non solo
+  // la fotografia di un singolo bilancio (come Struttura patrimoniale/Liquidità sopra) ma la capacità
+  // di generare cassa e sostenere il debito nel tempo, gli stessi numeri che guarda una banca in
+  // istruttoria di affidamento.
+  { chiave: 'quickRatio', nome: 'Quick ratio (acid test)', categoria: 'Solidità e liquidità', formato: 'num2', direzione: 'max', sogliaVerde: 1, sogliaGiallo: 0.8,
+    spiegazione: 'Come il current ratio ma senza contare le rimanenze ((circolante - rimanenze) / debiti a breve): il magazzino è l\'attivo circolante meno liquido da smobilizzare in fretta, qui è escluso per una misura più prudente della liquidità immediata.',
+    consiglio: 'Per alzarlo: accelerare l\'incasso crediti o ridurre i debiti a breve — le stesse leve del current ratio, ma qui il magazzino non aiuta: se il problema è lì, va aggredito a parte (vedi rotazione/rimanenze).' },
+  { chiave: 'pfnEbitda', nome: 'PFN / EBITDA', categoria: 'Solidità e liquidità', formato: 'num2', direzione: 'min', sogliaVerde: 3, sogliaGiallo: 4.5,
+    spiegazione: 'Posizione finanziaria netta (debiti finanziari - liquidità) rapportata all\'EBITDA: in quanti anni di EBITDA l\'azienda ripagherebbe tutto il debito residuo. È l\'indice più guardato dalle banche in fase di affidamento — n/d se l\'EBITDA non è positivo (il rapporto perderebbe di significato).',
+    consiglio: 'Per abbassarlo: ridurre il debito finanziario non necessario, trattenere cassa invece di distribuirla tutta, o lavorare sulla marginalità (EBITDA) — sopra 4-5 le banche iniziano a chiedere garanzie aggiuntive o a stringere sui nuovi affidamenti.' },
+  { chiave: 'dscr', nome: 'DSCR', categoria: 'Solidità e liquidità', formato: 'num2', direzione: 'max', sogliaVerde: 1.2, sogliaGiallo: 1.0,
+    spiegazione: 'Debt Service Coverage Ratio: quante volte il flusso di cassa operativo copre la rata annua (capitale + interessi) dei debiti finanziari. Sotto 1 la cassa generata dalla gestione non basta a pagare la rata. Serve sia il campo facoltativo "Rata annua debiti finanziari" sia almeno due periodi di bilancio caricati (per calcolare il flusso di cassa) — altrimenti resta "n/d".',
+    consiglio: 'Per alzarlo: aumentare l\'EBITDA, liberare cassa dal capitale circolante (crediti/magazzino), o rinegoziare la rata (allungare la durata del finanziamento) — sotto 1 è un campanello d\'allarme da affrontare prima della prossima scadenza, non dopo.' },
 ];
 // Semaforo verde/giallo/rosso per un indice, in base a direzione e soglie definite sopra. null se
 // il valore non è calcolabile (dato mancante, es. debiti a breve a zero per il current ratio).
@@ -7800,9 +7820,16 @@ function calcolaDerivatiBilancio(v) {
   const risultatoAnteImposte = ebit - g('oneriFinanziari');
   const utileNetto = risultatoAnteImposte - g('imposte');
   const div = (n, d) => (d ? n / d : null);
+  // Task #157: PFN e CCN si ricavano dagli stessi 17 dati già caricati, nessun campo nuovo.
+  // PFN (posizione finanziaria netta) = debiti finanziari - liquidità: quanto debito "netto" resta
+  // dopo aver usato tutta la cassa disponibile per ripagarlo. CCN (capitale circolante netto) =
+  // circolante - debiti a breve: stessa differenza già usata per il current ratio, qui espressa
+  // in euro invece che come rapporto.
+  const pfn = g('debitiLungo') + g('debitiBreve') - g('liquidita');
+  const ccn = totCircolante - g('debitiBreve');
   return Object.assign({}, v, {
     totImmobilizzazioni, totCircolante, totAttivo, totDebiti, totPassivo,
-    valoreAggiunto, ebitda, ebit, risultatoAnteImposte, utileNetto,
+    valoreAggiunto, ebitda, ebit, risultatoAnteImposte, utileNetto, pfn, ccn,
     roe: div(utileNetto, g('patrimonioNetto')),
     roi: div(ebit, totAttivo),
     ros: div(ebit, g('ricavi')),
@@ -7810,9 +7837,31 @@ function calcolaDerivatiBilancio(v) {
     indiceIndebitamento: div(totDebiti, g('patrimonioNetto')),
     gradoCapitalizzazione: div(g('patrimonioNetto'), totAttivo),
     currentRatio: div(totCircolante, g('debitiBreve')),
+    quickRatio: div(totCircolante - g('rimanenze'), g('debitiBreve')),
+    // PFN/EBITDA ha senso solo con EBITDA positivo (altrimenti il segno del rapporto inganna più
+    // che informare, es. debito basso ma EBITDA negativo darebbe un rapporto negativo "buono" a leggersi).
+    pfnEbitda: ebitda > 0 ? div(pfn, ebitda) : null,
     incidenzaPersonale: div(g('costoPersonale'), g('ricavi')),
   });
 }
+/* Task #157: CFO (flusso di cassa operativo, metodo indiretto) e DSCR richiedono un confronto col
+   periodo precedente (serve la variazione del CCN) - per questo sono calcolati da una funzione a
+   parte invece che dentro calcolaDerivatiBilancio, che lavora su un solo periodo alla volta.
+   Se non c'è un periodo precedente disponibile (primo bilancio caricato per il cliente) restituisce
+   null per tutti e tre: mai un numero inventato o un confronto con un anno che non c'è. */
+function calcolaDerivatiBilancioConPrecedente(v, vPrec) {
+  const d = calcolaDerivatiBilancio(v);
+  if (!vPrec) return Object.assign({}, d, { deltaCcn: null, cfo: null, dscr: null });
+  const dPrec = calcolaDerivatiBilancio(vPrec);
+  const deltaCcn = d.ccn - dPrec.ccn;
+  // Metodo indiretto semplificato: utile netto + ammortamenti (costi non monetari) - variazione CCN
+  // (un CCN che cresce assorbe cassa, uno che si riduce ne libera).
+  const cfo = d.utileNetto + (d.ammortamenti || 0) - deltaCcn;
+  const rata = typeof d.rataDebitiFinanziari === 'number' ? d.rataDebitiFinanziari : null;
+  const dscr = rata ? div2(cfo, rata) : null;
+  return Object.assign({}, d, { deltaCcn, cfo, dscr });
+}
+function div2(n, d) { return d ? n / d : null; }
 
 function fmtEuro(n) { return (n===null||n===undefined||isNaN(n)) ? 'n/d' : n.toLocaleString('it-IT',{style:'currency',currency:'EUR',maximumFractionDigits:0}); }
 function fmtPct(n) { return (n===null||n===undefined||isNaN(n)) ? 'n/d' : (n*100).toLocaleString('it-IT',{maximumFractionDigits:1}) + '%'; }
@@ -8021,7 +8070,7 @@ function apriModalRiclassificaBilancio(clienteId, righeAoa) {
   const nEsatte = piano.righe.filter(r => r.origine === 'esatta').length;
   const nSuggerite = piano.righe.filter(r => r.origine === 'suggerita').length;
   const nNessuna = piano.righe.filter(r => r.origine === 'nessuna').length;
-  const opzioniVoce = (selezionata) => ['Attivo','Passivo','Conto economico'].map(g =>
+  const opzioniVoce = (selezionata) => ['Attivo','Passivo','Conto economico','Dati aggiuntivi'].map(g =>
     `<optgroup label="${g}">${CATALOGO_VOCI_BILANCIO.filter(v => GRUPPO_VOCE_BILANCIO[v.chiave] === g).map(v =>
       `<option value="${v.chiave}" ${selezionata===v.chiave?'selected':''}>${escapeHtml(v.label)}</option>`).join('')}</optgroup>`).join('');
   const badgeOrigine = { esatta: '<span class="badge attivo" style="font-size:9.5px;">Esatta</span>', suggerita: '<span class="badge info" style="font-size:9.5px;">Suggerita — verifica</span>', nessuna: '<span class="badge stato-errore" style="font-size:9.5px;">Non riconosciuta</span>' };
@@ -8106,7 +8155,10 @@ function renderBilanci() {
   }
 
   const ultimoAnno = anni[anni.length-1];
-  const datiUltimo = calcolaDerivatiBilancio(STATE.bilanci[cliente.id][ultimoAnno]);
+  // Task #157: CFO/ΔCCN/DSCR hanno bisogno del periodo precedente (se c'è) - undefined per il primo
+  // bilancio caricato, e calcolaDerivatiBilancioConPrecedente gestisce già quel caso restituendo null.
+  const penultimoAnno = anni.length > 1 ? anni[anni.length-2] : null;
+  const datiUltimo = calcolaDerivatiBilancioConPrecedente(STATE.bilanci[cliente.id][ultimoAnno], penultimoAnno ? STATE.bilanci[cliente.id][penultimoAnno] : null);
   const FORMATTATORI_INDICE = { pct: fmtPct, num2: fmtNum2, euro: fmtEuro };
   // Task #118: card più ricca del semplice numero - semaforo colorato a sinistra, valore, e un
   // <details> con spiegazione + consiglio (chiuso di default per non affollare la vista: chi sa già
@@ -8147,18 +8199,25 @@ function renderBilanci() {
   const puntiRicavi = anni.map(a => ({ label:etichettaBreveBilancio(a), valore: (STATE.bilanci[cliente.id][a].ricavi)||0 }));
   const puntiEbitda = anni.map(a => ({ label:etichettaBreveBilancio(a), valore: calcolaDerivatiBilancio(STATE.bilanci[cliente.id][a]).ebitda }));
   const puntiUtile = anni.map(a => ({ label:etichettaBreveBilancio(a), valore: calcolaDerivatiBilancio(STATE.bilanci[cliente.id][a]).utileNetto }));
+  // Task #157: PFN in trend accanto agli altri tre — è il numero di solidità che si legge "a colpo
+  // d'occhio" insieme all'andamento del business, non solo come rapporto nelle card sopra.
+  const puntiPfn = anni.map(a => ({ label:etichettaBreveBilancio(a), valore: calcolaDerivatiBilancio(STATE.bilanci[cliente.id][a]).pfn }));
 
   const grafici = `<div class="card">
     <div class="section-title">Andamento (${etichettaBreveBilancio(anni[0])}–${etichettaBreveBilancio(ultimoAnno)})</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:16px;">
       <div><div class="helptext" style="margin-bottom:4px;">Ricavi</div>${graficoBarreSvg(puntiRicavi)}</div>
       <div><div class="helptext" style="margin-bottom:4px;">EBITDA</div>${graficoBarreSvg(puntiEbitda)}</div>
       <div><div class="helptext" style="margin-bottom:4px;">Utile netto</div>${graficoBarreSvg(puntiUtile)}</div>
+      <div><div class="helptext" style="margin-bottom:4px;">PFN (posizione finanziaria netta)</div>${graficoBarreSvg(puntiPfn)}</div>
     </div>
   </div>`;
 
+  const anniOrdinati = anni; // già in ordine cronologico crescente (vedi anniBilancioCliente)
   const righeTabella = anni.slice().reverse().map(anno => {
-    const d = calcolaDerivatiBilancio(STATE.bilanci[cliente.id][anno]);
+    const idx = anniOrdinati.indexOf(anno);
+    const annoPrec = idx > 0 ? anniOrdinati[idx-1] : null;
+    const d = calcolaDerivatiBilancioConPrecedente(STATE.bilanci[cliente.id][anno], annoPrec ? STATE.bilanci[cliente.id][annoPrec] : null);
     return `<tr>
       <td style="font-weight:700;white-space:nowrap;">${escapeHtml(etichettaEstesaBilancio(anno))}</td>
       <td>${fmtEuro(d.ricavi)}</td>
@@ -8168,15 +8227,21 @@ function renderBilanci() {
       <td>${fmtEuro(d.patrimonioNetto)}</td>
       <td>${fmtPct(d.roe)}</td>
       <td>${fmtPct(d.roi)}</td>
+      <td>${fmtEuro(d.pfn)}</td>
+      <td>${d.pfnEbitda === null ? 'n/d' : fmtNum2(d.pfnEbitda)}</td>
+      <td>${fmtEuro(d.ccn)}</td>
+      <td>${d.cfo === null ? 'n/d' : fmtEuro(d.cfo)}</td>
+      <td>${d.dscr === null ? 'n/d' : fmtNum2(d.dscr)}</td>
       <td><button class="btn small danger" data-action="elimina-bilancio-anno" data-cliente="${cliente.id}" data-anno="${anno}">Elimina</button></td>
     </tr>`;
   }).join('');
   const tabella = `<div class="card" style="padding:0;overflow-x:auto;margin-top:16px;">
-    <table class="compact"><thead><tr><th>Periodo</th><th>Ricavi</th><th>EBITDA</th><th>Utile netto</th><th>Totale attivo</th><th>Patrimonio netto</th><th>ROE</th><th>ROI</th><th></th></tr></thead>
+    <table class="compact"><thead><tr><th>Periodo</th><th>Ricavi</th><th>EBITDA</th><th>Utile netto</th><th>Totale attivo</th><th>Patrimonio netto</th><th>ROE</th><th>ROI</th><th>PFN</th><th>PFN/EBITDA</th><th>CCN</th><th>CFO</th><th>DSCR</th><th></th></tr></thead>
     <tbody>${righeTabella}</tbody></table>
   </div>`;
+  const notaCfoDscr = `<div class="helptext" style="margin-top:6px;">CFO e DSCR compaiono da n/d finché non è caricato almeno un secondo periodo (servono a calcolare la variazione del capitale circolante); il DSCR resta n/d anche senza il campo facoltativo "Rata annua debiti finanziari" nel bilancio importato.</div>`;
 
-  return toolbar + helptext + kpiGrid + grafici + tabella;
+  return toolbar + helptext + kpiGrid + grafici + tabella + notaCfoDscr;
 }
 
 /* -------------------- CONTABILITÀ / PRIMA NOTA — import intelligente --------------------
@@ -9270,13 +9335,33 @@ function contenutoDesktopPortale(cliente) {
     corpoAndamento = `<div class="pd-empty">Non appena carichiamo i dati del bilancio, qui trovi un riepilogo semplice dell'andamento — ricavi, utile e qualche indicatore chiave.</div>`;
   } else {
     const ultimoAnnoP = anniBilancioPortale[anniBilancioPortale.length - 1];
-    const dP = calcolaDerivatiBilancio(STATE.bilanci[cliente.id][ultimoAnnoP]);
+    const idxAndP = anniBilancioPortale.indexOf(ultimoAnnoP);
+    const annoPrecP = idxAndP > 0 ? anniBilancioPortale[idxAndP - 1] : null;
+    const dP = calcolaDerivatiBilancioConPrecedente(STATE.bilanci[cliente.id][ultimoAnnoP], annoPrecP ? STATE.bilanci[cliente.id][annoPrecP] : null);
     const puntiRicaviP = anniBilancioPortale.map(a => ({ label: etichettaBreveBilancio(a), valore: STATE.bilanci[cliente.id][a].ricavi || 0 }));
+    const puntiEbitdaP = anniBilancioPortale.map(a => ({ label: etichettaBreveBilancio(a), valore: calcolaDerivatiBilancio(STATE.bilanci[cliente.id][a]).ebitda }));
     const puntiUtileP = anniBilancioPortale.map(a => ({ label: etichettaBreveBilancio(a), valore: calcolaDerivatiBilancio(STATE.bilanci[cliente.id][a]).utileNetto }));
+    // Task #157 (Matteo: aggiungere anche una frase in linguaggio semplice, il cliente di solito
+    // non è un contabile): stessa lettura semaforica degli indici di solidità usata lato studio, ma
+    // tradotta in una frase discorsiva invece che in un rapporto numerico nudo e crudo.
+    const fraseSolidita = [];
+    if (dP.pfnEbitda !== null) {
+      const semPfn = semaforoIndice(CATALOGO_INDICI_BILANCIO.find(i=>i.chiave==='pfnEbitda'), dP.pfnEbitda);
+      const giudizioPfn = semPfn === 'verde' ? 'un livello di indebitamento solido' : (semPfn === 'giallo' ? 'un indebitamento da tenere sotto controllo' : 'un indebitamento piuttosto elevato rispetto ai margini');
+      fraseSolidita.push(`il debito finanziario residuo equivale a circa ${fmtNum2(dP.pfnEbitda)} anni di EBITDA: ${giudizioPfn}`);
+    }
+    if (dP.dscr !== null) {
+      const semDscr = semaforoIndice(CATALOGO_INDICI_BILANCIO.find(i=>i.chiave==='dscr'), dP.dscr);
+      const giudizioDscr = semDscr === 'verde' ? 'ampio margine per pagare le rate' : (semDscr === 'giallo' ? 'una copertura risicata delle rate' : 'una copertura insufficiente delle rate, da affrontare per tempo');
+      fraseSolidita.push(`la cassa generata dalla gestione copre ${fmtNum2(dP.dscr)} volte la rata annua dei finanziamenti: ${giudizioDscr}`);
+    }
+    const rigaFrase = fraseSolidita.length ? `<div class="helptext" style="margin:8px 0 14px;">${fraseSolidita.map(f=>f.charAt(0).toUpperCase()+f.slice(1)).join('. ')}.</div>` : '';
     corpoAndamento = `
       <div style="font-size:11px;font-weight:700;color:var(--text-mut);text-transform:uppercase;margin:0 0 10px;">${escapeHtml(etichettaEstesaBilancio(ultimoAnnoP))} · Ricavi ${fmtEuro(dP.ricavi)} · Utile netto ${fmtEuro(dP.utileNetto)} · ROE ${fmtPct(dP.roe)}</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:22px;">
+      ${rigaFrase}
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:22px;">
         <div><div style="font-size:10.5px;font-weight:700;color:var(--text-mut);text-transform:uppercase;margin:0 0 6px;">Andamento ricavi</div>${graficoBarreSvg(puntiRicaviP)}</div>
+        <div><div style="font-size:10.5px;font-weight:700;color:var(--text-mut);text-transform:uppercase;margin:0 0 6px;">Andamento EBITDA</div>${graficoBarreSvg(puntiEbitdaP)}</div>
         <div><div style="font-size:10.5px;font-weight:700;color:var(--text-mut);text-transform:uppercase;margin:0 0 6px;">Andamento utile netto</div>${graficoBarreSvg(puntiUtileP)}</div>
       </div>`;
   }
@@ -13600,6 +13685,7 @@ window.clientiPerAdempimentoCollegato = clientiPerAdempimentoCollegato;
 window.nomeAdempimentoCollegato = nomeAdempimentoCollegato;
 window.parseRigheBilancio = parseRigheBilancio;
 window.calcolaDerivatiBilancio = calcolaDerivatiBilancio;
+window.calcolaDerivatiBilancioConPrecedente = calcolaDerivatiBilancioConPrecedente;
 window.elaboraImportBilancio = elaboraImportBilancio;
 window.parseCSV = parseCSV;
 window.anniBilancioCliente = anniBilancioCliente;
