@@ -6061,18 +6061,25 @@ function renderComunicazioniRicorrenti() {
     <div class="section-title">Comunicazioni ricorrenti <span class="cnt">${lista.length}</span></div>
     <div class="helptext" style="margin-bottom:10px;">Modelli che generano automaticamente una nuova comunicazione ad ogni scadenza (mensile, trimestrale o annuale) — utili per promemoria ricorrenti o rassegne su novità normative. Possono avere destinatari manuali oppure essere collegati a un adempimento (flag periodico o annuale): in tal caso i destinatari sono automatici e si aggiornano da soli.</div>
     ${righe || '<div class="helptext">Nessun modello ricorrente configurato.</div>'}
-    <div style="margin-top:10px;"><button class="btn small primary" data-action="nuova-comunicazione-ricorrente">+ Nuovo modello ricorrente</button></div>
+    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn small primary" data-action="nuova-comunicazione-ricorrente">+ Nuovo modello ricorrente</button>
+      <button class="btn small" data-action="nuovo-modello-770-cf-sostituto" title="Precompila un modello annuale collegato al 770, destinatari automatici">📋 Modello pronto: richiedi CF sostituto (770)</button>
+    </div>
   </div>`;
 }
 
-function modalComunicazioneRicorrente(tId) {
+// Il parametro preset permette di aprire il modal già precompilato (solo in creazione, mai in
+// modifica) per modelli "pronti all'uso" come quello 770 qui sotto, senza dover ridigitare ogni
+// volta oggetto/testo/collegamento adempimento — l'utente vede comunque tutto nel form e può
+// correggere prima di salvare, il modello non viene creato finché non preme "Salva".
+function modalComunicazioneRicorrente(tId, preset) {
   if (STATE.clienti.length === 0) { toast('Aggiungi prima almeno un cliente.'); return; }
   const editing = !!tId;
-  const t = editing ? (STATE.comunicazioniRicorrenti||[]).find(x=>x.id===tId) : {
+  const t = editing ? (STATE.comunicazioniRicorrenti||[]).find(x=>x.id===tId) : Object.assign({
     id: uid('comric'), oggetto: '', corpo: '', categoria: CATEGORIE_COMUNICAZIONE[0],
     destinatari: { modo: 'tutti', clienteIds: [] }, frequenza: 'Mensile', giorno: 5, mese: 1, attiva: true, ultimaGenerazionePeriodo: null,
     adempimentoCollegato: null,
-  };
+  }, preset || {});
   if (editing && !t) { toast('Modello non trovato.'); return; }
   const gruppiAdempimento = ['Scadenze periodiche', 'Adempimenti annuali'].map(g => {
     const opz = adempimentiCollegabili().filter(a => a.gruppo === g);
@@ -12179,6 +12186,21 @@ function onClickDelegato(e) {
     }
 
     case 'nuova-comunicazione-ricorrente': modalComunicazioneRicorrente(); break;
+    // Richiesta diretta di Matteo (stagione 770): un modello pronto, collegato all'adempimento
+    // annuale '770' così i destinatari sono automaticamente tutti i clienti con quell'adempimento
+    // applicabile (sostituti d'imposta con dipendenti/collaboratori) — niente lista da tenere a
+    // mano. Soglia impostata al 1° settembre: ben prima della scadenza del 770 (31 ottobre), lascia
+    // tempo di raccogliere il dato e predisporre la dichiarazione. Si apre il form già compilato
+    // per un'ultima revisione, il modello non viene salvato finché non si preme "Salva".
+    case 'nuovo-modello-770-cf-sostituto':
+      modalComunicazioneRicorrente(null, {
+        oggetto: 'Richiesta dato per il 770: codice fiscale del sostituto d\'imposta',
+        corpo: 'Per la predisposizione del modello 770 relativo ai vostri dipendenti/collaboratori abbiamo bisogno del codice fiscale del sostituto d\'imposta che gestisce le ritenute (coincide di norma con la vostra azienda; comunicatecelo comunque se diverso, ad esempio in caso di paghe gestite da terzi o di dipendenti in distacco/somministrazione). Vi chiediamo di rispondere a questo messaggio con il dato appena possibile, per non ritardare l\'invio della dichiarazione.',
+        categoria: 'Amministrativa',
+        adempimentoCollegato: 'a:770',
+        frequenza: 'Annuale', giorno: 1, mese: 9,
+      });
+      break;
     case 'modifica-comunicazione-ricorrente': modalComunicazioneRicorrente(id); break;
     case 'elimina-comunicazione-ricorrente':
       if (confermaAzione('Eliminare questo modello ricorrente? Le comunicazioni già generate restano.')) {
