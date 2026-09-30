@@ -151,6 +151,8 @@ const FILE_LAUNCHER_COLLEGA = path.join(CARTELLA, 'Apri Gestionale (rete studio)
 const CARTELLA_DOCUMENTI = path.join(CARTELLA, 'documenti-clienti');
 const FILE_PORTALE_CLIENTE = path.join(CARTELLA, 'portale-cliente.htm');
 const FILE_PORTALE_SW = path.join(CARTELLA, 'portale-sw.js'); // task PWA: service worker statico del portale
+const FILE_PUSH = path.join(CARTELLA, 'push-abbonamenti.json'); // task notifiche push: chiavi VAPID + sottoscrizioni
+const FILE_PUSH_TMP = path.join(CARTELLA, 'push-abbonamenti.json.tmp');
 
 // ---------------------------------------------------------------------------
 // Log su file (task #158): senza questo, un problema all'avvio (es. licenza non valida) capitato
@@ -370,6 +372,17 @@ try {
   JSDOM = null;
 }
 const LS_KEY_PORTALE = 'gestionaleStudioState_v1'; // deve combaciare ESATTAMENTE con LS_KEY in gestionale.htm
+
+// Notifiche push (richiesta Matteo: avviso sul cellulare del cliente quando lo studio pubblica una
+// nuova comunicazione). Come jsdom sopra: dipendenza OPZIONALE - senza "web-push" installato tutto
+// il resto del server funziona come sempre, solo le notifiche restano disattivate con un messaggio
+// chiaro invece di un crash. Per attivarle: "npm install web-push" in questa cartella.
+let WEBPUSH = null;
+try {
+  WEBPUSH = require('web-push');
+} catch (err) {
+  WEBPUSH = null;
+}
 
 let motorePortaleWindow = null; // istanza jsdom riusata per tutte le richieste (costruirla è l'unica parte "lenta")
 
@@ -738,6 +751,91 @@ function scriviDati(dati) {
 }
 
 // ---------------------------------------------------------------------------
+// Notifiche push del portale cliente (richiesta Matteo). File separato da dati-studio.json
+// apposta: le sottoscrizioni push (endpoint del browser, chiavi di cifratura del dispositivo) sono
+// infrastruttura del server, non un dato di business dello studio - non devono viaggiare dentro i
+// backup/export di dati-studio.json né passare dal motore headless per ogni operazione banale.
+// ---------------------------------------------------------------------------
+function leggiPush() {
+  const vuoto = { vapidPublicKey: null, vapidPrivateKey: null, abbonamenti: [] };
+  try {
+    if (!fs.existsSync(FILE_PUSH)) return vuoto;
+    const raw = fs.readFileSync(FILE_PUSH, 'utf8');
+    if (!raw.trim()) return vuoto;
+    const dati = JSON.parse(raw);
+    if (!Array.isArray(dati.abbonamenti)) dati.abbonamenti = [];
+    return dati;
+  } catch (err) {
+    console.error('[gestionale] Errore leggendo push-abbonamenti.json:', err.message);
+    return vuoto;
+  }
+}
+function scriviPush(dati) {
+  fs.writeFileSync(FILE_PUSH_TMP, JSON.stringify(dati), 'utf8');
+  fs.renameSync(FILE_PUSH_TMP, FILE_PUSH);
+}
+// Genera le chiavi VAPID una sola volta (la prima volta che servono) e le riusa per sempre: sono
+// l'identità del server verso i servizi push (Google/Apple/Mozilla ecc.), cambiarle invaliderebbe
+// tutte le sottoscrizioni già raccolte, costringendo ogni cliente a riattivare le notifiche.
+function chiaviVapid() {
+  const dati = leggiPush();
+  if (dati.vapidPublicKey && dati.vapidPrivateKey) return dati;
+  if (!WEBPUSH) return dati;
+  const coppia = WEBPUSH.generateVAPIDKeys();
+  dati.vapidPublicKey = coppia.publicKey;
+  dati.vapidPrivateKey = coppia.privateKey;
+  scriviPush(dati);
+  return dati;
+}
+// Manda un push a ogni sottoscrizione del cliente indicato. L'URL nel payload è SEMPRE il link
+// proprio di quell'abbonamento (ab.token), mai uno "esemplare" condiviso: se un cliente ha più
+// accessi/dispositivi iscritti (es. sia il legale rappresentante sia l'amministrazione, vedi
+// accessi diversificati), ciascuno deve riaprire il PROPRIO link, non quello di un altro accesso.
+// Le sottoscrizioni ormai scadute o revocate dal browser (il servizio push risponde 404/410)
+// vengono rimosse subito: ritentare non avrebbe senso e lasciarle accumulare sporcherebbe il file.
+function inviaPushAlCliente(clienteId, costruisciPayload) {
+  if (!WEBPUSH) return;
+  const dati = chiaviVapid();
+  if (!dati.vapidPublicKey || !dati.vapidPrivateKey) return;
+  const destinatari = dati.abbonamenti.filter((a) => a.clienteId === clienteId);
+  if (!destinatari.length) return;
+  WEBPUSH.setVapidDetails('mailto:notifiche@prisma-gestionale.local', dati.vapidPublicKey, dati.vapidPrivateKey);
+  destinatari.forEach((ab) => {
+    const testo = JSON.stringify(costruisciPayload(ab));
+    WEBPUSH.sendNotification(ab.sub, testo).catch((err) => {
+      const scaduta = err && (err.statusCode === 404 || err.statusCode === 410);
+      if (scaduta) {
+        const attuale = leggiPush();
+        attuale.abbonamenti = attuale.abbonamenti.filter((x) => x.sub.endpoint !== ab.sub.endpoint);
+        scriviPush(attuale);
+      } else {
+        console.error('[gestionale] Errore invio notifica push:', err && err.message);
+      }
+    });
+  });
+}
+// Confronta lo stato PRIMA e DOPO un salvataggio di dati-studio.json per trovare comunicazioni
+// nuove indirizzate a un cliente (non create dal cliente stesso) e mandare un push a chi si è
+// iscritto - questo è l'UNICO punto in cui il server "osserva" i dati per reagire, dato che tutta
+// la logica di business vive nel browser dello studio: qui ci si limita a diffare due snapshot.
+function inviaPushNuoveComunicazioni(precedente, nuovo) {
+  if (!WEBPUSH) return;
+  try {
+    const vecchiIds = new Set(((precedente && precedente.comunicazioni) || []).map((c) => c.id));
+    const nuove = ((nuovo && nuovo.comunicazioni) || []).filter((c) => !vecchiIds.has(c.id) && c.direzione !== 'cliente' && c.visibilePortale !== false && c.clienteId);
+    nuove.forEach((com) => {
+      inviaPushAlCliente(com.clienteId, (ab) => ({
+        titolo: com.oggetto || 'Nuova comunicazione dallo studio',
+        corpo: (com.corpo || '').slice(0, 140),
+        url: '/portale/' + ab.token,
+      }));
+    });
+  } catch (err) {
+    console.error('[gestionale] Errore controllando le nuove comunicazioni per le notifiche push:', err.message);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Backup a più strati di dati-studio.json. La scrittura atomica sopra protegge solo dal file "a
 // metà" se il processo si interrompe nel momento sbagliato - non è uno storico, è solo l'ultimo
 // stato. Qui invece si tiene una copia distinta ogni volta che scatta uno snapshot, così c'è un
@@ -1033,7 +1131,12 @@ function gestisciRichiesta(req, res) {
     leggiCorpoRichiesta(req, (corpo) => {
       try {
         const dati = JSON.parse(corpo);
+        // Snapshot PRIMA di sovrascrivere: è l'unico modo che ha server.js di accorgersi che è
+        // comparsa una nuova comunicazione (non c'è un sistema eventi separato, solo questi sync
+        // periodici dell'intero STATE dal browser dello studio) - serve per le notifiche push.
+        const precedente = leggiDati();
         scriviDati(dati);
+        inviaPushNuoveComunicazioni(precedente, dati);
         const origine = req.headers['x-client-id'] || null;
         notificaClientiSSE(origine);
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -1839,6 +1942,72 @@ function gestisciRichiesta(req, res) {
     return;
   }
 
+  // ---------------------------------------------------------------------------
+  // Notifiche push (richiesta Matteo). Tre endpoint: la chiave pubblica (serve al browser prima di
+  // sottoscriversi), l'iscrizione e la cancellazione. Ogni iscrizione/cancellazione verifica il
+  // token PASSANDO SEMPRE dal motore headless (trovaAccessoPortale, la stessa funzione che risolve
+  // ogni altra richiesta del portale) - così un accesso disattivato, eliminato o senza permesso di
+  // vedere le comunicazioni non può in alcun modo registrare una sottoscrizione.
+  // ---------------------------------------------------------------------------
+  if (url === '/portale-push-chiave' && req.method === 'GET') {
+    if (!WEBPUSH) {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ ok: false, errore: 'Notifiche non configurate su questo server.' }));
+      return;
+    }
+    const dati = chiaviVapid();
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify(dati.vapidPublicKey ? { ok: true, chiave: dati.vapidPublicKey } : { ok: false, errore: 'Chiavi di notifica non disponibili.' }));
+    return;
+  }
+  if (url === '/api/portale-push-abbonati' && req.method === 'POST') {
+    leggiCorpoRichiesta(req, (corpo) => {
+      if (!WEBPUSH) { res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ ok: false, errore: 'Notifiche non disponibili.' })); return; }
+      let richiesta;
+      try { richiesta = JSON.parse(corpo || '{}'); } catch (err) { richiesta = {}; }
+      const token = typeof richiesta.token === 'string' ? richiesta.token : '';
+      const sub = richiesta.subscription;
+      if (!token || !sub || !sub.endpoint || !sub.keys) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, errore: 'Richiesta non valida.' }));
+        return;
+      }
+      const { win, errore } = motorePortale();
+      if (!win) { res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ ok: false, errore: errore || 'Motore non disponibile.' })); return; }
+      ricaricaDatiMotorePortale(win);
+      const trovato = win.trovaAccessoPortale(token);
+      // Come il resto del portale: risposta generica se il token non risolve (mai un dettaglio che
+      // aiuti a distinguere "token sbagliato" da "esiste ma non ha il permesso").
+      if (!trovato || !win.accessoPortalePuoVedere(trovato.accesso, 'comunicazioni')) {
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, errore: 'Link non valido o senza permesso per le notifiche.' }));
+        return;
+      }
+      const dati = chiaviVapid();
+      dati.abbonamenti = dati.abbonamenti.filter((a) => a.sub.endpoint !== sub.endpoint); // niente doppioni sullo stesso dispositivo/browser
+      dati.abbonamenti.push({ token, clienteId: trovato.cliente.id, sub, creatoIl: new Date().toISOString() });
+      scriviPush(dati);
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ ok: true }));
+    });
+    return;
+  }
+  if (url === '/api/portale-push-disabbonati' && req.method === 'POST') {
+    leggiCorpoRichiesta(req, (corpo) => {
+      let richiesta;
+      try { richiesta = JSON.parse(corpo || '{}'); } catch (err) { richiesta = {}; }
+      const endpoint = typeof richiesta.endpoint === 'string' ? richiesta.endpoint : '';
+      if (endpoint) {
+        const dati = leggiPush();
+        dati.abbonamenti = dati.abbonamenti.filter((a) => a.sub.endpoint !== endpoint);
+        scriviPush(dati);
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ ok: true }));
+    });
+    return;
+  }
+
   // Task (audit): la password del portale cliente viaggiava prima come query string
   // (?password=...), quindi finiva nei log di accesso del server e nella cronologia del browser -
   // canale non ideale per un segreto, anche se già correttamente urlencoded. Ora è POST con la
@@ -2165,7 +2334,7 @@ function creaServerEsterno(porta, tipo, realm) {
     const url = req.url.split('?')[0];
     if (tipo === 'clienti') {
       // sulla porta clienti si accede SOLO al portale (mai all'app completa/dati di altri clienti)
-      const permesso = url === '/' || url.indexOf('/portale/') === 0 || url.indexOf('/api/portale-') === 0 || url === '/portale-manifest.json' || url === '/portale-sw.js';
+      const permesso = url === '/' || url.indexOf('/portale/') === 0 || url.indexOf('/api/portale-') === 0 || url === '/portale-manifest.json' || url === '/portale-sw.js' || url === '/portale-push-chiave';
       if (!permesso) {
         res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
         res.end('Accesso non consentito su questa porta.');

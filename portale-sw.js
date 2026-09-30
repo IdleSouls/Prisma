@@ -50,3 +50,38 @@ self.addEventListener('fetch', (evento) => {
       .catch(() => caches.match(richiesta))
   );
 });
+
+/* Notifiche push (richiesta Matteo: avviso sul cellulare quando lo studio pubblica una nuova
+   comunicazione). Il payload arriva già pronto da server.js (vedi inviaPushNuoveComunicazioni):
+   {titolo, corpo, url}. Se per qualunque motivo il payload non è JSON valido si mostra comunque
+   una notifica generica invece di far fallire silenziosamente l'evento - meglio un avviso vago
+   che nessun avviso. */
+self.addEventListener('push', (evento) => {
+  let dati = { titolo: 'Nuova comunicazione dallo studio', corpo: 'Apri il portale per leggerla.', url: './' };
+  if (evento.data) {
+    try { dati = Object.assign(dati, evento.data.json()); } catch (e) { /* payload non JSON: restano i valori di default */ }
+  }
+  evento.waitUntil(
+    self.registration.showNotification(dati.titolo, {
+      body: dati.corpo,
+      icon: undefined, // usa l'icona di sistema/del manifest, niente da caricare qui
+      data: { url: dati.url || './' },
+      tag: 'prisma-portale', // una notifica sostituisce la precedente invece di accumularsi se il cliente non le apre
+    })
+  );
+});
+
+/* Click sulla notifica: porta alla scheda del portale già aperta se c'è, altrimenti ne apre una
+   nuova sull'URL indicato nel payload (il link diretto al cliente, vedi sopra). */
+self.addEventListener('notificationclick', (evento) => {
+  evento.notification.close();
+  const destinazione = (evento.notification.data && evento.notification.data.url) || './';
+  evento.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((elenco) => {
+      for (const client of elenco) {
+        if (client.url.indexOf(destinazione) !== -1 && 'focus' in client) return client.focus();
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(destinazione);
+    })
+  );
+});

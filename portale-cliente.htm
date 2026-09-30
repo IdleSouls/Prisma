@@ -52,9 +52,11 @@ button{font-family:inherit;cursor:pointer;}
 [hidden]{display:none!important;}
 
 /* ---------- hero ---------- */
-#hero{background:linear-gradient(135deg,var(--blu-scuro) 0%,#0B1226 100%);color:#fff;padding:22px 18px 26px 18px;}
+#hero{background:linear-gradient(135deg,var(--blu-scuro) 0%,#0B1226 100%);color:#fff;padding:22px 18px 26px 18px;position:relative;}
 #hero .eyebrow{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;opacity:.7;font-weight:700;margin-bottom:8px;}
 #hero .riga{display:flex;align-items:center;gap:14px;}
+.btn-notifiche{position:absolute;top:18px;right:16px;width:38px;height:38px;border-radius:12px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);color:#fff;font-size:16px;display:flex;align-items:center;justify-content:center;padding:0;}
+.btn-notifiche.attivo{background:rgba(79,124,255,.35);border-color:var(--blu-accent);}
 #hero .iniziali{width:46px;height:46px;border-radius:13px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.24);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;flex:none;}
 #hero h1{font-size:19px;margin:0;font-weight:800;letter-spacing:-.01em;}
 #hero .sub{font-size:12.5px;opacity:.82;margin-top:3px;line-height:1.4;}
@@ -264,6 +266,7 @@ details summary{cursor:pointer;font-size:10.5px;font-weight:700;color:var(--text
 <div id="appRoot" hidden>
   <div id="tabbarWrap">
     <div id="hero">
+      <button id="btnNotifiche" class="btn-notifiche" hidden aria-label="Notifiche">🔕</button>
       <div class="eyebrow" id="eyebrowStudio">Il tuo spazio</div>
       <div class="riga">
         <div class="iniziali" id="iniziali">?</div>
@@ -305,6 +308,74 @@ if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/portale-sw.js').catch(() => {});
   });
+}
+
+// ---------- Notifiche push (richiesta Matteo: l'imprenditore riceve un avviso sul cellulare
+// quando lo studio pubblica una nuova comunicazione, senza dover aprire l'app per scoprirlo) ----------
+// Deliberatamente OPT-IN con un bottone esplicito, mai richiesta automatica all'apertura: chiedere
+// il permesso di punto in bianco al primo accesso è un'esperienza fastidiosa e spesso porta l'utente
+// a rifiutare d'istinto, bruciando la possibilità di richiederlo di nuovo in futuro su molti browser.
+const PUSH_SUPPORTATO = ('serviceWorker' in navigator) && ('PushManager' in window) && ('Notification' in window);
+function base64UrlABytes(base64Url) {
+  const padding = '='.repeat((4 - (base64Url.length % 4)) % 4);
+  const base64 = (base64Url + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  const bytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+  return bytes;
+}
+async function statoAbbonamentoPush() {
+  if (!PUSH_SUPPORTATO) return null;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    return await reg.pushManager.getSubscription();
+  } catch (e) { return null; }
+}
+function aggiornaBottoneNotifiche(attivo) {
+  const btn = document.getElementById('btnNotifiche');
+  if (!btn) return;
+  btn.hidden = false;
+  btn.textContent = attivo ? '🔔' : '🔕';
+  btn.title = attivo ? 'Notifiche attive su questo dispositivo - tocca per disattivarle' : 'Attiva le notifiche su questo dispositivo';
+  btn.classList.toggle('attivo', !!attivo);
+}
+async function inizializzaNotifichePush() {
+  if (!PUSH_SUPPORTATO) return; // niente bottone se il browser non supporta le push (es. iOS Safari fuori da "app installata"): nessun errore mostrato, solo la funzione non compare
+  const btn = document.getElementById('btnNotifiche');
+  if (!btn) return;
+  aggiornaBottoneNotifiche(!!(await statoAbbonamentoPush()));
+  btn.onclick = toggleNotifichePush;
+}
+async function toggleNotifichePush() {
+  const subEsistente = await statoAbbonamentoPush();
+  if (subEsistente) {
+    try {
+      await fetch('/api/portale-push-disabbonati', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: TOKEN, endpoint: subEsistente.endpoint }) });
+    } catch (e) { /* anche se la chiamata fallisce, disiscriviamo comunque il dispositivo qui sotto */ }
+    await subEsistente.unsubscribe().catch(() => {});
+    aggiornaBottoneNotifiche(false);
+    return;
+  }
+  if (Notification.permission === 'denied') {
+    alert('Le notifiche sono bloccate per questo sito nelle impostazioni del browser/telefono. Sbloccale da lì (di solito nelle informazioni del sito, accanto alla barra degli indirizzi) e riprova.');
+    return;
+  }
+  const permesso = await Notification.requestPermission();
+  if (permesso !== 'granted') return;
+  try {
+    const chiaveResp = await fetch('/portale-push-chiave');
+    const chiaveDati = await chiaveResp.json().catch(() => null);
+    if (!chiaveDati || !chiaveDati.ok || !chiaveDati.chiave) {
+      alert('Le notifiche non sono al momento disponibili su questo portale. Contatta lo studio.');
+      return;
+    }
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: base64UrlABytes(chiaveDati.chiave) });
+    await fetch('/api/portale-push-abbonati', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: TOKEN, subscription: sub.toJSON() }) });
+    aggiornaBottoneNotifiche(true);
+  } catch (e) {
+    alert('Non sono riuscito ad attivare le notifiche su questo dispositivo. Riprova più tardi.');
+  }
 }
 // Password del portale (opzionale, impostata dallo studio per singolo cliente - vedi
 // cardPasswordPortaleCliente in gestionale.htm): tenuta in sessionStorage, per-tab, così il cliente
@@ -503,6 +574,7 @@ async function avvia() {
   aggiornaBannerCoda();
   svuotaCoda(); // riprova subito eventuali invii rimasti in coda da una visita precedente
   iniziaPolling();
+  inizializzaNotifichePush();
 }
 
 // ---------- scrittura dal portale (task #88): messaggi nuovi e risposte ai thread ----------
