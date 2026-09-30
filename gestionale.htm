@@ -2657,6 +2657,42 @@ function copiaTestoNegliAppunti(testo, messaggioOk) {
   }
 }
 
+/* Bug segnalato da Matteo: "quando copio il link da ngrok per la porta collaboratori mi dà il link
+   da usare all'interno della rete" - il vecchio pulsante unico copiava sempre http://localhost:<porta>,
+   che funziona SOLO sul PC dello studio (per chiunque altro apra quel link, "localhost" punta al
+   PROPRIO PC, non a quello dello studio: un link inutile/fuorviante da mandare a un collega).
+   Ora due pulsanti distinti, ognuno con la sua fonte reale:
+   - link di rete locale: IP reale del PC dello studio sulla rete (vedi /api/indirizzi-rete),
+     valido solo per chi è sulla stessa rete (es. ufficio, stessa WiFi).
+   - link ngrok: l'indirizzo pubblico VERO assegnato da ngrok in quel momento (vedi
+     /api/ngrok-tunnels sul server, che interroga l'API locale di ngrok), valido da internet ma
+     SOLO se ngrok è acceso in quel momento su questo PC con un tunnel verso questa porta. */
+function copiaLinkRete(porta) {
+  fetch('/api/indirizzi-rete').then(r => r.json()).then(d => {
+    if (!d.ok || !d.indirizzi || !d.indirizzi.length) {
+      toast('Nessun indirizzo di rete locale rilevato su questo PC (controlla che sia collegato alla rete/WiFi dello studio).', true);
+      return;
+    }
+    const link = `http://${d.indirizzi[0]}:${porta}/`;
+    const nota = d.indirizzi.length > 1 ? ` Nota: questo PC ha più indirizzi di rete (${d.indirizzi.join(', ')}) — se non funziona prova gli altri.` : '';
+    copiaTestoNegliAppunti(link, `Link di rete locale copiato: funziona solo per chi è sulla stessa rete dello studio.${nota}`);
+  }).catch(() => toast('Non sono riuscito a leggere l\'indirizzo di rete dal server locale.', true));
+}
+function copiaLinkNgrok(porta) {
+  fetch('/api/ngrok-tunnels').then(r => r.json()).then(d => {
+    if (!d.ok) {
+      toast(`Ngrok non risulta in esecuzione su questo PC in questo momento: aprilo da terminale (pulsante "📋 Copia comando ngrok") e riprova.`, true);
+      return;
+    }
+    const tunnel = (d.tunnel || []).find(t => t.porta === porta);
+    if (!tunnel) {
+      toast(`Ngrok è acceso ma non ha un tunnel verso la porta ${porta} in questo momento: lancia "ngrok http ${porta}" da terminale e riprova.`, true);
+      return;
+    }
+    copiaTestoNegliAppunti(tunnel.publicUrl, 'Link ngrok copiato: funziona da internet, finché tieni ngrok aperto su questo PC.');
+  }).catch(() => toast('Non sono riuscito a interrogare ngrok dal server locale.', true));
+}
+
 /* -------------------- DERIVED: ricalcola tutto per l'anno corrente -------------------- */
 function derivati() {
   const anno = STATE.annoCorrente;
@@ -9712,9 +9748,29 @@ function raggruppaEventiGiorno(eventi) {
   });
 }
 
+/* Bug segnalato da Matteo: "ne ho una sull'utenza matteo e non se ne va via e non capisco a cosa
+   sia collegata" - il pallino di notifica sul Calendario (appuntamentiNonVistiConteggio) esisteva
+   già, ma a differenza di Task team (che ha un banner "novità" con l'elenco cliccabile, vedi
+   renderTaskTeam) qui non c'era NESSUN modo di scoprire QUALE appuntamento generasse il pallino:
+   bisognava sfogliare i mesi a caso sperando di incontrare quello prenotato dalla segreteria mai
+   aperto. Stesso pattern del banner di Task team, con "Segna tutti come visti" come valvola di
+   sfogo per un caso limite (es. un vecchio nome consulente non più in uso). */
 function renderCalendario() {
   const anno = STATE.annoCorrente;
   const eventiPerGiorno = eventiCalendarioPerGiorno();
+  const nonVistiApp = appuntamentiNonVistiPerConsulente();
+  const bannerApp = nonVistiApp.length ? `<div class="card" style="border-left:4px solid var(--rosso,#d33);background:var(--rosso-bg,#fdeceb);margin-bottom:14px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">
+      <div style="font-weight:700;font-size:13px;">🔔 ${nonVistiApp.length} appuntament${nonVistiApp.length===1?'o':'i'} da vedere</div>
+      <button class="btn small" data-action="app-segna-tutti-visti">Segna tutti come visti</button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px;">
+      ${nonVistiApp.map(a => `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;padding:4px 0;" data-action="apri-dettaglio-appuntamento" data-id="${a.id}">
+        <span style="font-size:13px;">${escapeHtml(fmtData(a.data))}${a.ora?' · '+escapeHtml(a.ora):''} — ${escapeHtml(a.oggetto||'Appuntamento')}${a.clienteId?' · '+escapeHtml(nomeCliente(a.clienteId)):''}</span>
+        <span class="badge">Apri →</span>
+      </div>`).join('')}
+    </div>
+  </div>` : '';
 
   const primoDelMese = new Date(anno, CAL_MESE, 1);
   const ultimoDelMese = new Date(anno, CAL_MESE + 1, 0);
@@ -9772,7 +9828,7 @@ function renderCalendario() {
     return `<div class="cal-day ${isOggi?'oggi':''} ${hasEventi?'has-eventi':''}" ${azione}><div class="num">${g}</div>${evHtml}${extra}</div>`;
   }).join('');
 
-  return nav + legenda + `<div class="card"><div class="cal-grid">${testate}${giorni}</div></div>`;
+  return bannerApp + nav + legenda + `<div class="card"><div class="cal-grid">${testate}${giorni}</div></div>`;
 }
 
 /* Pulsante di dettaglio nel modal giorno: scadenze periodiche aprono il dettaglio della scadenza
@@ -10651,7 +10707,8 @@ function cardAccessoEsterno() {
           ? `<button class="btn danger" data-action="disattiva-accesso-esterno" data-tipo="${tipo}">⏻ Disattiva porta ${titolo.toLowerCase()}</button>`
           : `<button class="btn primary" data-action="salva-accesso-esterno" data-tipo="${tipo}" ${credenzialiPronte ? '' : 'disabled title="Imposta prima utente e password qui sotto"'}>⏻ Attiva porta ${titolo.toLowerCase()}</button>`}
         <button class="btn small" data-action="copia-comando-ngrok" data-testo="${escapeHtml(comando)}">📋 Copia comando ngrok</button>
-        <button class="btn small" data-action="copia-link-porta" data-testo="${escapeHtml(`http://localhost:${porta}`)}">🔗 Copia link porta</button>
+        <button class="btn small" data-action="copia-link-rete" data-porta="${porta}">🖧 Copia link rete locale</button>
+        <button class="btn small" data-action="copia-link-ngrok" data-porta="${porta}">🌐 Copia link ngrok</button>
       </div>
       ${!credenzialiPronte && !dati.attivo ? `<div class="helptext" style="margin-bottom:10px;color:var(--arancio,#c0790c);">⚠️ Imposta utente e password qui sotto: il pulsante "Attiva porta" si accende appena sono entrambi compilati.</div>` : ''}
       <details ${dati.attivo ? '' : 'open'}>
@@ -10677,11 +10734,13 @@ function cardAccessoEsterno() {
       <div class="helptext" style="margin-bottom:12px;">Espone SOLO il portale cliente (link personali /portale/&lt;codice&gt;), mai i dati completi dello studio. Si avvia da sola con il server, senza bisogno di attivarla: ogni cliente ha il proprio link e, se gliel'hai impostata, la propria password (vedi la sua scheda anagrafica).</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button class="btn small" data-action="copia-comando-ngrok" data-testo="${escapeHtml(`ngrok http ${info.portaClienti}`)}">📋 Copia comando ngrok</button>
+        <button class="btn small" data-action="copia-link-rete" data-porta="${info.portaClienti}">🖧 Copia link rete locale</button>
+        <button class="btn small" data-action="copia-link-ngrok" data-porta="${info.portaClienti}">🌐 Copia link ngrok</button>
       </div>
     </div>`;
   return `<div class="card">
     <div class="section-title">Accesso esterno (ngrok)</div>
-    <div class="helptext" style="margin-bottom:16px;">Le porte qui sotto sono già aperte sul PC dello studio — quello che manca è solo il "megafono" verso internet: scarica <a href="https://ngrok.com/download" target="_blank" rel="noopener">ngrok</a> una volta, poi ogni volta che serve lancia da terminale il comando copiato col pulsante 📋 (es. <code>ngrok http 8421</code> per i clienti). Ngrok ti darà un indirizzo pubblico (es. https://xxxx.ngrok-free.app) da comunicare a chi deve collegarsi — resta valido finché tieni ngrok aperto.</div>
+    <div class="helptext" style="margin-bottom:16px;">Le porte qui sotto sono già aperte sul PC dello studio — quello che manca è solo il "megafono" verso internet: scarica <a href="https://ngrok.com/download" target="_blank" rel="noopener">ngrok</a> una volta, poi ogni volta che serve lancia da terminale il comando copiato col pulsante 📋 (es. <code>ngrok http 8421</code> per i clienti). Due pulsanti per il link da comunicare, non uno solo, perché sono due indirizzi diversi: 🖧 "rete locale" funziona solo per chi è sulla stessa rete/WiFi dello studio; 🌐 "link ngrok" è l'indirizzo pubblico vero (es. https://xxxx.ngrok-free.app), funziona da internet ma solo mentre ngrok resta aperto su questo PC.</div>
     ${rigaClienti}
     ${rigaTipo('team', 'Porta collaboratori', 'Espone il gestionale completo, come se si fosse in studio: usala solo con collaboratori di fiducia e una password robusta.', info.team, info.portaTeam)}
   </div>`;
@@ -12007,7 +12066,8 @@ function onClickDelegato(e) {
 
     case 'copia-comando-ngrok': copiaTestoNegliAppunti(el.dataset.testo, 'Comando copiato: incollalo nel terminale dove hai installato ngrok.'); break;
 
-    case 'copia-link-porta': copiaTestoNegliAppunti(el.dataset.testo, 'Link copiato: incollalo nel browser per aprire questa porta in locale.'); break;
+    case 'copia-link-rete': copiaLinkRete(Number(el.dataset.porta)); break;
+    case 'copia-link-ngrok': copiaLinkNgrok(Number(el.dataset.porta)); break;
 
     case 'salva-accesso-esterno': {
       const tipo = el.dataset.tipo;
@@ -12322,6 +12382,7 @@ function onClickDelegato(e) {
     case 'apri-dettaglio-task-team': modalDettaglioTaskTeam(id); break;
     case 'modifica-task-team': modalTaskTeam(id); break;
     case 'task-segna-tutti-visti': taskTeamNonVistiPerOperatore().forEach(t => { t.notificaVista = true; }); salvaStato(); render(); break;
+    case 'app-segna-tutti-visti': appuntamentiNonVistiPerConsulente().forEach(a => { a.notificaVista = true; }); salvaStato(); render(); break;
     case 'elimina-task-team':
       if (confermaAzione('Eliminare questo task?')) { eliminaTaskTeam(id); chiudiModal(); render(); toast('Task eliminato.'); }
       break;

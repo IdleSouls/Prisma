@@ -1362,6 +1362,54 @@ function gestisciRichiesta(req, res) {
   }
 
 
+  // Bug segnalato da Matteo: il pulsante "Copia link porta" copiava sempre http://localhost:<porta>
+  // - un indirizzo che funziona SOLO sul PC dello studio (localhost è sempre "questo PC", per
+  // chiunque altro lo apra). Serve l'IP reale in rete locale, non "localhost" (stessa funzione già
+  // usata per il launcher di collegamento dei colleghi, vedi indirizziRete/scriviLauncherCollegamento).
+  if (url === '/api/indirizzi-rete' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ ok: true, indirizzi: indirizziRete(), hostname: os.hostname() }));
+    return;
+  }
+
+  // Secondo pulsante richiesto da Matteo: il link ngrok VERO (pubblico, es. https://xxxx.ngrok-free.app),
+  // non l'indirizzo di rete locale - ngrok non lo comunica a Prisma in automatico, ma lo espone lui
+  // stesso in locale sulla sua API di ispezione (http://127.0.0.1:4040/api/tunnels) quando è in
+  // esecuzione sullo STESSO PC del server. Interrogata solo su richiesta esplicita del pulsante, mai
+  // in polling: se ngrok non è aperto in quel momento fallisce in fretta (timeout corto) e il client
+  // mostra un messaggio chiaro invece di un link sbagliato.
+  function interrogaNgrokLocale() {
+    return new Promise((resolve, reject) => {
+      const richiesta = http.get('http://127.0.0.1:4040/api/tunnels', { timeout: 1500 }, (risposta) => {
+        const pezzi = [];
+        risposta.on('data', (d) => pezzi.push(d));
+        risposta.on('end', () => {
+          try { resolve(JSON.parse(Buffer.concat(pezzi).toString('utf8'))); }
+          catch (err) { reject(new Error('Risposta di ngrok non leggibile.')); }
+        });
+        risposta.on('error', reject);
+      });
+      richiesta.on('timeout', () => richiesta.destroy(new Error('ngrok non risponde (non è in esecuzione su questo PC?).')));
+      richiesta.on('error', () => reject(new Error('ngrok non risulta in esecuzione su questo PC.')));
+    });
+  }
+  if (url === '/api/ngrok-tunnels' && req.method === 'GET') {
+    interrogaNgrokLocale().then((dati) => {
+      // Ogni tunnel espone config.addr come "http://localhost:<porta>" (o senza schema a seconda
+      // della versione di ngrok): estraiamo solo il numero di porta per il confronto lato client.
+      const tunnel = (dati.tunnels || []).map((t) => {
+        const m = /:(\d+)\s*$/.exec(String((t.config && t.config.addr) || ''));
+        return { publicUrl: t.public_url, porta: m ? Number(m[1]) : null };
+      }).filter((t) => t.porta);
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ ok: true, tunnel }));
+    }).catch((err) => {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ ok: false, errore: err.message }));
+    });
+    return;
+  }
+
   if (url === '/api/accesso-esterno' && req.method === 'GET') {
     const cfg = leggiConfigAccessoEsterno();
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
