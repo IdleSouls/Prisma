@@ -2693,6 +2693,53 @@ function copiaLinkNgrok(porta) {
   }).catch(() => toast('Non sono riuscito a interrogare ngrok dal server locale.', true));
 }
 
+/* Richiesta di Matteo: non vuole un pulsante "copia comando" da incollare a mano nel terminale, ma
+   un pulsante che avvii ngrok direttamente. Il server lancia "ngrok http <porta>" come processo
+   figlio (vedi /api/avvia-ngrok) - qui si avvisa l'utente subito, poi si interroga /api/ngrok-tunnels
+   a intervalli brevi per un po': appena il tunnel compare (ngrok impiega un paio di secondi ad
+   alzarsi ed esporre la sua API locale) si copia da solo il link pubblico, così in un solo clic si
+   ottiene tunnel acceso + link in clipboard, senza toccare alcun terminale. */
+function avviaNgrokDaPrisma(porta, titoloPulsante) {
+  const btn = document.querySelector(`[data-action="avvia-ngrok"][data-porta="${porta}"]`);
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Avvio ngrok…'; }
+  const ripristinaBottone = () => { if (btn) { btn.disabled = false; btn.textContent = titoloPulsante; } };
+  fetch('/api/avvia-ngrok', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ porta }),
+  }).then(r => r.json()).then(d => {
+    if (!d.ok) {
+      toast(d.errore || 'Non sono riuscito ad avviare ngrok.', true);
+      ripristinaBottone();
+      return;
+    }
+    toast(d.giaAttivo ? 'ngrok risultava già avviato da Prisma per questa porta: verifico il link…' : 'ngrok in avvio… verifico il link pubblico.');
+    // Qualche tentativo a distanza di 1.5s: appena ngrok espone il tunnel lo si copia da solo e ci
+    // si ferma - se dopo alcuni tentativi non compare ancora, si avvisa senza continuare all'infinito
+    // (es. ngrok partito ma senza authtoken configurato: resta acceso ma senza tunnel HTTP).
+    let tentativi = 0;
+    const MAX_TENTATIVI = 8;
+    const prova = () => {
+      tentativi++;
+      fetch('/api/ngrok-tunnels').then(r => r.json()).then(dt => {
+        const tunnel = dt.ok ? (dt.tunnel || []).find(t => t.porta === porta) : null;
+        if (tunnel) {
+          copiaTestoNegliAppunti(tunnel.publicUrl, 'ngrok avviato: link pubblico copiato, funziona da internet finché resta aperto.');
+          ripristinaBottone();
+          return;
+        }
+        if (tentativi >= MAX_TENTATIVI) {
+          toast('ngrok sembra avviato ma non ha ancora esposto un tunnel per questa porta: controlla che sia configurato con un authtoken (ngrok config add-authtoken ...) e riprova tra poco con "🌐 Copia link ngrok".', true);
+          ripristinaBottone();
+          return;
+        }
+        setTimeout(prova, 1500);
+      }).catch(() => { ripristinaBottone(); });
+    };
+    setTimeout(prova, 1500);
+  }).catch(() => { toast('Non sono riuscito a contattare il server locale per avviare ngrok.', true); ripristinaBottone(); });
+}
+
 /* -------------------- DERIVED: ricalcola tutto per l'anno corrente -------------------- */
 function derivati() {
   const anno = STATE.annoCorrente;
@@ -10978,6 +11025,7 @@ function cardAccessoEsterno() {
         ${dati.attivo
           ? `<button class="btn danger" data-action="disattiva-accesso-esterno" data-tipo="${tipo}">⏻ Disattiva porta ${titolo.toLowerCase()}</button>`
           : `<button class="btn primary" data-action="salva-accesso-esterno" data-tipo="${tipo}" ${credenzialiPronte ? '' : 'disabled title="Imposta prima utente e password qui sotto"'}>⏻ Attiva porta ${titolo.toLowerCase()}</button>`}
+        <button class="btn small" data-action="avvia-ngrok" data-porta="${porta}">🚀 Avvia ngrok</button>
         <button class="btn small" data-action="copia-comando-ngrok" data-testo="${escapeHtml(comando)}">📋 Copia comando ngrok</button>
         <button class="btn small" data-action="copia-link-rete" data-porta="${porta}">🖧 Copia link rete locale</button>
         <button class="btn small" data-action="copia-link-ngrok" data-porta="${porta}">🌐 Copia link ngrok</button>
@@ -11005,6 +11053,7 @@ function cardAccessoEsterno() {
       </div>
       <div class="helptext" style="margin-bottom:12px;">Espone SOLO il portale cliente (link personali /portale/&lt;codice&gt;), mai i dati completi dello studio. Si avvia da sola con il server, senza bisogno di attivarla: ogni cliente ha il proprio link e, se gliel'hai impostata, la propria password (vedi la sua scheda anagrafica).</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn small" data-action="avvia-ngrok" data-porta="${info.portaClienti}">🚀 Avvia ngrok</button>
         <button class="btn small" data-action="copia-comando-ngrok" data-testo="${escapeHtml(`ngrok http ${info.portaClienti}`)}">📋 Copia comando ngrok</button>
         <button class="btn small" data-action="copia-link-rete" data-porta="${info.portaClienti}">🖧 Copia link rete locale</button>
         <button class="btn small" data-action="copia-link-ngrok" data-porta="${info.portaClienti}">🌐 Copia link ngrok</button>
@@ -11012,7 +11061,7 @@ function cardAccessoEsterno() {
     </div>`;
   return `<div class="card">
     <div class="section-title">Accesso esterno (ngrok)</div>
-    <div class="helptext" style="margin-bottom:16px;">Le porte qui sotto sono già aperte sul PC dello studio — quello che manca è solo il "megafono" verso internet: scarica <a href="https://ngrok.com/download" target="_blank" rel="noopener">ngrok</a> una volta, poi ogni volta che serve lancia da terminale il comando copiato col pulsante 📋 (es. <code>ngrok http 8421</code> per i clienti). Due pulsanti per il link da comunicare, non uno solo, perché sono due indirizzi diversi: 🖧 "rete locale" funziona solo per chi è sulla stessa rete/WiFi dello studio; 🌐 "link ngrok" è l'indirizzo pubblico vero (es. https://xxxx.ngrok-free.app), funziona da internet ma solo mentre ngrok resta aperto su questo PC.</div>
+    <div class="helptext" style="margin-bottom:16px;">Le porte qui sotto sono già aperte sul PC dello studio — quello che manca è solo il "megafono" verso internet: scarica <a href="https://ngrok.com/download" target="_blank" rel="noopener">ngrok</a> una volta (e configuralo con il tuo authtoken, richiesto dalla versione gratuita: <code>ngrok config add-authtoken &lt;il-tuo-token&gt;</code>), poi premi 🚀 "Avvia ngrok" per aprirlo direttamente da qui, senza terminale: appena il tunnel è su, il link pubblico viene copiato da solo. Il pulsante 📋 resta per chi preferisce lanciarlo a mano. Due pulsanti per il link da comunicare, non uno solo, perché sono due indirizzi diversi: 🖧 "rete locale" funziona solo per chi è sulla stessa rete/WiFi dello studio; 🌐 "link ngrok" è l'indirizzo pubblico vero (es. https://xxxx.ngrok-free.app), funziona da internet ma solo mentre ngrok resta aperto su questo PC.</div>
     ${rigaClienti}
     ${rigaTipo('team', 'Porta collaboratori', 'Espone il gestionale completo, come se si fosse in studio: usala solo con collaboratori di fiducia e una password robusta.', info.team, info.portaTeam)}
   </div>`;
@@ -12395,6 +12444,7 @@ function onClickDelegato(e) {
       render();
       break;
 
+    case 'avvia-ngrok': avviaNgrokDaPrisma(Number(el.dataset.porta), el.textContent); break;
     case 'copia-comando-ngrok': copiaTestoNegliAppunti(el.dataset.testo, 'Comando copiato: incollalo nel terminale dove hai installato ngrok.'); break;
 
     case 'copia-link-rete': copiaLinkRete(Number(el.dataset.porta)); break;

@@ -135,6 +135,54 @@ function rilanciaProcesso() {
     return false;
   }
 }
+/* Richiesta di Matteo: non un pulsante "copia comando" da incollare a mano in un terminale, ma un
+   pulsante che apre ngrok direttamente da Prisma. Stesso schema di rilanciaProcesso() qui sopra:
+   processo FIGLIO STACCATO (detached), così il tunnel sopravvive anche a un riavvio del server.
+   processiNgrok tiene traccia di cosa Prisma stesso ha lanciato (per porta), giusto per evitare di
+   aprirne un secondo per la stessa porta con un doppio clic - non è né può essere un indicatore
+   affidabile dello stato vero del tunnel (quello lo dà solo /api/ngrok-tunnels, che interroga ngrok
+   stesso): ngrok potrebbe comunque essere stato avviato a mano da terminale, o essere caduto senza
+   che questo processo se ne accorga. */
+const processiNgrok = new Map(); // porta -> { pid, avviatoIl, terminato }
+function avviaNgrok(porta) {
+  return new Promise((resolve) => {
+    const esistente = processiNgrok.get(porta);
+    if (esistente && !esistente.terminato) {
+      resolve({ ok: true, giaAttivo: true, pid: esistente.pid });
+      return;
+    }
+    let risolto = false;
+    let figlio;
+    try {
+      figlio = spawn('ngrok', ['http', String(porta)], { cwd: CARTELLA, detached: true, stdio: 'ignore', windowsHide: true });
+    } catch (err) {
+      resolve({ ok: false, errore: 'Impossibile avviare ngrok: ' + err.message });
+      return;
+    }
+    const voce = { pid: figlio.pid, avviatoIl: new Date().toISOString(), terminato: false };
+    processiNgrok.set(porta, voce);
+    // ENOENT (ngrok non installato/non nel PATH) o un'uscita immediata del processo (es. authtoken
+    // mancante, porta già in uso su un altro tunnel) arrivano entro pochi centesimi di secondo: una
+    // breve attesa (800ms) basta a distinguerli da un avvio riuscito, senza far percepire il
+    // pulsante come bloccato più del necessario.
+    figlio.once('error', (err) => {
+      voce.terminato = true;
+      if (risolto) return;
+      risolto = true;
+      const messaggio = err.code === 'ENOENT'
+        ? 'ngrok non è installato o non è nel PATH di sistema su questo PC: scaricalo da ngrok.com e riprova.'
+        : ('Impossibile avviare ngrok: ' + err.message);
+      resolve({ ok: false, errore: messaggio });
+    });
+    figlio.once('exit', () => { voce.terminato = true; });
+    figlio.unref();
+    setTimeout(() => {
+      if (risolto) return;
+      risolto = true;
+      resolve({ ok: true, pid: figlio.pid });
+    }, 800);
+  });
+}
 const FILE_PAGINA = path.join(CARTELLA, 'gestionale.htm');
 const FILE_DATI = path.join(CARTELLA, 'dati-studio.json');
 const FILE_DATI_TMP = path.join(CARTELLA, 'dati-studio.json.tmp');
@@ -1510,6 +1558,24 @@ function gestisciRichiesta(req, res) {
     }).catch((err) => {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify({ ok: false, errore: err.message }));
+    });
+    return;
+  }
+
+  if (url === '/api/avvia-ngrok' && req.method === 'POST') {
+    leggiCorpoRichiesta(req, (corpo) => {
+      let richiesta;
+      try { richiesta = JSON.parse(corpo || '{}'); } catch (err) { richiesta = {}; }
+      const porta = Number(richiesta.porta);
+      if (porta !== PORTA_ESTERNA_CLIENTI && porta !== PORTA_ESTERNA_TEAM) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, errore: 'Porta non valida.' }));
+        return;
+      }
+      avviaNgrok(porta).then((risultato) => {
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify(risultato));
+      });
     });
     return;
   }
