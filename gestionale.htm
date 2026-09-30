@@ -1514,7 +1514,14 @@ function statoIniziale() {
        appuntamenti dal flusso "Prenota un appuntamento" della segreteria — non ogni responsabile
        dello studio prende appuntamenti con i clienti (es. Sabrina no, Matteo e Federico sì).
        Gestito solo dall'admin in Impostazioni > Team, vedi renderImpostazioniTeam. */
-    meta: { versione: 2, studioNome: 'Studio', responsabili: ['Matteo', 'Sabrina'], consulenti: ['Matteo'], qualifica: '', iscrizione: '', indirizzoStudio: '', cfStudio: '', citta: 'Vicenza', anniExtra: [] },
+    // Task #156 (Matteo: "ruoli e permessi per utente... vorrei fossero strutturali ma alla fine
+    // basterebbe nascondere la UI"): ruoli/tabConsentiti sono per nome responsabile, come consulenti.
+    // Nessuna voce qui = ruolo "admin" di default (nessuna restrizione, nessun cambiamento per chi
+    // già usa Prisma). "ruoli" mappa nome -> 'admin' | 'limitato'; "tabConsentiti" mappa nome -> array
+    // di id sezione (vedi NAV) visibili SOLO per chi ha ruolo 'limitato'. È un filtro di interfaccia,
+    // non un controllo di sicurezza lato server: chiunque abbia accesso al PC/porta condivide gli
+    // stessi dati, vedi cardAccessoEsterno.
+    meta: { versione: 2, studioNome: 'Studio', responsabili: ['Matteo', 'Sabrina'], consulenti: ['Matteo'], ruoli: {}, tabConsentiti: {}, qualifica: '', iscrizione: '', indirizzoStudio: '', cfStudio: '', citta: 'Vicenza', anniExtra: [] },
     annoCorrente: annoOggi,
     clienti: [],
     scadenzeOverrides: {},
@@ -3862,6 +3869,31 @@ const PAGE_TITLES = {
   chat: ['Chat interna', 'Messaggi diretti tra i responsabili dello studio'],
 };
 
+/* Task #156: ruoli e permessi (filtro di interfaccia — vedi commento su statoIniziale/meta).
+   ruoloOperatore/tabConsentitiOperatore/operatorePuoVedere sono l'unico punto da cui il resto
+   dell'app decide cosa un referente "limitato" può vedere: renderNav le nasconde dal menu,
+   setView blocca l'apertura diretta di una vista non consentita (link/scorciatoie che puntano
+   lì comunque), e la lista completa dei tab arriva da NAV stesso — non serve un secondo elenco
+   da tenere sincronizzato a mano. */
+function ruoloOperatore(nome) {
+  if (!nome) return 'admin'; // nessun operatore selezionato = nessuna restrizione, vedi commento in operatorePuoVedere
+  return (STATE.meta.ruoli && STATE.meta.ruoli[nome]) || 'admin';
+}
+function tabConsentitiOperatore(nome) {
+  if (ruoloOperatore(nome) !== 'limitato') return null; // null = nessuna restrizione, vede tutto
+  const consentiti = (STATE.meta.tabConsentiti && STATE.meta.tabConsentiti[nome]) || [];
+  // Dashboard sempre inclusa: altrimenti un referente limitato senza nessuna sezione spuntata per
+  // errore si troverebbe davanti a un menu vuoto senza nessuna via per orientarsi.
+  return Array.from(new Set(['dashboard'].concat(consentiti)));
+}
+// Nessun operatore scelto (PC condiviso prima della selezione "Chi sta usando questo PC?") non
+// applica restrizioni: l'identità dell'operatore qui è "best effort" come nel resto di Prisma
+// (vedi impostaOperatore), non un vero login - restringere una sessione anonima non avrebbe senso
+// e bloccherebbe l'uso normale prima che qualcuno scelga il proprio nome.
+function operatorePuoVedere(tabId) {
+  const consentiti = tabConsentitiOperatore(OPERATORE);
+  return consentiti === null || consentiti.includes(tabId);
+}
 function badgeVoceNav(it) {
   if (it.id === 'chat') return chatTotaleNonLetti();
   if (it.id === 'taskteam') return taskTeamNonVistiConteggio();
@@ -3881,9 +3913,14 @@ function renderNav() {
   const nav = document.getElementById('navMenu');
   let html = '';
   for (const g of NAV) {
-    const contieneViewCorrente = g.items.some(it => it.id === VIEW);
+    // Task #156: un referente "limitato" non vede nemmeno la voce di menu delle sezioni non
+    // consentite - un gruppo che finisce senza nessuna voce visibile non compare affatto (niente
+    // intestazioni vuote da collassare).
+    const itemsVisibili = g.items.filter(it => operatorePuoVedere(it.id));
+    if (itemsVisibili.length === 0) continue;
+    const contieneViewCorrente = itemsVisibili.some(it => it.id === VIEW);
     const aperto = NAV_GRUPPI_APERTI.has(g.group) || contieneViewCorrente;
-    const badgeGruppo = g.items.reduce((s, it) => s + badgeVoceNav(it), 0);
+    const badgeGruppo = itemsVisibili.reduce((s, it) => s + badgeVoceNav(it), 0);
     html += `<div class="navgroup collassabile" data-action="nav-toggle-gruppo" data-gruppo="${escapeHtml(g.group)}">
       <span class="chev">${aperto ? '▾' : '▸'}</span>
       <span style="flex:1;">${escapeHtml(g.group)}</span>
@@ -3896,7 +3933,7 @@ function renderNav() {
     // affatto nel DOM a gruppo chiuso, quei link smetterebbero di funzionare invece di limitarsi
     // a espandere il gruppo. Un utente reale non può comunque cliccare qualcosa che non vede.
     html += `<div class="navgroup-items ${aperto ? '' : 'chiuso'}">`;
-    for (const it of g.items) {
+    for (const it of itemsVisibili) {
       const badge = badgeVoceNav(it);
       html += `<div class="navitem ${VIEW===it.id?'active':''}" data-nav="${it.id}"><span class="ic">${it.ic||''}</span>${escapeHtml(it.label)}${badge ? `<span class="nav-badge">${badge}</span>` : ''}</div>`;
     }
@@ -3915,6 +3952,15 @@ function renderAnnoSelect() {
 }
 
 function setView(view, params) {
+  // Task #156: blocco centrale, non solo nascondere la voce di menu - copre anche i link/scorciatoie
+  // sparsi per l'app (es. "Vai agli adempimenti annuali →", risultati di Azioni, link da un task/
+  // scadenza) che potrebbero altrimenti aprire direttamente una sezione non consentita a un
+  // referente "limitato" bypassando il menu filtrato in renderNav.
+  if (!operatorePuoVedere(view)) {
+    toast('Non hai accesso a questa sezione.', true);
+    view = 'dashboard';
+    params = {};
+  }
   VIEW = view;
   VIEW_PARAMS = params || {};
   render();
@@ -3922,6 +3968,11 @@ function setView(view, params) {
 }
 
 function render() {
+  // Task #156: ricontrollato anche qui (non solo in setView) perché VIEW può restare quella di
+  // prima anche quando cambia chi può vederla - tipicamente cambiando operatore da "Chi sta
+  // usando questo PC?" (impostaOperatore chiama render() direttamente, non setView) mentre si è
+  // fermi su una sezione che il nuovo operatore non può vedere.
+  if (!operatorePuoVedere(VIEW)) { VIEW = 'dashboard'; VIEW_PARAMS = {}; }
   renderNav();
   renderAnnoSelect();
   aggiornaBadgeOperatore();
@@ -6419,6 +6470,7 @@ function modalDettaglioProcedura(id) {
   document.getElementById('modalRoot').innerHTML = html;
 }
 
+function procedureById(id) { return (STATE.procedureInterne || []).find(p => p.id === id) || null; }
 const CATEGORIE_PROCEDURA_BASE = ['Apertura attività', 'Cessazione attività', 'Consulenza società', 'Adempimenti periodici', 'Amministrazione studio'];
 function modalProceduraInterna(id) {
   const editing = id ? STATE.procedureInterne.find(x => x.id === id) : null;
@@ -7373,11 +7425,15 @@ function renderTaskTeam() {
     const anteprimaNota = ultimaNota
       ? `<div class="note">${escapeHtml(ultimaNota.testo)}<div class="helptext" style="margin-top:2px;">${escapeHtml(ultimaNota.autore || '—')} · ${fmtData(ultimaNota.data)}${noteStorico.length > 1 ? ` · ${noteStorico.length} note` : ''}</div></div>`
       : '';
+    // Task #155: badge cliccabile verso la procedura collegata (se esiste ancora - una procedura
+    // può essere stata eliminata dopo il collegamento, in tal caso il badge non compare).
+    const proceduraCollegata = t.procedureId ? procedureById(t.procedureId) : null;
     return `<div class="task-card">
       <div class="titolo" style="cursor:pointer;" data-action="apri-dettaglio-task-team" data-id="${t.id}" title="Visualizza (senza modificare)">${escapeHtml(t.titolo)}</div>
       <div class="meta">
         <span class="badge info">${escapeHtml(t.assegnatoA || '—')}</span>
         ${t.clienteId ? `<span class="badge viola">${escapeHtml(nomeCliente(t.clienteId))}</span>` : ''}
+        ${proceduraCollegata ? `<span class="badge" style="cursor:pointer;" data-action="apri-procedura" data-id="${proceduraCollegata.id}" title="Apri procedura collegata">📋 ${escapeHtml(proceduraCollegata.nome)}</span>` : ''}
         ${t.scadenza ? `<span class="pill-delta ${ritardo?'scaduto':'lontano'}">${ritardo?'In ritardo — ':'Entro '}${fmtDataBreve(t.scadenza)}</span>` : ''}
       </div>
       ${anteprimaNota}
@@ -7433,6 +7489,24 @@ function modalDettaglioTaskTeam(taskId) {
   const sezioneNote = noteStorico.length
     ? `<div style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px 10px;">${noteStorico.map(n => `<div style="padding:5px 0;border-bottom:1px solid var(--border);"><div style="font-size:10.5px;font-weight:700;color:var(--text-mut);text-transform:uppercase;margin-bottom:2px;">${escapeHtml(n.autore || '—')} · ${fmtData(n.data)}</div><div style="font-size:12.5px;white-space:pre-wrap;line-height:1.4;">${escapeHtml(n.testo)}</div></div>`).join('')}</div>`
     : `<div class="helptext">Nessuna nota ancora su questo task.</div>`;
+  // Task #155: pannello di riferimento con l'anteprima della procedura collegata (nome, categoria,
+  // contenuto, checklist documenti) - non solo un link, proprio "una linea guida su cosa fare" senza
+  // dover aprire un secondo modale, con comunque un pulsante per aprirla per intero se serve.
+  const proceduraCollegata = t.procedureId ? procedureById(t.procedureId) : null;
+  const panelProcedura = proceduraCollegata ? `<div class="card" style="margin:0 0 14px;background:var(--blu-light,#eef4ff);border:1px solid var(--border);">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+        <div>
+          <div style="font-size:10.5px;font-weight:700;color:var(--text-mut);text-transform:uppercase;letter-spacing:.02em;">📋 Procedura collegata · ${escapeHtml(proceduraCollegata.categoria)}</div>
+          <div style="font-weight:600;margin-top:2px;">${escapeHtml(proceduraCollegata.nome)}</div>
+        </div>
+        <button class="btn small" data-action="apri-procedura" data-id="${proceduraCollegata.id}">Apri</button>
+      </div>
+      <div class="helptext" style="margin-top:6px;white-space:pre-wrap;">${escapeHtml(proceduraCollegata.contenuto.replace(/\s+/g,' ').trim().slice(0,220))}${proceduraCollegata.contenuto.length>220?'…':''}</div>
+    </div>` : '';
+  const panelNoteCompletamento = t.noteCompletamento ? `<div style="margin:0 0 14px;">
+      <label style="font-size:11px;font-weight:700;color:var(--text-mut);text-transform:uppercase;letter-spacing:.02em;">Note di completamento</label>
+      <div class="helptext" style="margin-top:4px;white-space:pre-wrap;">${escapeHtml(t.noteCompletamento)}</div>
+    </div>` : '';
   const html = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
     <div class="modal" style="max-width:480px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;">
@@ -7444,6 +7518,8 @@ function modalDettaglioTaskTeam(taskId) {
         ${t.clienteId ? `<span class="badge viola">${escapeHtml(nomeCliente(t.clienteId))}</span>` : ''}
         ${t.scadenza ? `<span class="pill-delta ${ritardo?'scaduto':'lontano'}">${ritardo?'In ritardo — ':'Entro '}${fmtDataBreve(t.scadenza)}</span>` : '<span class="helptext">Nessuna scadenza</span>'}
       </div>
+      ${panelProcedura}
+      ${panelNoteCompletamento}
       <label style="font-size:11px;font-weight:700;color:var(--text-mut);text-transform:uppercase;letter-spacing:.02em;">Note<span class="cnt">${noteStorico.length}</span></label>
       <div style="margin-top:6px;">${sezioneNote}</div>
       <div class="modal-actions">
@@ -7459,7 +7535,7 @@ function modalTaskTeam(taskId, presetClienteId) {
   const editing = !!taskId;
   const t = editing ? STATE.taskTeam.find(x => x.id === taskId) : {
     id: uid('task'), titolo: '', clienteId: presetClienteId || null, assegnatoA: STATE.meta.responsabili[0] || '',
-    scadenza: null, noteStorico: [], stato: 'Da fare', creatoIl: oggiISO(),
+    scadenza: null, noteStorico: [], stato: 'Da fare', creatoIl: oggiISO(), procedureId: null, noteCompletamento: '',
   };
   if (editing && !t) { toast('Task non trovato.'); return; }
   if (editing) segnaTaskTeamVisto(t.id); // aprire il task è già "vederlo" - spegne pallino/banner
@@ -7477,6 +7553,26 @@ function modalTaskTeam(taskId, presetClienteId) {
         <button type="button" class="btn small" style="margin-top:6px;" data-action="task-aggiungi-nota" data-id="${t.id}">Aggiungi nota</button>
       </div>`
     : `<div class="field full" style="grid-column:1/-1;"><label>Nota iniziale (opzionale)</label><textarea id="tNuovaNota" style="width:100%;min-height:60px;"></textarea></div>`;
+  // Task #155 (Matteo: "sarebbe carino anche collegare i task alle procedure così da avere un po
+  // una linea guida su cosa fare o cosa è stato fatto in quel task" — confermata "opzione 1", la
+  // versione semplice): un campo facoltativo che punta a una procedura interna esistente, mostrata
+  // come pannello di riferimento (non un semplice link) nella vista di dettaglio/card, più un campo
+  // di note di completamento libero - nessun auto-append delle note dentro la procedura stessa.
+  const procedureAttive = (STATE.procedureInterne || []).filter(p => p.attivo);
+  const categorieProc = Array.from(new Set(procedureAttive.map(p => p.categoria)));
+  const selectProcedura = `<select id="tProcedura">
+    <option value="">— Nessuna —</option>
+    ${categorieProc.map(cat => `<optgroup label="${escapeHtml(cat)}">${procedureAttive.filter(p=>p.categoria===cat).map(p=>`<option value="${p.id}" ${t.procedureId===p.id?'selected':''}>${escapeHtml(p.nome)}</option>`).join('')}</optgroup>`).join('')}
+  </select>`;
+  const campoProcedura = `<div class="field full" style="grid-column:1/-1;">
+    <label>Procedura collegata (opzionale)</label>
+    <div style="display:flex;gap:8px;align-items:center;">
+      ${selectProcedura}
+      <button type="button" class="btn small" data-action="task-vedi-procedura-selezionata">👁 Vedi</button>
+    </div>
+    <div class="helptext" style="margin-top:4px;">Una linea guida su cosa fare in questo task — la procedura resta invariata, qui è solo un riferimento.</div>
+  </div>`;
+  const campoNoteCompletamento = `<div class="field full" style="grid-column:1/-1;"><label>Note di completamento (opzionale)</label><textarea id="tNoteCompletamento" style="width:100%;min-height:50px;" placeholder="Cosa è stato fatto, per chi rilegge in futuro...">${escapeHtml(t.noteCompletamento||'')}</textarea></div>`;
   const html = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
     <div class="modal" style="max-width:520px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;">
@@ -7493,6 +7589,8 @@ function modalTaskTeam(taskId, presetClienteId) {
           </select></div>
           <div class="field"><label>Scadenza (opzionale)</label><input type="date" id="tScadenza" value="${t.scadenza||''}"></div>
           <div class="field"><label>Stato</label><select id="tStato">${STATI_TASK_TEAM.map(s=>`<option ${t.stato===s?'selected':''}>${s}</option>`).join('')}</select></div>
+          ${campoProcedura}
+          ${campoNoteCompletamento}
           ${sezioneNote}
         </div>
       </form>
@@ -10965,19 +11063,45 @@ function cardPasswordResponsabili() {
   </div>`;
 }
 
+// Task #156: riga per responsabile con ruolo + (se limitato) checklist delle sezioni consentite,
+// raggruppate come in NAV così la lista coincide sempre col menu vero, senza un secondo elenco da
+// tenere sincronizzato a mano.
+function rigaResponsabileConRuolo(r, i) {
+  const ruolo = ruoloOperatore(r);
+  const consentiti = (STATE.meta.tabConsentiti && STATE.meta.tabConsentiti[r]) || [];
+  const pannelloTab = ruolo === 'limitato' ? `<div style="margin:8px 0 2px;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-2,#f7f8fa);">
+      <div class="helptext" style="margin-bottom:6px;">Sezioni visibili a ${escapeHtml(r)} — Dashboard è sempre inclusa. Questo nasconde le voci di menu non spuntate: non è un vero controllo di accesso ai dati (chi condivide PC o porta di rete vede comunque lo stesso database, vedi Accesso esterno).</div>
+      ${NAV.map(g => `<div style="margin-bottom:8px;">
+        <div style="font-size:10px;font-weight:700;color:var(--text-mut);text-transform:uppercase;letter-spacing:.02em;margin-bottom:3px;">${escapeHtml(g.group)}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px 14px;">
+          ${g.items.map(it => `<label class="checkline" style="white-space:nowrap;font-size:12.5px;">
+            <input type="checkbox" data-action="toggle-tab-consentito" data-resp="${escapeHtml(r)}" data-tab="${it.id}" ${it.id==='dashboard'||consentiti.includes(it.id)?'checked':''} ${it.id==='dashboard'?'disabled':''}> ${escapeHtml(it.label)}
+          </label>`).join('')}
+        </div>
+      </div>`).join('')}
+    </div>` : '';
+  return `<div style="border-top:1px solid var(--border);padding-top:8px;margin-top:8px;">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;flex-wrap:wrap;">
+      <input type="text" value="${escapeHtml(r)}" data-action="edit-responsabile" data-idx="${i}" style="flex:1;min-width:110px;border:1px solid var(--border);border-radius:6px;padding:6px 9px;">
+      <label class="checkline" style="white-space:nowrap;" title="Può ricevere appuntamenti dalla segreteria">
+        <input type="checkbox" data-action="toggle-consulente" data-idx="${i}" ${(STATE.meta.consulenti||[]).includes(r)?'checked':''}> Consulente
+      </label>
+      <select data-action="cambia-ruolo-responsabile" data-resp="${escapeHtml(r)}" title="Ruolo di accesso" style="border:1px solid var(--border);border-radius:6px;padding:5px 7px;">
+        <option value="admin" ${ruolo==='admin'?'selected':''}>Admin — accesso completo</option>
+        <option value="limitato" ${ruolo==='limitato'?'selected':''}>Limitato — solo alcune sezioni</option>
+      </select>
+      <button class="icon-x" data-action="elimina-responsabile" data-idx="${i}" title="Rimuovi responsabile">✕</button>
+    </div>
+    ${pannelloTab}
+  </div>`;
+}
 function renderImpostazioniTeam() {
   return `
   <div class="card">
     <div class="section-title">Responsabili dello studio</div>
-    <div class="helptext" style="margin-bottom:10px;">Usati nei menu a tendina "responsabile" per assegnare scadenze e adempimenti. La spunta "Consulente" indica chi riceve appuntamenti dalla segreteria (vedi Calendario &gt; Prenota un appuntamento).</div>
-    ${STATE.meta.responsabili.map((r,i) => `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-      <input type="text" value="${escapeHtml(r)}" data-action="edit-responsabile" data-idx="${i}" style="flex:1;border:1px solid var(--border);border-radius:6px;padding:6px 9px;">
-      <label class="checkline" style="white-space:nowrap;" title="Può ricevere appuntamenti dalla segreteria">
-        <input type="checkbox" data-action="toggle-consulente" data-idx="${i}" ${(STATE.meta.consulenti||[]).includes(r)?'checked':''}> Consulente
-      </label>
-      <button class="icon-x" data-action="elimina-responsabile" data-idx="${i}" title="Rimuovi responsabile">✕</button>
-    </div>`).join('')}
-    <button class="btn small" data-action="aggiungi-responsabile">+ Aggiungi responsabile</button>
+    <div class="helptext" style="margin-bottom:10px;">Usati nei menu a tendina "responsabile" per assegnare scadenze e adempimenti. La spunta "Consulente" indica chi riceve appuntamenti dalla segreteria (vedi Calendario &gt; Prenota un appuntamento). Il ruolo "Limitato" nasconde in interfaccia le sezioni non spuntate.</div>
+    ${STATE.meta.responsabili.map(rigaResponsabileConRuolo).join('')}
+    <button class="btn small" style="margin-top:10px;" data-action="aggiungi-responsabile">+ Aggiungi responsabile</button>
   </div>
   ${cardPasswordResponsabili()}
   ${cardAccessoEsterno()}`;
@@ -12208,19 +12332,30 @@ function onClickDelegato(e) {
       const clienteId = h('tCliente').value || null;
       const scadenza = h('tScadenza').value || null;
       const stato = h('tStato').value;
+      const procedureId = h('tProcedura').value || null;
+      const noteCompletamento = h('tNoteCompletamento').value || '';
       if (!titolo || !assegnatoA) { toast('Inserisci almeno titolo e assegnatario.'); return; }
       if (editing) {
-        // Le note in modifica si gestiscono SOLO con "Aggiungi nota" (append immediato, vedi sotto):
-        // qui non tocchiamo noteStorico, così Salva non può mai sovrascrivere/perdere lo storico.
-        aggiornaTaskTeam(id, { titolo, assegnatoA, clienteId, scadenza, stato });
+        // Le note (storico) in modifica si gestiscono SOLO con "Aggiungi nota" (append immediato,
+        // vedi sotto): qui non tocchiamo noteStorico, così Salva non può mai sovrascrivere/perdere
+        // lo storico. procedureId e noteCompletamento invece sono campi "semplici" (task #155),
+        // sovrascrivibili come titolo/scadenza/stato.
+        aggiornaTaskTeam(id, { titolo, assegnatoA, clienteId, scadenza, stato, procedureId, noteCompletamento });
       } else {
         // In creazione l'unica nota possibile è quella "iniziale" nel campo tNuovaNota: diventa la
         // prima voce dello storico, attribuita a chi sta creando il task in questo momento.
         const notaIniziale = (h('tNuovaNota').value || '').trim();
         const noteStorico = notaIniziale ? [{ id: uid('nota'), testo: notaIniziale, autore: operatoreCorrente() || null, data: oggiISO() }] : [];
-        aggiungiTaskTeam({ titolo, assegnatoA, clienteId, scadenza, stato, noteStorico, creatoIl: oggiISO() });
+        aggiungiTaskTeam({ titolo, assegnatoA, clienteId, scadenza, stato, noteStorico, procedureId, noteCompletamento, creatoIl: oggiISO() });
       }
       chiudiModal(); render(); toast(editing ? 'Task aggiornato.' : 'Task creato.');
+      break;
+    }
+    case 'task-vedi-procedura-selezionata': {
+      const sel = h('tProcedura');
+      const pid = sel ? sel.value : '';
+      if (!pid) { toast('Seleziona prima una procedura.', true); return; }
+      modalDettaglioProcedura(pid);
       break;
     }
     case 'task-aggiungi-nota': {
@@ -12642,6 +12777,10 @@ function onClickDelegato(e) {
         const ic = STATE.meta.consulenti.indexOf(nomeRimosso);
         if (ic !== -1) STATE.meta.consulenti.splice(ic, 1);
       }
+      // Task #156: stessa pulizia per ruolo/tab consentiti, altrimenti resterebbero voci "fantasma"
+      // legate a un nome che in Impostazioni non esiste più.
+      if (STATE.meta.ruoli) delete STATE.meta.ruoli[nomeRimosso];
+      if (STATE.meta.tabConsentiti) delete STATE.meta.tabConsentiti[nomeRimosso];
       // Ripulisce anche un'eventuale password del referente eliminato (vedi cardPasswordResponsabili):
       // altrimenti resterebbe orfana sul server, legata a un nome che in Impostazioni non esiste più.
       if (HTTP_SYNC_ATTIVO && responsabileHaPassword(nomeRimosso)) {
@@ -12659,6 +12798,19 @@ function onClickDelegato(e) {
       if (el.checked) { if (ic === -1) STATE.meta.consulenti.push(nome); }
       else { if (ic !== -1) STATE.meta.consulenti.splice(ic, 1); }
       salvaStato();
+      break;
+    }
+    case 'toggle-tab-consentito': {
+      // Task #156: checklist delle sezioni visibili per un responsabile "limitato".
+      const resp = el.dataset.resp, tab = el.dataset.tab;
+      if (!STATE.meta.tabConsentiti) STATE.meta.tabConsentiti = {};
+      if (!Array.isArray(STATE.meta.tabConsentiti[resp])) STATE.meta.tabConsentiti[resp] = [];
+      const arr = STATE.meta.tabConsentiti[resp];
+      const idxTab = arr.indexOf(tab);
+      if (el.checked) { if (idxTab === -1) arr.push(tab); }
+      else { if (idxTab !== -1) arr.splice(idxTab, 1); }
+      salvaStato();
+      render(); // se il referente modificato è l'operatore corrente, la nav va aggiornata subito
       break;
     }
     case 'esporta-backup': esportaBackup(); break;
@@ -12878,6 +13030,15 @@ function onChangeDelegato(e) {
 
   switch (action) {
     case 'dash-resp': DASH_RESP = el.value; render(); break;
+    case 'cambia-ruolo-responsabile': {
+      const resp = el.dataset.resp;
+      if (!STATE.meta.ruoli) STATE.meta.ruoli = {};
+      if (el.value === 'admin') delete STATE.meta.ruoli[resp]; // 'admin' è il default implicito, non serve salvarlo
+      else STATE.meta.ruoli[resp] = 'limitato';
+      salvaStato();
+      render(); // se il referente diventa "limitato" ora, la sua nav va filtrata subito se è lui l'operatore corrente
+      break;
+    }
 
     case 'cli-filtro-regime': CLI_FILTRO.regime = el.value; resetPagina('clienti'); render(); break;
     case 'cli-filtro-resp': CLI_FILTRO.resp = el.value; resetPagina('clienti'); render(); break;
@@ -13119,6 +13280,17 @@ function onChangeDelegato(e) {
       if (nuovoNome !== vecchioNome && Array.isArray(STATE.meta.consulenti)) {
         const ic = STATE.meta.consulenti.indexOf(vecchioNome);
         if (ic !== -1) STATE.meta.consulenti[ic] = nuovoNome;
+      }
+      // Task #156: stessa sincronizzazione per ruolo/tab consentiti sulla rinomina.
+      if (nuovoNome !== vecchioNome) {
+        if (STATE.meta.ruoli && vecchioNome in STATE.meta.ruoli) {
+          STATE.meta.ruoli[nuovoNome] = STATE.meta.ruoli[vecchioNome];
+          delete STATE.meta.ruoli[vecchioNome];
+        }
+        if (STATE.meta.tabConsentiti && vecchioNome in STATE.meta.tabConsentiti) {
+          STATE.meta.tabConsentiti[nuovoNome] = STATE.meta.tabConsentiti[vecchioNome];
+          delete STATE.meta.tabConsentiti[vecchioNome];
+        }
       }
       // Segue la rinomina anche lato password del referente (vedi endpoint dedicato in server.js),
       // altrimenti la password resterebbe legata al vecchio nome, non più selezionabile in Impostazioni.
@@ -13659,6 +13831,9 @@ window.aggiungiChatMessaggio = aggiungiChatMessaggio;
 window.getChatCon = () => CHAT_CON;
 window.setChatConTest = (v) => { CHAT_CON = v || null; };
 window.impostaOperatore = impostaOperatore;
+window.ruoloOperatore = ruoloOperatore;
+window.tabConsentitiOperatore = tabConsentitiOperatore;
+window.operatorePuoVedere = operatorePuoVedere;
 window.getSessioneOperatoreTokenTest = () => SESSIONE_OPERATORE_TOKEN;
 window.setSessioneOperatoreTokenTest = (v) => { SESSIONE_OPERATORE_TOKEN = v || null; };
 window.responsabileHaPassword = responsabileHaPassword;
