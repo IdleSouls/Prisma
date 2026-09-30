@@ -2040,6 +2040,104 @@ async function main() {
   await wait(20);
   console.log('=== Notifica appuntamento prenotato: pallino sidebar Calendario, sparisce all\'apertura, procedura interna suggerita in base al motivo, nessuna notifica per gli appuntamenti auto-creati OK');
 
+  // ---------- 8d-octies) Appuntamenti: durata, orario di fine, conflitti (richiesta Matteo) ----------
+  // Durata di default (60') per un appuntamento creato senza specificarla esplicitamente - i vecchi
+  // appuntamenti salvati prima di questa funzionalità non hanno durataMinuti, quindi ogni lettura
+  // deve ricadere sullo stesso default implicito che l'app assumeva finora.
+  assert(window.durataAppuntamento(appNormale) === 60, `un appuntamento senza durataMinuti esplicita dovrebbe assumere il default di 60', trovato ${window.durataAppuntamento(appNormale)}`);
+  const appDurata90 = window.aggiungiAppuntamento({ clienteId: null, data: '2026-11-12', ora: '10:00', durataMinuti: 90, oggetto: 'Test durata' });
+  assert(appDurata90.durataMinuti === 90, 'durataMinuti non salvata correttamente su un nuovo appuntamento');
+  assert(window.oraFineAppuntamento(appDurata90) === '11:30', `oraFineAppuntamento su 10:00 + 90' dovrebbe dare 11:30, trovato ${window.oraFineAppuntamento(appDurata90)}`);
+
+  // Conflitto: due appuntamenti dello stesso consulente, stesso giorno, fasce orarie sovrapposte.
+  const consTest = 'Matteo';
+  const appA = window.aggiungiAppuntamento({ clienteId: null, data: '2026-11-13', ora: '09:00', durataMinuti: 60, oggetto: 'Conflitto A', consulente: consTest, prenotatoDaSegreteria: true });
+  const conflittiSovrapposti = window.appuntamentiInConflitto(consTest, '2026-11-13', '09:30', 30, null);
+  assert(conflittiSovrapposti.length === 1 && conflittiSovrapposti[0].id === appA.id, `un nuovo appuntamento 09:30-10:00 dovrebbe risultare in conflitto con "Conflitto A" (09:00-10:00), trovati ${conflittiSovrapposti.length} conflitti`);
+  const conflittiAdiacenti = window.appuntamentiInConflitto(consTest, '2026-11-13', '10:00', 30, null);
+  assert(conflittiAdiacenti.length === 0, `un appuntamento che inizia esattamente quando "Conflitto A" finisce (10:00) non dovrebbe risultare in conflitto, trovati ${conflittiAdiacenti.length}`);
+  const conflittiAltroGiorno = window.appuntamentiInConflitto(consTest, '2026-11-14', '09:30', 30, null);
+  assert(conflittiAltroGiorno.length === 0, 'appuntamenti in giorni diversi non dovrebbero mai risultare in conflitto');
+  const conflittiEsclusiSe = window.appuntamentiInConflitto(consTest, '2026-11-13', '09:30', 30, appA.id);
+  assert(conflittiEsclusiSe.length === 0, 'escludiId dovrebbe escludere l\'appuntamento stesso dal controllo conflitti (caso: modifica in corso)');
+  console.log('=== Appuntamenti: durata di default, oraFineAppuntamento, rilevazione conflitti (sovrapposti/adiacenti/altro giorno/esclusione) OK');
+
+  // Conflitto end-to-end dal form "Prenota un appuntamento": un secondo appuntamento nella stessa
+  // fascia oraria di "Conflitto A" deve passare da confermaAzione() - con window.confirm forzato a
+  // "Annulla" (false) il salvataggio deve essere bloccato (nessun nuovo appuntamento creato).
+  click(q('[data-nav="calendario"]'));
+  await wait(20);
+  click(q('[data-action="prenota-appuntamento"]'));
+  await wait(20);
+  setVal(q('#prenData'), '2026-11-13');
+  setVal(q('#prenOra'), '09:15');
+  setVal(q('#prenTelefono'), '0444 111222');
+  const confirmOriginale = window.confirm;
+  window.confirm = () => false; // simula "Annulla" sul dialog di conferma conflitto
+  const nAppPrimaConflitto = window.getSTATE().appuntamenti.length;
+  click(q('[data-action="salva-prenota-appuntamento"]'));
+  await wait(20);
+  assert(window.getSTATE().appuntamenti.length === nAppPrimaConflitto, 'rifiutando la conferma del conflitto (Annulla) l\'appuntamento non dovrebbe essere salvato');
+  window.confirm = () => true; // ripristina il mock globale (sempre "OK", usato dal resto della suite)
+  click(q('[data-action="salva-prenota-appuntamento"]'));
+  await wait(20);
+  assert(window.getSTATE().appuntamenti.length === nAppPrimaConflitto + 1, 'confermando nonostante il conflitto (OK) l\'appuntamento dovrebbe essere salvato normalmente');
+  window.confirm = confirmOriginale;
+  const appConConflittoConfermato = window.getSTATE().appuntamenti.find(a => a.telefono === '0444 111222');
+  window.rimuoviAppuntamento(appConConflittoConfermato.id);
+  window.rimuoviAppuntamento(appA.id);
+  window.rimuoviAppuntamento(appDurata90.id);
+  console.log('=== "Prenota un appuntamento": un conflitto rilevato passa da confermaAzione(), rifiutare blocca il salvataggio, confermare procede comunque OK');
+
+  // Bug segnalato da Matteo ("le frecce per cambiare settimana non fanno nulla"): erano registrate
+  // per errore su onChangeDelegato (evento 'change', mai generato da un click su <button>) invece di
+  // onClickDelegato - verificato qui cliccandole davvero e controllando che l'etichetta della
+  // settimana mostrata cambi di conseguenza. Il salvataggio andato a buon fine sopra ha chiuso il
+  // modale (chiudiModal() su successo): lo si riapre apposta per questo test.
+  click(q('[data-action="prenota-appuntamento"]'));
+  await wait(20);
+  assert(q('#prenAgendaSettimana').textContent.includes('Questa settimana'), 'all\'apertura del form "Prenota un appuntamento" dovrebbe essere selezionata "Questa settimana"');
+  click(q('[data-action="prenota-settimana-succ"]'));
+  await wait(20);
+  assert(q('#prenAgendaSettimana').textContent.includes('Prossima settimana'), 'cliccando la freccia "settimana successiva" l\'etichetta dovrebbe diventare "Prossima settimana" (bug: prima non succedeva nulla)');
+  click(q('[data-action="prenota-settimana-succ"]'));
+  await wait(20);
+  assert(!q('#prenAgendaSettimana').textContent.includes('Prossima settimana') && !q('#prenAgendaSettimana').textContent.includes('Questa settimana'), 'cliccando di nuovo "successiva" ci si aspetta l\'etichetta con la data della settimana (due settimane avanti)');
+  click(q('[data-action="prenota-settimana-prec"]'));
+  await wait(20);
+  click(q('[data-action="prenota-settimana-prec"]'));
+  await wait(20);
+  click(q('[data-action="prenota-settimana-prec"]'));
+  await wait(20);
+  assert(q('#prenAgendaSettimana').textContent.includes('Settimana scorsa'), 'tre "precedente" dopo due "successiva" (offset 2-3=-1) dovrebbero mostrare "Settimana scorsa"');
+  click(q('[data-action="prenota-settimana-oggi"]'));
+  await wait(20);
+  assert(q('#prenAgendaSettimana').textContent.includes('Questa settimana'), 'il pulsante "Oggi" dovrebbe riportare a "Questa settimana"');
+  console.log('=== "Prenota un appuntamento": le frecce di navigazione settimana (prec/succ/oggi) funzionano e aggiornano l\'etichetta OK');
+  click(q('[data-action="chiudi-modal"]'));
+  await wait(20);
+
+  // ---------- 8d-nonies) Calendario: scaletta oraria nel modal "espandi giorno" (richiesta Matteo) ----------
+  // "non c'è indicata una scaletta oraria e sono tutti mescolati": due appuntamenti nello stesso
+  // giorno devono comparire in ordine cronologico (non alfabetico di categoria) con l'intervallo
+  // inizio-fine, in una sezione dedicata separata dagli altri eventi del giorno.
+  const giornoScalettaISO = '2026-11-16';
+  const appTardi = window.aggiungiAppuntamento({ clienteId: null, data: giornoScalettaISO, ora: '15:00', durataMinuti: 30, oggetto: 'Appuntamento pomeriggio' });
+  const appPresto = window.aggiungiAppuntamento({ clienteId: null, data: giornoScalettaISO, ora: '08:30', durataMinuti: 45, oggetto: 'Appuntamento mattina' });
+  window.apriModalGiornoCalendario(giornoScalettaISO);
+  await wait(20);
+  const testoModalGiorno = q('.modal').textContent;
+  assert(testoModalGiorno.includes('Scaletta oraria'), 'il modal giorno dovrebbe mostrare una sezione "Scaletta oraria" quando ci sono appuntamenti');
+  const posMattina = testoModalGiorno.indexOf('Appuntamento mattina');
+  const posPomeriggio = testoModalGiorno.indexOf('Appuntamento pomeriggio');
+  assert(posMattina >= 0 && posPomeriggio >= 0 && posMattina < posPomeriggio, 'nella scaletta oraria l\'appuntamento delle 08:30 dovrebbe comparire prima di quello delle 15:00 (ordine cronologico, non alfabetico)');
+  assert(testoModalGiorno.includes('08:30–09:15'), `la scaletta dovrebbe mostrare l'intervallo inizio-fine (08:30 + 45' = 09:15), testo: ${testoModalGiorno.slice(0,400)}`);
+  click(q('[data-action="chiudi-modal"]'));
+  await wait(20);
+  window.rimuoviAppuntamento(appTardi.id);
+  window.rimuoviAppuntamento(appPresto.id);
+  console.log('=== Calendario: modal giorno mostra una "Scaletta oraria" cronologica (non per categoria) con intervallo inizio-fine OK');
+
   // pulizia
   const nAppuntamentiPrimaCleanup = window.getSTATE().appuntamenti.length;
   window.rimuoviAppuntamento(appPrenotato.id);

@@ -10066,12 +10066,51 @@ let CAL_GRUPPI_ESPANSI = new Set();
    prima; un gruppo con più eventi (tipicamente una scadenza periodica ricorrente su tanti clienti)
    è un'intestazione con conteggio "N/M completate", espandibile per vedere/agire sui singoli
    clienti. */
+/* Una riga della scaletta oraria (vedi apriModalGiornoCalendario sotto): orario ben visibile a
+   sinistra (intervallo inizio-fine, calcolato dalla durata dell'appuntamento), poi cliente/oggetto,
+   stato e il pulsante di apertura - stesso "pulsanteEventoCalendario" usato altrove, per coerenza. */
+function rigaScalettaOraria(it, dataISO, oggi) {
+  const a = trovaAppuntamento(it.id);
+  const fine = a ? oraFineAppuntamento(a) : null;
+  const chiuso = eventoCalendarioChiuso('appuntamento', it.stato);
+  const scaduto = !chiuso && giorniTra(oggi, dataISO) < 0;
+  return `<div class="voce ${chiuso?'completato':''}" style="gap:10px;">
+    <div style="min-width:76px;flex:none;font-weight:700;font-size:12.5px;color:var(--blu-scuro);">${it.ora ? escapeHtml(it.ora) + (fine ? '–' + escapeHtml(fine) : '') : '— : —'}</div>
+    <div style="flex:1;min-width:0;">
+      <div class="titolo" style="font-weight:600;">${escapeHtml(etichettaClienteEvento('appuntamento', it.clienteId))} — ${escapeHtml(it.titolo)}</div>
+      ${scaduto ? `<div class="helptext"><span style="color:var(--rosso);font-weight:700;">scaduto</span></div>` : ''}
+    </div>
+    <span class="badge ${statoBadgeClass(it.stato)}">${escapeHtml(it.stato)}</span>
+    ${pulsanteEventoCalendario(it)}
+  </div>`;
+}
+/* Segnalato da Matteo: "non c'è indicata una scaletta oraria e sono tutti mescolati" - gli
+   appuntamenti (gli unici eventi di calendario con un orario proprio) finivano raggruppati per
+   categoria insieme a scadenze/adempimenti/task, quindi comparivano in ordine alfabetico di
+   categoria invece che in ordine cronologico, senza che l'orario risaltasse. Separati qui in una
+   scaletta dedicata in cima al modale, ordinata per ora crescente e con l'intervallo inizio-fine di
+   ciascuno (vedi durataAppuntamento/oraFineAppuntamento); il resto (eventi senza un orario proprio)
+   resta sotto, raggruppato come prima - nessuna modifica al comportamento per quella parte. */
 function apriModalGiornoCalendario(dataISO) {
   const eventiPerGiorno = eventiCalendarioPerGiorno();
   const eventi = eventiPerGiorno[dataISO] || [];
   if (eventi.length === 0) return;
   const oggi = oggiISO();
-  const gruppi = raggruppaEventiGiorno(eventi);
+
+  const appuntamentiGiorno = eventi.filter(e => e.kind === 'appuntamento');
+  const altriEventi = eventi.filter(e => e.kind !== 'appuntamento');
+  const conOra = appuntamentiGiorno.filter(e => e.ora).sort((a, b) => a.ora.localeCompare(b.ora));
+  const senzaOra = appuntamentiGiorno.filter(e => !e.ora);
+  const scalettaHtml = appuntamentiGiorno.length ? `
+    <div style="margin-top:10px;">
+      <div class="section-title" style="margin:0 0 4px 0;font-size:12px;">🕐 Scaletta oraria — ${appuntamentiGiorno.length} appuntament${appuntamentiGiorno.length===1?'o':'i'}</div>
+      <div style="display:flex;flex-direction:column;gap:3px;">
+        ${conOra.map(it => rigaScalettaOraria(it, dataISO, oggi)).join('')}
+        ${senzaOra.length ? senzaOra.map(it => rigaScalettaOraria(it, dataISO, oggi)).join('') : ''}
+      </div>
+    </div>` : '';
+
+  const gruppi = raggruppaEventiGiorno(altriEventi);
   const righe = gruppi.map((gr, idx) => {
     const items = gr.items.slice().sort((a,b) => etichettaClienteEvento(a.kind, a.clienteId).localeCompare(etichettaClienteEvento(b.kind, b.clienteId)));
     if (items.length === 1) return rigaEventoCalendario(items[0], gr, dataISO, oggi, true);
@@ -10092,16 +10131,18 @@ function apriModalGiornoCalendario(dataISO) {
       ${espanso ? items.map(it => rigaEventoCalendario(it, gr, dataISO, oggi, false)).join('') : ''}
     </div>`;
   }).join('');
+  const altriHtml = gruppi.length ? `${appuntamentiGiorno.length ? `<div class="section-title" style="margin:14px 0 4px 0;font-size:12px;">Altri impegni della giornata</div>` : ''}${righe}` : '';
   const html = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
     <div class="modal" style="max-width:640px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-        <div><h2>${escapeHtml(fmtData(dataISO))}</h2><div class="modal-sub">${eventi.length} ${eventi.length===1?'evento':'eventi'} in questa data${gruppi.length!==eventi.length?` · ${gruppi.length} ${gruppi.length===1?'voce':'voci'} in elenco`:''}</div></div>
+        <div><h2>${escapeHtml(fmtData(dataISO))}</h2><div class="modal-sub">${eventi.length} ${eventi.length===1?'evento':'eventi'} in questa data${gruppi.length!==altriEventi.length?` · ${gruppi.length} ${gruppi.length===1?'voce':'voci'} in elenco`:''}</div></div>
         <button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button>
       </div>
       <div class="toolbar" style="margin:8px 0 0 0;">
         <button type="button" class="btn small" data-action="cal-nuovo-evento" data-data="${dataISO}">+ Nuovo evento</button>
       </div>
-      <div class="cal-giorno-lista" style="max-height:420px;overflow-y:auto;margin-top:6px;">${righe}</div>
+      ${scalettaHtml}
+      <div class="cal-giorno-lista" style="max-height:420px;overflow-y:auto;margin-top:6px;">${altriHtml}</div>
     </div>
   </div>`;
   document.getElementById('modalRoot').innerHTML = html;
@@ -10145,6 +10186,64 @@ const CANALI_PROVENIENZA_APPUNTAMENTO = [
 const OPZIONI_SOFTWARE_FATTURAZIONE = ['Da valutare', 'Sì, necessario', 'Probabile, da approfondire', 'No'];
 const TIPI_RICHIESTA_APPUNTAMENTO = ['Nuova attività', 'Consulenza per attività esistente'];
 
+/* Richiesta di Matteo: gli appuntamenti avevano solo un orario di INIZIO, mai una durata - quindi
+   non c'era modo di sapere quando finivano né, di conseguenza, di accorgersi che due appuntamenti
+   si sovrapponevano. DURATA_APPUNTAMENTO_DEFAULT (60') è il valore storico implicito: ogni
+   appuntamento creato PRIMA di questa modifica non ha durataMinuti salvato, quindi ovunque lo si
+   legge si usa "a.durataMinuti || DURATA_APPUNTAMENTO_DEFAULT" (mai un valore diverso da quello che
+   l'app assumeva finora, così i controlli di conflitto restano corretti anche sui dati vecchi). */
+const DURATA_APPUNTAMENTO_DEFAULT = 60;
+const DURATE_APPUNTAMENTO = [
+  { min: 15, label: '15 minuti' },
+  { min: 30, label: '30 minuti' },
+  { min: 45, label: '45 minuti' },
+  { min: 60, label: '1 ora' },
+  { min: 90, label: '1 ora e mezza' },
+  { min: 120, label: '2 ore' },
+  { min: 180, label: '3 ore' },
+];
+function oraAMinuti(str) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(str || '').trim());
+  if (!m) return null;
+  return Number(m[1]) * 60 + Number(m[2]);
+}
+function minutiAOra(min) {
+  const m = ((min % 1440) + 1440) % 1440; // avvolge oltre la mezzanotte invece di andare negativo/oltre 24h
+  return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+}
+function durataAppuntamento(a) { return Number(a && a.durataMinuti) || DURATA_APPUNTAMENTO_DEFAULT; }
+function oraFineAppuntamento(a) {
+  const inizio = oraAMinuti(a && a.ora);
+  if (inizio === null) return null;
+  return minutiAOra(inizio + durataAppuntamento(a));
+}
+/* Conflitto = due appuntamenti dello STESSO consulente, nello STESSO giorno, i cui intervalli
+   [inizio, fine) si sovrappongono (il classico test "inizio1 < fine2 && inizio2 < fine1"). Ignora
+   gli appuntamenti Annullati (non occupano davvero l'agenda) e, in modifica, esclude se stesso via
+   escludiId. Appuntamenti senza un orario valido non possono essere confrontati (nessun conflitto
+   rilevabile) - meglio non bloccare che dare un falso allarme. */
+function appuntamentiInConflitto(consulente, dataISO, ora, durataMinuti, escludiId) {
+  if (!consulente || !dataISO) return [];
+  const inizio = oraAMinuti(ora);
+  if (inizio === null) return [];
+  const fine = inizio + (Number(durataMinuti) || DURATA_APPUNTAMENTO_DEFAULT);
+  return appuntamentiDiConsulente(consulente).filter(a => {
+    if (a.id === escludiId) return false;
+    if (a.data !== dataISO) return false;
+    const altroInizio = oraAMinuti(a.ora);
+    if (altroInizio === null) return false;
+    const altroFine = altroInizio + durataAppuntamento(a);
+    return inizio < altroFine && altroInizio < fine;
+  });
+}
+/* Messaggio da mostrare in confermaAzione() quando si sta per salvare un appuntamento in conflitto
+   - elenca gli appuntamenti già presenti a quell'ora, così chi conferma sa esattamente cosa rischia
+   di sovrapporre invece di un generico "c'è un conflitto". */
+function messaggioConflittoAppuntamenti(conflitti) {
+  const righe = conflitti.map(a => `• ${a.ora}–${oraFineAppuntamento(a) || '?'} ${a.oggetto || 'Appuntamento'}${a.clienteId ? ' (' + etichettaClienteEvento('appuntamento', a.clienteId) + ')' : ''}`);
+  return `Attenzione: in questa fascia oraria risultano già ${conflitti.length === 1 ? 'un impegno' : 'impegni'}:\n\n${righe.join('\n')}\n\nVuoi prenotare comunque?`;
+}
+
 function trovaAppuntamento(id) {
   return (STATE.appuntamenti || []).find(a => a.id === id);
 }
@@ -10152,6 +10251,7 @@ function aggiungiAppuntamento(dati) {
   const prenotatoDaSegreteria = !!dati.prenotatoDaSegreteria;
   const a = {
     id: uid('app'), clienteId: dati.clienteId || null, data: dati.data, ora: dati.ora || '',
+    durataMinuti: Number(dati.durataMinuti) || DURATA_APPUNTAMENTO_DEFAULT,
     oggetto: (dati.oggetto || '').trim() || 'Appuntamento', note: (dati.note || '').trim(),
     responsabile: operatoreCorrente() || '', stato: 'Programmato', creatoIl: new Date().toISOString(),
     /* Campi task #147 (flusso "Prenota un appuntamento" della segreteria): "consulente" è il
@@ -10248,7 +10348,8 @@ function renderFormNuovoEvento(dataISO) {
           <select id="nevCliente"><option value="">— nessun cliente —</option>${attivi.map(c=>`<option value="${c.id}">${escapeHtml(c.ragioneSociale)}</option>`).join('')}</select>
         </div>
         <div class="field"><label>Ora</label><input type="time" id="nevOra"></div>
-        <div class="field"><label>Oggetto</label><input type="text" id="nevOggetto" placeholder="es. Incontro bilancio, consulenza IVA..."></div>
+        <div class="field"><label>Durata</label><select id="nevDurata">${DURATE_APPUNTAMENTO.map(d => `<option value="${d.min}" ${d.min===DURATA_APPUNTAMENTO_DEFAULT?'selected':''}>${d.label}</option>`).join('')}</select></div>
+        <div class="field full" style="grid-column:1/-1;"><label>Oggetto</label><input type="text" id="nevOggetto" placeholder="es. Incontro bilancio, consulenza IVA..."></div>
         <div class="field full" style="grid-column:1/-1;"><label>Note</label><input type="text" id="nevNote" placeholder="facoltative"></div>
       </div>
       <div class="modal-actions">
@@ -10298,9 +10399,18 @@ function aggiornaVisibilitaMeseScadenzaRicorrente() {
 function salvaNuovoAppuntamento(dataISO) {
   const clienteId = document.getElementById('nevCliente').value || null;
   const ora = document.getElementById('nevOra').value || '';
+  const durataMinuti = Number(document.getElementById('nevDurata').value) || DURATA_APPUNTAMENTO_DEFAULT;
   const oggetto = document.getElementById('nevOggetto').value;
   const note = document.getElementById('nevNote').value;
-  aggiungiAppuntamento({ clienteId, data: dataISO, ora, oggetto, note });
+  // Un appuntamento creato da qui (non dalla segreteria) non ha un "consulente" esplicito: occupa
+  // l'agenda di chi lo sta creando (vedi appuntamentiDiConsulente, che per questo caso guarda
+  // responsabile invece di consulente) - il controllo conflitti verifica quindi contro se stessi.
+  const io = operatoreCorrente();
+  if (io && ora) {
+    const conflitti = appuntamentiInConflitto(io, dataISO, ora, durataMinuti, null);
+    if (conflitti.length && !confermaAzione(messaggioConflittoAppuntamenti(conflitti))) return;
+  }
+  aggiungiAppuntamento({ clienteId, data: dataISO, ora, durataMinuti, oggetto, note });
   chiudiModal(); render();
   toast('Appuntamento creato.');
 }
@@ -10339,6 +10449,19 @@ function salvaNuovaScadenzaRicorrente() {
    appuntamenti prenotati dalla segreteria (task #147) mostra anche i dati raccolti al telefono, la
    procedura interna suggerita in base al motivo e il pulsante per il riepilogo stampabile — e segna
    la notifica come vista appena il consulente la apre. */
+/* Modifica di un appuntamento già esistente (cambio ora/durata dal suo modale): qui i campi si
+   salvano da soli ad ogni modifica (stesso pattern di tutti gli altri modali dell'app, es.
+   scad-cambia-importo), quindi un blocco "vuoi procedere comunque?" prima del salvataggio non ha
+   senso - il salvataggio è già avvenuto. Un avviso non bloccante (toast) dopo il cambio è la
+   controparte corretta: segnala il conflitto senza disfare quanto appena digitato. */
+function avvisaSeConflittoAppuntamento(id) {
+  const a = trovaAppuntamento(id);
+  if (!a || !a.ora) return;
+  const consulente = a.consulente || (!a.prenotatoDaSegreteria ? a.responsabile : null);
+  if (!consulente) return;
+  const conflitti = appuntamentiInConflitto(consulente, a.data, a.ora, durataAppuntamento(a), a.id);
+  if (conflitti.length) toast(`⚠️ Si sovrappone con ${conflitti.length === 1 ? "un altro appuntamento" : conflitti.length + " altri appuntamenti"} di ${consulente} in questa fascia oraria.`, true);
+}
 function apriModalAppuntamento(id) {
   const a = trovaAppuntamento(id);
   if (!a) return;
@@ -10366,13 +10489,14 @@ function apriModalAppuntamento(id) {
   const html = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
     <div class="modal" style="max-width:560px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-        <div><h2>Appuntamento</h2><div class="modal-sub">${escapeHtml(fmtData(a.data))}${a.ora?` · ${escapeHtml(a.ora)}`:''} — ${escapeHtml(etichettaClienteEvento('appuntamento', a.clienteId))}</div></div>
+        <div><h2>Appuntamento</h2><div class="modal-sub">${escapeHtml(fmtData(a.data))}${a.ora?` · ${escapeHtml(a.ora)}–${escapeHtml(oraFineAppuntamento(a)||'?')}`:''} — ${escapeHtml(etichettaClienteEvento('appuntamento', a.clienteId))}</div></div>
         <button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button>
       </div>
       ${bloccoSegreteria}
       <div class="grid2">
         <div class="field"><label>Stato</label><select data-action="app-cambia-stato" data-id="${a.id}">${STATI_APPUNTAMENTO.map(s=>`<option value="${s}" ${a.stato===s?'selected':''}>${s}</option>`).join('')}</select></div>
         <div class="field"><label>Ora</label><input type="time" value="${escapeHtml(a.ora||'')}" data-action="app-cambia-ora" data-id="${a.id}"></div>
+        <div class="field"><label>Durata</label><select data-action="app-cambia-durata" data-id="${a.id}">${DURATE_APPUNTAMENTO.map(d => `<option value="${d.min}" ${durataAppuntamento(a)===d.min?'selected':''}>${d.label}</option>`).join('')}</select></div>
         <div class="field full" style="grid-column:1/-1;"><label>Oggetto</label><input type="text" value="${escapeHtml(a.oggetto||'')}" data-action="app-cambia-oggetto" data-id="${a.id}"></div>
         <div class="field full" style="grid-column:1/-1;"><label>Bisogno di software di fatturazione <span style="font-weight:400;color:var(--text-mut);">(valutazione del consulente)</span></label>
           <select data-action="app-cambia-software-fatturazione" data-id="${a.id}">
@@ -10528,14 +10652,20 @@ function agendaSettimanalePrenotaHtml() {
     const delGiorno = impegni.filter(a => a.data === iso).sort((a, b) => (a.ora || '').localeCompare(b.ora || ''));
     const eOggi = iso === oggi;
     const eFestivo = i >= 5;
+    // Segnalato da Matteo: con più appuntamenti nello stesso giorno "non appaiono tutti" - in
+    // realtà erano tutti nel DOM ma dentro un'area alta solo 110px con scroll nascosto, facile da
+    // scambiare per un elenco troncato. Area più alta (220px, ancora scrollabile per i giorni
+    // davvero pieni) + conteggio esplicito in intestazione, così non resta alcun dubbio su quanti
+    // impegni ci sono anche quando bisogna scorrere per vederli tutti. Ora mostrata come intervallo
+    // inizio–fine (richiesta di Matteo: sapere quando finisce, non solo quando inizia).
     const righe = delGiorno.length
       ? delGiorno.map(a => `<div style="font-size:11px;line-height:1.4;padding:2px 0;border-top:1px solid var(--border);">
-          <strong>${escapeHtml(a.ora || '—')}</strong> ${escapeHtml(a.oggetto || '')}${a.clienteId ? ' — ' + escapeHtml(etichettaClienteEvento('appuntamento', a.clienteId)) : ''}
+          <strong>${escapeHtml(a.ora || '—')}${a.ora ? '–' + escapeHtml(oraFineAppuntamento(a) || '?') : ''}</strong> ${escapeHtml(a.oggetto || '')}${a.clienteId ? ' — ' + escapeHtml(etichettaClienteEvento('appuntamento', a.clienteId)) : ''}
         </div>`).join('')
       : `<div style="font-size:11px;color:var(--text-mut);padding:4px 0;">libero</div>`;
     return `<div style="flex:1;min-width:0;border:1px solid var(--border);border-radius:6px;padding:6px 7px;${eOggi ? 'background:var(--rosa-bg);border-color:var(--rosa);' : eFestivo ? 'background:var(--bg-2,#f7f8fa);' : ''}">
-      <div style="font-size:11px;font-weight:700;${eOggi ? 'color:var(--rosa-strong,var(--rosa));' : ''}">${NOMI_GIORNO[i]} ${d.getDate()}/${d.getMonth() + 1}${eOggi ? ' · oggi' : ''}</div>
-      <div style="max-height:110px;overflow-y:auto;margin-top:2px;">${righe}</div>
+      <div style="font-size:11px;font-weight:700;${eOggi ? 'color:var(--rosa-strong,var(--rosa));' : ''}">${NOMI_GIORNO[i]} ${d.getDate()}/${d.getMonth() + 1}${eOggi ? ' · oggi' : ''}${delGiorno.length ? ` · ${delGiorno.length}` : ''}</div>
+      <div style="max-height:220px;overflow-y:auto;margin-top:2px;">${righe}</div>
     </div>`;
   }).join('');
   const etichettaSettimana = PRENOTA_SETTIMANA_OFFSET === 0 ? 'Questa settimana' : PRENOTA_SETTIMANA_OFFSET === 1 ? 'Prossima settimana' : PRENOTA_SETTIMANA_OFFSET === -1 ? 'Settimana scorsa' : `Settimana del ${dataISOLocale(lunedi).split('-').reverse().join('/')}`;
@@ -10565,6 +10695,7 @@ function renderFormPrenotaAppuntamento() {
     <div class="grid2">
       <div class="field"><label>Data</label><input type="date" id="prenData" value="${oggi}"></div>
       <div class="field"><label>Ora</label><input type="time" id="prenOra"></div>
+      <div class="field"><label>Durata</label><select id="prenDurata">${DURATE_APPUNTAMENTO.map(d => `<option value="${d.min}" ${d.min===DURATA_APPUNTAMENTO_DEFAULT?'selected':''}>${d.label}</option>`).join('')}</select></div>
     </div>
 
     <div class="field full" style="grid-column:1/-1;margin-top:8px;"><label>Nome di chi chiama</label><input type="text" id="prenNomeChiamante" placeholder="nome e cognome, o ragione sociale"></div>
@@ -10632,6 +10763,11 @@ function salvaPrenotaAppuntamento() {
   const data = h('prenData').value;
   if (!data) { toast('Serve una data per l\'appuntamento.'); return; }
   const ora = h('prenOra').value || '';
+  const durataMinuti = h('prenDurata') ? (Number(h('prenDurata').value) || DURATA_APPUNTAMENTO_DEFAULT) : DURATA_APPUNTAMENTO_DEFAULT;
+  if (PRENOTA_CONSULENTE && ora) {
+    const conflitti = appuntamentiInConflitto(PRENOTA_CONSULENTE, data, ora, durataMinuti, null);
+    if (conflitti.length && !confermaAzione(messaggioConflittoAppuntamenti(conflitti))) return;
+  }
   const tipoEl = document.querySelector('input[name="prenTipo"]:checked');
   const tipoRichiesta = tipoEl ? tipoEl.value : TIPI_RICHIESTA_APPUNTAMENTO[0];
   const clienteId = (tipoRichiesta === 'Consulenza per attività esistente' && h('prenCliente')) ? (h('prenCliente').value || null) : null;
@@ -10646,7 +10782,7 @@ function salvaPrenotaAppuntamento() {
   const note = h('prenNote').value;
   const oggetto = motivo === 'Altro' && motivoAltro.trim() ? motivoAltro.trim() : (motivo || 'Appuntamento');
   aggiungiAppuntamento({
-    clienteId, data, ora, oggetto, note, consulente: PRENOTA_CONSULENTE,
+    clienteId, data, ora, durataMinuti, oggetto, note, consulente: PRENOTA_CONSULENTE,
     nomeChiamante, email, tipologiaAttivita, canaleProvenienza,
     prenotatoDaSegreteria: true, tipoRichiesta, telefono, motivo, motivoAltro,
   });
@@ -13260,6 +13396,14 @@ function onClickDelegato(e) {
     case 'nuovo-evento-salva-scadenza': salvaNuovaScadenzaRicorrente(); break;
     case 'stampa-riepilogo-appuntamento': apriRiepilogoAppuntamento(id); break;
     case 'prenota-appuntamento': modalPrenotaAppuntamento(); break;
+    // Bug segnalato da Matteo ("le frecce per cambiare settimana non fanno nulla"): questi tre sono
+    // <button>, quindi un click su di loro non genera MAI un evento 'change' - erano finiti per
+    // sbaglio dentro onChangeDelegato (corretto per i <select>/<input> lì sotto, es.
+    // prenota-cambia-consulente) invece che qui in onClickDelegato, quindi il listener giusto
+    // (document.body 'change') non li vedeva mai scattare.
+    case 'prenota-settimana-prec': PRENOTA_SETTIMANA_OFFSET--; aggiornaAgendaSettimanalePrenota(); break;
+    case 'prenota-settimana-succ': PRENOTA_SETTIMANA_OFFSET++; aggiornaAgendaSettimanalePrenota(); break;
+    case 'prenota-settimana-oggi': PRENOTA_SETTIMANA_OFFSET = 0; aggiornaAgendaSettimanalePrenota(); break;
     case 'salva-prenota-appuntamento': salvaPrenotaAppuntamento(); break;
     case 'app-elimina': if (confirm('Eliminare questo appuntamento?')) { rimuoviAppuntamento(id); chiudiModal(); render(); } break;
     case 'cal-toggle-gruppo': {
@@ -13604,7 +13748,8 @@ function onChangeDelegato(e) {
     // Modale dettaglio appuntamento (task #141): stato aggiorna anche la vista sotto (badge/colore
     // in calendario), gli altri campi no render — stesso motivo di scad-cambia-importo.
     case 'app-cambia-stato': aggiornaAppuntamento(id, { stato: el.value }); render(); break;
-    case 'app-cambia-ora': aggiornaAppuntamento(id, { ora: el.value }); break;
+    case 'app-cambia-ora': aggiornaAppuntamento(id, { ora: el.value }); avvisaSeConflittoAppuntamento(id); break;
+    case 'app-cambia-durata': aggiornaAppuntamento(id, { durataMinuti: Number(el.value) || DURATA_APPUNTAMENTO_DEFAULT }); avvisaSeConflittoAppuntamento(id); break;
     case 'app-cambia-oggetto': aggiornaAppuntamento(id, { oggetto: el.value }); break;
     case 'app-cambia-software-fatturazione': aggiornaAppuntamento(id, { bisognoSoftwareFatturazione: el.value }); break;
     case 'app-cambia-note': aggiornaAppuntamento(id, { note: el.value }); break;
@@ -13612,9 +13757,6 @@ function onChangeDelegato(e) {
     case 'prenota-cambia-consulente': PRENOTA_CONSULENTE = el.value; renderFormPrenotaAppuntamento(); break;
     case 'prenota-tipo-change': aggiornaVisibilitaClientePrenota(); break;
     case 'prenota-motivo-change': aggiornaVisibilitaMotivoAltroPrenota(); break;
-    case 'prenota-settimana-prec': PRENOTA_SETTIMANA_OFFSET--; aggiornaAgendaSettimanalePrenota(); break;
-    case 'prenota-settimana-succ': PRENOTA_SETTIMANA_OFFSET++; aggiornaAgendaSettimanalePrenota(); break;
-    case 'prenota-settimana-oggi': PRENOTA_SETTIMANA_OFFSET = 0; aggiornaAgendaSettimanalePrenota(); break;
     case 'cred-campo-toggle-segreto': {
       const idx = Number(el.dataset.idx);
       if (CRED_CAMPI_MODAL[idx]) { CRED_CAMPI_MODAL[idx].segreto = el.checked; renderCampiCredenzialeModal(); }
