@@ -50,14 +50,25 @@ input,select,textarea{font-family:inherit;font-size:14px;}
 #sidebar .navitem:hover{background:rgba(255,255,255,.1);color:#fff;}
 #sidebar .navitem.active{background:#fff;color:var(--blu-scuro);font-weight:700;box-shadow:var(--shadow-md);}
 #sidebar .navitem.active .ic{opacity:1;}
-#sidebar .navgroup{padding:16px 22px 6px 22px;font-size:10px;text-transform:uppercase;letter-spacing:.08em;opacity:.6;font-weight:700;color:#c3d1e8;}
+/* Segnalato da Matteo: l'etichetta di gruppo (es. "Panoramica") era più piccola e meno leggibile
+   della voce al suo interno (es. "Dashboard"), quindi la distinzione tra "intestazione di
+   categoria" e "voce cliccabile" non si percepiva bene a colpo d'occhio. Non basta renderla più
+   grande - deve restare chiaramente più piccola di una voce di menu (è un'etichetta, non una
+   voce), ma con CONTRASTO alto invece che quasi trasparente (prima era opacity:.6, praticamente
+   illeggibile sullo sfondo scuro), più margine di respiro sopra ogni gruppo e una sottile riga
+   separatrice, così i gruppi si leggono a colpo d'occhio come sezioni distinte invece che
+   confondersi con le voci. */
+#sidebar .navgroup{padding:20px 22px 9px 22px;font-size:11.5px;text-transform:uppercase;letter-spacing:.07em;font-weight:800;color:rgba(255,255,255,.68);}
 /* Task #142: intestazioni di gruppo cliccabili per collassare/espandere (troppe voci tutte
    visibili spaesavano chi apriva Prisma per la prima volta). display:flex per allineare
-   chevron/etichetta/badge sulla stessa riga; hover/opacità più alta segnala che è cliccabile,
-   a differenza delle intestazioni statiche di prima. */
-#sidebar .navgroup.collassabile{display:flex;align-items:center;gap:6px;cursor:pointer;opacity:.75;padding-top:14px;padding-bottom:8px;user-select:none;}
-#sidebar .navgroup.collassabile:hover{opacity:1;color:#fff;}
-#sidebar .navgroup.collassabile .chev{font-size:9px;opacity:.8;width:10px;flex:none;}
+   chevron/etichetta/badge sulla stessa riga; hover porta il colore a bianco pieno per segnalare
+   che è cliccabile, senza dover passare per una opacità bassa a riposo. */
+#sidebar .navgroup.collassabile{display:flex;align-items:center;gap:7px;cursor:pointer;padding-top:20px;padding-bottom:9px;user-select:none;border-top:1px solid rgba(255,255,255,.09);margin-top:2px;}
+#sidebar .navgroup.collassabile:hover{color:#fff;}
+/* Il primo gruppo (subito sotto il brand, che ha già il suo margine/bordo) non ha bisogno di
+   un'altra riga separatrice sopra, altrimenti si vedrebbero due bordi ravvicinati. */
+#sidebar #navMenu > .navgroup.collassabile:first-child{border-top:none;margin-top:0;padding-top:6px;}
+#sidebar .navgroup.collassabile .chev{font-size:9.5px;opacity:.85;width:10px;flex:none;}
 #sidebar .navgroup.collassabile .nav-badge{margin-left:0;}
 .navgroup-items.chiuso{display:none;}
 #sidebar .navitem .nav-badge{margin-left:auto;background:var(--rosso,#d33);color:#fff;font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:20px;min-width:16px;text-align:center;}
