@@ -2268,10 +2268,20 @@ async function main() {
   const panelComBreakdown = qa('#portalFullscreenPhone .pd-panel').find(p => p.querySelector('h2').textContent.includes('Comunicazioni'));
   assert(panelComBreakdown, 'pannello di riepilogo Comunicazioni non trovato nella schermata Panoramica');
   assert(panelComBreakdown.querySelectorAll('.pd-mini-stat').length === 3, 'il riepilogo comunicazioni in Panoramica deve avere 3 voci (Aperte/In corso/Chiuse)');
-  const panelRavAnteprima = qa('#portalFullscreenPhone .pd-panel').find(p => p.querySelector('h2').textContent.includes('ravvedimento'));
-  assert(panelRavAnteprima, 'pannello simulatore ravvedimento non trovato nella schermata Panoramica dell\'anteprima (deve comparire sempre, come nel portale reale)');
-  assert(qa('#portalFullscreenPhone .pd-panel').length === 4, 'attesi 4 pannelli nella schermata Panoramica (Dati azienda, Simulatore ravvedimento, Comunicazioni, Numeri chiave)');
-  console.log('=== Portale cliente: anteprima desktop, schermata Panoramica con recap azienda, ravvedimento e comunicazioni OK');
+  assert(qa('#portalFullscreenPhone .pd-panel').length === 3, 'attesi 3 pannelli nella schermata Panoramica (Dati azienda, Comunicazioni, Numeri chiave)');
+  console.log('=== Portale cliente: anteprima desktop, schermata Panoramica con recap azienda e comunicazioni OK');
+
+  // Task #184 (Matteo: "il simulatore di ravvedimento lo metterei nel tab scadenze del portale
+  // clienti, nella panoramica non ha senso"): verificato che non sia più in Panoramica (appena
+  // sopra) e che sia comparso nel tab Scadenze, qui, nella stessa identica anteprima.
+  click(q('[data-action="portal-desktop-tab"][data-tab="scadenze"]'));
+  await wait(20);
+  assert(q('.pd-nav-item.active').textContent.trim() === 'Scadenze', 'il click sulla voce "Scadenze" dovrebbe attivare quella schermata');
+  const panelRavInScadenze = qa('#portalFullscreenPhone .pd-panel').find(p => p.querySelector('h2').textContent.includes('ravvedimento'));
+  assert(panelRavInScadenze, 'il pannello simulatore ravvedimento dovrebbe ora comparire nella schermata Scadenze, non più in Panoramica');
+  console.log('=== Portale cliente: simulatore ravvedimento spostato nel tab Scadenze (anteprima desktop) OK');
+  click(q('[data-action="portal-desktop-tab"][data-tab="panoramica"]'));
+  await wait(20);
 
   // pulsante "Nascondi dati sensibili": maschera P.IVA/CF/contatti e resta selezionato, anche
   // riaprendo l'anteprima da zero (preferenza salvata in locale, non solo in memoria)

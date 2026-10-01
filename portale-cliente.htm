@@ -37,6 +37,16 @@
 body{margin:0;font-family:"Plus Jakarta Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);font-size:14.5px;-webkit-font-smoothing:antialiased;padding-bottom:calc(var(--tabbar-h) + env(safe-area-inset-bottom));}
 a{color:var(--blu-mid);}
 button{font-family:inherit;cursor:pointer;}
+/* Task #181 (Matteo, con screenshot: "qui stona tantissimo il font di 'scegli file' e 'nessun
+   file selezionato' che è diverso dal resto [...] che è la stessa cosa del simulatore del
+   ravvedimento"): tutti i controlli nativi del browser (input, select, il bottone generato da
+   input type="file") usano di default il font di sistema del sistema operativo, non quello
+   della pagina - differenza visibile soprattutto su "Scegli file" e sui <select> del simulatore
+   ravvedimento. Regola unica qui, non ripetuta campo per campo come nei pochi punti che già lo
+   facevano a mano (es. le select di filtro documenti). ::file-selector-button è lo pseudo-elemento
+   standard per il bottone di un input file (supportato da Chrome/Edge, quindi da Electron). */
+input, select, textarea{font-family:inherit;}
+input::file-selector-button{font-family:inherit;font-size:inherit;}
 ::-webkit-scrollbar{width:10px;height:10px;}
 ::-webkit-scrollbar-thumb{background:#c9d0dd;border-radius:20px;}
 
@@ -948,7 +958,10 @@ function renderPanoramica() {
       <div class="item"><div class="t">ROE</div><div class="s">${fmtPct(d.roe)}</div></div>
     </div>`;
   }
-  return panelF24() + panelRavvedimento() + panelRitenute() + panelAzienda + panelCom + panelNumeri;
+  // panelRavvedimento() spostato nel tab Scadenze (task #184, Matteo: "nella panoramica non ha
+  // senso"): calcolare quanto costa regolarizzare una scadenza saltata è concettualmente parte
+  // delle scadenze, non un dato di sintesi dell'azienda come il resto di questa vista.
+  return panelF24() + panelRitenute() + panelAzienda + panelCom + panelNumeri;
 }
 
 // Una "bolla" di messaggio, usata sia per il testo iniziale della comunicazione sia per ogni
@@ -984,8 +997,15 @@ function cardComunicazione(c) {
   // solo il tab nuova non basta") - così si capisce a colpo d'occhio se ha risposto lo studio senza
   // dover aprire ogni card.
   const ultimoMsg = nRisposte ? c.risposte[nRisposte - 1] : (c.corpo ? { autore: c.direzione, testo: c.corpo } : null);
+  // Task #182 (Matteo, con screenshot: "togli l'ultimo messaggio presente, aprendo la
+  // comunicazione quello resta ed è brutto"): questa anteprima serve solo a card CHIUSA (sapere a
+  // colpo d'occhio chi ha scritto per ultimo senza aprire); a card aperta il thread completo qui
+  // sotto mostra già quello stesso ultimo messaggio come ultima bolla - tenerla visibile duplicava
+  // il messaggio. Ha un id dedicato (non il solito "dettaglio_<id>") così può essere nascosta/
+  // mostrata in sincrono col dettaglio sia al click (vedi 'apri-comunicazione') sia riaprendo una
+  // card già aperta dopo un render (vedi riapriComunicazioniAperte).
   const anteprima = ultimoMsg
-    ? `<div class="com-anteprima"><span class="aut-inline ${ultimoMsg.autore === 'cliente' ? 'cliente' : 'studio'}">${ultimoMsg.autore === 'cliente' ? 'Tu' : 'Studio'}:</span> ${escapeHtml(anteprimaTesto(ultimoMsg.testo, 90))}</div>`
+    ? `<div class="com-anteprima" id="anteprima_${escapeHtml(c.id)}"><span class="aut-inline ${ultimoMsg.autore === 'cliente' ? 'cliente' : 'studio'}">${ultimoMsg.autore === 'cliente' ? 'Tu' : 'Studio'}:</span> ${escapeHtml(anteprimaTesto(ultimoMsg.testo, 90))}</div>`
     : '';
   // Una richiesta chiusa dallo studio non si riapre scrivendo dal portale (Matteo) - il box di
   // risposta lascia semplicemente il posto a un avviso.
@@ -1063,7 +1083,8 @@ function renderScadenze() {
       <div class="s">${VISTA.numeri.adempimentiAnnualiCompletati}/${VISTA.numeri.adempimentiAnnualiTotali} completati</div>
       <div class="progress"><div style="width:${pctAnn}%;"></div></div>
     </div>` : '';
-  return `<div class="panel">${panelHeader(ICONE.scadenze, 'var(--giallo-bg)', 'var(--giallo)', 'Scadenze e adempimenti', VISTA.scadenze.length)}${items}${annuali}</div>` + panelF24Storico();
+  // Task #184: simulatore ravvedimento spostato qui da Panoramica.
+  return `<div class="panel">${panelHeader(ICONE.scadenze, 'var(--giallo-bg)', 'var(--giallo)', 'Scadenze e adempimenti', VISTA.scadenze.length)}${items}${annuali}</div>` + panelRavvedimento() + panelF24Storico();
 }
 
 // Storico F24 (pagati e non), richiesto da Matteo dentro il tab Scadenze: a differenza del blocco
@@ -1261,6 +1282,8 @@ function riapriComunicazioniAperte() {
     dettaglio.hidden = false;
     const item = dettaglio.closest('.item');
     if (item) item.classList.add('aperto');
+    const anteprima = document.getElementById('anteprima_' + id);
+    if (anteprima) anteprima.hidden = true;
   });
 }
 
@@ -1488,6 +1511,8 @@ function gestisciClicCorpo(e) {
     if (dettaglio) dettaglio.hidden = !dettaglio.hidden;
     if (item) item.classList.toggle('aperto', dettaglio ? !dettaglio.hidden : false);
     if (dettaglio && !dettaglio.hidden) COM_APERTE.add(id); else COM_APERTE.delete(id);
+    const anteprima = document.getElementById('anteprima_' + id);
+    if (anteprima) anteprima.hidden = dettaglio ? !dettaglio.hidden : anteprima.hidden;
     // Segna come vista (fa sparire il badge "Nuova") solo la prima volta che si apre: in locale
     // subito, per un feedback immediato, e in background sul server perché resti così anche in
     // un'altra visita/dispositivo. Silenzioso: se il POST fallisce il badge resta acceso e basta,

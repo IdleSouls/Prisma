@@ -9757,11 +9757,15 @@ function contenutoDesktopPortale(cliente) {
   const panelAndamento = `<div class="pd-panel span2">${panelHeader(PD_ICONE.and, 'var(--verde-bg)', 'var(--verde)', 'Andamento')}${corpoAndamento}</div>`;
 
   let corpo;
+  // Task #184 (Matteo: "il simulatore di ravvedimento lo metterei nel tab scadenze del portale
+  // clienti, nella panoramica non ha senso"): spostato qui da Panoramica, stesso cambiamento fatto
+  // nel portale reale (portale-cliente.htm > renderScadenze/renderPanoramica) - questa è solo
+  // l'anteprima statica che lo studio vede dentro Prisma, deve restare coerente con quella vera.
   if (PORTAL_DESKTOP_TAB === 'comunicazioni') corpo = panelCom;
-  else if (PORTAL_DESKTOP_TAB === 'scadenze') corpo = panelScad;
+  else if (PORTAL_DESKTOP_TAB === 'scadenze') corpo = panelScad + panelRavvedimento;
   else if (PORTAL_DESKTOP_TAB === 'documenti') corpo = panelDoc;
   else if (PORTAL_DESKTOP_TAB === 'andamento') corpo = panelAndamento;
-  else corpo = panelAzienda + panelRavvedimento + panelComBreakdown + panelNumeri;
+  else corpo = panelAzienda + panelComBreakdown + panelNumeri;
 
   return `<div class="pd-hero">
     <div class="eyebrow">Il tuo spazio con ${escapeHtml(nomeStudio)}</div>
