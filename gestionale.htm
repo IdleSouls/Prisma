@@ -1328,7 +1328,7 @@ function modelliDocumentoDefault() {
   const mk = (categoria, nome, corpo) => ({ id: uid('mod'), categoria, nome, corpo, attivo: true, predefinito: true, creatoIl: oggiISO() });
   return [
     mk('Preventivo', 'Preventivo standard', `{{studio.nome}}
-{{studio.qualifica}} · {{studio.iscrizione}}
+{{studio.iscrizione}}
 {{studio.indirizzo}}
 C.F. {{studio.cf}}
 
@@ -1380,7 +1380,7 @@ _______________________________			_______________________________
 Luogo e data: {{studio.citta}}, ____________________`),
 
     mk('Mandato professionale', 'Mandato professionale standard', `{{studio.nome}}
-{{studio.qualifica}} · {{studio.iscrizione}}
+{{studio.iscrizione}}
 {{studio.indirizzo}}
 C.F. {{studio.cf}}
 
@@ -1389,7 +1389,7 @@ MANDATO PROFESSIONALE
 
 Tra
 
-{{studio.nome}}, {{studio.qualifica}} {{studio.iscrizione}}, con domicilio professionale in {{studio.indirizzo}} – di seguito il "Professionista"
+{{studio.nome}}, {{studio.iscrizione}}, con domicilio professionale in {{studio.indirizzo}} – di seguito il "Professionista"
 
 e
 
@@ -1461,7 +1461,7 @@ _______________________________			_______________________________`),
     mk('AML - Dichiarazione cliente', 'Dichiarazione cliente (adeguata verifica)', `DICHIARAZIONE DEL CLIENTE AI FINI ANTIRICICLAGGIO
 D.Lgs. 21 novembre 2007, n. 231 e successive modificazioni
 
-Professionista incaricato: {{studio.nome}}, {{studio.qualifica}}, {{studio.iscrizione}}
+Professionista incaricato: {{studio.nome}}, {{studio.iscrizione}}
 Domicilio professionale: {{studio.indirizzo}} · C.F. {{studio.cf}}
 
 A) DATI IDENTIFICATIVI DEL CLIENTE E DELL'ESECUTORE
@@ -1513,13 +1513,13 @@ Il Cliente / Legale Rappresentante			Il Professionista che esegue l'identificazi
 _______________________________			_______________________________`),
 
     mk('AML - Nota di accettazione incarico', 'Nota di accettazione (rischio significativo)', `{{studio.nome}}
-{{studio.qualifica}} · {{studio.iscrizione}} · {{studio.indirizzo}}
+{{studio.iscrizione}} · {{studio.indirizzo}}
 
 NOTA DI ACCETTAZIONE INCARICO
 Ai sensi degli artt. 14, 24-25 D.Lgs. 21 novembre 2007, n. 231 e delle Regole Tecniche CNDCEC
 
 DATI DEL PROFESSIONISTA E DEL CLIENTE
-Professionista: {{studio.nome}}, C.F. {{studio.cf}}, {{studio.qualifica}}, {{studio.iscrizione}}
+Professionista: {{studio.nome}}, C.F. {{studio.cf}}, {{studio.iscrizione}}
 Cliente: {{cliente.ragioneSociale}} – P.IVA/C.F. {{cliente.piva}} {{cliente.codiceFiscale}}
 Sede legale/domicilio cliente: {{cliente.indirizzo}}
 Titolare effettivo: {{titolareEffettivo}}
@@ -1557,9 +1557,12 @@ Allegati al presente documento: {{allegati}}`),
 function statoIniziale() {
   const annoOggi = new Date().getFullYear();
   return Object.assign({
-    /* qualifica/iscrizione/indirizzoStudio/cfStudio/citta: usati come placeholder automatici
-       {{studio.*}} nei modelli documento (task #122) — intestazione di preventivi, mandati e
-       documenti antiriciclaggio generati dai modelli. */
+    /* iscrizione/indirizzoStudio/cfStudio/citta: usati come placeholder automatici {{studio.*}}
+       nei modelli documento (task #122) — intestazione di preventivi, mandati e documenti
+       antiriciclaggio generati dai modelli. (Task #174: rimosso "qualifica" da qui - Matteo:
+       "la qualifica dello studio non ha senso, toglila come impostazione" - restava un campo
+       libero senza un vero uso pratico per uno studio che non è un ordine professionale
+       monotitolare.) */
     /* consulenti (task richiesto da Matteo): sottoinsieme di meta.responsabili abilitato a ricevere
        appuntamenti dal flusso "Prenota un appuntamento" della segreteria — non ogni responsabile
        dello studio prende appuntamenti con i clienti (es. Sabrina no, Matteo e Federico sì).
@@ -1571,7 +1574,7 @@ function statoIniziale() {
     // di id sezione (vedi NAV) visibili SOLO per chi ha ruolo 'limitato'. È un filtro di interfaccia,
     // non un controllo di sicurezza lato server: chiunque abbia accesso al PC/porta condivide gli
     // stessi dati, vedi cardAccessoEsterno.
-    meta: { versione: 2, studioNome: 'Studio', responsabili: ['Matteo', 'Sabrina'], consulenti: ['Matteo'], ruoli: {}, tabConsentiti: {}, qualifica: '', iscrizione: '', indirizzoStudio: '', cfStudio: '', citta: 'Vicenza', anniExtra: [], logoStudio: '', logoPosizione: 'sinistra' },
+    meta: { versione: 2, studioNome: 'Studio', responsabili: ['Matteo', 'Sabrina'], consulenti: ['Matteo'], ruoli: {}, tabConsentiti: {}, iscrizione: '', indirizzoStudio: '', cfStudio: '', citta: 'Vicenza', anniExtra: [], logoStudio: '', logoPosizione: 'sinistra' },
     annoCorrente: annoOggi,
     clienti: [],
     scadenzeOverrides: {},
@@ -3321,7 +3324,6 @@ const PLACEHOLDER_AUTO_LEGENDA = [
   { chiave: 'cliente.email', label: 'Email del cliente' },
   { chiave: 'cliente.telefono', label: 'Telefono del cliente' },
   { chiave: 'studio.nome', label: 'Nome dello studio' },
-  { chiave: 'studio.qualifica', label: 'Qualifica professionale (es. Esperto Contabile)' },
   { chiave: 'studio.iscrizione', label: 'Iscrizione albo/ordine' },
   { chiave: 'studio.indirizzo', label: 'Indirizzo dello studio' },
   { chiave: 'studio.cf', label: 'Codice fiscale del professionista' },
@@ -3343,7 +3345,6 @@ function valoriAutomaticiPlaceholder(clienteId) {
     'cliente.email': contatti.email || '',
     'cliente.telefono': contatti.telefono || '',
     'studio.nome': STATE.meta.studioNome || '',
-    'studio.qualifica': STATE.meta.qualifica || '',
     'studio.iscrizione': STATE.meta.iscrizione || '',
     'studio.indirizzo': STATE.meta.indirizzoStudio || '',
     'studio.cf': STATE.meta.cfStudio || '',
@@ -10794,7 +10795,7 @@ function apriRiepilogoAppuntamento(id) {
   const m = STATE.meta;
   const datiStudioHtml = `<div>
       <div style="font-weight:700;font-size:15px;">${escapeHtml(m.studioNome || 'Studio')}</div>
-      ${m.qualifica ? `<div style="font-size:11.5px;color:#555;">${escapeHtml(m.qualifica)}${m.iscrizione ? ' — ' + escapeHtml(m.iscrizione) : ''}</div>` : ''}
+      ${m.iscrizione ? `<div style="font-size:11.5px;color:#555;">${escapeHtml(m.iscrizione)}</div>` : ''}
       ${m.indirizzoStudio ? `<div style="font-size:11.5px;color:#555;">${escapeHtml(m.indirizzoStudio)}</div>` : ''}
       ${m.cfStudio ? `<div style="font-size:11.5px;color:#555;">C.F./P.IVA ${escapeHtml(m.cfStudio)}</div>` : ''}
     </div>`;
@@ -11853,7 +11854,6 @@ function renderImpostazioniStudio() {
     <div class="helptext" style="margin-bottom:10px;">Usati anche come segnaposto automatici {{studio.*}} nei modelli documento (Preventivi, Mandati, Antiriciclaggio).</div>
     <div class="grid2" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;max-width:640px;">
       <div class="field"><label>Nome studio</label><input type="text" id="impStudioNome" value="${escapeHtml(STATE.meta.studioNome)}"></div>
-      <div class="field"><label>Qualifica</label><input type="text" id="impStudioQualifica" value="${escapeHtml(STATE.meta.qualifica)}" placeholder="es. Esperto Contabile"></div>
       <div class="field"><label>Iscrizione albo</label><input type="text" id="impStudioIscrizione" value="${escapeHtml(STATE.meta.iscrizione)}" placeholder="es. Iscritto ODCEC Vicenza n. B53"></div>
       <div class="field"><label>Codice fiscale</label><input type="text" id="impStudioCf" value="${escapeHtml(STATE.meta.cfStudio)}"></div>
       <div class="field full" style="grid-column:1/-1;"><label>Indirizzo</label><input type="text" id="impStudioIndirizzo" value="${escapeHtml(STATE.meta.indirizzoStudio)}" placeholder="es. Strada di Casale, 98 – 36100 Vicenza"></div>
@@ -13736,7 +13736,6 @@ function onClickDelegato(e) {
 
     case 'salva-studio-nome':
       STATE.meta.studioNome = h('impStudioNome').value.trim() || 'Studio';
-      STATE.meta.qualifica = h('impStudioQualifica').value.trim();
       STATE.meta.iscrizione = h('impStudioIscrizione').value.trim();
       STATE.meta.cfStudio = h('impStudioCf').value.trim();
       STATE.meta.indirizzoStudio = h('impStudioIndirizzo').value.trim();
