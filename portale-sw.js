@@ -62,12 +62,24 @@ self.addEventListener('push', (evento) => {
     try { dati = Object.assign(dati, evento.data.json()); } catch (e) { /* payload non JSON: restano i valori di default */ }
   }
   evento.waitUntil(
-    self.registration.showNotification(dati.titolo, {
-      body: dati.corpo,
-      icon: undefined, // usa l'icona di sistema/del manifest, niente da caricare qui
-      data: { url: dati.url || './' },
-      tag: 'prisma-portale', // una notifica sostituisce la precedente invece di accumularsi se il cliente non le apre
-    })
+    Promise.all([
+      self.registration.showNotification(dati.titolo, {
+        body: dati.corpo,
+        icon: undefined, // usa l'icona di sistema/del manifest, niente da caricare qui
+        data: { url: dati.url || './' },
+        tag: 'prisma-portale', // una notifica sostituisce la precedente invece di accumularsi se il cliente non le apre
+      }),
+      // Task #183 (Matteo: "le notifiche per le nuove comunicazioni nel portale cliente non
+      // funzionano bene"): se il portale è già aperto in una scheda, Chrome spesso non mostra
+      // nemmeno la notifica di sistema per una pagina in primo piano - senza questo messaggio
+      // quella scheda restava ferma fino al prossimo giro di polling. Avvisa ogni scheda aperta
+      // (anche quelle non "controllate" da questo service worker, rare ma possibili subito dopo
+      // un aggiornamento) così può ricaricare la vista subito, vedi il listener 'message' in
+      // portale-cliente.htm > iniziaPolling.
+      self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((elenco) => {
+        elenco.forEach((client) => client.postMessage({ tipo: 'prisma-nuova-comunicazione' }));
+      }),
+    ])
   );
 });
 

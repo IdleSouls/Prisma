@@ -430,7 +430,16 @@ let DOC_ANNO_FILTRO = 'Tutti';
 function annoDocumentoPortale(d) { return d.dataCaricamento ? d.dataCaricamento.slice(0, 4) : null; }
 function filtraDocumentiAnno(valore) { DOC_ANNO_FILTRO = valore; renderCorpo(); }
 let pollTimer = null;
-const POLL_MS = 45000; // aggiornamento leggero in background, non invasivo: niente spinner/flash
+// Task #180/#183 (Matteo: "ho archiviato delle comunicazioni [...] dal portale cliente le ho viste
+// archiviate solo dopo aver fatto refresh, possiamo fare in modo che i cambiamenti siano immediati
+// e live?" + "le notifiche per le nuove comunicazioni non funzionano bene"): 45s era pensato per
+// essere "leggero", ma con due finestre aperte fianco a fianco (studio + portale, com'era il test di
+// Matteo) la pagina resta sempre "visible" e non scatta mai il refresh immediato su
+// visibilitychange qui sotto - l'unico aggiornamento possibile era quindi aspettare fino a 45s, che
+// per un test dal vivo sembra "non funzionare" anche se tecnicamente avrebbe funzionato. Ridotto a
+// un intervallo che sembra vivo senza martellare il server; lo stesso identico meccanismo di
+// corpoHaBozzaInCorso() protegge comunque bozze/allegati/calcoli non ancora inviati.
+const POLL_MS = 10000; // aggiornamento leggero in background, non invasivo: niente spinner/flash
 
 // Stesso ordine di CATEGORIE_DOCUMENTO in gestionale.htm (duplicato qui apposta: questa pagina è
 // pensata per restare separata dal gestionale interno, nessuna riga di codice dello studio finisce
@@ -736,9 +745,22 @@ function iniziaPolling() {
   if (pollTimer) return;
   pollTimer = setInterval(() => { ricaricaVista(); svuotaCoda(); }, POLL_MS);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { ricaricaVista(); svuotaCoda(); } });
+  // Task #180/#183: 'focus' in più di 'visibilitychange' - due finestre affiancate (il caso del
+  // test di Matteo) restano entrambe "visible" anche passando dall'una all'altra, quindi
+  // visibilitychange da solo non basta a dare la sensazione di "live" cliccando sul portale dopo
+  // aver agito nello studio.
+  window.addEventListener('focus', () => { ricaricaVista(); svuotaCoda(); });
   // Il browser stesso sa quando la connessione torna disponibile - non serve aspettare il prossimo
-  // giro di polling (fino a 45s) per riprovare la coda.
+  // giro di polling per riprovare la coda.
   window.addEventListener('online', svuotaCoda);
+  // Task #183: quando arriva una push mentre la pagina è già aperta, il service worker (vedi
+  // portale-sw.js) manda qui un messaggio invece di aspettare il prossimo giro di polling - così
+  // una nuova comunicazione dallo studio si vede subito, non "non funziona bene" come segnalato.
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', (evento) => {
+      if (evento.data && evento.data.tipo === 'prisma-nuova-comunicazione') { ricaricaVista(); svuotaCoda(); }
+    });
+  }
 }
 
 function renderHero() {
