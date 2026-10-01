@@ -3297,6 +3297,33 @@ async function main() {
   await wait(20);
   console.log('=== Portale cliente: schermata "Andamento" coerente con presenza/assenza dati OK');
 
+  // Task #178 (Matteo: "sezione Andamento portale cliente troppo povera"): il problema reale non era
+  // l'interfaccia (portale-cliente.htm > renderAndamento() era già pronta per patrimonio netto, ROI/
+  // ROS/margine EBITDA, liquidità, indebitamento, giorni incasso crediti, variazioni, semafori e
+  // ripartizione costi) ma l'oggetto "andamento" dentro costruisciVistaPortaleClienteEsterna - quello
+  // DAVVERO spedito al portale esterno reale (il test sopra, sulla "pd-" anteprima desktop, usa
+  // un'altra funzione più semplice e non copre questo) - che calcolava solo ricavi/utile/ROE,
+  // lasciando il resto sempre undefined. Qui si verifica che il payload reale sia completo.
+  if (!window.clienteById(clienteConBilanci.id).portaleToken) window.attivaPortaleCliente(clienteConBilanci.id);
+  const tokenBilanci = window.clienteById(clienteConBilanci.id).portaleToken;
+  const vistaAndamento = window.costruisciVistaPortaleClienteEsterna(tokenBilanci);
+  assert(vistaAndamento && vistaAndamento.andamento, 'la vista del portale esterno per un cliente con bilanci caricati deve includere "andamento"');
+  const and = vistaAndamento.andamento;
+  ['ricavi','utileNetto','patrimonioNetto','roe','roi','ros','ebitdaMargin','currentRatio','indiceIndebitamento'].forEach(campo => {
+    assert(typeof and[campo] === 'number', `andamento.${campo} dovrebbe essere un numero per il cliente demo con bilanci completi, trovato ${JSON.stringify(and[campo])}`);
+  });
+  assert(typeof and.giorniIncassoCrediti === 'number', 'andamento.giorniIncassoCrediti dovrebbe essere calcolabile (crediti clienti e ricavi sono entrambi nel template)');
+  assert(and.giorniPagamentoDebiti === null, 'andamento.giorniPagamentoDebiti deve restare null: il modello dati non distingue i debiti fornitori dal resto dei debiti a breve, mai un numero inventato per riempire un campo');
+  ['semaforoRedditivita','semaforoLiquidita','semaforoSolidita'].forEach(campo => {
+    assert(['verde','giallo','rosso'].includes(and[campo]), `andamento.${campo} deve essere un colore di semaforo valido, trovato ${JSON.stringify(and[campo])}`);
+  });
+  assert(typeof and.variazioneRicavi === 'number', 'andamento.variazioneRicavi deve essere calcolabile (il cliente ha più di un periodo di bilancio caricato)');
+  assert(Array.isArray(and.seriePatrimonioNetto) && and.seriePatrimonioNetto.length === periodiBilCliente.length, 'andamento.seriePatrimonioNetto deve avere un punto per ogni periodo caricato');
+  assert(Array.isArray(and.serieCosti) && and.serieCosti.length === periodiBilCliente.length, 'andamento.serieCosti deve avere un punto per ogni periodo caricato');
+  assert(Array.isArray(and.ripartizioneCosti) && and.ripartizioneCosti.length === 5, 'andamento.ripartizioneCosti deve avere le 5 macro-categorie di costo (esterni, personale, ammortamenti, oneri finanziari, imposte)');
+  assert(and.ripartizioneCosti.every(r => typeof r.etichetta === 'string' && typeof r.valore === 'number'), 'ogni voce di ripartizioneCosti deve avere {etichetta, valore} - stessa forma attesa da graficoTorta() in portale-cliente.htm');
+  console.log('=== #178: payload reale del portale esterno (andamento) ora completo - patrimonio netto, ROI/ROS/margine, liquidità/indebitamento, giorni incasso, variazioni, semafori e ripartizione costi OK');
+
   // ---------- 8h-ter) Bilanci: riclassifica automatica da stampa grezza (senza riclassifica manuale) ----------
 
   // classificatore per parole chiave su etichette di una stampa contabile grezza (bilancio di

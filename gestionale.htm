@@ -9466,17 +9466,71 @@ function costruisciVistaPortaleClienteEsterna(token, password) {
     documentoToken: d.filePercorso ? ('doc_' + d.id) : null,
   }));
 
+  // Task #178 (Matteo: "sezione Andamento portale cliente troppo povera"): la causa reale non era
+  // l'interfaccia - portale-cliente.htm > renderAndamento() era già costruita per mostrare patrimonio
+  // netto, ROI/ROS/margine EBITDA, liquidità, indebitamento, giorni di incasso, composizione dei
+  // costi e le variazioni rispetto al periodo precedente (vedi i commenti lì, riferiti a una ricerca
+  // su Fathom/Spotlight Reporting/Syft Analytics e al PDF "Dal Business Plan al Cash Flow" di
+  // riferimento per questi indicatori) - ma QUESTO oggetto, quello davvero spedito al portale esterno
+  // reale, calcolava solo ricavi/utile netto/ROE: il resto arrivava sempre undefined e spariva dietro
+  // ai controlli "!= null" del template, lasciando il cliente con tre numeri e due grafichetti invece
+  // della vista completa già pronta. Qui si completa il calcolo, riusando le stesse funzioni già
+  // usate per la vista Bilanci&KPI dello studio (calcolaDerivatiBilancio/ConPrecedente, semaforoIndice,
+  // CATALOGO_INDICI_BILANCIO) così i due lati restano coerenti tra loro.
   let andamento = null;
   if (anniBilancioPortale.length > 0) {
     const ultimoAnno = anniBilancioPortale[anniBilancioPortale.length - 1];
-    const dB = calcolaDerivatiBilancio(STATE.bilanci[cliente.id][ultimoAnno]);
+    const idxUltimo = anniBilancioPortale.indexOf(ultimoAnno);
+    const annoPrecedente = idxUltimo > 0 ? anniBilancioPortale[idxUltimo - 1] : null;
+    const dB = calcolaDerivatiBilancioConPrecedente(STATE.bilanci[cliente.id][ultimoAnno], annoPrecedente ? STATE.bilanci[cliente.id][annoPrecedente] : null);
+    const dPrec = annoPrecedente ? calcolaDerivatiBilancio(STATE.bilanci[cliente.id][annoPrecedente]) : null;
+    const variazione = (attuale, precedente) => (typeof attuale === 'number' && typeof precedente === 'number' && precedente !== 0) ? (attuale - precedente) / Math.abs(precedente) : null;
+    const semaforoPerChiave = (chiave, valore) => {
+      const def = CATALOGO_INDICI_BILANCIO.find(i => i.chiave === chiave);
+      return def ? semaforoIndice(def, valore) : null;
+    };
     andamento = {
       etichettaUltimoPeriodo: etichettaEstesaBilancio(ultimoAnno),
       ricavi: (typeof dB.ricavi === 'number') ? dB.ricavi : null,
       utileNetto: (typeof dB.utileNetto === 'number') ? dB.utileNetto : null,
+      patrimonioNetto: (typeof dB.patrimonioNetto === 'number') ? dB.patrimonioNetto : null,
       roe: (typeof dB.roe === 'number') ? dB.roe : null,
+      roi: (typeof dB.roi === 'number') ? dB.roi : null,
+      ros: (typeof dB.ros === 'number') ? dB.ros : null,
+      ebitdaMargin: (typeof dB.ebitdaMargin === 'number') ? dB.ebitdaMargin : null,
+      currentRatio: (typeof dB.currentRatio === 'number') ? dB.currentRatio : null,
+      indiceIndebitamento: (typeof dB.indiceIndebitamento === 'number') ? dB.indiceIndebitamento : null,
+      // DSO (giorni medi di incasso crediti) è calcolabile dai dati che raccogliamo (crediti clienti
+      // / ricavi * 365). Il DPO (giorni medi di pagamento debiti) NO: il nostro modello semplificato
+      // ha un unico campo "debiti a breve" che mescola debiti verso fornitori e debiti finanziari a
+      // breve, quindi qui resta sempre null - meglio n/d (il template lo nasconde) che un numero
+      // inventato mescolando cose diverse.
+      giorniIncassoCrediti: (typeof dB.ricavi === 'number' && dB.ricavi > 0 && typeof dB.creditiClienti === 'number') ? (dB.creditiClienti / dB.ricavi) * 365 : null,
+      giorniPagamentoDebiti: null,
+      magazzino: (typeof dB.rimanenze === 'number' && dB.rimanenze > 0) ? dB.rimanenze : null,
+      variazioneRicavi: dPrec ? variazione(dB.ricavi, dPrec.ricavi) : null,
+      variazioneUtileNetto: dPrec ? variazione(dB.utileNetto, dPrec.utileNetto) : null,
+      variazionePatrimonioNetto: dPrec ? variazione(dB.patrimonioNetto, dPrec.patrimonioNetto) : null,
+      semaforoRedditivita: semaforoPerChiave('roe', dB.roe),
+      semaforoLiquidita: semaforoPerChiave('currentRatio', dB.currentRatio),
+      semaforoSolidita: semaforoPerChiave('indiceIndebitamento', dB.indiceIndebitamento),
       serieRicavi: anniBilancioPortale.map(a => ({ etichetta: etichettaBreveBilancio(a), valore: STATE.bilanci[cliente.id][a].ricavi || 0 })),
       serieUtile: anniBilancioPortale.map(a => ({ etichetta: etichettaBreveBilancio(a), valore: calcolaDerivatiBilancio(STATE.bilanci[cliente.id][a]).utileNetto || 0 })),
+      seriePatrimonioNetto: anniBilancioPortale.map(a => ({ etichetta: etichettaBreveBilancio(a), valore: STATE.bilanci[cliente.id][a].patrimonioNetto || 0 })),
+      serieCosti: anniBilancioPortale.map(a => {
+        const d = calcolaDerivatiBilancio(STATE.bilanci[cliente.id][a]);
+        return { etichetta: etichettaBreveBilancio(a), valore: (d.costiEsterni||0) + (d.costoPersonale||0) + (d.ammortamenti||0) };
+      }),
+      // Composizione dei costi dell'ultimo periodo per la torta (Matteo: "per la differenziazione
+      // dei tipi di costi usa grafici a torta", vedi graficoTorta in portale-cliente.htm) - solo le
+      // 5 macro-categorie che già raccogliamo, niente di inventato o stimato.
+      ripartizioneCosti: [
+        { etichetta: 'Costi esterni (materie prime, servizi...)', valore: dB.costiEsterni || 0 },
+        { etichetta: 'Personale', valore: dB.costoPersonale || 0 },
+        { etichetta: 'Ammortamenti', valore: dB.ammortamenti || 0 },
+        { etichetta: 'Oneri finanziari', valore: dB.oneriFinanziari || 0 },
+        { etichetta: 'Imposte', valore: dB.imposte || 0 },
+      ],
     };
   }
 
