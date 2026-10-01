@@ -1630,6 +1630,13 @@ function statoIniziale() {
        flusso "Prenota un appuntamento" (task #147) per suggerire la procedura giusta in base al motivo
        dell'appuntamento. */
     procedureInterne: procedureInterneDefault(),
+    // Task #186 (Matteo: "notifiche su modifica/eliminazione di task o appuntamenti collegati"):
+    // registro separato di notifiche di ELIMINAZIONE - a differenza delle notifiche di
+    // creazione/modifica (taskTeam[].notificaVista, appuntamenti[].notificaVista), che vivono
+    // attaccate all'oggetto stesso, un'eliminazione cancella l'oggetto su cui si aggancerebbero:
+    // serve quindi un registro indipendente che sopravvive alla cancellazione. Vedi
+    // notificaEliminazione()/notificheEliminazioniPerOperatore()/segnaNotificaEliminazioneVista().
+    notificheEliminazioni: [],
   }, clonaCatalogoDefault());
 }
 /* Attività "a listino" dello studio (task #138): usate in Preventivi/Mandati per calcolare
@@ -7623,9 +7630,12 @@ function renderTaskTeam() {
   // alla vista - aprire un task da qui lo segna visto (vedi modalTaskTeam), "Segna tutti come visti"
   // spegne il banner senza dover aprire ognuno.
   const nonVisti = taskTeamNonVistiPerOperatore();
-  const banner = nonVisti.length ? `<div class="card" style="border-left:4px solid var(--rosso,#d33);background:var(--rosso-bg,#fdeceb);margin-bottom:14px;">
+  // Task #186: le eliminazioni (niente più oggetto da aprire) compaiono nello stesso banner, come
+  // righe a parte con un bottone "Ok" invece di "Apri →" - vedi notificaEliminazione in eliminaTaskTeam.
+  const taskEliminati = notificheEliminazioniPerOperatore('task');
+  const banner = (nonVisti.length || taskEliminati.length) ? `<div class="card" style="border-left:4px solid var(--rosso,#d33);background:var(--rosso-bg,#fdeceb);margin-bottom:14px;">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">
-      <div style="font-weight:700;font-size:13px;">🔔 ${nonVisti.length} novità sui tuoi task</div>
+      <div style="font-weight:700;font-size:13px;">🔔 ${nonVisti.length + taskEliminati.length} novità sui tuoi task</div>
       <button class="btn small" data-action="task-segna-tutti-visti">Segna tutti come visti</button>
     </div>
     <div style="display:flex;flex-direction:column;gap:6px;">
@@ -7633,6 +7643,10 @@ function renderTaskTeam() {
         <span style="font-size:13px;">${escapeHtml(t.titolo)}${t.notificaCreatoDa ? ` <span class="helptext" style="display:inline;">— ${etichettaTipo} da ${escapeHtml(t.notificaCreatoDa)}</span>` : ''}</span>
         <span class="badge">Apri →</span>
       </div>`; }).join('')}
+      ${taskEliminati.map(n => `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:4px 0;">
+        <span style="font-size:13px;">🗑️ ${escapeHtml(n.titolo)}${n.dettaglio ? ' · ' + escapeHtml(n.dettaglio) : ''} <span class="helptext" style="display:inline;">— eliminato da ${escapeHtml(n.eliminatoDa || '—')}</span></span>
+        <button class="btn small" data-action="elimina-notifica-eliminazione" data-id="${n.id}">Ok</button>
+      </div>`).join('')}
     </div>
   </div>` : '';
 
@@ -7925,7 +7939,10 @@ function taskTeamNonVistiPerOperatore() {
   if (!io) return [];
   return STATE.taskTeam.filter(t => t.assegnatoA === io && t.notificaVista === false);
 }
-function taskTeamNonVistiConteggio() { return taskTeamNonVistiPerOperatore().length; }
+// Task #186: il pallino in sidebar conta anche le eliminazioni non ancora confermate, non solo le
+// notifiche di creazione/modifica/riassegnazione - stesso principio per cui #119 esisteva: un
+// cambiamento che riguarda l'utente non deve passare inosservato.
+function taskTeamNonVistiConteggio() { return taskTeamNonVistiPerOperatore().length + notificheEliminazioniPerOperatore('task').length; }
 function segnaTaskTeamVisto(id) {
   const t = STATE.taskTeam.find(x => x.id === id);
   if (t && t.notificaVista === false) {
@@ -7934,7 +7951,34 @@ function segnaTaskTeamVisto(id) {
     renderNav(); // il pallino nella sidebar va aggiornato subito, non solo al prossimo render() pieno
   }
 }
+// Task #186 (Matteo: "notifiche su modifica/eliminazione di task o appuntamenti collegati"):
+// registro di notifiche di eliminazione, condiviso tra task team e appuntamenti (tipo li
+// distingue). Una voce qui sparisce SOLO quando il diretto interessato la conferma vista - non
+// c'è altro "da aprire" come per una modifica, l'oggetto non esiste più. Vedi anche il commento
+// su STATE.notificheEliminazioni in statoIniziale().
+function notificaEliminazione(tipo, destinatario, titolo, dettaglio) {
+  if (!destinatario) return; // nessun assegnatario/consulente collegato: nessuno da avvisare
+  const attore = operatoreCorrente() || null;
+  if (attore === destinatario) return; // si è cancellato da solo qualcosa di suo: non serve avvisarlo
+  if (!STATE.notificheEliminazioni) STATE.notificheEliminazioni = [];
+  STATE.notificheEliminazioni.push({ id: uid('notifelim'), tipo, destinatario, titolo, dettaglio: dettaglio || '', eliminatoDa: attore, data: oggiISO() });
+}
+function notificheEliminazioniPerOperatore(tipo) {
+  const io = operatoreCorrente();
+  if (!io) return [];
+  return (STATE.notificheEliminazioni || []).filter(n => n.tipo === tipo && n.destinatario === io);
+}
+function segnaNotificaEliminazioneVista(id) {
+  const prima = (STATE.notificheEliminazioni || []).length;
+  STATE.notificheEliminazioni = (STATE.notificheEliminazioni || []).filter(n => n.id !== id);
+  if (STATE.notificheEliminazioni.length !== prima) { salvaStato(); renderNav(); }
+}
 function eliminaTaskTeam(id) {
+  const t = STATE.taskTeam.find(x => x.id === id);
+  // Task #186: se il task eliminato era assegnato a qualcun altro, resta traccia nel registro di
+  // eliminazioni (vedi sopra) - prima questa funzione cancellava in silenzio, l'assegnatario non
+  // scopriva mai che il suo task era sparito se non per caso, guardando la lista.
+  if (t && t.assegnatoA) notificaEliminazione('task', t.assegnatoA, t.titolo, t.clienteId ? nomeCliente(t.clienteId) : '');
   STATE.taskTeam = STATE.taskTeam.filter(x => x.id !== id);
   salvaStato();
 }
@@ -10211,15 +10255,24 @@ function renderCalendario() {
   const anno = STATE.annoCorrente;
   const eventiPerGiorno = eventiCalendarioPerGiorno();
   const nonVistiApp = appuntamentiNonVistiPerConsulente();
-  const bannerApp = nonVistiApp.length ? `<div class="card" style="border-left:4px solid var(--rosso,#d33);background:var(--rosso-bg,#fdeceb);margin-bottom:14px;">
+  // Task #186: come per Task team, il banner unisce le notifiche "vive" (creato/riassegnato/
+  // modificato, ancora attaccate all'appuntamento) con quelle di eliminazione (STATE.
+  // notificheEliminazioni, l'appuntamento non esiste più quindi non c'è nulla da "aprire" - solo
+  // da confermare con "Ok").
+  const appEliminati = notificheEliminazioniPerOperatore('appuntamento');
+  const bannerApp = (nonVistiApp.length || appEliminati.length) ? `<div class="card" style="border-left:4px solid var(--rosso,#d33);background:var(--rosso-bg,#fdeceb);margin-bottom:14px;">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">
-      <div style="font-weight:700;font-size:13px;">🔔 ${nonVistiApp.length} appuntament${nonVistiApp.length===1?'o':'i'} da vedere</div>
+      <div style="font-weight:700;font-size:13px;">🔔 ${nonVistiApp.length + appEliminati.length} novità sui tuoi appuntamenti</div>
       <button class="btn small" data-action="app-segna-tutti-visti">Segna tutti come visti</button>
     </div>
     <div style="display:flex;flex-direction:column;gap:6px;">
       ${nonVistiApp.map(a => `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;padding:4px 0;" data-action="apri-dettaglio-appuntamento" data-id="${a.id}">
-        <span style="font-size:13px;">${escapeHtml(fmtData(a.data))}${a.ora?' · '+escapeHtml(a.ora):''} — ${escapeHtml(a.oggetto||'Appuntamento')}${a.clienteId?' · '+escapeHtml(nomeCliente(a.clienteId)):''}</span>
+        <span style="font-size:13px;">${escapeHtml(fmtData(a.data))}${a.ora?' · '+escapeHtml(a.ora):''} — ${escapeHtml(a.oggetto||'Appuntamento')}${a.clienteId?' · '+escapeHtml(nomeCliente(a.clienteId)):''}${(a.notificaCreatoDa) ? ` <span class="helptext" style="display:inline;">— ${etichettaNotificaAppuntamento(a)}${a.notificaTipo!=='riassegnato'?' da '+escapeHtml(a.notificaCreatoDa):''}</span>` : ''}</span>
         <span class="badge">Apri →</span>
+      </div>`).join('')}
+      ${appEliminati.map(n => `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:4px 0;">
+        <span style="font-size:13px;">🗑️ ${escapeHtml(n.titolo)}${n.dettaglio ? ' · ' + escapeHtml(n.dettaglio) : ''} <span class="helptext" style="display:inline;">— eliminato da ${escapeHtml(n.eliminatoDa || '—')}</span></span>
+        <button class="btn small" data-action="elimina-notifica-eliminazione" data-id="${n.id}">Ok</button>
       </div>`).join('')}
     </div>
   </div>` : '';
@@ -10631,22 +10684,53 @@ function aggiungiAppuntamento(dati) {
     motivo: dati.motivo || null,
     motivoAltro: (dati.motivoAltro || '').trim(),
     notificaVista: !prenotatoDaSegreteria,
+    notificaCreatoDa: prenotatoDaSegreteria ? (operatoreCorrente() || null) : null,
+    notificaTipo: prenotatoDaSegreteria ? 'creato' : null,
   };
   STATE.appuntamenti = STATE.appuntamenti || [];
   STATE.appuntamenti.push(a);
   salvaStato();
   return a;
 }
+// Task #186 (Matteo: notifiche anche su modifica/eliminazione di appuntamenti collegati, stesso
+// principio già applicato a Task team con #138/#186): riassegnare il consulente o cambiare un
+// campo sostanziale (data/ora/oggetto/stato) riapre la notifica per il consulente destinatario,
+// a meno che non sia lui stesso a modificarsi l'appuntamento.
 function aggiornaAppuntamento(id, patch) {
   const a = trovaAppuntamento(id);
   if (!a) return;
+  const attore = operatoreCorrente() || null;
+  const cambiaConsulente = 'consulente' in patch && patch.consulente !== a.consulente;
+  if (cambiaConsulente) {
+    a.notificaCreatoDa = attore;
+    a.notificaTipo = 'riassegnato';
+    a.notificaVista = !patch.consulente || patch.consulente === attore;
+  } else {
+    const campiRilevanti = ['data', 'ora', 'oggetto', 'stato'];
+    const cambiaQualcosaDiRilevante = campiRilevanti.some(k => k in patch && patch[k] !== a[k]);
+    if (cambiaQualcosaDiRilevante && a.consulente && attore && a.consulente !== attore) {
+      a.notificaCreatoDa = attore;
+      a.notificaTipo = 'modificato';
+      a.notificaVista = false;
+    }
+  }
   Object.assign(a, patch);
   if (!STATI_APPUNTAMENTO.includes(a.stato)) a.stato = STATI_APPUNTAMENTO[0];
   salvaStato();
 }
 function rimuoviAppuntamento(id) {
+  const a = trovaAppuntamento(id);
+  if (a && a.consulente) {
+    const quando = [a.data, a.ora].filter(Boolean).join(' ');
+    notificaEliminazione('appuntamento', a.consulente, a.oggetto || 'Appuntamento', quando);
+  }
   STATE.appuntamenti = (STATE.appuntamenti || []).filter(a => a.id !== id);
   salvaStato();
+}
+// Etichetta breve per il tipo di notifica di un appuntamento (creato/riassegnato/modificato) -
+// stesso schema di etichettaNotificaTaskTeam.
+function etichettaNotificaAppuntamento(a) {
+  return { creato: 'creato', riassegnato: 'riassegnato a te', modificato: 'modificato' }[a.notificaTipo] || 'creato';
 }
 /* Notifica "nuovo appuntamento prenotato dalla segreteria" per il consulente destinatario — stesso
    pattern di taskTeamNonVistiPerOperatore/segnaTaskTeamVisto (task #119). */
@@ -10655,7 +10739,7 @@ function appuntamentiNonVistiPerConsulente() {
   if (!io) return [];
   return (STATE.appuntamenti || []).filter(a => a.consulente === io && a.notificaVista === false);
 }
-function appuntamentiNonVistiConteggio() { return appuntamentiNonVistiPerConsulente().length; }
+function appuntamentiNonVistiConteggio() { return appuntamentiNonVistiPerConsulente().length + notificheEliminazioniPerOperatore('appuntamento').length; }
 function segnaAppuntamentoVisto(id) {
   const a = trovaAppuntamento(id);
   if (a && a.notificaVista === false) {
@@ -13430,8 +13514,18 @@ function onClickDelegato(e) {
     case 'schcli-apri-portale': PORTAL_CLIENTE = el.dataset.cliente; setView('portale'); break;
     case 'apri-dettaglio-task-team': modalDettaglioTaskTeam(id); break;
     case 'modifica-task-team': modalTaskTeam(id); break;
-    case 'task-segna-tutti-visti': taskTeamNonVistiPerOperatore().forEach(t => { t.notificaVista = true; }); salvaStato(); render(); break;
-    case 'app-segna-tutti-visti': appuntamentiNonVistiPerConsulente().forEach(a => { a.notificaVista = true; }); salvaStato(); render(); break;
+    // Task #186: "Segna tutti come visti" spegne anche le eliminazioni in sospeso nello stesso
+    // banner, non solo le modifiche/creazioni - altrimenti il banner non si svuoterebbe mai del
+    // tutto cliccando quel bottone quando è presente anche una riga di eliminazione.
+    case 'task-segna-tutti-visti':
+      taskTeamNonVistiPerOperatore().forEach(t => { t.notificaVista = true; });
+      STATE.notificheEliminazioni = (STATE.notificheEliminazioni || []).filter(n => !(n.tipo === 'task' && n.destinatario === operatoreCorrente()));
+      salvaStato(); render(); break;
+    case 'app-segna-tutti-visti':
+      appuntamentiNonVistiPerConsulente().forEach(a => { a.notificaVista = true; });
+      STATE.notificheEliminazioni = (STATE.notificheEliminazioni || []).filter(n => !(n.tipo === 'appuntamento' && n.destinatario === operatoreCorrente()));
+      salvaStato(); render(); break;
+    case 'elimina-notifica-eliminazione': segnaNotificaEliminazioneVista(el.dataset.id); render(); break;
     case 'elimina-task-team':
       if (confermaAzione('Eliminare questo task?')) { eliminaTaskTeam(id); chiudiModal(); render(); toast('Task eliminato.'); }
       break;

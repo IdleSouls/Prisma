@@ -2048,6 +2048,102 @@ async function main() {
   await wait(20);
   console.log('=== Notifica appuntamento prenotato: pallino sidebar Calendario, sparisce all\'apertura, procedura interna suggerita in base al motivo, nessuna notifica per gli appuntamenti auto-creati OK');
 
+  // ---------- 8d-octies) Task #186: notifiche su modifica/eliminazione di un task collegato ----------
+  {
+    window.impostaOperatore('Matteo');
+    const nTaskPrimaElim = window.getSTATE().notificheEliminazioni.length;
+    window.aggiungiTaskTeam({ titolo: 'Task #186 da eliminare', assegnatoA: 'Sabrina', stato: 'Da fare' });
+    const taskDaEliminare = window.getSTATE().taskTeam.find(t => t.titolo === 'Task #186 da eliminare');
+    window.eliminaTaskTeam(taskDaEliminare.id);
+    assert(window.getSTATE().notificheEliminazioni.length === nTaskPrimaElim + 1, 'eliminare un task assegnato ad altri deve aggiungere una notifica di eliminazione');
+    const notifTaskElim = window.getSTATE().notificheEliminazioni[window.getSTATE().notificheEliminazioni.length - 1];
+    assert(notifTaskElim.tipo === 'task' && notifTaskElim.destinatario === 'Sabrina' && notifTaskElim.eliminatoDa === 'Matteo' && notifTaskElim.titolo === 'Task #186 da eliminare', 'la notifica di eliminazione task non ha i campi attesi (tipo/destinatario/eliminatoDa/titolo)');
+
+    window.impostaOperatore('Sabrina');
+    assert(window.notificheEliminazioniPerOperatore('task').some(n => n.id === notifTaskElim.id), 'notificheEliminazioniPerOperatore("task") non trova la notifica per il destinatario corretto');
+    assert(window.taskTeamNonVistiConteggio() >= 1, 'il conteggio pallino Task team deve includere anche le notifiche di eliminazione');
+    window.segnaNotificaEliminazioneVista(notifTaskElim.id);
+    assert(!window.getSTATE().notificheEliminazioni.some(n => n.id === notifTaskElim.id), 'segnaNotificaEliminazioneVista non ha rimosso la notifica dalla lista');
+    window.impostaOperatore('Matteo');
+
+    // eliminare un proprio task (assegnato a sé stessi) non deve generare alcuna notifica
+    const nTaskPrimaElimSelf = window.getSTATE().notificheEliminazioni.length;
+    window.aggiungiTaskTeam({ titolo: 'Task #186 proprio', assegnatoA: 'Matteo', stato: 'Da fare' });
+    const taskProprio = window.getSTATE().taskTeam.find(t => t.titolo === 'Task #186 proprio');
+    window.eliminaTaskTeam(taskProprio.id);
+    assert(window.getSTATE().notificheEliminazioni.length === nTaskPrimaElimSelf, 'eliminare un proprio task non deve generare una notifica di eliminazione');
+    console.log('=== Task #186: eliminazione di un task genera una notifica persistente per l\'assegnatario (non per sé stessi) OK');
+
+    // modifica sostanziale di un task da parte di qualcun altro rispetto all'assegnatario riapre
+    // la notifica con dicitura "modificato"
+    window.aggiungiTaskTeam({ titolo: 'Task #186 da modificare', assegnatoA: 'Sabrina', stato: 'Da fare' });
+    const taskDaModificare = window.getSTATE().taskTeam.find(t => t.titolo === 'Task #186 da modificare');
+    taskDaModificare.notificaVista = true; // simula che Sabrina l'abbia già vista
+    window.aggiornaTaskTeam(taskDaModificare.id, { titolo: 'Task #186 modificato' });
+    const taskModificato = window.getSTATE().taskTeam.find(t => t.id === taskDaModificare.id);
+    assert(taskModificato.notificaVista === false && taskModificato.notificaTipo === 'modificato' && taskModificato.notificaCreatoDa === 'Matteo', 'modificare un campo rilevante di un task assegnato ad altri deve riaprire la notifica con tipo "modificato"');
+    assert(window.etichettaNotificaTaskTeam(taskModificato) === 'modificato', 'etichettaNotificaTaskTeam non restituisce "modificato" per notificaTipo="modificato"');
+    window.eliminaTaskTeam(taskDaModificare.id);
+    window.getSTATE().notificheEliminazioni = window.getSTATE().notificheEliminazioni.filter(n => !(n.destinatario === 'Sabrina' && n.titolo === 'Task #186 modificato'));
+    console.log('=== Task #186: modifica di un task da parte di un altro operatore riapre la notifica ("modificato") OK');
+  }
+
+  // ---------- 8d-nonies) Task #186: notifiche su modifica/riassegnazione/eliminazione di un appuntamento collegato ----------
+  {
+    const consulentiPrima = window.getSTATE().meta.consulenti.slice();
+    if (!consulentiPrima.includes('Sabrina')) window.getSTATE().meta.consulenti.push('Sabrina');
+    window.impostaOperatore('Matteo');
+
+    const appCreatoSegreteria = window.aggiungiAppuntamento({ consulente: 'Sabrina', data: '2026-11-12', ora: '09:00', oggetto: 'Appuntamento #186 creato da segreteria', prenotatoDaSegreteria: true });
+    assert(appCreatoSegreteria.notificaCreatoDa === 'Matteo' && appCreatoSegreteria.notificaTipo === 'creato', 'un appuntamento prenotato dalla segreteria deve avere notificaCreatoDa/notificaTipo valorizzati');
+
+    // modifica sostanziale (oggetto) da parte di un operatore diverso dal consulente destinatario
+    window.getSTATE().appuntamenti.find(a => a.id === appCreatoSegreteria.id).notificaVista = true;
+    window.aggiornaAppuntamento(appCreatoSegreteria.id, { oggetto: 'Appuntamento #186 modificato' });
+    const appModificato = window.getSTATE().appuntamenti.find(a => a.id === appCreatoSegreteria.id);
+    assert(appModificato.notificaVista === false && appModificato.notificaTipo === 'modificato' && appModificato.notificaCreatoDa === 'Matteo', 'modificare un campo rilevante di un appuntamento di un altro consulente deve riaprire la notifica con tipo "modificato"');
+    assert(window.etichettaNotificaAppuntamento(appModificato) === 'modificato', 'etichettaNotificaAppuntamento non restituisce "modificato" per notificaTipo="modificato"');
+
+    // riassegnazione del consulente: a sé stessi non deve lasciare la notifica come non vista
+    window.aggiornaAppuntamento(appCreatoSegreteria.id, { notificaVista: true });
+    window.aggiornaAppuntamento(appCreatoSegreteria.id, { consulente: 'Matteo' });
+    const appRiassegnato = window.getSTATE().appuntamenti.find(a => a.id === appCreatoSegreteria.id);
+    assert(appRiassegnato.notificaTipo === 'riassegnato' && appRiassegnato.notificaVista === true, 'riassegnare un appuntamento a sé stessi non deve lasciare la notifica come non vista');
+    assert(window.etichettaNotificaAppuntamento(appRiassegnato) === 'riassegnato a te', 'etichettaNotificaAppuntamento non restituisce "riassegnato a te"');
+
+    // modificare il proprio stesso appuntamento non deve generare notifiche
+    window.aggiornaAppuntamento(appRiassegnato.id, { notificaVista: true });
+    window.aggiornaAppuntamento(appRiassegnato.id, { oggetto: 'Appuntamento #186 modificato da me stesso' });
+    assert(window.getSTATE().appuntamenti.find(a => a.id === appRiassegnato.id).notificaVista === true, 'modificare il proprio stesso appuntamento non deve riaprire la notifica');
+
+    // eliminazione: genera una notifica persistente per il consulente destinatario, mai per sé stessi
+    window.impostaOperatore('Sabrina');
+    const appDaEliminare = window.aggiungiAppuntamento({ consulente: 'Matteo', data: '2026-11-13', ora: '11:00', oggetto: 'Appuntamento #186 da eliminare' });
+    const nElimPrima = window.getSTATE().notificheEliminazioni.length;
+    window.rimuoviAppuntamento(appDaEliminare.id);
+    assert(window.getSTATE().notificheEliminazioni.length === nElimPrima + 1, 'eliminare un appuntamento di un altro consulente deve aggiungere una notifica di eliminazione');
+    const notifAppElim = window.getSTATE().notificheEliminazioni[window.getSTATE().notificheEliminazioni.length - 1];
+    assert(notifAppElim.tipo === 'appuntamento' && notifAppElim.destinatario === 'Matteo' && notifAppElim.eliminatoDa === 'Sabrina' && notifAppElim.titolo === 'Appuntamento #186 da eliminare', 'la notifica di eliminazione appuntamento non ha i campi attesi');
+
+    window.impostaOperatore('Matteo');
+    assert(window.appuntamentiNonVistiConteggio() >= 1, 'il conteggio pallino Calendario deve includere anche le notifiche di eliminazione appuntamento');
+    window.segnaNotificaEliminazioneVista(notifAppElim.id);
+    assert(!window.getSTATE().notificheEliminazioni.some(n => n.id === notifAppElim.id), 'segnaNotificaEliminazioneVista non ha rimosso la notifica di eliminazione appuntamento');
+
+    // eliminare un proprio appuntamento non deve generare notifiche
+    const nElimPrimaSelf = window.getSTATE().notificheEliminazioni.length;
+    const appProprio = window.aggiungiAppuntamento({ consulente: 'Matteo', data: '2026-11-14', ora: '12:00', oggetto: 'Appuntamento #186 proprio' });
+    window.rimuoviAppuntamento(appProprio.id);
+    assert(window.getSTATE().notificheEliminazioni.length === nElimPrimaSelf, 'eliminare un proprio appuntamento non deve generare una notifica di eliminazione');
+
+    // pulizia: rimuove gli appuntamenti di test rimasti e ripristina l'elenco consulenti
+    window.getSTATE().appuntamenti = window.getSTATE().appuntamenti.filter(a => !String(a.oggetto || '').includes('#186'));
+    window.getSTATE().meta.consulenti = consulentiPrima;
+    window.render();
+    await wait(20);
+    console.log('=== Task #186: notifiche di modifica/riassegnazione/eliminazione sugli appuntamenti (consulente destinatario, mai su se stessi) OK');
+  }
+
   // ---------- 8d-octies) Appuntamenti: durata, orario di fine, conflitti (richiesta Matteo) ----------
   // Durata di default (60') per un appuntamento creato senza specificarla esplicitamente - i vecchi
   // appuntamenti salvati prima di questa funzionalità non hanno durataMinuti, quindi ogni lettura
