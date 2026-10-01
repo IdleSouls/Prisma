@@ -3235,6 +3235,18 @@ async function main() {
   assert(qa('.kpi-grid').length === Array.from(new Set(window.CATALOGO_INDICI_BILANCIO.map(i => i.categoria))).length, 'attesa una .kpi-grid per ciascuna categoria di indici');
   assert(qa('.kpi-grid .kpi').length === window.CATALOGO_INDICI_BILANCIO.length, `attese ${window.CATALOGO_INDICI_BILANCIO.length} card KPI nella vista Bilanci (una per indice del catalogo)`);
   assert(qa('svg').length >= 3, 'attesi almeno 3 grafici SVG (ricavi, EBITDA, utile netto)');
+  // Task #177 (Matteo: "più grafici, meno indici buttati lì"): seconda riga di grafici di andamento
+  // per gli indici chiave (ROE, indice di indebitamento, current ratio, PFN/EBITDA) oltre ai 4
+  // esistenti in euro (ricavi/EBITDA/utile/PFN) - 8 grafici SVG totali nella vista Bilanci.
+  assert(qa('svg').length >= 8, `attesi almeno 8 grafici SVG nella vista Bilanci (4 valori assoluti + 4 indici chiave in andamento), trovati ${qa('svg').length}`);
+  assert(q('#content').textContent.includes('Andamento degli indici chiave'), 'manca la sezione "Andamento degli indici chiave" (task #177)');
+  // il grafico ROE deve usare la formattazione percentuale (graficoBarreSvg con formatoBarra/
+  // formatoTooltip personalizzati), non quella euro di default - altrimenti un ROE del 12% verrebbe
+  // mostrato come "12 €", un errore silenzioso facile da non notare a colpo d'occhio.
+  const testoIndiciChiave = qa('.card').find(c => (c.querySelector('.section-title')||{}).textContent === 'Andamento degli indici chiave');
+  assert(testoIndiciChiave, 'card "Andamento degli indici chiave" non trovata nel DOM');
+  assert(!testoIndiciChiave.textContent.includes('€'), 'i grafici di andamento degli indici (ROE, indice indebitamento, current ratio, PFN/EBITDA) non dovrebbero mostrare il simbolo euro - sono percentuali/rapporti, non valori assoluti');
+  assert(/%/.test(testoIndiciChiave.textContent), 'il grafico ROE dentro "Andamento degli indici chiave" dovrebbe mostrare una percentuale ("%")');
   assert(qa('table.compact tbody tr').length === 4, 'attesa una riga di tabella per ciascuno dei 4 periodi caricati');
   assert(q('#content').textContent.includes('infra-annuale'), 'la tabella bilanci non mostra l\'etichetta "infra-annuale" per il periodo più recente');
 

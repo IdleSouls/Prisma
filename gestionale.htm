@@ -8279,7 +8279,13 @@ function fmtEuroCompattoGrafico(n) {
    stati anni negativi le barre positive usano tutto lo spazio), etichetta del valore sopra ogni
    barra positiva e sotto ogni barra negativa, linea dello zero più marcata, e un title nativo SVG
    per il valore esatto al passaggio del mouse. */
-function graficoBarreSvg(punti) {
+// Task #177 (Matteo: "Bilanci&KPI - più grafici, meno indici buttati lì"): formatoBarra/formatoTooltip
+// opzionali, per riusare lo stesso grafico anche per gli indici percentuali/a rapporto (ROE, EBITDA
+// margin, current ratio...) e non solo per i valori assoluti in euro - default invariato (fmtEuro
+// compatto sulla barra, fmtEuro completo nel tooltip) per non toccare le chiamate già esistenti.
+function graficoBarreSvg(punti, formatoBarra, formatoTooltip) {
+  formatoBarra = formatoBarra || fmtEuroCompattoGrafico;
+  formatoTooltip = formatoTooltip || fmtEuro;
   const w = 260, hTot = 118, stripLabel = 16, padTop = 6, padValLabel = 14;
   const plotH = hTot - stripLabel - padTop;
   const valori = punti.map(p => p.valore || 0);
@@ -8313,10 +8319,10 @@ function graficoBarreSvg(punti) {
       y = zeroY;
       yValore = zeroY + bh + 10;
     }
-    const titolo = `${escapeHtml(String(p.label))}: ${escapeHtml(fmtEuro(val))}`;
+    const titolo = `${escapeHtml(String(p.label))}: ${escapeHtml(formatoTooltip(val))}`;
     return `<g><title>${titolo}</title>
       <rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${larghezza.toFixed(1)}" height="${bh.toFixed(1)}" style="fill:${colore}" rx="2"></rect>
-      <text x="${xTesto.toFixed(1)}" y="${yValore.toFixed(1)}" font-size="8.5" font-weight="700" text-anchor="middle" style="fill:${val>=0?'var(--blu-scuro,#1d4ed8)':'var(--rosso)'}">${escapeHtml(fmtEuroCompattoGrafico(val))}</text>
+      <text x="${xTesto.toFixed(1)}" y="${yValore.toFixed(1)}" font-size="8.5" font-weight="700" text-anchor="middle" style="fill:${val>=0?'var(--blu-scuro,#1d4ed8)':'var(--rosso)'}">${escapeHtml(formatoBarra(val))}</text>
       <text x="${xTesto.toFixed(1)}" y="${hTot-4}" font-size="9" text-anchor="middle" style="fill:var(--text-mut)">${escapeHtml(String(p.label))}</text>
     </g>`;
   }).join('');
@@ -8513,19 +8519,24 @@ function renderBilanci() {
   // <details> con spiegazione + consiglio (chiuso di default per non affollare la vista: chi sa già
   // cosa significa un ROE non deve leggerselo ogni volta, ma è lì con un click per chi ne ha
   // bisogno, incluso durante una chiamata col cliente).
+  // Task #177 (Matteo: "più grafici, meno indici buttati lì"): card più compatte di prima (meno
+  // padding, numero più piccolo) e soprattutto una griglia a larghezza minima fissa (auto-fit)
+  // invece che "una colonna per indice a tutta larghezza" - prima una categoria con 3 indici
+  // produceva 3 riquadri enormi quanto un terzo della pagina ciascuno, ora occupano solo lo spazio
+  // che serve e vanno a capo, lasciando il resto della pagina ai grafici di andamento sotto.
   const indiceCard = (def) => {
     const valore = datiUltimo[def.chiave];
     const fmt = FORMATTATORI_INDICE[def.formato] || fmtNum2;
     const sem = semaforoIndice(def, valore);
     const info = sem ? SEMAFORO_INFO[sem] : null;
-    return `<div class="kpi indice-card" style="border-left:4px solid ${info ? info.colore : 'var(--border)'};cursor:default;">
+    return `<div class="kpi indice-card" style="border-left:3px solid ${info ? info.colore : 'var(--border)'};cursor:default;padding:9px 11px;">
       <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;">
-        <div style="font-size:11.5px;font-weight:700;color:var(--text-mut);text-transform:uppercase;letter-spacing:.02em;">${escapeHtml(def.nome)}</div>
-        ${info ? `<span class="badge" style="background:${info.sfondo};color:${info.colore};">${escapeHtml(info.etichetta)}</span>` : ''}
+        <div style="font-size:10.5px;font-weight:700;color:var(--text-mut);text-transform:uppercase;letter-spacing:.02em;">${escapeHtml(def.nome)}</div>
+        ${info ? `<span class="badge" style="background:${info.sfondo};color:${info.colore};font-size:10px;padding:1px 6px;">${escapeHtml(info.etichetta)}</span>` : ''}
       </div>
-      <div style="font-size:22px;font-weight:800;margin:4px 0 6px;">${fmt(valore)}</div>
+      <div style="font-size:17px;font-weight:800;margin:3px 0 4px;">${fmt(valore)}</div>
       <details>
-        <summary style="cursor:pointer;font-size:11.5px;color:var(--blu-mid,#2563eb);font-weight:600;">Cosa significa e come migliorarlo</summary>
+        <summary style="cursor:pointer;font-size:11px;color:var(--blu-mid,#2563eb);font-weight:600;">Cosa significa e come migliorarlo</summary>
         <div class="helptext" style="margin-top:6px;"><strong>Cosa misura:</strong> ${def.spiegazione}</div>
         <div class="helptext" style="margin-top:4px;">${sem === 'verde' ? '✅ Valore nella norma: nessuna azione richiesta.' : `<strong>Come migliorarlo:</strong> ${def.consiglio}`}</div>
       </details>
@@ -8537,9 +8548,9 @@ function renderBilanci() {
   const kpiGrid = `<div class="helptext" style="margin-bottom:12px;">I semafori usano soglie generiche da manuale di analisi di bilancio per PMI, non tarate sul settore specifico del cliente — un punto di partenza per la conversazione, non un giudizio automatico. Passa il cursore su "Cosa significa e come migliorarlo" sotto ogni indice per il dettaglio.</div>` +
     categorieIndici.map(cat => {
     const indici = CATALOGO_INDICI_BILANCIO.filter(i => i.categoria === cat);
-    return `<div style="margin-bottom:16px;">
-      <div style="font-size:11px;font-weight:700;color:var(--text-mut);text-transform:uppercase;letter-spacing:.03em;margin-bottom:8px;">${escapeHtml(cat)}</div>
-      <div class="kpi-grid" style="grid-template-columns:repeat(${indici.length},1fr);margin-bottom:0;">
+    return `<div style="margin-bottom:14px;">
+      <div style="font-size:11px;font-weight:700;color:var(--text-mut);text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px;">${escapeHtml(cat)}</div>
+      <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr));margin-bottom:0;">
         ${indici.map(indiceCard).join('')}
       </div>
     </div>`;
@@ -8552,6 +8563,17 @@ function renderBilanci() {
   // d'occhio" insieme all'andamento del business, non solo come rapporto nelle card sopra.
   const puntiPfn = anni.map(a => ({ label:etichettaBreveBilancio(a), valore: calcolaDerivatiBilancio(STATE.bilanci[cliente.id][a]).pfn }));
 
+  // Task #177 (Matteo: "più grafici, meno indici buttati lì"): prima i 12 indici del catalogo erano
+  // SOLO un numero dell'ultimo periodo in una card - utile come fotografia, ma senza andamento non
+  // si vede se un ROE del 4% è un problema nuovo o se il cliente sta già migliorando da solo. Qui
+  // si vede l'andamento nel tempo dei 4 indici più "da conversazione con il cliente" (uno per
+  // categoria: redditività, struttura patrimoniale, liquidità, solidità) - gli altri 8 restano
+  // comunque disponibili come card sopra, solo meno "soli" come unico modo di leggerli.
+  const puntiRoe = anni.map(a => ({ label:etichettaBreveBilancio(a), valore: calcolaDerivatiBilancio(STATE.bilanci[cliente.id][a]).roe }));
+  const puntiIndeb = anni.map(a => ({ label:etichettaBreveBilancio(a), valore: calcolaDerivatiBilancio(STATE.bilanci[cliente.id][a]).indiceIndebitamento }));
+  const puntiCurrentRatio = anni.map(a => ({ label:etichettaBreveBilancio(a), valore: calcolaDerivatiBilancio(STATE.bilanci[cliente.id][a]).currentRatio }));
+  const puntiPfnEbitda = anni.map(a => ({ label:etichettaBreveBilancio(a), valore: calcolaDerivatiBilancio(STATE.bilanci[cliente.id][a]).pfnEbitda }));
+
   const grafici = `<div class="card">
     <div class="section-title">Andamento (${etichettaBreveBilancio(anni[0])}–${etichettaBreveBilancio(ultimoAnno)})</div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:16px;">
@@ -8559,6 +8581,16 @@ function renderBilanci() {
       <div><div class="helptext" style="margin-bottom:4px;">EBITDA</div>${graficoBarreSvg(puntiEbitda)}</div>
       <div><div class="helptext" style="margin-bottom:4px;">Utile netto</div>${graficoBarreSvg(puntiUtile)}</div>
       <div><div class="helptext" style="margin-bottom:4px;">PFN (posizione finanziaria netta)</div>${graficoBarreSvg(puntiPfn)}</div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="section-title">Andamento degli indici chiave</div>
+    <div class="helptext" style="margin-bottom:10px;">Lo stesso dato delle card sopra, ma nel tempo invece che solo nell'ultimo periodo — più utile per vedere se il cliente sta migliorando o peggiorando su un indice critico.</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:16px;">
+      <div><div class="helptext" style="margin-bottom:4px;">ROE (redditività)</div>${graficoBarreSvg(puntiRoe, fmtPct, fmtPct)}</div>
+      <div><div class="helptext" style="margin-bottom:4px;">Indice di indebitamento (struttura)</div>${graficoBarreSvg(puntiIndeb, fmtNum2, fmtNum2)}</div>
+      <div><div class="helptext" style="margin-bottom:4px;">Current ratio (liquidità)</div>${graficoBarreSvg(puntiCurrentRatio, fmtNum2, fmtNum2)}</div>
+      <div><div class="helptext" style="margin-bottom:4px;">PFN / EBITDA (solidità)</div>${graficoBarreSvg(puntiPfnEbitda, fmtNum2, fmtNum2)}</div>
     </div>
   </div>`;
 
