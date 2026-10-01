@@ -232,6 +232,10 @@ tr.riga-selezionata{background:var(--blu-light);}
    pensato per un campo di testo - risultato una casellina deformata/enorme invece di un normale
    checkbox. :not() esclude i due tipi che devono restare nativi e piccoli. */
 .field input:not([type="checkbox"]):not([type="radio"]), .field select, .field textarea{width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:6px;background:#fff;min-width:150px;}
+/* Campo orario testuale (task #171): niente min-width:150px ereditato da sopra - un orario sono 5
+   caratteri, un campo largo quanto un nome cliente avrebbe solo reintrodotto la "zona morta" a
+   destra delle cifre di cui si lamentava Matteo con il vecchio input type="time". */
+.campo-orario{min-width:0;width:78px;text-align:center;font-variant-numeric:tabular-nums;letter-spacing:.02em;}
 .field textarea{min-width:260px;}
 .field.grow input, .field.grow select{min-width:220px;}
 /* flex-shrink:0 è il pezzo che mancava per il layout "Destinatari" segnalato da Matteo (e lo stesso
@@ -10272,15 +10276,10 @@ const TIPI_RICHIESTA_APPUNTAMENTO = ['Nuova attività', 'Consulenza per attivit�
    legge si usa "a.durataMinuti || DURATA_APPUNTAMENTO_DEFAULT" (mai un valore diverso da quello che
    l'app assumeva finora, così i controlli di conflitto restano corretti anche sui dati vecchi). */
 const DURATA_APPUNTAMENTO_DEFAULT = 60;
-const DURATE_APPUNTAMENTO = [
-  { min: 15, label: '15 minuti' },
-  { min: 30, label: '30 minuti' },
-  { min: 45, label: '45 minuti' },
-  { min: 60, label: '1 ora' },
-  { min: 90, label: '1 ora e mezza' },
-  { min: 120, label: '2 ore' },
-  { min: 180, label: '3 ore' },
-];
+// DURATE_APPUNTAMENTO (elenco a scelta fissa 15min/30min/...) è stato rimosso con il task #171:
+// Matteo ha chiesto ora inizio + ora fine al posto di un elenco di durate, vedi durataDaOrari più
+// sotto - DURATA_APPUNTAMENTO_DEFAULT resta solo come valore implicito per gli appuntamenti vecchi
+// senza durataMinuti salvato.
 function oraAMinuti(str) {
   const m = /^(\d{1,2}):(\d{2})$/.exec(String(str || '').trim());
   if (!m) return null;
@@ -10295,6 +10294,43 @@ function oraFineAppuntamento(a) {
   const inizio = oraAMinuti(a && a.ora);
   if (inizio === null) return null;
   return minutiAOra(inizio + durataAppuntamento(a));
+}
+/* Richiesta di Matteo: "creando gli eventi se clicco sull'ora non posso cambiarla, si cambia solo
+   cliccando sull'orologio [...] devo anche poter scrivere con la tastiera" - gli <input type="time">
+   nativi lasciano la digitazione al widget del browser, che in pratica risultava modificabile solo
+   aprendo il mini-popup dell'orologio. Sostituiti ovunque da un campo di testo semplice (digitazione
+   SEMPRE affidabile, nessuna dipendenza da un widget nativo) che si autoformatta mentre si scrive -
+   vedi formattaInputOrario, richiamato dal delegato 'input' - e viene validato in formato HH:MM
+   prima di essere usato (orarioValido). campoOrarioHtml genera il markup comune a tutti i punti
+   dell'app che chiedono un orario (nuovo appuntamento, modifica appuntamento, prenota appuntamento).
+   Di norma l'azione è solo di formattazione (il valore si legge dal campo al salvataggio, come
+   prima con type="time"); dove serve salvare ad ogni modifica (modale di un appuntamento già
+   esistente, che si auto-salva campo per campo) si passa un'azione dedicata, gestita sia
+   nell'autoformattazione (onInputDelegato) sia nel salvataggio vero e proprio (onChangeDelegato). */
+function campoOrarioHtml(id, valore, opts) {
+  opts = opts || {};
+  const azione = opts.azione || 'orario-autoformat';
+  const extra = opts.extra || '';
+  return `<input type="text" inputmode="numeric" class="campo-orario" id="${id}" value="${escapeHtml(valore || '')}" placeholder="--:--" maxlength="5" autocomplete="off" data-action="${azione}" ${extra}>`;
+}
+function formattaInputOrario(el) {
+  let v = el.value.replace(/[^0-9]/g, '').slice(0, 4);
+  if (v.length >= 3) v = v.slice(0, 2) + ':' + v.slice(2);
+  el.value = v;
+}
+function orarioValido(str) {
+  return /^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(String(str || '').trim());
+}
+/* Richiesta di Matteo: "per gli eventi non mettere la durata tipo 1 ora due ore ecc ma metti ora
+   inizio e ora fine, è più pratico" - il dato salvato resta durataMinuti (durataAppuntamento,
+   oraFineAppuntamento, il controllo conflitti: tutto invariato), calcolato qui da due orari invece
+   che scelto da un elenco di intervalli fissi. null se uno dei due orari non è valido o se la fine
+   non è successiva all'inizio (niente appuntamenti a durata zero o negativa - si assume sempre
+   stesso giorno, non si gestisce un appuntamento che "sfora" la mezzanotte). */
+function durataDaOrari(inizio, fine) {
+  if (!orarioValido(inizio) || !orarioValido(fine)) return null;
+  const d = oraAMinuti(fine) - oraAMinuti(inizio);
+  return d > 0 ? d : null;
 }
 /* Conflitto = due appuntamenti dello STESSO consulente, nello STESSO giorno, i cui intervalli
    [inizio, fine) si sovrappongono (il classico test "inizio1 < fine2 && inizio2 < fine1"). Ignora
@@ -10426,8 +10462,8 @@ function renderFormNuovoEvento(dataISO) {
         <div class="field full" style="grid-column:1/-1;"><label>Cliente (opzionale)</label>
           <select id="nevCliente"><option value="">— nessun cliente —</option>${attivi.map(c=>`<option value="${c.id}">${escapeHtml(c.ragioneSociale)}</option>`).join('')}</select>
         </div>
-        <div class="field"><label>Ora</label><input type="time" id="nevOra"></div>
-        <div class="field"><label>Durata</label><select id="nevDurata">${DURATE_APPUNTAMENTO.map(d => `<option value="${d.min}" ${d.min===DURATA_APPUNTAMENTO_DEFAULT?'selected':''}>${d.label}</option>`).join('')}</select></div>
+        <div class="field"><label>Ora inizio</label>${campoOrarioHtml('nevOraInizio', '')}</div>
+        <div class="field"><label>Ora fine</label>${campoOrarioHtml('nevOraFine', '')}</div>
         <div class="field full" style="grid-column:1/-1;"><label>Oggetto</label><input type="text" id="nevOggetto" placeholder="es. Incontro bilancio, consulenza IVA..."></div>
         <div class="field full" style="grid-column:1/-1;"><label>Note</label><input type="text" id="nevNote" placeholder="facoltative"></div>
       </div>
@@ -10477,8 +10513,16 @@ function aggiornaVisibilitaMeseScadenzaRicorrente() {
 }
 function salvaNuovoAppuntamento(dataISO) {
   const clienteId = document.getElementById('nevCliente').value || null;
-  const ora = document.getElementById('nevOra').value || '';
-  const durataMinuti = Number(document.getElementById('nevDurata').value) || DURATA_APPUNTAMENTO_DEFAULT;
+  const ora = document.getElementById('nevOraInizio').value.trim();
+  const oraFine = document.getElementById('nevOraFine').value.trim();
+  if (ora && !orarioValido(ora)) { toast('Ora inizio non valida: usa il formato HH:MM.', true); return; }
+  if (oraFine && !orarioValido(oraFine)) { toast('Ora fine non valida: usa il formato HH:MM.', true); return; }
+  let durataMinuti = DURATA_APPUNTAMENTO_DEFAULT;
+  if (ora && oraFine) {
+    const d = durataDaOrari(ora, oraFine);
+    if (d === null) { toast('L\'ora di fine deve essere successiva all\'ora di inizio.', true); return; }
+    durataMinuti = d;
+  }
   const oggetto = document.getElementById('nevOggetto').value;
   const note = document.getElementById('nevNote').value;
   // Un appuntamento creato da qui (non dalla segreteria) non ha un "consulente" esplicito: occupa
@@ -10574,8 +10618,8 @@ function apriModalAppuntamento(id) {
       ${bloccoSegreteria}
       <div class="grid2">
         <div class="field"><label>Stato</label><select data-action="app-cambia-stato" data-id="${a.id}">${STATI_APPUNTAMENTO.map(s=>`<option value="${s}" ${a.stato===s?'selected':''}>${s}</option>`).join('')}</select></div>
-        <div class="field"><label>Ora</label><input type="time" value="${escapeHtml(a.ora||'')}" data-action="app-cambia-ora" data-id="${a.id}"></div>
-        <div class="field"><label>Durata</label><select data-action="app-cambia-durata" data-id="${a.id}">${DURATE_APPUNTAMENTO.map(d => `<option value="${d.min}" ${durataAppuntamento(a)===d.min?'selected':''}>${d.label}</option>`).join('')}</select></div>
+        <div class="field"><label>Ora inizio</label>${campoOrarioHtml('appOraInizio_'+a.id, a.ora||'', {azione:'app-cambia-ora-inizio', extra:`data-id="${a.id}"`})}</div>
+        <div class="field"><label>Ora fine</label>${campoOrarioHtml('appOraFine_'+a.id, oraFineAppuntamento(a)||'', {azione:'app-cambia-ora-fine', extra:`data-id="${a.id}"`})}</div>
         <div class="field full" style="grid-column:1/-1;"><label>Oggetto</label><input type="text" value="${escapeHtml(a.oggetto||'')}" data-action="app-cambia-oggetto" data-id="${a.id}"></div>
         <div class="field full" style="grid-column:1/-1;"><label>Bisogno di software di fatturazione <span style="font-weight:400;color:var(--text-mut);">(valutazione del consulente)</span></label>
           <select data-action="app-cambia-software-fatturazione" data-id="${a.id}">
@@ -10773,8 +10817,8 @@ function renderFormPrenotaAppuntamento() {
 
     <div class="grid2">
       <div class="field"><label>Data</label><input type="date" id="prenData" value="${oggi}"></div>
-      <div class="field"><label>Ora</label><input type="time" id="prenOra"></div>
-      <div class="field"><label>Durata</label><select id="prenDurata">${DURATE_APPUNTAMENTO.map(d => `<option value="${d.min}" ${d.min===DURATA_APPUNTAMENTO_DEFAULT?'selected':''}>${d.label}</option>`).join('')}</select></div>
+      <div class="field"><label>Ora inizio</label>${campoOrarioHtml('prenOraInizio', '')}</div>
+      <div class="field"><label>Ora fine</label>${campoOrarioHtml('prenOraFine', '')}</div>
     </div>
 
     <div class="field full" style="grid-column:1/-1;margin-top:8px;"><label>Nome di chi chiama</label><input type="text" id="prenNomeChiamante" placeholder="nome e cognome, o ragione sociale"></div>
@@ -10841,8 +10885,16 @@ function aggiornaAgendaSettimanalePrenota() {
 function salvaPrenotaAppuntamento() {
   const data = h('prenData').value;
   if (!data) { toast('Serve una data per l\'appuntamento.'); return; }
-  const ora = h('prenOra').value || '';
-  const durataMinuti = h('prenDurata') ? (Number(h('prenDurata').value) || DURATA_APPUNTAMENTO_DEFAULT) : DURATA_APPUNTAMENTO_DEFAULT;
+  const ora = h('prenOraInizio').value.trim();
+  const oraFine = h('prenOraFine').value.trim();
+  if (ora && !orarioValido(ora)) { toast('Ora inizio non valida: usa il formato HH:MM.', true); return; }
+  if (oraFine && !orarioValido(oraFine)) { toast('Ora fine non valida: usa il formato HH:MM.', true); return; }
+  let durataMinuti = DURATA_APPUNTAMENTO_DEFAULT;
+  if (ora && oraFine) {
+    const d = durataDaOrari(ora, oraFine);
+    if (d === null) { toast('L\'ora di fine deve essere successiva all\'ora di inizio.', true); return; }
+    durataMinuti = d;
+  }
   if (PRENOTA_CONSULENTE && ora) {
     const conflitti = appuntamentiInConflitto(PRENOTA_CONSULENTE, data, ora, durataMinuti, null);
     if (conflitti.length && !confermaAzione(messaggioConflittoAppuntamenti(conflitti))) return;
@@ -13827,8 +13879,34 @@ function onChangeDelegato(e) {
     // Modale dettaglio appuntamento (task #141): stato aggiorna anche la vista sotto (badge/colore
     // in calendario), gli altri campi no render — stesso motivo di scad-cambia-importo.
     case 'app-cambia-stato': aggiornaAppuntamento(id, { stato: el.value }); render(); break;
-    case 'app-cambia-ora': aggiornaAppuntamento(id, { ora: el.value }); avvisaSeConflittoAppuntamento(id); break;
-    case 'app-cambia-durata': aggiornaAppuntamento(id, { durataMinuti: Number(el.value) || DURATA_APPUNTAMENTO_DEFAULT }); avvisaSeConflittoAppuntamento(id); break;
+    // Task #171 (Matteo: "metti ora inizio e ora fine, è più pratico"): editare l'ora inizio
+    // mantiene la durata attuale (sposta anche la fine con sé, stesso comportamento di trascinare
+    // un blocco su Google Calendar); editare l'ora fine mantiene l'inizio fisso e ricalcola solo
+    // la durata. Il campo gemello (non toccato) viene aggiornato a mano nel DOM per restare
+    // coerente, senza un render() completo del modale (stesso motivo di scad-cambia-importo: si
+    // perderebbe il focus su un campo che si sta ancora editando).
+    case 'app-cambia-ora-inizio': {
+      const nuovoInizio = el.value.trim();
+      if (!orarioValido(nuovoInizio)) { toast('Ora inizio non valida: usa il formato HH:MM.', true); break; }
+      const prima = trovaAppuntamento(id);
+      const durata = prima ? durataAppuntamento(prima) : DURATA_APPUNTAMENTO_DEFAULT;
+      aggiornaAppuntamento(id, { ora: nuovoInizio, durataMinuti: durata });
+      const dopo = trovaAppuntamento(id);
+      const fineEl = h('appOraFine_' + id);
+      if (fineEl && dopo) fineEl.value = oraFineAppuntamento(dopo) || '';
+      avvisaSeConflittoAppuntamento(id);
+      break;
+    }
+    case 'app-cambia-ora-fine': {
+      const a = trovaAppuntamento(id);
+      const nuovaFine = el.value.trim();
+      if (!a || !a.ora || !orarioValido(nuovaFine)) { toast('Ora fine non valida: usa il formato HH:MM.', true); if (a) el.value = oraFineAppuntamento(a) || ''; break; }
+      const durata = durataDaOrari(a.ora, nuovaFine);
+      if (durata === null) { toast('L\'ora di fine deve essere successiva all\'ora di inizio.', true); el.value = oraFineAppuntamento(a) || ''; break; }
+      aggiornaAppuntamento(id, { durataMinuti: durata });
+      avvisaSeConflittoAppuntamento(id);
+      break;
+    }
     case 'app-cambia-oggetto': aggiornaAppuntamento(id, { oggetto: el.value }); break;
     case 'app-cambia-software-fatturazione': aggiornaAppuntamento(id, { bisognoSoftwareFatturazione: el.value }); break;
     case 'app-cambia-note': aggiornaAppuntamento(id, { note: el.value }); break;
@@ -14063,6 +14141,10 @@ function onInputDelegato(e) {
   const action = el.dataset.action;
   const id = el.dataset.id;
   switch (action) {
+    // Task #171: autoformattazione "mentre si scrive" dei campi orario testuali (inserisce i due
+    // punti da solo dopo le prime due cifre) - il salvataggio vero e proprio (dove previsto) è un
+    // case separato con lo stesso nome dentro onChangeDelegato, scatenato al blur.
+    case 'orario-autoformat': case 'app-cambia-ora-inizio': case 'app-cambia-ora-fine': formattaInputOrario(el); break;
     case 'cli-filtro-q': CLI_FILTRO.q = el.value; resetPagina('clienti'); render(); restoreFocus('[data-action="cli-filtro-q"]'); break;
     case 'rubrica-filtro-q': RUBRICA_FILTRO.q = el.value; resetPagina('rubrica'); render(); restoreFocus('[data-action="rubrica-filtro-q"]'); break;
     case 'cred-filtro-q': CRED_FILTRO.q = el.value; resetPagina('credenziali'); render(); restoreFocus('[data-action="cred-filtro-q"]'); break;

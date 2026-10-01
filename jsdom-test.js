@@ -1997,7 +1997,7 @@ async function main() {
   assert(q('#prenMotivoAltroWrap').style.display === 'none', 'il campo "Specifica" (motivo Altro) non dovrebbe essere visibile per un motivo diverso da "Altro"');
 
   setVal(q('#prenData'), '2026-11-10');
-  setVal(q('#prenOra'), '15:30');
+  setVal(q('#prenOraInizio'), '15:30');
   setVal(q('#prenTelefono'), '0444 999888');
   setVal(q('#prenNote'), 'Cliente ha chiesto se portare anche il socio.');
   click(q('[data-action="salva-prenota-appuntamento"]'));
@@ -2070,7 +2070,7 @@ async function main() {
   click(q('[data-action="prenota-appuntamento"]'));
   await wait(20);
   setVal(q('#prenData'), '2026-11-13');
-  setVal(q('#prenOra'), '09:15');
+  setVal(q('#prenOraInizio'), '09:15');
   setVal(q('#prenTelefono'), '0444 111222');
   const confirmOriginale = window.confirm;
   window.confirm = () => false; // simula "Annulla" sul dialog di conferma conflitto
@@ -2088,6 +2088,57 @@ async function main() {
   window.rimuoviAppuntamento(appA.id);
   window.rimuoviAppuntamento(appDurata90.id);
   console.log('=== "Prenota un appuntamento": un conflitto rilevato passa da confermaAzione(), rifiutare blocca il salvataggio, confermare procede comunque OK');
+
+  // ---------- Task #171: campi orario testuali (non più <input type="time">) + ora inizio/ora fine
+  // al posto della durata a elenco fisso ----------
+  {
+    assert(window.orarioValido('09:30') === true && window.orarioValido('23:59') === true, 'orarioValido dovrebbe accettare orari validi');
+    assert(window.orarioValido('9:30') === false && window.orarioValido('24:00') === false && window.orarioValido('09:60') === false && window.orarioValido('') === false, 'orarioValido dovrebbe rifiutare formati non HH:MM o fuori range');
+    assert(window.durataDaOrari('09:00', '10:30') === 90, 'durataDaOrari dovrebbe calcolare correttamente i minuti tra due orari');
+    assert(window.durataDaOrari('10:00', '09:00') === null, 'durataDaOrari dovrebbe rifiutare una fine precedente all\'inizio');
+    assert(window.durataDaOrari('10:00', '10:00') === null, 'durataDaOrari dovrebbe rifiutare inizio e fine uguali (durata zero)');
+    assert(window.durataDaOrari('10:00', 'non un orario') === null, 'durataDaOrari dovrebbe rifiutare un orario malformato');
+    console.log('=== Task #171: orarioValido/durataDaOrari coprono i casi validi/invalidi/di confine OK');
+
+    // Autoformattazione "mentre si scrive": digitare 4 cifre deve inserire da solo i due punti.
+    const fakeInput = { value: '0930' };
+    window.formattaInputOrario(fakeInput);
+    assert(fakeInput.value === '09:30', `formattaInputOrario dovrebbe trasformare "0930" in "09:30", trovato "${fakeInput.value}"`);
+
+    // Modifica di un appuntamento esistente tramite i nuovi campi Ora inizio/Ora fine (che
+    // sostituiscono il vecchio input type="time" + select Durata): editare l'ora inizio deve
+    // mantenere la durata (sposta anche la fine), editare l'ora fine deve ricalcolare solo la durata.
+    const appPerModificaOrario = window.aggiungiAppuntamento({ clienteId: null, data: '2026-11-20', ora: '09:00', durataMinuti: 60, oggetto: 'Test modifica orario' });
+    window.apriModalAppuntamento(appPerModificaOrario.id);
+    await wait(20);
+    const campoInizio = q('#appOraInizio_' + appPerModificaOrario.id);
+    const campoFine = q('#appOraFine_' + appPerModificaOrario.id);
+    assert(campoInizio && campoFine, 'il modale di modifica appuntamento dovrebbe avere i campi Ora inizio/Ora fine (non più Ora/Durata)');
+    assert(campoInizio.value === '09:00' && campoFine.value === '10:00', `i campi dovrebbero precompilarsi con inizio/fine correnti, trovato inizio="${campoInizio.value}" fine="${campoFine.value}"`);
+
+    setVal(campoInizio, '11:00');
+    await wait(20);
+    let aggiornato = window.trovaAppuntamento(appPerModificaOrario.id);
+    assert(aggiornato.ora === '11:00' && aggiornato.durataMinuti === 60, 'cambiare l\'ora inizio dovrebbe spostare l\'appuntamento mantenendo la durata di 60\'');
+    assert(q('#appOraFine_' + appPerModificaOrario.id).value === '12:00', 'il campo Ora fine dovrebbe aggiornarsi da solo di conseguenza (inizio 11:00 + 60\' = 12:00)');
+
+    setVal(campoFine, '11:30');
+    await wait(20);
+    aggiornato = window.trovaAppuntamento(appPerModificaOrario.id);
+    assert(aggiornato.ora === '11:00' && aggiornato.durataMinuti === 30, 'cambiare l\'ora fine dovrebbe mantenere l\'inizio e ricalcolare solo la durata (11:00-11:30 = 30\')');
+
+    // un'ora fine non valida (prima dell'inizio) viene rifiutata e il campo torna al valore corretto
+    setVal(campoFine, '08:00');
+    await wait(20);
+    aggiornato = window.trovaAppuntamento(appPerModificaOrario.id);
+    assert(aggiornato.durataMinuti === 30, 'un\'ora fine precedente all\'inizio non deve essere accettata (la durata precedente deve restare invariata)');
+    assert(q('#appOraFine_' + appPerModificaOrario.id).value === '11:30', 'dopo un tentativo non valido il campo Ora fine dovrebbe tornare a mostrare il valore corretto');
+
+    click(q('[data-action="chiudi-modal"]'));
+    await wait(20);
+    window.rimuoviAppuntamento(appPerModificaOrario.id);
+    console.log('=== Task #171: modifica Ora inizio/Ora fine di un appuntamento esistente (sincronizzazione campi, validazione, rifiuto orari non validi) OK');
+  }
 
   // Bug segnalato da Matteo ("le frecce per cambiare settimana non fanno nulla"): erano registrate
   // per errore su onChangeDelegato (evento 'change', mai generato da un click su <button>) invece di
