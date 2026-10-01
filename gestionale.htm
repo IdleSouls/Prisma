@@ -490,7 +490,6 @@ select[multiple]{min-height:150px;}
     </div>
     <div style="display:flex;align-items:center;gap:10px;">
       <span id="syncBadge" class="helptext"></span>
-      <span id="chiOnlineBadge" style="display:none;align-items:center;gap:5px;"></span>
       <button class="btn" id="operatoreBadge" data-action="apri-selettore-operatore" style="display:none;"></button>
       <button class="btn" data-action="apri-ricerca-globale" title="Cerca ovunque (Ctrl/Cmd+K)">🔍 Cerca <span class="helptext" style="margin-left:4px;">Ctrl+K</span></button>
       <select id="annoSelect" class="field" style="min-width:90px;padding:7px 9px;border:1px solid var(--border);border-radius:6px;"></select>
@@ -2080,24 +2079,14 @@ function aggiornaBadgeOperatore() {
     : 'Scegli chi sta usando questo PC (solo per sapere chi ha fatto cosa, nessuna restrizione).';
 }
 // Bug segnalato da Matteo ("manca l'indicatore per vedere quali responsabili sono online"): i
-// pallini di presenza esistevano SOLO dentro Chat interna (lista contatti), quindi per sapere chi
-// altro è collegato bisognava aprire la chat. Questo badge nella topbar mostra un pallino per
-// OGNI collega (tranne se stessi) sempre visibile, in qualunque vista ci si trovi - stessa fonte
-// dati (operatoreOnline/PRESENZA_ONLINE) dei pallini in chat, nessuna logica nuova, solo un
-// secondo posto dove si vede.
-function aggiornaChiOnlineBadge() {
-  const el = typeof document !== 'undefined' && document.getElementById('chiOnlineBadge');
-  if (!el) return;
-  const io = operatoreCorrente();
-  const altri = (STATE.meta.responsabili || []).filter(n => n !== io);
-  if (!HTTP_SYNC_ATTIVO || altri.length === 0) { el.style.display = 'none'; return; }
-  el.style.display = 'inline-flex';
-  const online = altri.filter(operatoreOnline);
-  el.innerHTML = altri.map(n => `<span class="chat-pallino ${operatoreOnline(n)?'online':'offline'}" style="position:static;" title="${escapeHtml(n)} — ${operatoreOnline(n)?'online':'offline'}"></span>`).join('');
-  el.title = online.length
-    ? `Online ora: ${online.join(', ')}`
-    : 'Nessun collega online al momento';
-}
+// pallini di presenza esistevano SOLO dentro Chat interna (lista contatti) - inizialmente erano
+// stati mostrati ANCHE in un badge sempre visibile in topbar (un pallino per collega), ma Matteo
+// ha poi chiesto di toglierli da lì ("non mi piacciono qui questi tre puntini... lasciamoli
+// soltanto quando si clicca sul nome dell'utente"): il badge sempre-acceso è stato rimosso, i
+// pallini di presenza restano visibili cliccando sul proprio nome (operatoreBadge, azione
+// "apri-selettore-operatore"), che apre modalSelettoreOperatore qui sotto - quella mostra già un
+// pallino online/offline per ogni responsabile, stessa fonte dati (operatoreOnline), senza bisogno
+// di nessun secondo indicatore sempre acceso.
 // Mostrato una volta per browser (finché non si scegli un nome, o se i responsabili passano da 1 a
 // 2+): niente da fare se c'è un solo responsabile configurato, o se qui è già stato scelto un nome.
 function eventualeSelettoreOperatore() {
@@ -4138,7 +4127,6 @@ function render() {
   renderNav();
   renderAnnoSelect();
   aggiornaBadgeOperatore();
-  aggiornaChiOnlineBadge();
   const [title, sub] = PAGE_TITLES[VIEW] || ['', ''];
   document.getElementById('pageTitle').textContent = title;
   document.getElementById('pageSub').textContent = sub;
