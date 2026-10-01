@@ -1834,9 +1834,17 @@ async function main() {
   setVal(q('#modNome'), 'Preventivo di prova (test)');
   setVal(q('#modCorpo'), 'Testo iniziale di prova per {{cliente.ragioneSociale}}, oggetto: {{oggetto}}, nota libera: {{notaLibera}}.');
   await wait(20);
+  // Task #175: il testo digitato resta invariato (il formato salvato non cambia, solo l'aspetto)
+  // e il backdrop sotto la textarea mostra gli stessi segnaposto avvolti in <mark> colorati.
+  assert(q('#modCorpo').value === 'Testo iniziale di prova per {{cliente.ragioneSociale}}, oggetto: {{oggetto}}, nota libera: {{notaLibera}}.', 'il testo del modello non dovrebbe essere alterato dall\'evidenziazione visiva dei segnaposto');
+  const backdropIniziale = q('#modCorpoHighlight');
+  assert(backdropIniziale, 'manca il div di evidenziazione (#modCorpoHighlight) accanto alla textarea del modello (task #175)');
+  assert(backdropIniziale.querySelectorAll('mark').length === 3, `attesi 3 segnaposto evidenziati (<mark>) nel backdrop, trovati ${backdropIniziale.querySelectorAll('mark').length}`);
+  assert(backdropIniziale.innerHTML.includes('<mark>{{cliente.ragioneSociale}}</mark>'), 'il segnaposto {{cliente.ragioneSociale}} non risulta evidenziato nel backdrop');
   click(q('[data-action="modello-inserisci-placeholder"][data-chiave="studio.nome"]'));
   await wait(20);
   assert(q('#modCorpo').value.includes('{{studio.nome}}'), 'il pulsante di inserimento rapido del segnaposto non ha aggiunto il token nel testo del modello');
+  assert(q('#modCorpoHighlight').innerHTML.includes('<mark>{{studio.nome}}</mark>'), 'il backdrop non si è aggiornato dopo l\'inserimento rapido del segnaposto (evento input sintetico mancante?)');
   setChecked(q('#modPredefinito'), true);
   click(q('[data-action="salva-modello"]'));
   await wait(20);

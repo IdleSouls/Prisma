@@ -249,6 +249,21 @@ tr.riga-selezionata{background:var(--blu-light);}
 .campo-orario{min-width:0;width:78px;text-align:center;font-variant-numeric:tabular-nums;letter-spacing:.02em;}
 .field textarea{min-width:260px;}
 .field.grow input, .field.grow select{min-width:220px;}
+/* Task #175 (Matteo: "i modelli per i documenti restano ancora molto brutti, sono un muro di
+   testo pieno di parentesi graffe ed è molto brutto da vedere e difficile da usare, possiamo
+   trovare un modo più pratico?"): editor del testo del modello con i segnaposto {{così}}
+   evidenziati in colore mentre si scrive, senza cambiare il formato salvato (resta testo semplice
+   con {{...}}, letto da risolviTemplateDocumento via espressione regolare - qui è solo un effetto
+   visivo). Tecnica usata (niente contenteditable, per non rischiare di corrompere il testo
+   semplice salvato): la textarea vera ha il testo reso invisibile (color:transparent, resta
+   visibile solo il cursore grazie a caret-color) e sta sopra un div "gemello" che mostra lo stesso
+   testo con i segnaposto colorati - i due devono restare pixel-identici (stesso font, padding,
+   line-height, bordo) altrimenti il testo scorrendo "sfasa"; vedi modalModelloDocumento() per la
+   sincronizzazione su input/scroll. */
+.modello-editor-wrap{position:relative;}
+.modello-editor-wrap .modello-editor-ta{position:relative;z-index:2;background:transparent!important;color:transparent;caret-color:#161B26;}
+.modello-editor-highlight{position:absolute;top:0;left:0;right:0;bottom:0;z-index:1;overflow:auto;white-space:pre-wrap;word-wrap:break-word;padding:7px 9px;border:1px solid transparent;border-radius:6px;pointer-events:none;color:#161B26;background:#fff;}
+.modello-editor-highlight mark{background:#E7EEFC;color:#2E63C7;border-radius:3px;padding:0 1px;font-weight:600;box-shadow:0 0 0 1px rgba(46,99,199,.25);}
 /* flex-shrink:0 è il pezzo che mancava per il layout "Destinatari" segnalato da Matteo (e lo stesso
    identico bug latente nella riga radio "tipo import" di Contabilità, riga ~5317): quando più
    .checkline stanno affiancati dentro un contenitore flex-wrap (es. "Un cliente / Tutti i clienti
@@ -6558,6 +6573,12 @@ function renderModelliDocumento() {
    categoria è testo libero (con datalist di suggerimenti) invece di un elenco fisso: un modello
    antiriciclaggio nuovo basta farlo iniziare per "AML" per comparire automaticamente nel fascicolo
    cliente invece che tra Preventivi e mandati (vedi categoriaEAml). */
+// Task #175: converte il testo del modello in HTML con i segnaposto {{così}} evidenziati - usata
+// sia per il backdrop dell'editor (modalModelloDocumento) sia, potenzialmente, altrove in futuro
+// per mostrare un'anteprima colorata senza duplicare la regex di risolviTemplateDocumento.
+function evidenziaSegnaposto(testo) {
+  return escapeHtml(testo || '').replace(/\{\{([^{}\n]*)\}\}/g, '<mark>{{$1}}</mark>');
+}
 function modalModelloDocumento(id) {
   const editing = id ? STATE.modelliDocumento.find(x => x.id === id) : null;
   if (id && !editing) { toast('Modello non trovato.'); return; }
@@ -6575,8 +6596,11 @@ function modalModelloDocumento(id) {
           <div class="field"><label>Nome modello *</label><input id="modNome" value="${editing?escapeHtml(editing.nome):''}" placeholder="es. Preventivo standard"></div>
         </div>
         <div class="field full" style="grid-column:1/-1;margin-top:10px;">
-          <label>Testo del modello *</label>
-          <textarea id="modCorpo" style="min-height:280px;font-family:Georgia,'Times New Roman',serif;font-size:13px;line-height:1.6;">${editing?escapeHtml(editing.corpo):''}</textarea>
+          <label>Testo del modello * <span style="font-weight:400;color:var(--text-mut);">— i segnaposto <mark style="background:#E7EEFC;color:#2E63C7;border-radius:3px;padding:0 3px;">{{così}}</mark> si colorano da soli mentre scrivi, per distinguerli dal resto del testo</span></label>
+          <div class="modello-editor-wrap">
+            <div id="modCorpoHighlight" class="modello-editor-highlight" aria-hidden="true">${evidenziaSegnaposto(editing?editing.corpo:'')}</div>
+            <textarea id="modCorpo" class="modello-editor-ta" style="min-height:280px;font-family:Georgia,'Times New Roman',serif;font-size:13px;line-height:1.6;" spellcheck="false">${editing?escapeHtml(editing.corpo):''}</textarea>
+          </div>
         </div>
         <div style="margin-top:8px;">
           <div class="helptext" style="margin-bottom:6px;">Clic per inserire un segnaposto automatico nel punto del cursore:</div>
@@ -6596,6 +6620,22 @@ function modalModelloDocumento(id) {
     </div>
   </div>`;
   document.getElementById('modalRoot').innerHTML = html;
+  // Task #175: l'evidenziazione dei segnaposto è puramente visiva (il backdrop sotto la textarea
+  // trasparente) e lo scroll NON passa dalla delegazione globale su document.body (gli eventi
+  // 'scroll' sui singoli elementi non fanno bubbling, a differenza di 'input'/'change' usati
+  // altrove in questa app) - per questo qui, in via eccezionale, si registrano due listener diretti
+  // invece di passare da onInputDelegato.
+  const taModCorpo = document.getElementById('modCorpo');
+  const hlModCorpo = document.getElementById('modCorpoHighlight');
+  if (taModCorpo && hlModCorpo) {
+    const sincronizzaEvidenziazioneModCorpo = () => {
+      hlModCorpo.innerHTML = evidenziaSegnaposto(taModCorpo.value) + '\n';
+      hlModCorpo.scrollTop = taModCorpo.scrollTop;
+      hlModCorpo.scrollLeft = taModCorpo.scrollLeft;
+    };
+    taModCorpo.addEventListener('input', sincronizzaEvidenziazioneModCorpo);
+    taModCorpo.addEventListener('scroll', sincronizzaEvidenziazioneModCorpo);
+  }
 }
 
 /* -------------------- RENDER: PROCEDURE INTERNE (task #146) --------------------
@@ -10527,10 +10567,25 @@ function segnaAppuntamentoVisto(id) {
 }
 /* Procedura interna suggerita per un appuntamento, in base al motivo scelto dalla segreteria (task
    #147: "l'ideale sarebbe poter trovare un modo per collegare l'appuntamento a delle procedure").
-   Nessun collegamento per gli appuntamenti creati direttamente dal consulente (motivo assente). */
+   Usata SOLO come suggerimento di default quando l'appuntamento non ha ancora un collegamento
+   manuale (vedi proceduraCollegataAppuntamento sotto) - task #185 (Matteo: "non è che chi vuole
+   aprire partita iva segua sempre la stessa procedura, ci sono mille procedure diverse [...]
+   lasciamolo come un campo libero nella gestione dell'evento-appuntamento"): l'abbinamento
+   automatico per motivo non è più l'unica fonte di verità, solo un punto di partenza comodo.
+   Nessun suggerimento per gli appuntamenti creati direttamente dal consulente (motivo assente). */
 function proceduraSuggeritaPerAppuntamento(a) {
   if (!a || !a.motivo) return null;
   return (STATE.procedureInterne || []).find(p => p.attivo && (p.motiviAppuntamento || []).includes(a.motivo)) || null;
+}
+/* Procedura EFFETTIVAMENTE collegata a un appuntamento (task #185): se è stata scelta a mano
+   (a.procedureId, impostabile dal campo libero in apriModalAppuntamento - di solito DOPO aver preso
+   l'appuntamento, quando si sa meglio a quale procedura corrisponde) quella vince sempre; altrimenti
+   si ripiega sul suggerimento automatico per motivo, per compatibilità con gli appuntamenti già
+   prenotati prima di questo task e per chi non ha ancora toccato il campo. */
+function proceduraCollegataAppuntamento(a) {
+  if (!a) return null;
+  if (a.procedureId) return procedureById(a.procedureId) || null;
+  return proceduraSuggeritaPerAppuntamento(a);
 }
 
 /* Modale "Nuovo evento": due pulsanti per scegliere il tipo, poi un form dedicato sotto. Lo stato
@@ -10700,7 +10755,6 @@ function apriModalAppuntamento(id) {
   const a = trovaAppuntamento(id);
   if (!a) return;
   if (a.prenotatoDaSegreteria) segnaAppuntamentoVisto(id);
-  const procedura = proceduraSuggeritaPerAppuntamento(a);
   const bloccoSegreteria = a.prenotatoDaSegreteria ? `
     <div class="card" style="margin:10px 0;background:var(--rosa-bg);">
       <div class="section-title" style="margin-top:0;">Prenotato dalla segreteria</div>
@@ -10714,9 +10768,26 @@ function apriModalAppuntamento(id) {
         ${a.canaleProvenienza ? `<div><strong>Come ci ha trovato:</strong> ${escapeHtml(a.canaleProvenienza)}</div>` : ''}
         ${a.motivo ? `<div><strong>Cosa vuole:</strong> ${escapeHtml(a.motivo)}${a.motivo==='Altro'&&a.motivoAltro?': '+escapeHtml(a.motivoAltro):''}</div>` : ''}
       </div>
-      ${procedura ? `<div style="margin-top:8px;"><button class="btn small" data-action="apri-procedura" data-id="${procedura.id}">📋 Procedura collegata: ${escapeHtml(procedura.nome)}</button></div>` : ''}
       <div style="margin-top:8px;"><button class="btn small" data-action="stampa-riepilogo-appuntamento" data-id="${a.id}">🖨 Riepilogo stampabile per l'incontro</button></div>
     </div>` : '';
+  // Task #185 (Matteo: "forse gestirei questo collegamento dopo aver preso l'appuntamento [...]
+  // lasciamolo come un campo libero"): collegamento a una procedura SEMPRE modificabile a mano, non
+  // solo per gli appuntamenti prenotati dalla segreteria - preselezionato con il suggerimento
+  // automatico per motivo solo se non è già stato scelto nulla manualmente (vedi
+  // proceduraCollegataAppuntamento), ma liberamente cambiabile con qualunque procedura attiva.
+  const procedureAttiveOrdinate = (STATE.procedureInterne || []).filter(p => p.attivo).sort((x, y) => x.nome.localeCompare(y.nome));
+  const procedureIdSelezionata = a.procedureId || (proceduraSuggeritaPerAppuntamento(a) || {}).id || '';
+  const bloccoProcedura = `
+    <div class="field full" style="grid-column:1/-1;">
+      <label>Procedura collegata <span style="font-weight:400;color:var(--text-mut);">(facoltativa, cambiabile in qualsiasi momento)</span></label>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <select style="flex:1;" data-action="app-cambia-procedura" data-id="${a.id}">
+          <option value="">— Nessuna —</option>
+          ${procedureAttiveOrdinate.map(p => `<option value="${p.id}" ${procedureIdSelezionata===p.id?'selected':''}>${escapeHtml(p.categoria)} · ${escapeHtml(p.nome)}</option>`).join('')}
+        </select>
+        ${procedureIdSelezionata ? `<button type="button" class="btn small" data-action="apri-procedura" data-id="${procedureIdSelezionata}">Apri</button>` : ''}
+      </div>
+    </div>`;
   // Task #160: decisione del consulente (non della segreteria) su un eventuale bisogno di
   // software di fatturazione del cliente/prospect — per questo va nella scheda dell'incontro,
   // fuori dal bloccoSegreteria che è la sola trascrizione di quanto raccolto al telefono.
@@ -10738,6 +10809,7 @@ function apriModalAppuntamento(id) {
           </select>
         </div>
         <div class="field full" style="grid-column:1/-1;"><label>Note</label><textarea rows="3" data-action="app-cambia-note" data-id="${a.id}">${escapeHtml(a.note||'')}</textarea></div>
+        ${bloccoProcedura}
       </div>
       <div class="modal-actions">
         <button class="btn" data-action="app-elimina" data-id="${a.id}" style="color:var(--rosso);">Elimina</button>
@@ -10757,7 +10829,7 @@ function apriModalAppuntamento(id) {
 function apriRiepilogoAppuntamento(id) {
   const a = trovaAppuntamento(id);
   if (!a) { toast('Appuntamento non trovato.'); return; }
-  const procedura = proceduraSuggeritaPerAppuntamento(a);
+  const procedura = proceduraCollegataAppuntamento(a);
 
   // Righe del riepilogo come coppie campo/valore (invece della vecchia lista <br>-separata), per
   // un fac-simile leggibile anche stampato: ogni riga nuova richiesta da Matteo (nome, email,
@@ -10776,28 +10848,37 @@ function apriRiepilogoAppuntamento(id) {
   if (a.bisognoSoftwareFatturazione && a.bisognoSoftwareFatturazione !== OPZIONI_SOFTWARE_FATTURAZIONE[0]) campi.push(['Software di fatturazione', a.bisognoSoftwareFatturazione]);
   if (a.note) campi.push(['Note aggiuntive', a.note]);
 
-  const righeTabella = campi.map(([etichetta, valore]) => `
-    <tr>
-      <td style="padding:7px 12px 7px 0;color:#666;white-space:nowrap;vertical-align:top;font-size:12.5px;">${escapeHtml(etichetta)}</td>
-      <td style="padding:7px 0;font-size:13.5px;">${escapeHtml(String(valore))}</td>
+  // Task #185 (Matteo: "quello devo dire risulta impaginato brutto, senza nessuna immagine e senza
+  // colori"): righe zebrate con etichetta colorata invece della tabella piatta bianco/nero di
+  // prima, stessa palette del resto di Prisma (vedi --blu-* in :root) - questa pagina vive in una
+  // finestra popup separata (window.open), quindi non eredita il foglio di stile principale: i
+  // colori vanno ripetuti qui in esadecimale.
+  const BLU_SCURO = '#132A4C', BLU_MID = '#2E63C7', BLU_LIGHT = '#E7EEFC';
+  const righeTabella = campi.map(([etichetta, valore], i) => `
+    <tr style="background:${i % 2 === 0 ? '#fff' : '#F7F9FD'};">
+      <td style="padding:8px 14px;color:${BLU_MID};font-weight:600;white-space:nowrap;vertical-align:top;font-size:12px;border-bottom:1px solid #E7EBF2;">${escapeHtml(etichetta)}</td>
+      <td style="padding:8px 14px;font-size:13.5px;border-bottom:1px solid #E7EBF2;">${escapeHtml(String(valore))}</td>
     </tr>`).join('');
-  let corpo = `<table style="width:100%;border-collapse:collapse;">${righeTabella}</table>`;
+  let corpo = `<table style="width:100%;border-collapse:collapse;border-radius:8px;overflow:hidden;box-shadow:0 0 0 1px #E7EBF2;">${righeTabella}</table>`;
   if (procedura) {
-    corpo += `<hr style="margin:24px 0;border:none;border-top:1px solid #ddd;"><h2 style="font-size:16px;margin-bottom:6px;">Procedura collegata: ${escapeHtml(procedura.nome)}</h2>`;
-    corpo += `<div style="white-space:pre-wrap;">${escapeHtml(procedura.contenuto)}</div>`;
+    corpo += `<div style="margin-top:26px;background:${BLU_LIGHT};border-radius:10px;padding:16px 18px;">
+      <div style="font-size:10.5px;font-weight:700;color:${BLU_MID};text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">📋 Procedura collegata</div>
+      <h2 style="font-size:16px;margin:0 0 10px;color:${BLU_SCURO};">${escapeHtml(procedura.nome)}</h2>
+      <div style="white-space:pre-wrap;font-size:13px;">${escapeHtml(procedura.contenuto)}</div>`;
     if ((procedura.checklistDocumenti || []).length) {
-      corpo += `<h3 style="font-size:14px;margin-top:16px;">Documenti necessari</h3><ul>${procedura.checklistDocumenti.map(d=>`<li>${escapeHtml(d)}</li>`).join('')}</ul>`;
+      corpo += `<h3 style="font-size:13px;margin-top:14px;color:${BLU_SCURO};">Documenti necessari</h3><ul style="margin:6px 0 0;padding-left:18px;">${procedura.checklistDocumenti.map(d=>`<li style="margin-bottom:3px;">${escapeHtml(d)}</li>`).join('')}</ul>`;
     }
+    corpo += `</div>`;
   }
 
   // Intestazione dello studio: dati anagrafici sempre a sinistra, logo (se caricato) posizionato
   // secondo STATE.meta.logoPosizione — vedi cardLogoStudio() in Impostazioni > Studio.
   const m = STATE.meta;
   const datiStudioHtml = `<div>
-      <div style="font-weight:700;font-size:15px;">${escapeHtml(m.studioNome || 'Studio')}</div>
-      ${m.iscrizione ? `<div style="font-size:11.5px;color:#555;">${escapeHtml(m.iscrizione)}</div>` : ''}
-      ${m.indirizzoStudio ? `<div style="font-size:11.5px;color:#555;">${escapeHtml(m.indirizzoStudio)}</div>` : ''}
-      ${m.cfStudio ? `<div style="font-size:11.5px;color:#555;">C.F./P.IVA ${escapeHtml(m.cfStudio)}</div>` : ''}
+      <div style="font-weight:700;font-size:16px;color:${BLU_SCURO};">${escapeHtml(m.studioNome || 'Studio')}</div>
+      ${m.iscrizione ? `<div style="font-size:11.5px;color:#5B6678;margin-top:2px;">${escapeHtml(m.iscrizione)}</div>` : ''}
+      ${m.indirizzoStudio ? `<div style="font-size:11.5px;color:#5B6678;">${escapeHtml(m.indirizzoStudio)}</div>` : ''}
+      ${m.cfStudio ? `<div style="font-size:11.5px;color:#5B6678;">C.F./P.IVA ${escapeHtml(m.cfStudio)}</div>` : ''}
     </div>`;
   const logoHtml = m.logoStudio ? `<img src="${m.logoStudio}" alt="Logo" style="max-width:160px;max-height:70px;">` : '';
   const posizione = m.logoPosizione || 'sinistra';
@@ -10814,9 +10895,19 @@ function apriRiepilogoAppuntamento(id) {
 
   const win = window.open('', '_blank');
   if (!win) { toast('Impossibile aprire la finestra di stampa (popup bloccato dal browser?).', true); return; }
-  win.document.write(`<!DOCTYPE html><html><head><title>Riepilogo appuntamento</title><meta charset="utf-8"><style>body{font-family:system-ui,sans-serif;max-width:680px;margin:40px auto;padding:0 24px;line-height:1.6;font-size:14px;color:#111;}</style></head><body>
-    <div style="border-bottom:2px solid #111;padding-bottom:12px;margin-bottom:20px;">${intestazioneHtml}</div>
-    <h1 style="font-size:18px;margin-top:0;">Riepilogo appuntamento</h1>
+  // Barra colorata in cima (puramente decorativa, @media print la mantiene: i browser stampano gli
+  // sfondi solo se l'utente ha "grafica di sfondo" attiva nella finestra di stampa, scelta sua) e
+  // intestazione "RIEPILOGO APPUNTAMENTO" con lo stesso accento blu del resto di Prisma, invece del
+  // vecchio titolo nero su sfondo bianco piatto.
+  win.document.write(`<!DOCTYPE html><html><head><title>Riepilogo appuntamento</title><meta charset="utf-8"><style>
+    body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;max-width:680px;margin:0 auto;padding:0 24px 40px;line-height:1.6;font-size:14px;color:#161B26;}
+    .barra-top{height:8px;background:linear-gradient(90deg, ${BLU_MID}, ${BLU_SCURO});margin:0 -9999px 32px;}
+    .eyebrow{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:${BLU_MID};margin:0 0 4px;}
+  </style></head><body>
+    <div class="barra-top"></div>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;border-bottom:2px solid ${BLU_LIGHT};padding-bottom:16px;margin-bottom:24px;">${intestazioneHtml}</div>
+    <div class="eyebrow">Promemoria incontro</div>
+    <h1 style="font-size:20px;margin:0 0 20px;color:${BLU_SCURO};">Riepilogo appuntamento</h1>
     ${corpo}
   </body></html>`);
   win.document.close();
@@ -13073,6 +13164,10 @@ function onClickDelegato(e) {
       ta.value = ta.value.slice(0, start) + token + ta.value.slice(end);
       ta.focus();
       ta.selectionStart = ta.selectionEnd = start + token.length;
+      // Task #175: aggiorna anche l'evidenziazione colorata del segnaposto appena inserito - i
+      // listener sono attaccati direttamente sulla textarea (vedi modalModelloDocumento), un
+      // 'input' sintetico li fa scattare come se l'utente avesse digitato.
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
       break;
     }
 
@@ -14113,6 +14208,10 @@ function onChangeDelegato(e) {
     }
     case 'app-cambia-oggetto': aggiornaAppuntamento(id, { oggetto: el.value }); break;
     case 'app-cambia-software-fatturazione': aggiornaAppuntamento(id, { bisognoSoftwareFatturazione: el.value }); break;
+    // Task #185: collegamento a procedura come campo libero, sempre modificabile dal consulente -
+    // si ri-apre il modale (non solo render()) così il pulsante "Apri" compare/sparisce subito
+    // insieme alla select, senza dover chiudere e riaprire a mano.
+    case 'app-cambia-procedura': aggiornaAppuntamento(id, { procedureId: el.value || null }); apriModalAppuntamento(id); break;
     case 'app-cambia-note': aggiornaAppuntamento(id, { note: el.value }); break;
     case 'nuovo-evento-scad-frequenza': aggiornaVisibilitaMeseScadenzaRicorrente(); break;
     case 'prenota-cambia-consulente': PRENOTA_CONSULENTE = el.value; renderFormPrenotaAppuntamento(); break;
