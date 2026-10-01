@@ -112,11 +112,20 @@ input::file-selector-button{font-family:inherit;font-size:inherit;}
 details summary{cursor:pointer;font-size:10.5px;font-weight:700;color:var(--text-mut);text-transform:uppercase;letter-spacing:.03em;margin-top:6px;}
 .cartella-doc{border-top:1px solid var(--border);padding:9px 0;}
 .cartella-doc:first-child{border-top:none;padding-top:0;}
-.cartella-doc summary{font-size:12.5px;color:var(--text);text-transform:none;letter-spacing:normal;margin-top:0;list-style:none;display:flex;align-items:center;gap:6px;}
+.cartella-doc summary{font-size:12.5px;color:var(--text);text-transform:none;letter-spacing:normal;margin-top:0;list-style:none;display:flex;align-items:center;gap:8px;}
 .cartella-doc summary::-webkit-details-marker{display:none;}
 .cartella-doc .cnt-cartella{margin-left:auto;font-size:10.5px;font-weight:700;color:var(--text-mut);background:var(--bg);border-radius:20px;padding:1px 8px;}
 .cartella-doc .item{padding:9px 0 9px 22px;border-top:1px solid var(--border);}
 .cartella-doc .item:first-child{border-top:none;}
+/* Task #179 (Matteo: "cartelle anagrafica/società poco differenziate" - nello screenshot tutte le
+   cartelle di primo livello, da "Anagrafica e società" a "Fiscale" a "Pratiche e contratti",
+   avevano la stessa icona 📁 grigia e lo stesso peso visivo, indistinguibili a colpo d'occhio in un
+   elenco lungo). Le cartelle di AREA (primo livello, vedi AREE_DOCUMENTI_PORTALE più sotto) ora
+   hanno un'icona colorata diversa per area, più il nome in grassetto; le sottocartelle per
+   categoria dentro restano con la semplice 📁 grigia come prima, apposta più "leggere" - la
+   differenza di peso visivo fa capire a colpo d'occhio qual è il livello area e quale il dettaglio. */
+.cartella-area > summary{font-weight:700;font-size:13.5px;}
+.cartella-icona{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:7px;font-size:13px;flex:none;}
 .progress{height:7px;background:var(--border);border-radius:20px;overflow:hidden;margin-top:6px;}
 .progress > div{height:100%;background:var(--verde);border-radius:20px;}
 /* Matteo: "ai grafici manca qualcosa" - il valore ora è sempre visibile sopra la barra (.v), non
@@ -452,13 +461,16 @@ const ORDINE_CATEGORIE_DOCUMENTO = ['Anagrafica', 'Visura camerale', 'Atto costi
 // cartelle più ampie. Duplicata in gestionale.htm (AREE_DOCUMENTI_PORTALE, usata anche
 // nell'anteprima schermo intero dello studio) per la stessa ragione di file-indipendenza di
 // ORDINE_CATEGORIE_DOCUMENTO: se cambi una delle due copie, cambia anche l'altra.
+// Task #179: icona/colore/sfondo per differenziare a colpo d'occhio le cartelle di AREA (vedi CSS
+// .cartella-icona sopra) - stessa palette a 5 colori già usata nel resto del portale (ICONE più
+// sotto), più un grigio neutro per "Altro" visto che non è un'area tematica vera e propria.
 const AREE_DOCUMENTI_PORTALE = [
-  { area: 'Anagrafica e società', categorie: ['Anagrafica', 'Visura camerale', 'Atto costitutivo/Statuto'] },
-  { area: 'Contabilità e bilanci', categorie: ['Bilancio', 'Busta paga'] },
-  { area: 'Fiscale', categorie: ['Dichiarazione fiscale', 'F24', 'Certificazione'] },
-  { area: 'Libri e registri', categorie: ['Registro contabile'] },
-  { area: 'Pratiche e contratti', categorie: ['Contratto', 'Corrispondenza Enti', 'Polizza assicurativa', 'Pratiche'] },
-  { area: 'Altro', categorie: ['Altro'] },
+  { area: 'Anagrafica e società', categorie: ['Anagrafica', 'Visura camerale', 'Atto costitutivo/Statuto'], icona: '🏢', colore: 'var(--blu-mid)', sfondo: 'var(--blu-light)' },
+  { area: 'Contabilità e bilanci', categorie: ['Bilancio', 'Busta paga'], icona: '📊', colore: 'var(--verde)', sfondo: 'var(--verde-bg)' },
+  { area: 'Fiscale', categorie: ['Dichiarazione fiscale', 'F24', 'Certificazione'], icona: '🧾', colore: 'var(--giallo)', sfondo: 'var(--giallo-bg)' },
+  { area: 'Libri e registri', categorie: ['Registro contabile'], icona: '📚', colore: 'var(--viola)', sfondo: 'var(--viola-bg)' },
+  { area: 'Pratiche e contratti', categorie: ['Contratto', 'Corrispondenza Enti', 'Polizza assicurativa', 'Pratiche'], icona: '🗂️', colore: 'var(--rosso)', sfondo: 'var(--rosso-bg)' },
+  { area: 'Altro', categorie: ['Altro'], icona: '📦', colore: '#6c7a92', sfondo: '#eef1f5' },
 ];
 function areaPerCategoriaDocumento(categoria) {
   const trovata = AREE_DOCUMENTI_PORTALE.find(a => a.categorie.includes(categoria));
@@ -1177,8 +1189,8 @@ function renderDocumenti() {
         <div style="margin-top:6px;">${righe}</div>
       </details>`;
     }).join('');
-    return `<details class="cartella-doc"${ia === 0 ? ' open' : ''}>
-      <summary>📁 ${escapeHtml(a.area)} <span class="cnt-cartella">${nDocArea}</span></summary>
+    return `<details class="cartella-doc cartella-area"${ia === 0 ? ' open' : ''}>
+      <summary><span class="cartella-icona" style="background:${a.sfondo};color:${a.colore};">${a.icona}</span>${escapeHtml(a.area)} <span class="cnt-cartella">${nDocArea}</span></summary>
       <div style="margin-top:6px;">${sottocartelle}</div>
     </details>`;
   }).join('');
