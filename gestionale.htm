@@ -11960,12 +11960,14 @@ function renderImpostazioniDati() {
 
     <div>
       <div style="font-size:11px;font-weight:700;color:var(--text-mut);text-transform:uppercase;letter-spacing:.03em;margin-bottom:8px;">Backup e pulizia di un'annualità</div>
-      <div class="helptext" style="margin-bottom:10px;">Riguarda solo i dati datati a quell'anno: scadenze, F24, comunicazioni, documenti, task con scadenza, preventivi, bilanci, contabilità. Anagrafica clienti, fascicoli antiriciclaggio, catalogo attività, modelli documento e credenziali restano intatti. Esporta sempre il backup prima di eliminare, e verifica i tuoi obblighi di conservazione documentale.</div>
+      <div class="helptext" style="margin-bottom:10px;">Riguarda solo i dati datati a quell'anno: scadenze, F24, comunicazioni, documenti, task con scadenza, preventivi, bilanci, contabilità. Anagrafica clienti, fascicoli antiriciclaggio, catalogo attività, modelli documento e credenziali restano intatti. Esporta sempre il backup prima di eliminare, e verifica i tuoi obblighi di conservazione documentale. Eliminando, l'annualità si disattiva anche dal selettore anno in alto (se l'avevi aggiunta manualmente).</div>
       <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
         <div class="field" style="margin:0;"><label>Annualità</label><select id="impAnnoTarget">${anniConDatiRilevati().map(a => `<option value="${a}">${a}</option>`).join('')}</select></div>
         <button class="btn small" data-action="esporta-dati-anno">⬇ Esporta dati di quest'anno</button>
         <button class="btn small" style="border-color:var(--rosso);color:var(--rosso);" data-action="elimina-dati-anno">🗑 Elimina dati di quest'anno</button>
       </div>
+      <div class="helptext" style="margin:10px 0 6px;">Per rivedere un'annualità già eliminata: reimporta il file di backup scaricato con "Esporta dati di quest'anno" - i dati tornano selezionabili, senza toccare nient'altro. Gli eventuali file allegati (documenti/documenti contabili) non sono recuperabili, solo i relativi dati.</div>
+      <label class="btn small" style="margin:0;">⬆ Reimporta dati di un'annualità<input type="file" accept="application/json" id="importAnnoFile" style="display:none;" data-action="importa-dati-anno"></label>
     </div>
   </div>
 
@@ -14281,6 +14283,7 @@ function onChangeDelegato(e) {
       break;
     }
     case 'importa-backup': importaBackup(el); break;
+    case 'importa-dati-anno': importaDatiAnno(el); break;
     case 'strumenti-scegli-file': selezionaFileConversione(el); break;
     case 'carica-logo-studio': caricaLogoStudio(el); break;
     case 'cambia-posizione-logo': STATE.meta.logoPosizione = el.value; salvaStato(); break;
@@ -14696,9 +14699,111 @@ function eliminaDatiAnno(anno) {
   d.fatture.forEach(v => { STATE.fattureContabili[v.clienteId] = (STATE.fattureContabili[v.clienteId] || []).filter(f => f.id !== v.id); });
   d.documentiContabili.forEach(v => eliminaDocumentoContabile(v.clienteId, v.id));
 
+  // Task #189 (Matteo: "se cancello un'annualità vorrei che si disattivasse dalle annualità
+  // selezionabili"): se l'anno era stato aggiunto manualmente al selettore in alto (anniExtra), ora
+  // che i suoi dati non ci sono più non ha senso restasse lì selezionabile - lo togliamo. Se era
+  // anche l'anno correntemente selezionato, si torna all'anno reale (stesso comportamento già
+  // usato da "rimuovi-anno-gestito"). Non tocchiamo invece il selettore "Backup e pulizia" qui
+  // sopra: quello (anniConDatiRilevati) si ricalcola da solo dai dati rimasti, quindi l'anno
+  // sparisce automaticamente al prossimo render.
+  rimuoviAnnoGestito(anno);
+  if (STATE.annoCorrente === anno) STATE.annoCorrente = new Date().getFullYear();
+
   salvaStato();
   render();
-  toast(`Dati dell'annualità ${anno} eliminati (${totale} elementi).`);
+  toast(`Dati dell'annualità ${anno} eliminati (${totale} elementi) e annualità disattivata dal selettore.`);
+}
+
+/* Task #189 (Matteo: "se dovessi rivedere i dati di un'annualità eliminata avrei dovuto esportarli
+   prima e poi reimportarli per controllare le cose - aggiungiamo la possibilità di reimportare"):
+   legge un file esportato da esportaDatiAnno() e RIUNISCE i record al loro posto in STATE, invece
+   di sovrascrivere tutto come fa importaBackup() (quello è pensato per un ripristino totale, non
+   per reinserire un singolo anno dentro dati che nel frattempo sono andati avanti). Per ogni
+   categoria: niente duplicati se un id è già presente (reimport ripetuto = no-op sicuro, non crea
+   doppioni), e si avvisa chiaramente che gli allegati fisici (documenti/documenti contabili) NON
+   tornano - solo i metadati: eliminaDocumento/eliminaDocumentoContabile cancellano anche il file
+   vero e proprio dal disco, che il JSON esportato non contiene. */
+function importaDatiAnno(inputEl) {
+  const file = inputEl.files && inputEl.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    inputEl.value = '';
+    let parsed;
+    try {
+      parsed = JSON.parse(reader.result);
+      if (!parsed || typeof parsed !== 'object' || !parsed.annoEsportato) throw new Error('non è un backup di annualità valido (manca annoEsportato)');
+    } catch (err) {
+      alert('File non valido: ' + err.message);
+      return;
+    }
+    const anno = parsed.annoEsportato;
+    const msg = `Reimportare i dati dell'annualità ${anno} (esportati il ${parsed.esportatoIl || '—'})? Verranno riaggiunti a quelli già presenti in Prisma, senza toccare nient'altro - un elemento già presente (stesso id) non viene duplicato.\n\nNota: eventuali documenti/documenti contabili allegati mostreranno di nuovo la voce in elenco, ma il FILE caricato non può essere recuperato (viene eliminato definitivamente quando elimini l'annualità) - solo i dati e i metadati tornano.`;
+    if (!confermaAzione(msg)) return;
+    const esito = fondiDatiAnno(parsed);
+    salvaStato();
+    render();
+    toast(`Annualità ${anno} reimportata: ${esito.aggiunti} elementi riaggiunti${esito.giaPresenti ? `, ${esito.giaPresenti} già presenti (ignorati)` : ''}.`);
+  };
+  reader.readAsText(file);
+}
+
+/* Riunisce il payload di un export-annualità in STATE. Ritorna {aggiunti, giaPresenti} per il
+   messaggio di conferma - usata sia da importaDatiAnno() sia dai test automatici. */
+function fondiDatiAnno(payload) {
+  let aggiunti = 0, giaPresenti = 0;
+  const fondiChiave = (dest, chiave, valore) => {
+    if (dest[chiave] !== undefined) { giaPresenti++; return; }
+    dest[chiave] = valore; aggiunti++;
+  };
+  const fondiArray = (arr, record) => {
+    if (arr.some(x => x.id === record.id)) { giaPresenti++; return; }
+    arr.push(record); aggiunti++;
+  };
+  if (!STATE.scadenzeOverrides) STATE.scadenzeOverrides = {};
+  Object.entries(payload.scadenzeOverrides || {}).forEach(([k, v]) => fondiChiave(STATE.scadenzeOverrides, k, v));
+  if (!STATE.annualiOverrides) STATE.annualiOverrides = {};
+  Object.entries(payload.annualiOverrides || {}).forEach(([k, v]) => fondiChiave(STATE.annualiOverrides, k, v));
+  if (!STATE.ritenuteRighe) STATE.ritenuteRighe = [];
+  (payload.ritenuteRighe || []).forEach(r => fondiArray(STATE.ritenuteRighe, r));
+  if (!STATE.f24) STATE.f24 = [];
+  (payload.f24 || []).forEach(f => fondiArray(STATE.f24, f));
+  if (!STATE.comunicazioni) STATE.comunicazioni = [];
+  (payload.comunicazioni || []).forEach(c => fondiArray(STATE.comunicazioni, c));
+  if (!STATE.documenti) STATE.documenti = [];
+  (payload.documenti || []).forEach(d => fondiArray(STATE.documenti, d));
+  if (!STATE.taskTeam) STATE.taskTeam = [];
+  (payload.taskTeam || []).forEach(t => fondiArray(STATE.taskTeam, t));
+  if (!STATE.preventivi) STATE.preventivi = [];
+  (payload.preventivi || []).forEach(p => fondiArray(STATE.preventivi, p));
+  if (!STATE.bilanci) STATE.bilanci = {};
+  (payload.bilanci || []).forEach(v => {
+    if (!v || !v.clienteId || !v.periodo) return;
+    if (!STATE.bilanci[v.clienteId]) STATE.bilanci[v.clienteId] = {};
+    fondiChiave(STATE.bilanci[v.clienteId], v.periodo, v.dati);
+  });
+  if (!STATE.movimentiContabili) STATE.movimentiContabili = {};
+  (payload.movimentiContabili || []).forEach(v => {
+    if (!v || !v.clienteId || !v.dati) return;
+    if (!STATE.movimentiContabili[v.clienteId]) STATE.movimentiContabili[v.clienteId] = [];
+    fondiArray(STATE.movimentiContabili[v.clienteId], v.dati);
+  });
+  if (!STATE.fattureContabili) STATE.fattureContabili = {};
+  (payload.fattureContabili || []).forEach(v => {
+    if (!v || !v.clienteId || !v.dati) return;
+    if (!STATE.fattureContabili[v.clienteId]) STATE.fattureContabili[v.clienteId] = [];
+    fondiArray(STATE.fattureContabili[v.clienteId], v.dati);
+  });
+  if (!STATE.documentiContabili) STATE.documentiContabili = {};
+  (payload.documentiContabili || []).forEach(v => {
+    if (!v || !v.clienteId || !v.dati) return;
+    if (!STATE.documentiContabili[v.clienteId]) STATE.documentiContabili[v.clienteId] = [];
+    fondiArray(STATE.documentiContabili[v.clienteId], v.dati);
+  });
+  // L'anno torna ad avere dati: se non rientra nella finestra automatica (anno corrente ±1) lo
+  // riaggiungiamo al selettore in alto, altrimenti resterebbe reimportato ma non selezionabile.
+  if (payload.annoEsportato) aggiungiAnnoGestito(payload.annoEsportato);
+  return { aggiunti, giaPresenti };
 }
 
 async function esportaBackup() {

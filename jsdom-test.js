@@ -5398,8 +5398,30 @@ async function main() {
   assert(opzioniAnno.includes(String(annoTest)), `annualità sintetica ${annoTest} non rilevata nel selettore "Backup e pulizia di un'annualità" (opzioni trovate: ${opzioniAnno.join(', ')})`);
 
   setVal(q('#impAnnoTarget'), String(annoTest));
+
+  // Cattura il JSON che l'export scarica davvero (mock della capability "downloads", stesso
+  // meccanismo già usato più sopra per salvaFileScaricabile) - serve per testare il reimport (#189)
+  // con il file ESATTO che Matteo otterrebbe cliccando "Esporta dati di quest'anno" dal vivo,
+  // invece di ricostruirlo a mano nel test (rischio di testare un payload diverso da quello reale).
+  assert(typeof window.claude === 'undefined', 'assunzione del test non valida: window.claude non dovrebbe esistere prima del mock');
+  let jsonEsportatoAnno = null;
+  window.claude = { use: async (nome) => nome === 'downloads' ? { save: async (opts) => { jsonEsportatoAnno = opts.data; return { status: 'saved' }; } } : null };
   click(q('[data-action="esporta-dati-anno"]'));
   await wait(30);
+  delete window.claude;
+  assert(jsonEsportatoAnno, 'il click su "Esporta dati di quest\'anno" non ha prodotto alcun file');
+  const payloadAnno = JSON.parse(jsonEsportatoAnno);
+  assert(payloadAnno.annoEsportato === annoTest, 'il backup esportato non riporta l\'anno corretto in annoEsportato');
+  assert(payloadAnno.comunicazioni.some(c => c.id === 'com-annotest') && payloadAnno.f24.some(f => f.id === 'f24-annotest'), 'il backup esportato non contiene i record sintetici attesi');
+
+  // Task #189 (Matteo: "se cancello un'annualità vorrei che si disattivasse dalle annualità
+  // selezionabili"): simula il caso reale - annualità aggiunta manualmente al selettore in alto
+  // (es. per rivederla) e anche correntemente selezionata - dopo l'eliminazione deve sparire da
+  // anniExtra E l'anno corrente deve tornare a quello reale, non restare "appeso" su un anno ormai
+  // senza dati.
+  window.aggiungiAnnoGestito(annoTest);
+  assert(window.getSTATE().meta.anniExtra.includes(annoTest), 'setup test non riuscito: annoTest non aggiunto ad anniExtra');
+  window.getSTATE().annoCorrente = annoTest;
 
   const nComPrimaAnno = window.getSTATE().comunicazioni.length;
   const nF24PrimaAnno = window.getSTATE().f24.length;
@@ -5413,7 +5435,42 @@ async function main() {
   assert(stDopoElim.f24.length === nF24PrimaAnno - 1, 'eliminaDatiAnno ha toccato più/meno F24 del previsto');
   assert(stDopoElim.clienti.length === nClientiPrimaAnno, 'eliminaDatiAnno ha toccato erroneamente le anagrafiche clienti');
   assert(stDopoElim.clienti.some(c => c.id === clienteTest.id), 'eliminaDatiAnno ha rimosso per errore il cliente usato nel test');
-  console.log(`=== Gestione annualità: rilevamento automatico + export + eliminazione mirata dell'annualità ${annoTest} OK (2 record rimossi, anagrafiche e resto dei dati intatti)`);
+  assert(!stDopoElim.meta.anniExtra.includes(annoTest), `#189: l'annualità ${annoTest} eliminata doveva disattivarsi (sparire da anniExtra/selettore in alto)`);
+  assert(stDopoElim.annoCorrente === new Date().getFullYear(), '#189: eliminando l\'annualità correntemente selezionata, annoCorrente doveva tornare all\'anno reale');
+  console.log(`=== Gestione annualità: rilevamento automatico + export + eliminazione mirata dell'annualità ${annoTest} OK (2 record rimossi, anagrafiche e resto dei dati intatti, annualità disattivata dal selettore)`);
+
+  // Task #189 (Matteo: "aggiungiamo la possibilità di reimportare i dati e assicuriamoci che
+  // funzioni correttamente"): reimporta esattamente il file appena esportato (prima della
+  // cancellazione) e verifica che i record tornino, SENZA toccare anagrafica/altri dati, e che
+  // l'annualità torni selezionabile. Il modal di conferma di importaDatiAnno usa confermaAzione()
+  // = window.confirm, già mockato a "sempre OK" dal setup globale della suite (riga 27).
+  window.setView('impostazioni');
+  await wait(20);
+  window.importaDatiAnno({ files: [new window.File([jsonEsportatoAnno], `prisma-backup-annualita-${annoTest}.json`, { type: 'application/json' })] });
+  await wait(30);
+  const stDopoReimport = window.getSTATE();
+  assert(stDopoReimport.comunicazioni.some(c => c.id === 'com-annotest'), `#189: la comunicazione sintetica dell'annualità ${annoTest} non è tornata dopo il reimport`);
+  assert(stDopoReimport.f24.some(f => f.id === 'f24-annotest'), `#189: l'F24 sintetico dell'annualità ${annoTest} non è tornato dopo il reimport`);
+  assert(stDopoReimport.comunicazioni.length === nComPrimaAnno, '#189: il reimport ha riportato un numero di comunicazioni diverso da quello pre-eliminazione');
+  assert(stDopoReimport.f24.length === nF24PrimaAnno, '#189: il reimport ha riportato un numero di F24 diverso da quello pre-eliminazione');
+  assert(stDopoReimport.clienti.length === nClientiPrimaAnno, '#189: il reimport ha toccato per errore le anagrafiche clienti');
+  assert(stDopoReimport.meta.anniExtra.includes(annoTest), `#189: dopo il reimport l'annualità ${annoTest} dovrebbe ricomparire come selezionabile (anniExtra)`);
+  console.log(`=== #189: reimport dei dati dell'annualità ${annoTest} dal backup esportato - record tornati, anagrafiche intatte, annualità riattivata nel selettore OK`);
+
+  // Reimportare di nuovo LO STESSO file non deve creare doppioni (stesso id = ignorato).
+  window.importaDatiAnno({ files: [new window.File([jsonEsportatoAnno], `prisma-backup-annualita-${annoTest}.json`, { type: 'application/json' })] });
+  await wait(30);
+  const stDopoDoppioReimport = window.getSTATE();
+  assert(stDopoDoppioReimport.comunicazioni.length === nComPrimaAnno, '#189: un secondo reimport dello stesso file ha duplicato le comunicazioni');
+  assert(stDopoDoppioReimport.f24.length === nF24PrimaAnno, '#189: un secondo reimport dello stesso file ha duplicato gli F24');
+  console.log('=== #189: un secondo reimport dello stesso file è un no-op sicuro, nessun doppione creato OK');
+
+  // pulizia: rimuovi di nuovo l'annualità sintetica (ora ripristinata dal reimport) per non
+  // lasciare residui ai test successivi - confermaAzione()/window.confirm resta mockato a "sempre
+  // OK" dal setup globale, quindi l'avviso "nessun backup esportato in questa sessione" non blocca.
+  setVal(q('#impAnnoTarget'), String(annoTest));
+  click(q('[data-action="elimina-dati-anno"]'));
+  await wait(20);
 
   // Task #188 (Matteo: "se clicco fuori perdo tutti i dati inseriti ed è snervante"): un click sul
   // fondo scuro del modal, o Esc, con dati già digitati deve chiedere conferma invece di chiudere
