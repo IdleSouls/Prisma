@@ -9193,6 +9193,19 @@ function rispostaClientePreview(clienteId, comunicazioneId, testo, fileInfo) {
   return aggiungiRispostaComunicazione(comunicazioneId, testo, 'cliente', fileInfo);
 }
 
+/* Richiesta di Matteo (campagna 770): far vedere al cliente, vicino agli F24, anche le fatture con
+   ritenuta d'acconto con il loro stadio. Il problema che descrive è esattamente quello che il motore
+   di calcolo già gestisce (vedi calcolaScadenzeRitenute/generaScadenzeRitenute più sopra): finché il
+   cliente non paga la fattura (r.dataPagamento nullo) la ritenuta non entra nel cumulo e non genera
+   nessuna scadenza F24 - va quindi mostrata come riga a sé, non come scadenza. I tre stadi
+   corrispondono esattamente a statoRit, che il resto dell'app già usa (vedi STATI_RITENUTA e
+   generaScadenzeRitenute): qui si limita a tradurli in un'etichetta/colore pensati per il cliente,
+   senza introdurre un nuovo stato parallelo. */
+function stadioRitenutaPortale(r) {
+  if (!r.dataPagamento) return { codice: 'non_pagata', label: 'Fattura da pagare', classe: 'nuova' };
+  if (['Pagata', 'Inviata'].includes(r.statoRit)) return { codice: 'tutto_pagato', label: 'Tutto pagato', classe: 'chiusa' };
+  return { codice: 'ritenuta_da_versare', label: 'Pagata — ritenuta da versare', classe: 'attesa' };
+}
 /* Dati del portale per un cliente, calcolati una volta e usati dalla vista desktop a schermo intero
    (contenutoDesktopPortale) - isolati qui in una funzione a parte così, se in futuro si aggiunge
    un'altra presentazione della stessa vista, i dati restano un'unica fonte di verità. */
@@ -9216,7 +9229,20 @@ function datiPortaleCliente(cliente) {
   const docCliente = STATE.documenti.filter(d => d.clienteId === cliente.id).sort((a,b)=>(b.dataCaricamento||'').localeCompare(a.dataCaricamento||''));
   const pctOnboarding = percentualeOnboarding(STATE.onboarding[cliente.id]);
   const anniBilancioPortale = anniBilancioCliente(cliente.id);
-  return { scadenzeClienteTutte, scadenzeCliente, annualiCliente, annualiIncompleti, comClienteTutte, comCliente, comClienteArchiviate, comClienteNonLette, docCliente, pctOnboarding, anniBilancioPortale };
+  // Fatture con ritenuta (richiesta Matteo, campagna 770): sempre visibili finché APERTE (fattura da
+  // pagare, o pagata ma ritenuta non ancora versata), qualunque sia l'anno - non si vuole che una
+  // fattura vecchia non ancora sistemata sparisca dal portale solo perché "fuori anno". Quelle già
+  // chiuse (statoRit Pagata/Inviata) restano visibili solo per l'anno corrente e il precedente, come
+  // breve estratto/conferma "tutto pagato", invece di accumulare all'infinito lo storico completo.
+  const ritenuteCliente = (STATE.ritenuteRighe || [])
+    .filter(r => r.clienteId === cliente.id)
+    .filter(r => {
+      if (!['Pagata', 'Inviata'].includes(r.statoRit)) return true;
+      const annoFattura = (r.dataFattura || '').slice(0, 4);
+      return annoFattura === String(STATE.annoCorrente) || annoFattura === String(STATE.annoCorrente - 1);
+    })
+    .sort((a, b) => (b.dataFattura || '').localeCompare(a.dataFattura || ''));
+  return { scadenzeClienteTutte, scadenzeCliente, annualiCliente, annualiIncompleti, comClienteTutte, comCliente, comClienteArchiviate, comClienteNonLette, docCliente, pctOnboarding, anniBilancioPortale, ritenuteCliente };
 }
 
 /* -------------------- PORTALE CLIENTE ESTERNO (accesso reale, task #87) --------------------
@@ -9264,7 +9290,7 @@ function costruisciVistaPortaleClienteEsterna(token, password) {
     return { richiedePassword: true };
   }
 
-  const { scadenzeClienteTutte, annualiCliente, annualiIncompleti, comCliente, comClienteArchiviate, comClienteNonLette, docCliente, pctOnboarding, anniBilancioPortale } = datiPortaleCliente(cliente);
+  const { scadenzeClienteTutte, annualiCliente, annualiIncompleti, comCliente, comClienteArchiviate, comClienteNonLette, docCliente, pctOnboarding, anniBilancioPortale, ritenuteCliente } = datiPortaleCliente(cliente);
   const contattiC = cliente.contatti || {};
 
   const azienda = {
@@ -9312,6 +9338,11 @@ function costruisciVistaPortaleClienteEsterna(token, password) {
     delta: deltaLabel(s.data),
   }));
 
+  const ritenute = ritenuteCliente.map(r => ({
+    id: r.id, percipiente: r.percipiente, numeroFattura: r.numeroFattura || null,
+    dataFattura: r.dataFattura, importo: Number(r.importo) || 0, stadio: stadioRitenutaPortale(r),
+  }));
+
   const documenti = docCliente.map(d => ({
     id: d.id,
     nome: d.nome,
@@ -9354,6 +9385,9 @@ function costruisciVistaPortaleClienteEsterna(token, password) {
     comunicazioni: puoVedere('comunicazioni') ? comunicazioni : [],
     comunicazioniArchiviate: puoVedere('comunicazioni') ? comunicazioniArchiviate : [],
     scadenze: puoVedere('scadenze') ? scadenze : [],
+    // Stesso permesso delle scadenze/F24 (vedi SEZIONI_PORTALE_LIMITABILI): sono fatture che
+    // riguardano versamenti verso l'Erario, concettualmente la stessa area per un accesso limitato.
+    ritenute: puoVedere('scadenze') ? ritenute : [],
     documenti: puoVedere('documenti') ? documenti : [],
     andamento: puoVedere('andamento') ? andamento : null,
   };
@@ -9454,6 +9488,31 @@ function aggiungiRispostaPortaleClienteEsterno(token, comunicazioneId, testo, fi
   const c = STATE.comunicazioni.find(x => x.id === comunicazioneId && x.clienteId === trovato.cliente.id && x.visibilePortale !== false);
   if (!c) return null;
   return aggiungiRispostaComunicazione(comunicazioneId, testo, 'cliente', fileInfo);
+}
+
+/* Terza scrittura possibile da un cliente esterno (richiesta Matteo, campagna 770): segnalare di
+   aver pagato una fattura con ritenuta, dal pulsante "Ho pagato questa fattura" del portale. Stessa
+   cautela delle altre due funzioni sopra: il token risolve SEMPRE il cliente, non ci si fida di un
+   ritenutaId passato dall'esterno senza verificare che appartenga davvero a lui.
+   Idempotente di proposito (se la riga risulta già pagata, ritorna comunque la riga senza errore):
+   la coda di invio offline del portale (vedi svuotaCoda in portale-cliente.htm) può rimandare la
+   stessa richiesta più di una volta se la prima risposta del server è andata persa in rete, e un
+   doppio invio non deve mai sembrare un errore al cliente né toccare una data già confermata. */
+function segnalaPagamentoRitenutaPortaleEsterno(token, ritenutaId, dataPagamento) {
+  if (!token || !ritenutaId || !dataPagamento) return null;
+  const trovato = trovaAccessoPortale(token);
+  if (!trovato || !accessoPortalePuoVedere(trovato.accesso, 'scadenze')) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dataPagamento)) return null;
+  if (dataPagamento > oggiISO()) return null; // non si può segnalare un pagamento nel futuro
+  const r = (STATE.ritenuteRighe || []).find(x => x.id === ritenutaId && x.clienteId === trovato.cliente.id);
+  if (!r) return null;
+  if (r.dataPagamento) return r; // già segnalata: vedi nota idempotenza sopra
+  r.dataPagamento = dataPagamento;
+  // Stesso stato assegnato dal flusso di inserimento manuale lato studio (vedi rit-nuova-riga): la
+  // fattura è ora pagata dal cliente, ma la ritenuta non è ancora stata versata dallo studio.
+  r.statoRit = 'Da pagare';
+  salvaStato();
+  return r;
 }
 
 const PD_ICONE = {
@@ -14500,6 +14559,7 @@ window.accessoPortalePuoVedere = accessoPortalePuoVedere;
 /* Area cliente interattiva (task #88): stessa logica di sopra, ma in scrittura. */
 window.aggiungiMessaggioPortaleClienteEsterno = aggiungiMessaggioPortaleClienteEsterno;
 window.aggiungiRispostaPortaleClienteEsterno = aggiungiRispostaPortaleClienteEsterno;
+window.segnalaPagamentoRitenutaPortaleEsterno = segnalaPagamentoRitenutaPortaleEsterno;
 window.aggiungiRispostaComunicazione = aggiungiRispostaComunicazione;
 /* Stessa area cliente, ma simulata dentro l'anteprima del gestionale (task #107). */
 window.messaggioClientePreview = messaggioClientePreview;

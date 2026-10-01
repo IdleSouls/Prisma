@@ -85,6 +85,7 @@ button{font-family:inherit;cursor:pointer;}
 .badge.nuova{background:var(--rosso-bg);color:var(--rosso);}
 .badge.info{background:var(--blu-light);color:var(--blu-mid);}
 .badge.chiusa{background:var(--verde-bg);color:var(--verde);}
+.badge.attesa{background:var(--giallo-bg);color:var(--giallo);}
 .pill{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:20px;}
 .pill.scaduto{background:var(--rosso-bg);color:var(--rosso);}
 .pill.oggi{background:var(--giallo-bg);color:var(--giallo);}
@@ -768,22 +769,33 @@ function linkDocumento(documentoToken) {
   return '/api/portale-documento/' + encodeURIComponent(TOKEN) + '/' + encodeURIComponent(documentoToken);
 }
 
+// Fatture con ritenuta d'acconto (richiesta Matteo, campagna 770): mostra i tre stadi veri di ogni
+// fattura, non solo quelle ancora da segnalare come pagate. VISTA.ritenute arriva già con lo stadio
+// calcolato lato studio (vedi stadioRitenutaPortale in gestionale.htm) - qui ci si limita a
+// presentarlo: solo lo stadio "non_pagata" ha l'azione "Ho pagato questa fattura", gli altri due
+// sono righe informative, in sola lettura.
 function panelRitenute() {
-  if (!VISTA.ritenuteInAttesa || !VISTA.ritenuteInAttesa.length) return '';
+  if (!VISTA.ritenute || !VISTA.ritenute.length) return '';
   const oggi = new Date().toISOString().slice(0, 10);
-  const righe = VISTA.ritenuteInAttesa.map(r => `
-    <div class="ritenuta-riga" data-rit-id="${escapeHtml(r.id)}">
+  const nDaSegnalare = VISTA.ritenute.filter(r => r.stadio.codice === 'non_pagata').length;
+  const righe = VISTA.ritenute.map(r => {
+    const intestazione = `
       <div class="t">${escapeHtml(r.percipiente)}${r.numeroFattura ? ' · fatt. ' + escapeHtml(r.numeroFattura) : ''}</div>
-      <div class="s">Fattura del ${fmtData(r.dataFattura)} · Ritenuta ${fmtEuro(r.importo)}</div>
+      <div class="s">Fattura del ${fmtData(r.dataFattura)} · Ritenuta ${fmtEuro(r.importo)} · <span class="badge ${escapeHtml(r.stadio.classe)}">${escapeHtml(r.stadio.label)}</span></div>`;
+    if (r.stadio.codice !== 'non_pagata') {
+      return `<div class="ritenuta-riga" data-rit-id="${escapeHtml(r.id)}">${intestazione}</div>`;
+    }
+    return `<div class="ritenuta-riga" data-rit-id="${escapeHtml(r.id)}">${intestazione}
       <div class="rig-data">
         <label for="ritDataPag_${escapeHtml(r.id)}" style="font-size:12px;color:var(--text-mut);">Pagata il</label>
         <input type="date" id="ritDataPag_${escapeHtml(r.id)}" value="${oggi}" max="${oggi}">
         <button class="btn-invia" style="margin-top:0;" data-action="segnala-pagamento-ritenuta" data-id="${escapeHtml(r.id)}">Ho pagato questa fattura</button>
       </div>
       <div class="esito-invio" id="esitoRitenuta_${escapeHtml(r.id)}"></div>
-    </div>`).join('');
-  return `<div class="panel">${panelHeader(ICONE.scadenze, 'var(--giallo-bg)', 'var(--giallo)', 'Fatture con ritenuta da segnalare', VISTA.ritenuteInAttesa.length)}
-    <div class="empty" style="padding-bottom:8px;">Quando paghi una di queste fatture, segnalacelo qui: generiamo subito la scadenza per il versamento della ritenuta, senza bisogno di scriverci.</div>
+    </div>`;
+  }).join('');
+  return `<div class="panel">${panelHeader(ICONE.scadenze, 'var(--giallo-bg)', 'var(--giallo)', "Fatture con ritenuta d'acconto", VISTA.ritenute.length)}
+    ${nDaSegnalare ? `<div class="empty" style="padding-bottom:8px;">Quando paghi una fattura, segnalacelo qui: generiamo subito la scadenza per il versamento della ritenuta, senza bisogno di scriverci.</div>` : ''}
     ${righe}
   </div>`;
 }

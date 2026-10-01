@@ -2445,6 +2445,57 @@ async function main() {
     await wait(20);
   }
 
+  // ---------- 8e-ter-quinquies) Fatture con ritenuta d'acconto nel portale cliente, 3 stadi (richiesta
+  // Matteo, campagna 770) ----------
+  {
+    const clienteRit = window.getSTATE().clienti.filter(c => c.stato !== 'cessato')[11];
+    assert(clienteRit, 'serve almeno un 12esimo cliente attivo per questo test');
+    window.attivaPortaleCliente(clienteRit.id);
+    const tokenRit = window.clienteById(clienteRit.id).portaleToken;
+    assert(tokenRit, 'token portale non generato per il test ritenute');
+
+    const anno = window.getSTATE().annoCorrente;
+    const rNonPagata = { id: window.uid('rit'), clienteId: clienteRit.id, dataFattura: `${anno}-02-01`, dataPagamento: null, numeroFattura: 'TST-1', percipiente: 'Fornitore Test Uno', importo: 50, statoRit: 'In attesa di pagamento' };
+    const rDaVersare = { id: window.uid('rit'), clienteId: clienteRit.id, dataFattura: `${anno}-03-01`, dataPagamento: `${anno}-03-05`, numeroFattura: 'TST-2', percipiente: 'Fornitore Test Due', importo: 60, statoRit: 'Da pagare' };
+    const rTuttoPagato = { id: window.uid('rit'), clienteId: clienteRit.id, dataFattura: `${anno}-01-01`, dataPagamento: `${anno}-01-05`, numeroFattura: 'TST-3', percipiente: 'Fornitore Test Tre', importo: 70, statoRit: 'Inviata' };
+    window.getSTATE().ritenuteRighe.push(rNonPagata, rDaVersare, rTuttoPagato);
+
+    const vistaRit = window.costruisciVistaPortaleClienteEsterna(tokenRit);
+    assert(Array.isArray(vistaRit.ritenute) && vistaRit.ritenute.length >= 3, `la vista portale dovrebbe includere le fatture con ritenuta, trovate ${vistaRit.ritenute && vistaRit.ritenute.length}`);
+    const vNonPagata = vistaRit.ritenute.find(r => r.id === rNonPagata.id);
+    const vDaVersare = vistaRit.ritenute.find(r => r.id === rDaVersare.id);
+    const vTuttoPagato = vistaRit.ritenute.find(r => r.id === rTuttoPagato.id);
+    assert(vNonPagata && vNonPagata.stadio.codice === 'non_pagata', 'una fattura senza dataPagamento deve avere stadio "non_pagata"');
+    assert(vDaVersare && vDaVersare.stadio.codice === 'ritenuta_da_versare', 'una fattura pagata con statoRit "Da pagare" deve avere stadio "ritenuta_da_versare"');
+    assert(vTuttoPagato && vTuttoPagato.stadio.codice === 'tutto_pagato', 'una fattura con statoRit "Inviata" deve avere stadio "tutto_pagato"');
+    console.log('=== Portale cliente: fatture con ritenuta esposte con i tre stadi corretti (non pagata / ritenuta da versare / tutto pagato) OK');
+
+    // "Ho pagato questa fattura": la segnalazione dal portale deve impostare dataPagamento e
+    // passare lo statoRit a "Da pagare" (pagata dal cliente, ritenuta non ancora versata dallo studio).
+    const esito = window.segnalaPagamentoRitenutaPortaleEsterno(tokenRit, rNonPagata.id, `${anno}-02-10`);
+    assert(esito && esito.dataPagamento === `${anno}-02-10` && esito.statoRit === 'Da pagare', 'segnalaPagamentoRitenutaPortaleEsterno non ha aggiornato correttamente la riga');
+    const vistaDopoSegnalazione = window.costruisciVistaPortaleClienteEsterna(tokenRit);
+    assert(vistaDopoSegnalazione.ritenute.find(r => r.id === rNonPagata.id).stadio.codice === 'ritenuta_da_versare', 'dopo la segnalazione la fattura deve passare allo stadio "ritenuta_da_versare"');
+
+    // idempotenza (coda offline che reinvia la stessa richiesta): non deve sovrascrivere la data già confermata né dare errore
+    const esito2 = window.segnalaPagamentoRitenutaPortaleEsterno(tokenRit, rNonPagata.id, `${anno}-02-28`);
+    assert(esito2 && esito2.dataPagamento === `${anno}-02-10`, 'un secondo invio della stessa segnalazione non deve sovrascrivere la data già registrata');
+
+    // un token che non è quello del cliente giusto non deve poter toccare la fattura
+    const clienteAltroRit = window.getSTATE().clienti.filter(c => c.stato !== 'cessato' && c.id !== clienteRit.id)[0];
+    window.attivaPortaleCliente(clienteAltroRit.id);
+    const tokenAltro = window.clienteById(clienteAltroRit.id).portaleToken;
+    assert(window.segnalaPagamentoRitenutaPortaleEsterno(tokenAltro, rDaVersare.id, `${anno}-03-10`) === null, 'il token di un altro cliente non deve poter segnalare il pagamento di una fattura non sua');
+    window.clienteById(clienteAltroRit.id).portaleToken = null;
+    console.log('=== Portale cliente: "Ho pagato questa fattura" aggiorna lo stadio, idempotente, isolato per cliente OK');
+
+    // pulizia
+    window.getSTATE().ritenuteRighe = window.getSTATE().ritenuteRighe.filter(r => ![rNonPagata.id, rDaVersare.id, rTuttoPagato.id].includes(r.id));
+    window.clienteById(clienteRit.id).portaleToken = null;
+    window.render();
+    await wait(20);
+  }
+
   // ---------- 8e-ter-ter) Sessione operatore locale: token esclusivo per referente con password (task #154) ----------
   {
     const nomeResp = window.getSTATE().meta.responsabili[0];

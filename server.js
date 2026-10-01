@@ -531,6 +531,23 @@ function rispostaPortaleCliente(token, comunicazioneId, testo, fileInfo) {
     return { errore: 'Errore interno salvando la risposta.' };
   }
 }
+// Terza scrittura possibile da un cliente esterno (richiesta Matteo, campagna 770): "Ho pagato
+// questa fattura" sul pannello ritenute del portale. Stesso identico schema delle due funzioni sopra.
+function segnalazioneRitenutaPortaleCliente(token, ritenutaId, dataPagamento) {
+  const { win, errore } = motorePortale();
+  if (!win) return { errore };
+  try {
+    ricaricaDatiMotorePortale(win);
+    const r = win.segnalaPagamentoRitenutaPortaleEsterno(token, ritenutaId, dataPagamento);
+    if (!r) return { esito: null };
+    scriviDati(win.getSTATE());
+    notificaClientiSSE(null);
+    return { esito: r };
+  } catch (err) {
+    console.error('[gestionale] Errore salvando una segnalazione di pagamento ritenuta dal portale cliente:', err.message);
+    return { errore: 'Errore interno salvando la segnalazione.' };
+  }
+}
 // Risolve un token di accesso portale nel cliente corrispondente leggendo dati-studio.json
 // direttamente (senza svegliare il motore headless jsdom: qui serve solo id/nome per intestare
 // la cartella dell'allegato, non la logica di business) - usato da /api/portale-messaggio e
@@ -2255,6 +2272,40 @@ function gestisciRichiesta(req, res) {
       if (!esito) {
         res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ ok: false, errore: 'Questo messaggio non è più disponibile.' }));
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ ok: true }));
+    });
+    return;
+  }
+
+  if (url === '/api/portale-ritenuta-pagamento' && req.method === 'POST') {
+    leggiCorpoRichiesta(req, (corpo) => {
+      let dati;
+      try { dati = JSON.parse(corpo); } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, errore: 'Richiesta non valida.' }));
+        return;
+      }
+      const token = (dati && typeof dati.token === 'string') ? dati.token.trim() : '';
+      const ritenutaId = (dati && typeof dati.ritenutaId === 'string') ? dati.ritenutaId.trim() : '';
+      const dataPagamento = (dati && typeof dati.dataPagamento === 'string') ? dati.dataPagamento.trim() : '';
+      if (!token || !ritenutaId || !dataPagamento) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, errore: 'Indica la data in cui hai pagato la fattura.' }));
+        return;
+      }
+      const { esito, errore } = segnalazioneRitenutaPortaleCliente(token, ritenutaId, dataPagamento);
+      if (errore) {
+        console.error('[gestionale] Segnalazione pagamento ritenuta dal portale non disponibile:', errore);
+        res.writeHead(503, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, errore: 'Il servizio non è al momento disponibile. Riprova più tardi o contatta lo studio.' }));
+        return;
+      }
+      if (!esito) {
+        res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, errore: 'Questa fattura non è più disponibile, o la data indicata non è valida.' }));
         return;
       }
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
