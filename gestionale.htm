@@ -9511,6 +9511,38 @@ function segnalaPagamentoRitenutaPortaleEsterno(token, ritenutaId, dataPagamento
   // Stesso stato assegnato dal flusso di inserimento manuale lato studio (vedi rit-nuova-riga): la
   // fattura è ora pagata dal cliente, ma la ritenuta non è ancora stata versata dallo studio.
   r.statoRit = 'Da pagare';
+  // Richiesta di Matteo: "vorrei che quando il cliente ci comunica che ha pagato una fattura con
+  // ritenuta che ci venga inviata una comunicazione [...] così ce ne accorgiamo e non perdiamo il
+  // pagamento". La scadenza F24 è già completamente automatica (calcolaScadenzeRitenute/
+  // generaScadenzeRitenute sopra la derivano live da r.dataPagamento appena impostato, nessuno step
+  // di "creazione" separato esiste o serve) - quello che mancava davvero era un modo per accorgersi
+  // che è successo. Si crea quindi una comunicazione in arrivo dal cliente, con la stessa identica
+  // forma usata da _creaMessaggioCliente (direzione:'cliente', vistaStudio:false): questo la fa
+  // comparire automaticamente nel badge "Da leggere" di Comunicazioni e nel pallino della sidebar
+  // (comunicazioniDaLeggereConteggio, già esistenti) - nessuna nuova infrastruttura di notifica,
+  // solo lo stesso meccanismo già usato per ogni altro messaggio del cliente. Si crea una sola volta
+  // per segnalazione (questo ramo non viene mai rieseguito su un retry idempotente, vedi sopra), e
+  // solo qui - non passa da _creaMessaggioCliente perché quella funzione è pensata per testo libero
+  // del cliente (categoria "Domanda dal cliente"): qui serve invece un oggetto/corpo dedicati e un
+  // riferimento diretto alla riga di ritenuta (ritenutaRif, campo nuovo e opzionale, additivo: chi
+  // già legge le comunicazioni esistenti lo ignora senza rompersi).
+  const importoFmt = (Number(r.importo) || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const dataPagamentoFmt = dataPagamento.split('-').reverse().join('/');
+  const comunicazione = {
+    id: uid('com'), clienteId: trovato.cliente.id, data: oggiISO(), direzione: 'cliente',
+    categoria: 'Pagamento ritenuta segnalato',
+    oggetto: 'Pagamento fattura con ritenuta: ' + (r.numeroFattura ? ('n. ' + r.numeroFattura) : r.percipiente),
+    corpo: 'Il cliente ha segnalato di aver pagato in data ' + dataPagamentoFmt + ' la fattura' +
+      (r.numeroFattura ? (' n. ' + r.numeroFattura) : '') + ' intestata a ' + r.percipiente +
+      ' (importo € ' + importoFmt + '), con ritenuta d\'acconto. La ritenuta confluirà in automatico ' +
+      'nella prossima scadenza F24 (Versamento ritenuta autonomi) non appena il cumulo mensile del ' +
+      'cliente raggiunge la soglia, senza bisogno di altro intervento qui.',
+    stato: 'Inviata', visibilePortale: false, vistaPortale: true, vistaStudio: false,
+    scadenzaRif: null,
+    ritenutaRif: { id: r.id, percipiente: r.percipiente, numeroFattura: r.numeroFattura || null, importo: Number(r.importo) || 0, dataFattura: r.dataFattura || null },
+    risposte: [],
+  };
+  STATE.comunicazioni.push(comunicazione);
   salvaStato();
   return r;
 }

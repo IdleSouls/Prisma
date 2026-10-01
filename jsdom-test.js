@@ -2489,7 +2489,33 @@ async function main() {
     window.clienteById(clienteAltroRit.id).portaleToken = null;
     console.log('=== Portale cliente: "Ho pagato questa fattura" aggiorna lo stadio, idempotente, isolato per cliente OK');
 
+    // Task #170 (Matteo: "vorrei che quando il cliente ci comunica che ha pagato una fattura con
+    // ritenuta che ci venga inviata una comunicazione [...] così ce ne accorgiamo e non perdiamo il
+    // pagamento"): la segnalazione appena avvenuta sopra (rNonPagata) deve aver creato una
+    // comunicazione in arrivo dal cliente, "da leggere" per lo studio con lo stesso meccanismo già
+    // usato per ogni altro messaggio dal portale.
+    const comRitNonPagata = window.getSTATE().comunicazioni.find(c => c.ritenutaRif && c.ritenutaRif.id === rNonPagata.id);
+    assert(comRitNonPagata, 'la prima segnalazione di pagamento deve creare una comunicazione collegata alla riga di ritenuta');
+    assert(comRitNonPagata.clienteId === clienteRit.id, 'la comunicazione deve essere attribuita al cliente giusto');
+    assert(comRitNonPagata.direzione === 'cliente' && comRitNonPagata.vistaStudio === false, 'la comunicazione deve risultare "dal cliente" e "da leggere" per lo studio, per comparire nel badge esistente');
+    assert(comRitNonPagata.ritenutaRif.numeroFattura === 'TST-1' && comRitNonPagata.ritenutaRif.percipiente === 'Fornitore Test Uno', 'il riferimento alla fattura nella comunicazione non è corretto');
+    assert(comRitNonPagata.oggetto.includes('TST-1'), 'l\'oggetto della comunicazione dovrebbe citare il numero fattura');
+    assert(window.comunicazioniDaLeggereConteggio() >= 1, 'il contatore "da leggere" esistente deve includere anche questa nuova comunicazione');
+    console.log('=== Comunicazioni: segnalare un pagamento ritenuta crea una comunicazione "da leggere" per lo studio OK');
+
+    // idempotenza: il secondo invio (già testato sopra per la riga) NON deve creare una seconda comunicazione
+    const comRitNonPagataConteggio = window.getSTATE().comunicazioni.filter(c => c.ritenutaRif && c.ritenutaRif.id === rNonPagata.id).length;
+    assert(comRitNonPagataConteggio === 1, `un secondo invio idempotente della stessa segnalazione non deve creare una seconda comunicazione (trovate ${comRitNonPagataConteggio})`);
+    console.log('=== Comunicazioni: un rinvio idempotente della segnalazione non duplica la comunicazione OK');
+
+    // la comunicazione di sistema non deve comparire nel portale del cliente stesso (non serve, il
+    // cliente ha già la conferma a schermo dal pulsante "Ho pagato"): visibilePortale deve essere false
+    const vistaDopoComRit = window.costruisciVistaPortaleClienteEsterna(tokenRit);
+    assert(!vistaDopoComRit.comunicazioni.some(c => c.id === comRitNonPagata.id), 'la comunicazione di notifica allo studio non deve comparire tra i messaggi visibili al cliente nel suo portale');
+    console.log('=== Comunicazioni: la notifica di sistema allo studio resta invisibile al cliente nel suo portale OK');
+
     // pulizia
+    window.getSTATE().comunicazioni = window.getSTATE().comunicazioni.filter(c => !(c.ritenutaRif && [rNonPagata.id, rDaVersare.id, rTuttoPagato.id].includes(c.ritenutaRif.id)));
     window.getSTATE().ritenuteRighe = window.getSTATE().ritenuteRighe.filter(r => ![rNonPagata.id, rDaVersare.id, rTuttoPagato.id].includes(r.id));
     window.clienteById(clienteRit.id).portaleToken = null;
     window.render();
