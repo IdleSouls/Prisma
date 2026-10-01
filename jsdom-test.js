@@ -3365,6 +3365,13 @@ async function main() {
 
   // ---------- 8i) Contabilità / Prima nota: classificazione conti, mapping colonne, import, wizard ----------
 
+  // Task #176: la sezione è sospesa di default (menu nascosto) - qui testiamo la logica e la vista
+  // vera e propria, quindi la riattiviamo per tutta la durata di 8i/8j/8k (il comportamento da
+  // sospesa, quello "di serie" su un'installazione nuova, è testato esplicitamente più sotto in 8k
+  // e la sezione torna disattivata al termine di quel blocco).
+  window.getSTATE().meta.contabilitaAttiva = true;
+  window.render();
+
   // classificazione automatica per parole chiave
   assert(window.suggerisciCategoriaConto('Banca Intesa C/C 1234') === 'Banca', 'conto "Banca Intesa C/C" non classificato come Banca');
   assert(window.suggerisciCategoriaConto('Cassa contanti') === 'Cassa', 'conto "Cassa contanti" non classificato come Cassa');
@@ -3735,12 +3742,34 @@ async function main() {
   assert(window.getVIEW() === 'bilanci', 'collegamento rapido Bilanci: vista errata');
   assert(qa('.kpi-grid .kpi').length === window.CATALOGO_INDICI_BILANCIO.length, 'collegamento rapido Bilanci: il cliente giusto non risulta preselezionato');
 
+  // Task #176 (Matteo: "rimuovere/sospendere tab Contabilità"): sospeso di default, quindi il
+  // collegamento rapido e il tab di navigazione sono testati qui riattivando la sezione prima e
+  // verificando poi esplicitamente che da sospesa (lo stato normale su una installazione nuova)
+  // sia davvero invisibile ovunque, senza toccare i dati sottostanti.
+  window.getSTATE().meta.contabilitaAttiva = true;
+  window.render();
   click(q('[data-nav="schedacliente"]'));
   await wait(20);
   click(q(`[data-action="schcli-apri-contabilita"][data-cliente="${clienteScheda.id}"]`));
   await wait(20);
-  assert(window.getVIEW() === 'contabilita', 'collegamento rapido Contabilità: vista errata');
+  assert(window.getVIEW() === 'contabilita', 'collegamento rapido Contabilità: vista errata (con la sezione riattivata)');
   assert(qa('details .kpi-grid .kpi').length === 5, 'collegamento rapido Contabilità: il cliente giusto non risulta preselezionato');
+  console.log('=== #176: con la sezione riattivata, tab e collegamento rapido Contabilità funzionano come prima OK');
+
+  window.getSTATE().meta.contabilitaAttiva = false;
+  window.render();
+  assert(!window.operatorePuoVedere('contabilita'), '#176: operatorePuoVedere dovrebbe negare "contabilita" quando la sezione è sospesa (default)');
+  assert(!qa('.navitem').some(el => el.dataset.nav === 'contabilita'), '#176: la voce di menu Contabilità non dovrebbe comparire nel DOM quando la sezione è sospesa');
+  click(q('[data-nav="schedacliente"]'));
+  await wait(20);
+  setVal(q('[data-action="schcli-seleziona-cliente"]'), clienteScheda.id);
+  await wait(20);
+  assert(!q('[data-action="schcli-apri-contabilita"]'), '#176: la card Contabilità nella scheda cliente non dovrebbe comparire quando la sezione è sospesa');
+  window.setView('contabilita');
+  await wait(20);
+  assert(window.getVIEW() === 'dashboard', '#176: tentare di aprire direttamente "contabilita" da sospesa dovrebbe reindirizzare alla dashboard, non mostrare la sezione');
+  assert(window.statoAggiornamentoContabile(clienteContabDemo.id).length === 5, '#176: i dati contabili (import demo) devono restare leggibili/intatti anche a sezione sospesa, nessuna cancellazione legata al toggle');
+  console.log('=== #176: sezione Contabilità sospesa (default) - nascosta da menu, scheda cliente e accesso diretto, dati intatti OK');
 
   click(q('[data-nav="schedacliente"]'));
   await wait(20);

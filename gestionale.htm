@@ -1589,7 +1589,12 @@ function statoIniziale() {
     // di id sezione (vedi NAV) visibili SOLO per chi ha ruolo 'limitato'. È un filtro di interfaccia,
     // non un controllo di sicurezza lato server: chiunque abbia accesso al PC/porta condivide gli
     // stessi dati, vedi cardAccessoEsterno.
-    meta: { versione: 2, studioNome: 'Studio', responsabili: ['Matteo', 'Sabrina'], consulenti: ['Matteo'], ruoli: {}, tabConsentiti: {}, iscrizione: '', indirizzoStudio: '', cfStudio: '', citta: 'Vicenza', anniExtra: [], logoStudio: '', logoPosizione: 'sinistra' },
+    // contabilitaAttiva (task #176, Matteo: "rimuovere/sospendere tab Contabilità"): di default
+    // false per tutte le installazioni (nuove e già esistenti, visto che un salvataggio vecchio
+    // senza questo campo legge undefined, falsy comunque) - il tab resta nel codice e i dati già
+    // inseriti restano intatti, solo nascosto dal menu finché non lo si riattiva da Impostazioni >
+    // Avanzate. Vedi operatorePuoVedere() e renderImpostazioniAvanzate().
+    meta: { versione: 2, studioNome: 'Studio', responsabili: ['Matteo', 'Sabrina'], consulenti: ['Matteo'], ruoli: {}, tabConsentiti: {}, iscrizione: '', indirizzoStudio: '', cfStudio: '', citta: 'Vicenza', anniExtra: [], logoStudio: '', logoPosizione: 'sinistra', contabilitaAttiva: false },
     annoCorrente: annoOggi,
     clienti: [],
     scadenzeOverrides: {},
@@ -4098,6 +4103,11 @@ function tabConsentitiOperatore(nome) {
 // (vedi impostaOperatore), non un vero login - restringere una sessione anonima non avrebbe senso
 // e bloccherebbe l'uso normale prima che qualcuno scelga il proprio nome.
 function operatorePuoVedere(tabId) {
+  // Task #176 (Matteo: "rimuovere/sospendere tab Contabilità"): controllo centrale, prima di quello
+  // per ruolo - vale per TUTTI gli operatori, admin compreso, finché non si riattiva la sezione da
+  // Impostazioni > Avanzate. Qui e non altrove perché operatorePuoVedere è già il punto unico usato
+  // da renderNav, setView e render (vedi task #156) per decidere se una sezione è raggiungibile.
+  if (tabId === 'contabilita' && !STATE.meta.contabilitaAttiva) return false;
   const consentiti = tabConsentitiOperatore(OPERATORE);
   return consentiti === null || consentiti.includes(tabId);
 }
@@ -4805,13 +4815,16 @@ function renderSchedaCliente() {
   </div>`;
 
   const statoContab = statoAggiornamentoDocumenti(cliente.id);
-  const sezContab = `<div class="card">
+  // Task #176: tab sospeso di default - niente scorciatoia verso una sezione che
+  // operatorePuoVedere() bloccherebbe comunque. I dati (statoAggiornamentoDocumenti) restano
+  // intatti e la card torna a comparire da sola se/quando si riattiva da Impostazioni > Avanzate.
+  const sezContab = STATE.meta.contabilitaAttiva ? `<div class="card">
     <div class="section-title">Contabilità</div>
     ${statoContab.length ? `<div class="kpi-grid" style="grid-template-columns:repeat(auto-fill, minmax(160px,1fr));">
       ${statoContab.map(s => `<div class="kpi completati"><div class="n" style="font-size:14px;">${escapeHtml(s.data)}</div><div class="l">${escapeHtml(s.etichetta)}</div></div>`).join('')}
     </div>` : '<div class="empty">Nessun documento contabile ancora registrato per questo cliente.</div>'}
     <div style="margin-top:10px;"><button class="btn small" data-action="schcli-apri-contabilita" data-cliente="${cliente.id}">Apri Contabilità →</button></div>
-  </div>`;
+  </div>` : '';
 
   const anniBil = anniBilancioCliente(cliente.id);
   let sezBilanci;
@@ -12111,6 +12124,12 @@ function renderImpostazioniCatalogo() {
 function renderImpostazioniAvanzate() {
   return `
   <div class="card">
+    <div class="section-title">Sezione Contabilità</div>
+    <div class="helptext" style="margin-bottom:10px;">Task #176 (Matteo: "rimuovere/sospendere tab Contabilità"): il tab è sospeso di default e non compare più nel menu laterale né nella scheda cliente. I dati già inseriti (documenti, movimenti, fatture contabili) restano tutti salvati e intatti - riattivando la sezione tornano visibili esattamente come prima.</div>
+    <label style="display:flex;align-items:center;gap:8px;font-weight:400;"><input type="checkbox" id="impContabilitaAttiva" data-action="toggle-contabilita-attiva" ${STATE.meta.contabilitaAttiva?'checked':''}> Mostra il tab Contabilità nel menu</label>
+  </div>
+
+  <div class="card">
     <div class="section-title">Vista per MCP locale (Claude)</div>
     <div class="helptext" style="margin-bottom:12px;">Esporta scadenze già classificate, stato contabilità per cliente, ultimo bilancio e task/comunicazioni aperti in un unico file JSON, pensato per essere letto da un server MCP locale collegato a Claude Desktop (vedi <code>mcp-server/README.md</code>). Salva il file scaricato come <code>gestionale-mcp.json</code> nella cartella del server, sovrascrivendo il precedente, ogni volta che vuoi aggiornare i dati che Claude può vedere.</div>
     <button class="btn primary" data-action="esporta-mcp">⬇ Esporta per MCP (JSON)</button>
@@ -14123,6 +14142,16 @@ function onChangeDelegato(e) {
       }).catch(() => { toast('Non sono riuscito a contattare il server locale.', true); el.checked = !attivo; });
       break;
     }
+    // Task #176: riattiva/sospende il tab Contabilità nel menu - vedi operatorePuoVedere() per il
+    // blocco centrale e statoIniziale() per il default (sospeso) su nuove installazioni/salvataggi
+    // vecchi senza questo campo. Nessuna chiamata server: è un flag dentro STATE.meta, salvato come
+    // tutto il resto di Impostazioni > Studio al prossimo giro di salvaStato().
+    case 'toggle-contabilita-attiva':
+      STATE.meta.contabilitaAttiva = el.checked;
+      salvaStato();
+      render();
+      toast(el.checked ? 'Tab Contabilità riattivato.' : 'Tab Contabilità sospeso: resta nel menu solo se lo riattivi da qui, i dati restano tutti salvati.');
+      break;
     case 'dash-resp': DASH_RESP = el.value; render(); break;
     case 'cambia-ruolo-responsabile': {
       const resp = el.dataset.resp;
