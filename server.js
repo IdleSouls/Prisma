@@ -1608,7 +1608,31 @@ function gestisciRichiesta(req, res) {
       // avviaServerEsterniSeConfigurati), la protezione è per singolo cliente.
       clienti: { attivo: serverEsternoClienti.listening },
       team: { utente: cfg.team.utente, password: cfg.team.password, attivo: serverEsternoTeam.listening },
+      ngrokAutoavvio: cfg.ngrokAutoavvio,
     }));
+    return;
+  }
+
+  // Task #173: interruttore "avvia ngrok automaticamente all'avvio di Prisma" per porta, da
+  // Impostazioni - separata dalla route sopra (che riguarda solo le credenziali della porta team)
+  // così la si può chiamare per entrambe le porte con lo stesso schema {clienti, team}.
+  if (url === '/api/ngrok-autoavvio' && req.method === 'POST') {
+    leggiCorpoRichiesta(req, (corpo) => {
+      try {
+        const dati = JSON.parse(corpo || '{}');
+        const cfgAttuale = leggiConfigAccessoEsterno();
+        const ngrokAutoavvio = {
+          clienti: dati.clienti !== undefined ? !!dati.clienti : cfgAttuale.ngrokAutoavvio.clienti,
+          team: dati.team !== undefined ? !!dati.team : cfgAttuale.ngrokAutoavvio.team,
+        };
+        scriviConfigAccessoEsterno({ clienti: cfgAttuale.clienti, team: cfgAttuale.team, ngrokAutoavvio });
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: true, ngrokAutoavvio }));
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, errore: err.message }));
+      }
+    });
     return;
   }
 
@@ -2347,16 +2371,25 @@ function scriviResponsabiliPassword(cfg) {
   fs.writeFileSync(FILE_RESPONSABILI_PASSWORD, JSON.stringify(cfg, null, 2), 'utf8');
 }
 
+// Task #173 (Matteo: "vorrei che all'avvio di prisma sia portale clienti che porta collaboratori
+// si attivassero via ngrok [...] non che siano sempre attivi ma che ad ogni avvio si avviino anche
+// loro e che poi siano correttamente gestibili dalle impostazioni"): ngrokAutoavvio.clienti/team
+// decide se avviaNgrokAutomaticoSeConfigurato() (vedi più sotto) lancia ngrok da solo per quella
+// porta ad ogni avvio del server. Default true per ENTRAMBE quando il file non esiste ancora/non
+// ha il campo (installazione esistente che si aggiorna a questa versione): è esattamente il
+// comportamento che Matteo ha chiesto diventi lo standard, non un'opzione da accendere a mano.
 function leggiConfigAccessoEsterno() {
   try {
     const raw = fs.readFileSync(FILE_ACCESSO_ESTERNO, 'utf8');
     const cfg = JSON.parse(raw);
+    const auto = cfg.ngrokAutoavvio || {};
     return {
       clienti: { utente: (cfg.clienti && cfg.clienti.utente) || '', password: (cfg.clienti && cfg.clienti.password) || '' },
       team: { utente: (cfg.team && cfg.team.utente) || '', password: (cfg.team && cfg.team.password) || '' },
+      ngrokAutoavvio: { clienti: auto.clienti !== false, team: auto.team !== false },
     };
   } catch (err) {
-    return { clienti: { utente: '', password: '' }, team: { utente: '', password: '' } };
+    return { clienti: { utente: '', password: '' }, team: { utente: '', password: '' }, ngrokAutoavvio: { clienti: true, team: true } };
   }
 }
 function scriviConfigAccessoEsterno(cfg) {
@@ -2487,6 +2520,28 @@ function avviaServerEsterniSeConfigurati() {
   }
 }
 
+/* Task #173 (Matteo: "vorrei che all'avvio di prisma sia portale clienti che porta collaboratori
+   si attivassero via ngrok [...] non che siano sempre attivi ma che ad ogni avvio si avviino anche
+   loro"): chiamata DOPO avviaServerEsterniSeConfigurati() qui sopra, così le porte locali sono già
+   in ascolto quando ngrok (che impiega comunque un paio di secondi a esporre il tunnel) comincia a
+   collegarsi. Per la porta team ha senso avviare ngrok solo se la porta stessa è configurata
+   (utente+password) - altrimenti il tunnel sarebbe aperto verso una porta che non risponde. Non
+   blocca né rallenta l'avvio del server: ngrok parte come processo staccato (vedi avviaNgrok), qui
+   si aspetta solo l'esito per loggarlo. */
+function avviaNgrokAutomaticoSeConfigurato() {
+  const cfg = leggiConfigAccessoEsterno();
+  if (cfg.ngrokAutoavvio.clienti) {
+    avviaNgrok(PORTA_ESTERNA_CLIENTI).then((r) => {
+      console.log(r.ok ? '  ngrok (auto-avvio) avviato per la porta clienti ' + PORTA_ESTERNA_CLIENTI + '.' : '  ngrok (auto-avvio) NON avviato per la porta clienti: ' + r.errore);
+    });
+  }
+  if (cfg.ngrokAutoavvio.team && cfg.team.utente && cfg.team.password) {
+    avviaNgrok(PORTA_ESTERNA_TEAM).then((r) => {
+      console.log(r.ok ? '  ngrok (auto-avvio) avviato per la porta collaboratori ' + PORTA_ESTERNA_TEAM + '.' : '  ngrok (auto-avvio) NON avviato per la porta collaboratori: ' + r.errore);
+    });
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Avvio + banner con gli indirizzi da comunicare allo studio
 // ---------------------------------------------------------------------------
@@ -2608,6 +2663,7 @@ server.listen(PORTA, '0.0.0.0', () => {
   eseguiBackup('avvio del server');
 
   avviaServerEsterniSeConfigurati();
+  avviaNgrokAutomaticoSeConfigurato();
 
   console.log('');
   console.log('============================================================');

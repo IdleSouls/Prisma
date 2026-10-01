@@ -5363,6 +5363,85 @@ async function main() {
   assert(!window.getSTATE().meta.responsabili.includes('Responsabile Test Consulente Rinominato'), 'Impostazioni Team: eliminazione responsabile di test non riuscita');
   console.log('=== Impostazioni Team: checkbox "Consulente" per responsabile, sincronizzata su rinomina ed eliminazione OK');
 
+  // ---------- 11m) Accesso esterno (ngrok) - task #173: pulsanti rimossi, badge tunnel reale
+  // separato dalla porta locale, interruttore di avvio automatico ----------
+  // Matteo: "togli il pulsante 'copia comando grok' sia per i clienti che i collaboratori. per i
+  // clienti tgli anche il pulsante copia link rete locale [...] ngrok per il portale clienti non
+  // funziona, controlla che non vada in confusione con il fatto che ti avevo chiesto fosse sempre
+  // attiva. [...] vorrei che all'avvio di prisma sia portale clienti che porta collaboratori si
+  // attivassero via ngrok [...] e che poi siano correttamente gestibili dalle impostazioni".
+  {
+    window.setHttpSyncAttivoTest(true); // cardAccessoEsterno mostra i dati reali solo con "server locale" simulato acceso
+    const fetchOriginaleNgrok = window.fetch;
+    const richiesteAutoavvio = [];
+    let ngrokAutoavvioMock = { clienti: true, team: false };
+    window.fetch = (url, opts) => {
+      if (url === '/api/accesso-esterno' && (!opts || !opts.method || opts.method === 'GET')) {
+        return Promise.resolve({ ok: true, json: async () => ({
+          ok: true, portaClienti: 8421, portaTeam: 8422,
+          clienti: { attivo: true },
+          team: { utente: 'studio', password: 'segreta', attivo: true },
+          ngrokAutoavvio: ngrokAutoavvioMock,
+        }) });
+      }
+      if (url === '/api/ngrok-tunnels') {
+        // porta clienti (8421) con tunnel REALMENTE attivo, porta team (8422) senza - proprio il
+        // caso che generava confusione col vecchio badge "Sempre attiva" (quello indicava solo la
+        // porta locale, mai lo stato vero del tunnel).
+        return Promise.resolve({ ok: true, json: async () => ({ ok: true, tunnel: [{ publicUrl: 'https://abc123.ngrok-free.app', porta: 8421 }] }) });
+      }
+      if (url === '/api/ngrok-autoavvio' && opts && opts.method === 'POST') {
+        const corpo = JSON.parse(opts.body);
+        richiesteAutoavvio.push(corpo);
+        Object.assign(ngrokAutoavvioMock, corpo);
+        return Promise.resolve({ ok: true, json: async () => ({ ok: true, ngrokAutoavvio: ngrokAutoavvioMock }) });
+      }
+      return fetchOriginaleNgrok(url, opts);
+    };
+    window.resetAccessoEsternoTest(); // forza un fetch fresco con i mock sopra invece della cache di un giro di test precedente
+    window.render();
+    await wait(40);
+
+    // Nota: window.document.body.textContent include ANCHE il testo grezzo dentro i <script> (es.
+    // il messaggio del toast di copiaLinkNgrok, che cita a parole il vecchio pulsante "📋 Copia
+    // comando ngrok" solo come istruzione testuale d'errore) - per questo le verifiche sulla card
+    // usano il DOM scoped alla card stessa (data-action reali), non una ricerca di testo sul body.
+    const cardNgrok = Array.from(qa('.card')).find(c => (c.querySelector('.section-title') || {}).textContent === 'Accesso esterno (ngrok)');
+    assert(cardNgrok, '#173: card "Accesso esterno (ngrok)" non trovata');
+    const cardTxt = cardNgrok.textContent;
+    assert(!cardTxt.includes('Copia comando ngrok'), '#173: il pulsante "Copia comando ngrok" doveva sparire dalla card (sia per clienti che per collaboratori)');
+    assert(!q('[data-action="copia-comando-ngrok"]'), '#173: il data-action "copia-comando-ngrok" non deve più comparire nel DOM');
+
+    // "Copia link rete locale": sparito SOLO dalla riga clienti, presente ancora per i collaboratori.
+    const bottoniLinkRete = qa('[data-action="copia-link-rete"]');
+    assert(bottoniLinkRete.length === 1 && bottoniLinkRete[0].dataset.porta === '8422', `#173: "Copia link rete locale" deve restare solo per la porta collaboratori (8422), trovati: ${bottoniLinkRete.map(b => b.dataset.porta).join(',')}`);
+
+    // Badge: porta locale clienti sempre attiva, MA il tunnel ngrok reale è assente per la porta
+    // team nel mock - il badge dedicato deve dirlo chiaramente, distinto dal badge della porta locale.
+    assert(cardTxt.includes('ngrok: raggiungibile da internet'), '#173: manca il badge di tunnel ngrok realmente attivo per la porta clienti (mockata come attiva)');
+    assert(cardTxt.includes('ngrok: non attivo al momento'), '#173: manca il badge di tunnel ngrok assente per la porta team (mockata come non attiva) - non deve risultare "sempre attiva" solo perché la porta locale lo è');
+    console.log('=== #173: card Accesso esterno - pulsante "copia comando" rimosso, "copia link rete locale" rimosso solo per i clienti, badge tunnel ngrok reale distinto dalla porta locale OK');
+
+    // Interruttore di avvio automatico: presente per entrambe le porte, riflette lo stato dal
+    // server (mock sopra: clienti=true, team=false), e cliccandolo chiama /api/ngrok-autoavvio.
+    const toggleClienti = q('[data-action="ngrok-autoavvio-toggle"][data-tipo="clienti"]');
+    const toggleTeam = q('[data-action="ngrok-autoavvio-toggle"][data-tipo="team"]');
+    assert(toggleClienti && toggleClienti.checked === true, '#173: interruttore auto-avvio clienti dovrebbe partire spuntato (mock: true)');
+    assert(toggleTeam && toggleTeam.checked === false, '#173: interruttore auto-avvio team dovrebbe partire NON spuntato (mock: false)');
+
+    toggleTeam.checked = true;
+    fire(toggleTeam, 'change');
+    await wait(30);
+    assert(richiesteAutoavvio.length === 1 && richiesteAutoavvio[0].team === true, '#173: attivare l\'interruttore team non ha chiamato /api/ngrok-autoavvio con {team:true}');
+    console.log('=== #173: interruttore "avvia ngrok automaticamente all\'avvio" riflette lo stato dal server e salva il cambiamento OK');
+
+    window.fetch = fetchOriginaleNgrok;
+    window.resetAccessoEsternoTest();
+    window.setHttpSyncAttivoTest(false);
+    window.render();
+    await wait(20);
+  }
+
   // ---------- 12) Gestione annualità (task #147): aggiungi/rimuovi anno + backup/pulizia dati ----------
   click(q('[data-nav="impostazioni"]'));
   await wait(20);

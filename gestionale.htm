@@ -2721,7 +2721,7 @@ function copiaLinkRete(porta) {
 function copiaLinkNgrok(porta) {
   fetch('/api/ngrok-tunnels').then(r => r.json()).then(d => {
     if (!d.ok) {
-      toast(`Ngrok non risulta in esecuzione su questo PC in questo momento: aprilo da terminale (pulsante "📋 Copia comando ngrok") e riprova.`, true);
+      toast(`Ngrok non risulta in esecuzione su questo PC in questo momento: premi "🚀 Avvia ngrok" (o aprilo tu da terminale con "ngrok http ${porta}") e riprova.`, true);
       return;
     }
     const tunnel = (d.tunnel || []).find(t => t.porta === porta);
@@ -11359,12 +11359,22 @@ let ACCESSO_ESTERNO_CARICAMENTO = false;
    problemi: l'input riflette sempre l'ultimo valore digitato, e il pulsante si abilita/disabilita
    dal vivo via oninput (vedi aggiornaBottoneAccessoEsterno), senza aspettare un giro di salvataggio. */
 let ACCESSO_ESTERNO_DRAFT = null;
+// Task #173 (Matteo: "ngrok per il portale clienti non funziona, controlla che non vada in
+// confusione con il fatto che ti avevo chiesto fosse sempre attiva"): la vecchia card leggeva
+// SOLO /api/accesso-esterno, che per la porta clienti dice solo "il listener locale è su" (sempre
+// vero) - da cui il badge fuorviante "🟢 Sempre attiva" anche quando ngrok non aveva nessun tunnel
+// davvero aperto verso internet. Ora si interroga ANCHE /api/ngrok-tunnels (stato vero, da ngrok
+// stesso) nello stesso giro, cosi' la card puo' mostrare i due segnali separati: "porta locale" vs
+// "tunnel ngrok verso internet". Se l'interrogazione a ngrok fallisce (es. ngrok non installato)
+// tunnelReali resta null - la card lo tratta come "non verificabile", non come "sicuramente spento".
 function caricaStatoAccessoEsterno() {
   if (!HTTP_SYNC_ATTIVO || ACCESSO_ESTERNO_CARICAMENTO || ACCESSO_ESTERNO_CACHE !== null) return;
   ACCESSO_ESTERNO_CARICAMENTO = true;
-  fetch('/api/accesso-esterno')
-    .then(r => r.json())
-    .then(info => {
+  Promise.all([
+    fetch('/api/accesso-esterno').then(r => r.json()),
+    fetch('/api/ngrok-tunnels').then(r => r.json()).catch(() => ({ ok: false })),
+  ])
+    .then(([info, tunnelInfo]) => {
       ACCESSO_ESTERNO_CACHE = (info && info.ok) ? info : 'errore';
       // Solo la porta team ha ancora un login condiviso da digitare qui - la porta clienti è sempre
       // attiva da sola e non ha più credenziali proprie (vedi cardAccessoEsterno).
@@ -11373,12 +11383,25 @@ function caricaStatoAccessoEsterno() {
           team: { utente: info.team.utente || '', password: info.team.password || '' },
         };
       }
+      if (ACCESSO_ESTERNO_CACHE !== 'errore') {
+        const porteConTunnel = tunnelInfo && tunnelInfo.ok ? new Set((tunnelInfo.tunnel || []).map(t => t.porta)) : null;
+        ACCESSO_ESTERNO_CACHE.tunnelReali = porteConTunnel; // null = non verificabile ora, altrimenti Set delle porte con un tunnel ngrok attivo davvero
+      }
     })
     .catch(() => { ACCESSO_ESTERNO_CACHE = 'errore'; })
     .finally(() => {
       ACCESSO_ESTERNO_CARICAMENTO = false;
       if (VIEW === 'impostazioni') render();
     });
+}
+// Badge per lo stato REALE del tunnel ngrok di una porta (distinto dal badge "porta locale" già
+// esistente) - usa tunnelReali calcolato sopra.
+function badgeTunnelNgrok(porta) {
+  const set = ACCESSO_ESTERNO_CACHE && ACCESSO_ESTERNO_CACHE.tunnelReali;
+  if (set === null || set === undefined) return `<span class="badge" title="Non siamo riusciti a interrogare ngrok in questo momento (potrebbe non essere installato o non in esecuzione su questo PC).">⚪ ngrok: non verificabile</span>`;
+  return set.has(porta)
+    ? `<span class="badge ok">🌐 ngrok: raggiungibile da internet</span>`
+    : `<span class="badge">⚪ ngrok: non attivo al momento</span>`;
 }
 function aggiornaBottoneAccessoEsterno(tipo) {
   const btn = document.querySelector(`[data-action="salva-accesso-esterno"][data-tipo="${tipo}"]`);
@@ -11407,18 +11430,27 @@ function cardAccessoEsterno() {
   // colori) SEPARATO dalla modifica di utente/password, così è chiaro con un colpo d'occhio se la
   // porta è aperta adesso, e un pulsante dedicato per spegnerla/riaccenderla senza dover ritoccare
   // le credenziali. Il form utente/password resta sotto, per chi deve cambiarle.
+  // Task #173 (Matteo: "togli il pulsante 'copia comando ngrok' sia per i clienti che i
+  // collaboratori [...] vorrei che all'avvio di prisma [...] si attivassero via ngrok [...] e che
+  // poi siano correttamente gestibili dalle impostazioni"): tolto il pulsante "copia comando" (non
+  // serve più, "Avvia ngrok" lo fa già in automatico); aggiunto l'interruttore "avvia ngrok
+  // all'avvio di Prisma" per gestire da qui il nuovo comportamento automatico lato server.
+  const autoavvio = (info.ngrokAutoavvio || { clienti: true, team: true });
+  const toggleAutoavvio = (tipo, attivo) => `<label style="display:flex;align-items:center;gap:7px;font-size:12.5px;cursor:pointer;margin-top:10px;">
+    <input type="checkbox" data-action="ngrok-autoavvio-toggle" data-tipo="${tipo}" ${attivo ? 'checked' : ''}>
+    Avvia ngrok automaticamente a ogni avvio di Prisma
+  </label>`;
   const rigaTipo = (tipo, titolo, spiegazione, dati, porta) => {
     // Valori mostrati/validati per il pulsante: sempre il DRAFT (ultimo digitato da questa
     // postazione), mai "dati" (istantanea del server, aggiornata solo dopo un salvataggio) - vedi
     // il commento su ACCESSO_ESTERNO_DRAFT più sopra.
     const draft = ACCESSO_ESTERNO_DRAFT[tipo];
     const credenzialiPronte = !!(draft.utente.trim() && draft.password.trim());
-    const comando = `ngrok http ${porta}`;
     return `
     <div style="margin-bottom:24px;border:1px solid var(--border);border-radius:10px;padding:14px;">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
         <div style="font-size:12px;font-weight:700;color:var(--text-mut);text-transform:uppercase;letter-spacing:.03em;">${escapeHtml(titolo)} · porta ${porta}</div>
-        ${dati.attivo ? '<span class="badge ok">🟢 Porta attiva</span>' : '<span class="badge">⚪ Porta spenta</span>'}
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">${dati.attivo ? '<span class="badge ok">🟢 Porta locale attiva</span>' : '<span class="badge">⚪ Porta locale spenta</span>'}${badgeTunnelNgrok(porta)}</div>
       </div>
       <div class="helptext" style="margin-bottom:12px;">${spiegazione}</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
@@ -11426,11 +11458,11 @@ function cardAccessoEsterno() {
           ? `<button class="btn danger" data-action="disattiva-accesso-esterno" data-tipo="${tipo}">⏻ Disattiva porta ${titolo.toLowerCase()}</button>`
           : `<button class="btn primary" data-action="salva-accesso-esterno" data-tipo="${tipo}" ${credenzialiPronte ? '' : 'disabled title="Imposta prima utente e password qui sotto"'}>⏻ Attiva porta ${titolo.toLowerCase()}</button>`}
         <button class="btn small" data-action="avvia-ngrok" data-porta="${porta}">🚀 Avvia ngrok</button>
-        <button class="btn small" data-action="copia-comando-ngrok" data-testo="${escapeHtml(comando)}">📋 Copia comando ngrok</button>
         <button class="btn small" data-action="copia-link-rete" data-porta="${porta}">🖧 Copia link rete locale</button>
         <button class="btn small" data-action="copia-link-ngrok" data-porta="${porta}">🌐 Copia link ngrok</button>
       </div>
-      ${!credenzialiPronte && !dati.attivo ? `<div class="helptext" style="margin-bottom:10px;color:var(--arancio,#c0790c);">⚠️ Imposta utente e password qui sotto: il pulsante "Attiva porta" si accende appena sono entrambi compilati.</div>` : ''}
+      ${toggleAutoavvio(tipo, autoavvio[tipo])}
+      ${!credenzialiPronte && !dati.attivo ? `<div class="helptext" style="margin:10px 0;color:var(--arancio,#c0790c);">⚠️ Imposta utente e password qui sotto: il pulsante "Attiva porta" si accende appena sono entrambi compilati.</div>` : ''}
       <details ${dati.attivo ? '' : 'open'}>
         <summary style="cursor:pointer;font-size:12px;font-weight:600;color:var(--text-mut);margin-bottom:8px;">Utente e password di accesso</summary>
         <div class="grid2" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;max-width:480px;margin-top:8px;">
@@ -11444,24 +11476,25 @@ function cardAccessoEsterno() {
   // Porta clienti: nessun login condiviso da attivare - è sempre in ascolto da sola sul PC dello
   // studio, la protezione è ormai per singolo cliente (link personale + password scelta per lui
   // nella sua scheda, vedi cardPasswordPortaleCliente). Qui resta solo il comando ngrok da lanciare
-  // quando serve renderla raggiungibile da internet.
+  // quando serve renderla raggiungibile da internet. Task #173: tolto anche "copia link rete
+  // locale" (Matteo: "non serve, se servisse lo recuperiamo dal task portale clienti") - resta solo
+  // per la porta collaboratori qui sopra.
   const rigaClienti = `
     <div style="margin-bottom:24px;border:1px solid var(--border);border-radius:10px;padding:14px;">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
         <div style="font-size:12px;font-weight:700;color:var(--text-mut);text-transform:uppercase;letter-spacing:.03em;">Porta clienti · porta ${info.portaClienti}</div>
-        ${info.clienti.attivo ? '<span class="badge ok">🟢 Sempre attiva</span>' : '<span class="badge">⚪ Non attiva</span>'}
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">${info.clienti.attivo ? '<span class="badge ok">🟢 Porta locale sempre attiva</span>' : '<span class="badge">⚪ Non attiva</span>'}${badgeTunnelNgrok(info.portaClienti)}</div>
       </div>
-      <div class="helptext" style="margin-bottom:12px;">Espone SOLO il portale cliente (link personali /portale/&lt;codice&gt;), mai i dati completi dello studio. Si avvia da sola con il server, senza bisogno di attivarla: ogni cliente ha il proprio link e, se gliel'hai impostata, la propria password (vedi la sua scheda anagrafica).</div>
+      <div class="helptext" style="margin-bottom:12px;">Espone SOLO il portale cliente (link personali /portale/&lt;codice&gt;), mai i dati completi dello studio. Si avvia da sola con il server, senza bisogno di attivarla: ogni cliente ha il proprio link e, se gliel'hai impostata, la propria password (vedi la sua scheda anagrafica). "Porta locale sempre attiva" riguarda solo questo PC: per essere raggiungibile da internet serve comunque un tunnel ngrok attivo (vedi badge a destra).</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button class="btn small" data-action="avvia-ngrok" data-porta="${info.portaClienti}">🚀 Avvia ngrok</button>
-        <button class="btn small" data-action="copia-comando-ngrok" data-testo="${escapeHtml(`ngrok http ${info.portaClienti}`)}">📋 Copia comando ngrok</button>
-        <button class="btn small" data-action="copia-link-rete" data-porta="${info.portaClienti}">🖧 Copia link rete locale</button>
         <button class="btn small" data-action="copia-link-ngrok" data-porta="${info.portaClienti}">🌐 Copia link ngrok</button>
       </div>
+      ${toggleAutoavvio('clienti', autoavvio.clienti)}
     </div>`;
   return `<div class="card">
     <div class="section-title">Accesso esterno (ngrok)</div>
-    <div class="helptext" style="margin-bottom:16px;">Le porte qui sotto sono già aperte sul PC dello studio — quello che manca è solo il "megafono" verso internet: scarica <a href="https://ngrok.com/download" target="_blank" rel="noopener">ngrok</a> una volta (e configuralo con il tuo authtoken, richiesto dalla versione gratuita: <code>ngrok config add-authtoken &lt;il-tuo-token&gt;</code>), poi premi 🚀 "Avvia ngrok" per aprirlo direttamente da qui, senza terminale: appena il tunnel è su, il link pubblico viene copiato da solo. Il pulsante 📋 resta per chi preferisce lanciarlo a mano. Due pulsanti per il link da comunicare, non uno solo, perché sono due indirizzi diversi: 🖧 "rete locale" funziona solo per chi è sulla stessa rete/WiFi dello studio; 🌐 "link ngrok" è l'indirizzo pubblico vero (es. https://xxxx.ngrok-free.app), funziona da internet ma solo mentre ngrok resta aperto su questo PC.</div>
+    <div class="helptext" style="margin-bottom:16px;">Le porte qui sotto sono già aperte sul PC dello studio — quello che manca è solo il "megafono" verso internet: scarica <a href="https://ngrok.com/download" target="_blank" rel="noopener">ngrok</a> una volta (e configuralo con il tuo authtoken, richiesto dalla versione gratuita: <code>ngrok config add-authtoken &lt;il-tuo-token&gt;</code>). Con l'avvio automatico attivo (interruttore sotto ogni porta) Prisma lancia da solo ngrok per quella porta a ogni avvio del server, senza bisogno di premere nulla; il pulsante 🚀 "Avvia ngrok" resta comunque per avviarlo al volo (es. dopo averlo chiuso a mano, o se l'avvio automatico è disattivato). "🌐 Copia link ngrok" copia l'indirizzo pubblico vero (es. https://xxxx.ngrok-free.app): funziona da internet, ma solo mentre ngrok resta aperto su questo PC.</div>
     ${rigaClienti}
     ${rigaTipo('team', 'Porta collaboratori', 'Espone il gestionale completo, come se si fosse in studio: usala solo con collaboratori di fiducia e una password robusta.', info.team, info.portaTeam)}
   </div>`;
@@ -12881,7 +12914,6 @@ function onClickDelegato(e) {
       break;
 
     case 'avvia-ngrok': avviaNgrokDaPrisma(Number(el.dataset.porta), el.textContent); break;
-    case 'copia-comando-ngrok': copiaTestoNegliAppunti(el.dataset.testo, 'Comando copiato: incollalo nel terminale dove hai installato ngrok.'); break;
 
     case 'copia-link-rete': copiaLinkRete(Number(el.dataset.porta)); break;
     case 'copia-link-ngrok': copiaLinkNgrok(Number(el.dataset.porta)); break;
@@ -13982,6 +14014,21 @@ function onChangeDelegato(e) {
   const id = el.dataset.id;
 
   switch (action) {
+    // Task #173: interruttore "avvia ngrok automaticamente a ogni avvio di Prisma" per porta.
+    case 'ngrok-autoavvio-toggle': {
+      const tipo = el.dataset.tipo;
+      const attivo = el.checked;
+      fetch('/api/ngrok-autoavvio', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [tipo]: attivo }),
+      }).then(r => r.json()).then(d => {
+        if (!d.ok) { toast('Non sono riuscito a salvare la preferenza.', true); el.checked = !attivo; return; }
+        if (ACCESSO_ESTERNO_CACHE && ACCESSO_ESTERNO_CACHE !== 'errore') ACCESSO_ESTERNO_CACHE.ngrokAutoavvio = d.ngrokAutoavvio;
+        toast(attivo ? 'ngrok si avvierà da solo per questa porta ad ogni avvio di Prisma.' : 'Avvio automatico di ngrok disattivato per questa porta.');
+      }).catch(() => { toast('Non sono riuscito a contattare il server locale.', true); el.checked = !attivo; });
+      break;
+    }
     case 'dash-resp': DASH_RESP = el.value; render(); break;
     case 'cambia-ruolo-responsabile': {
       const resp = el.dataset.resp;
@@ -14909,6 +14956,9 @@ window.setHttpSyncAttivoTest = (v) => { HTTP_SYNC_ATTIVO = !!v; };
 // Solo per i test: azzera la cache modulo dello stato del convertitore Word/PDF, così un test può
 // verificare più scenari (LibreOffice assente/presente) senza dover riavviare l'intera pagina.
 window.resetConversioneStatoTest = () => { CONVERSIONE_STATO_CACHE = null; };
+// Stessa ragione: azzera la cache/draft di Accesso esterno (ngrok) così un test può rileggere lo
+// stato (via fetch mockata) con scenari diversi senza riavviare l'intera pagina.
+window.resetAccessoEsternoTest = () => { ACCESSO_ESTERNO_CACHE = null; ACCESSO_ESTERNO_DRAFT = null; };
 window.derivati = derivati;
 window.classificaScadenze = classificaScadenze;
 /* Portale cliente esterno (task #87): queste tre sono le uniche funzioni che il motore headless
