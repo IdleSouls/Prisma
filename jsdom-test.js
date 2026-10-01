@@ -2189,6 +2189,27 @@ async function main() {
   window.rimuoviAppuntamento(appPresto.id);
   console.log('=== Calendario: modal giorno mostra una "Scaletta oraria" cronologica (non per categoria) con intervallo inizio-fine OK');
 
+  // ---------- Task #172: griglia oraria stile Google Calendar (helper di calcolo) ----------
+  {
+    // range di default 8-19, allargato solo se un appuntamento esce da quella fascia
+    const rangeDefault = window.rangeOrarioGriglia([{ ora: '10:00', durataMinuti: 30 }]);
+    assert(rangeDefault.minOra === 8 * 60 && rangeDefault.maxOra === 19 * 60, 'senza appuntamenti fuori fascia il range dovrebbe restare 8-19 di default');
+    const rangeAllargato = window.rangeOrarioGriglia([{ ora: '07:15', durataMinuti: 30 }, { ora: '18:30', durataMinuti: 90 }]);
+    assert(rangeAllargato.minOra === 7 * 60 && rangeAllargato.maxOra === 20 * 60, `un appuntamento alle 07:15 e uno che finisce alle 20:00 dovrebbero allargare il range a 7-20, trovato ${JSON.stringify(rangeAllargato)}`);
+
+    // posizione/altezza del blocco in px, proporzionale alla fascia oraria della griglia
+    const range = { minOra: 8 * 60, maxOra: 19 * 60 };
+    // CAL_GRID_PX_PER_ORA è un const di modulo (non esposto su window, come gli altri const top-level
+    // di questo file): 48px/ora è il valore attuale, verificato qui per nome nel commento sopra la
+    // sua dichiarazione in gestionale.htm.
+    const pos1 = window.posizioneBloccoGriglia({ ora: '09:00', durataMinuti: 60 }, range);
+    assert(pos1.top === 48 && pos1.altezza === 48, `un appuntamento 09:00-10:00 (un'ora dopo l'inizio griglia, lungo un'ora) dovrebbe avere top e altezza pari a un'ora in px (48), trovato ${JSON.stringify(pos1)}`);
+    const posBreve = window.posizioneBloccoGriglia({ ora: '10:00', durataMinuti: 5 }, range);
+    assert(posBreve.altezza >= 16, 'un appuntamento brevissimo deve avere comunque un\'altezza minima leggibile (16px)');
+    assert(window.posizioneBloccoGriglia({ ora: 'non valido', durataMinuti: 30 }, range) === null, 'un orario non valido non deve produrre una posizione (evitare NaN nel CSS)');
+    console.log('=== Task #172: rangeOrarioGriglia/posizioneBloccoGriglia calcolano correttamente fascia oraria e geometria dei blocchi OK');
+  }
+
   // pulizia
   const nAppuntamentiPrimaCleanup = window.getSTATE().appuntamenti.length;
   window.rimuoviAppuntamento(appPrenotato.id);

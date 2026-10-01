@@ -359,6 +359,31 @@ tr.riga-selezionata{background:var(--blu-light);}
 .cal-giorno-lista .dot{width:10px;height:10px;border-radius:3px;flex:none;}
 .cal-giorno-lista .voce.completato .titolo{text-decoration:line-through;opacity:.6;}
 
+/* Griglia oraria stile Google Calendar (richiesta Matteo: "vorrei fosse più simile a google dove
+   c'è la griglia con gli orari e il riquadro dell'appuntamento si estende sugli orari che ricopre")
+   - usata sia nella settimana di "Prenota un appuntamento" (più colonne, una per giorno) sia nel
+   modal giorno del calendario (una sola colonna): un asse ore fisso a sinistra (cal-grid-ore) e,
+   per ciascun giorno, una colonna (cal-grid-colonna) alta esattamente quanto la fascia oraria
+   coperta, con un appuntamento come blocco (cal-grid-blocco) posizionato/alto in proporzione al suo
+   orario - non più un elenco testuale in una casella stretta, un colpo d'occhio su dove c'è spazio
+   libero, esattamente come un calendario a griglia. */
+.cal-grid-wrap{display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:#fff;}
+.cal-grid-ore{flex:none;width:42px;border-right:1px solid var(--border);position:relative;background:var(--bg-2,#f7f8fa);}
+.cal-grid-ora-tacca{position:absolute;left:0;right:0;font-size:9.5px;color:var(--text-mut);text-align:right;padding-right:5px;transform:translateY(-6px);white-space:nowrap;}
+.cal-grid-colonne{flex:1;display:flex;min-width:0;overflow-x:auto;}
+.cal-grid-colonna-wrap{flex:1;min-width:76px;display:flex;flex-direction:column;}
+.cal-grid-intestazione{flex:none;font-size:11px;font-weight:700;text-align:center;padding:6px 2px;border-bottom:1px solid var(--border);border-left:1px solid var(--border);background:var(--bg-2,#f7f8fa);}
+.cal-grid-colonna-wrap:first-child .cal-grid-intestazione{border-left:none;}
+.cal-grid-intestazione.oggi{color:var(--rosa-strong,var(--rosa));background:var(--rosa-bg);}
+.cal-grid-colonna{flex:1;min-width:0;position:relative;border-left:1px solid var(--border);background-image:repeating-linear-gradient(to bottom, var(--border) 0, var(--border) 1px, transparent 1px, transparent var(--cal-grid-ora-px, 48px));background-position:0 -1px;}
+.cal-grid-colonna-wrap:first-child .cal-grid-colonna{border-left:none;}
+.cal-grid-colonna.oggi{background-color:var(--rosa-bg);}
+.cal-grid-blocco{position:absolute;left:2px;right:2px;background:var(--rosa-bg);border-left:3px solid var(--rosa);color:var(--rosa-strong,var(--rosa));border-radius:4px;padding:2px 5px;font-size:10px;line-height:1.3;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.08);}
+.cal-grid-blocco.cliccabile{cursor:pointer;}
+.cal-grid-blocco.cliccabile:hover{box-shadow:0 2px 6px rgba(0,0,0,.18);z-index:2;}
+.cal-grid-blocco .ora{font-weight:700;display:block;}
+.cal-grid-blocco.annullato{opacity:.5;text-decoration:line-through;}
+
 .toast{position:fixed;bottom:20px;right:20px;background:var(--blu-scuro);color:#fff;padding:11px 18px;border-radius:8px;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.25);z-index:100;opacity:0;transform:translateY(8px);transition:all .2s;}
 .toast.show{opacity:1;transform:translateY(0);}
 .toast.error{background:var(--rosso);}
@@ -10174,6 +10199,33 @@ function rigaScalettaOraria(it, dataISO, oggi) {
    scaletta dedicata in cima al modale, ordinata per ora crescente e con l'intervallo inizio-fine di
    ciascuno (vedi durataAppuntamento/oraFineAppuntamento); il resto (eventi senza un orario proprio)
    resta sotto, raggruppato come prima - nessuna modifica al comportamento per quella parte. */
+/* Task #172 (Matteo: "aprendo un giorno in calendario gli orari degli impegni sono solo scritti,
+   vorrei fosse più simile a google dove c'è la griglia con gli orari e il riquadro
+   dell'appuntamento si estende sugli orari che ricopre"): la "scaletta oraria" (task #167) era già
+   in ordine cronologico ma restava un elenco testuale - qui diventa una griglia a una colonna, lo
+   stesso identico meccanismo (asse ore + blocchi proporzionati) della settimana di "Prenota un
+   appuntamento" sopra, con i blocchi cliccabili per aprire il dettaglio dell'appuntamento. Gli
+   appuntamenti senza un orario valido (rari: dati molto vecchi) non si possono posizionare in una
+   griglia oraria e restano elencati sotto, invariato. */
+function scalettaOrariaGrigliaHtml(conOra, dataISO) {
+  if (!conOra.length) return '';
+  const range = rangeOrarioGriglia(conOra.map(it => trovaAppuntamento(it.id)).filter(Boolean));
+  const altezza = altezzaGrigliaPx(range);
+  const blocchi = conOra.map(it => {
+    const a = trovaAppuntamento(it.id);
+    if (!a) return '';
+    const pos = posizioneBloccoGriglia(a, range);
+    if (!pos) return '';
+    const chiuso = eventoCalendarioChiuso('appuntamento', it.stato);
+    return `<div class="cal-grid-blocco cliccabile ${chiuso ? 'annullato' : ''}" style="top:${pos.top}px;height:${pos.altezza}px;" data-action="apri-dettaglio-appuntamento" data-id="${it.id}" title="${escapeHtml(it.ora)}–${escapeHtml(oraFineAppuntamento(a) || '?')} ${escapeHtml(etichettaClienteEvento('appuntamento', it.clienteId))} — ${escapeHtml(it.titolo)}">
+      <span class="ora">${escapeHtml(it.ora)}–${escapeHtml(oraFineAppuntamento(a) || '?')}</span>${escapeHtml(etichettaClienteEvento('appuntamento', it.clienteId))} — ${escapeHtml(it.titolo)}
+    </div>`;
+  }).join('');
+  return `<div class="cal-grid-wrap" style="margin-top:4px;">
+    <div class="cal-grid-ore" style="height:${altezza}px;position:relative;">${tacchePerOreGrigliaHtml(range)}</div>
+    <div class="cal-grid-colonne"><div class="cal-grid-colonna-wrap"><div class="cal-grid-colonna" style="height:${altezza}px;--cal-grid-ora-px:${CAL_GRID_PX_PER_ORA}px;">${blocchi}</div></div></div>
+  </div>`;
+}
 function apriModalGiornoCalendario(dataISO) {
   const eventiPerGiorno = eventiCalendarioPerGiorno();
   const eventi = eventiPerGiorno[dataISO] || [];
@@ -10187,10 +10239,8 @@ function apriModalGiornoCalendario(dataISO) {
   const scalettaHtml = appuntamentiGiorno.length ? `
     <div style="margin-top:10px;">
       <div class="section-title" style="margin:0 0 4px 0;font-size:12px;">🕐 Scaletta oraria — ${appuntamentiGiorno.length} appuntament${appuntamentiGiorno.length===1?'o':'i'}</div>
-      <div style="display:flex;flex-direction:column;gap:3px;">
-        ${conOra.map(it => rigaScalettaOraria(it, dataISO, oggi)).join('')}
-        ${senzaOra.length ? senzaOra.map(it => rigaScalettaOraria(it, dataISO, oggi)).join('') : ''}
-      </div>
+      ${scalettaOrariaGrigliaHtml(conOra, dataISO)}
+      ${senzaOra.length ? `<div style="display:flex;flex-direction:column;gap:3px;margin-top:4px;">${senzaOra.map(it => rigaScalettaOraria(it, dataISO, oggi)).join('')}</div>` : ''}
     </div>` : '';
 
   const gruppi = raggruppaEventiGiorno(altriEventi);
@@ -10331,6 +10381,51 @@ function durataDaOrari(inizio, fine) {
   if (!orarioValido(inizio) || !orarioValido(fine)) return null;
   const d = oraAMinuti(fine) - oraAMinuti(inizio);
   return d > 0 ? d : null;
+}
+
+/* -------------------- Task #172: griglia oraria stile Google Calendar --------------------
+   Richiesta di Matteo: "vorrei fosse più simile a google dove c'è la griglia con gli orari e il
+   riquadro dell'appuntamento si estende sugli orari che ricopre" - sostituisce sia l'elenco
+   testuale nelle caselle della settimana di "Prenota un appuntamento" sia la "scaletta oraria" a
+   righe del modal giorno del calendario. CAL_GRID_PX_PER_ORA è l'altezza in pixel di un'ora: da
+   questa si ricavano sia le tacche dell'asse ore sia la posizione/altezza di ogni blocco
+   appuntamento, in proporzione diretta all'orario che occupa (lo stesso identico numero usato sia
+   per calcolare il blocco sia per disegnare le righe orizzontali di sfondo via CSS, altrimenti
+   andrebbero fuori sincrono). */
+const CAL_GRID_PX_PER_ORA = 48;
+// Fascia oraria coperta dalla griglia: 8-19 di default (l'orario di studio più comune), allargata
+// automaticamente se un appuntamento esce da quella fascia - non si vuole mai tagliare un impegno
+// fuori dal bordo della griglia, né mostrare una griglia vuota enorme quando non serve.
+function rangeOrarioGriglia(appuntamenti) {
+  let minOra = 8 * 60, maxOra = 19 * 60;
+  appuntamenti.forEach(a => {
+    const inizio = oraAMinuti(a.ora);
+    if (inizio === null) return;
+    const fine = inizio + durataAppuntamento(a);
+    if (inizio < minOra) minOra = Math.max(0, Math.floor(inizio / 60) * 60);
+    if (fine > maxOra) maxOra = Math.min(24 * 60, Math.ceil(fine / 60) * 60);
+  });
+  return { minOra, maxOra };
+}
+function altezzaGrigliaPx(range) { return ((range.maxOra - range.minOra) / 60) * CAL_GRID_PX_PER_ORA; }
+// Top/altezza in px del blocco di un appuntamento dentro la griglia - null se l'appuntamento non
+// ha un orario valido (chi chiama filtra già per .ora prima di arrivare qui, ma meglio restare
+// difensivi). Un'altezza minima di 16px evita blocchi illeggibili per appuntamenti brevissimi.
+function posizioneBloccoGriglia(a, range) {
+  const inizio = oraAMinuti(a.ora);
+  if (inizio === null) return null;
+  const fine = inizio + durataAppuntamento(a);
+  const top = ((Math.max(inizio, range.minOra) - range.minOra) / 60) * CAL_GRID_PX_PER_ORA;
+  const altezza = Math.max(((Math.min(fine, range.maxOra) - Math.max(inizio, range.minOra)) / 60) * CAL_GRID_PX_PER_ORA, 16);
+  return { top, altezza };
+}
+function tacchePerOreGrigliaHtml(range) {
+  let html = '';
+  for (let m = range.minOra; m < range.maxOra; m += 60) {
+    const top = ((m - range.minOra) / 60) * CAL_GRID_PX_PER_ORA;
+    html += `<div class="cal-grid-ora-tacca" style="top:${top}px;">${minutiAOra(m)}</div>`;
+  }
+  return html;
 }
 /* Conflitto = due appuntamenti dello STESSO consulente, nello STESSO giorno, i cui intervalli
    [inizio, fine) si sovrappongono (il classico test "inizio1 < fine2 && inizio2 < fine1"). Ignora
@@ -10759,6 +10854,14 @@ function modalPrenotaAppuntamento() {
 // Task #158: griglia di 7 giorni (lun-dom) con gli impegni del consulente selezionato nella
 // settimana individuata da PRENOTA_SETTIMANA_OFFSET, per poter dire al cliente "questa settimana
 // libero il..." o "la prossima" con un colpo d'occhio, invece di scorrere una lista piatta.
+/* Task #172 (Matteo: "le caselle dei giorni sono troppo strette e non si capisce bene quando hanno
+   tempo [...] vorrei fosse più simile a google dove c'è la griglia con gli orari e il riquadro
+   dell'appuntamento si estende sugli orari che ricopre"): da 7 caselle con un elenco testuale a una
+   vera griglia oraria condivisa (vedi rangeOrarioGriglia/posizioneBloccoGriglia più sopra) - un
+   solo asse ore a sinistra, 7 colonne affiancate (scrollabili in orizzontale se lo schermo è
+   stretto), ciascun appuntamento un blocco posizionato/alto in proporzione al suo orario. Lo
+   "spazio libero" si vede ora a colpo d'occhio dal vuoto nella colonna, non va più dedotto
+   leggendo un elenco. */
 function agendaSettimanalePrenotaHtml() {
   const lunedi = inizioSettimanaPrenota(PRENOTA_SETTIMANA_OFFSET);
   const oggi = oggiISO();
@@ -10770,25 +10873,26 @@ function agendaSettimanalePrenotaHtml() {
     giorni.push(d);
   }
   const NOMI_GIORNO = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
-  const celle = giorni.map((d, i) => {
+  const perGiorno = giorni.map(d => {
     const iso = dataISOLocale(d);
-    const delGiorno = impegni.filter(a => a.data === iso).sort((a, b) => (a.ora || '').localeCompare(b.ora || ''));
+    return impegni.filter(a => a.data === iso && a.ora).sort((a, b) => a.ora.localeCompare(b.ora));
+  });
+  const range = rangeOrarioGriglia(perGiorno.flat());
+  const altezza = altezzaGrigliaPx(range);
+  const colonne = giorni.map((d, i) => {
+    const iso = dataISOLocale(d);
+    const delGiorno = perGiorno[i];
     const eOggi = iso === oggi;
-    const eFestivo = i >= 5;
-    // Segnalato da Matteo: con più appuntamenti nello stesso giorno "non appaiono tutti" - in
-    // realtà erano tutti nel DOM ma dentro un'area alta solo 110px con scroll nascosto, facile da
-    // scambiare per un elenco troncato. Area più alta (220px, ancora scrollabile per i giorni
-    // davvero pieni) + conteggio esplicito in intestazione, così non resta alcun dubbio su quanti
-    // impegni ci sono anche quando bisogna scorrere per vederli tutti. Ora mostrata come intervallo
-    // inizio–fine (richiesta di Matteo: sapere quando finisce, non solo quando inizia).
-    const righe = delGiorno.length
-      ? delGiorno.map(a => `<div style="font-size:11px;line-height:1.4;padding:2px 0;border-top:1px solid var(--border);">
-          <strong>${escapeHtml(a.ora || '—')}${a.ora ? '–' + escapeHtml(oraFineAppuntamento(a) || '?') : ''}</strong> ${escapeHtml(a.oggetto || '')}${a.clienteId ? ' — ' + escapeHtml(etichettaClienteEvento('appuntamento', a.clienteId)) : ''}
-        </div>`).join('')
-      : `<div style="font-size:11px;color:var(--text-mut);padding:4px 0;">libero</div>`;
-    return `<div style="flex:1;min-width:0;border:1px solid var(--border);border-radius:6px;padding:6px 7px;${eOggi ? 'background:var(--rosa-bg);border-color:var(--rosa);' : eFestivo ? 'background:var(--bg-2,#f7f8fa);' : ''}">
-      <div style="font-size:11px;font-weight:700;${eOggi ? 'color:var(--rosa-strong,var(--rosa));' : ''}">${NOMI_GIORNO[i]} ${d.getDate()}/${d.getMonth() + 1}${eOggi ? ' · oggi' : ''}${delGiorno.length ? ` · ${delGiorno.length}` : ''}</div>
-      <div style="max-height:220px;overflow-y:auto;margin-top:2px;">${righe}</div>
+    const blocchi = delGiorno.map(a => {
+      const pos = posizioneBloccoGriglia(a, range);
+      if (!pos) return '';
+      return `<div class="cal-grid-blocco" style="top:${pos.top}px;height:${pos.altezza}px;" title="${escapeHtml(a.ora)}–${escapeHtml(oraFineAppuntamento(a) || '?')} ${escapeHtml(a.oggetto || '')}${a.clienteId ? ' — ' + escapeHtml(etichettaClienteEvento('appuntamento', a.clienteId)) : ''}">
+        <span class="ora">${escapeHtml(a.ora)}–${escapeHtml(oraFineAppuntamento(a) || '?')}</span>${escapeHtml(a.oggetto || '')}
+      </div>`;
+    }).join('');
+    return `<div class="cal-grid-colonna-wrap">
+      <div class="cal-grid-intestazione ${eOggi ? 'oggi' : ''}">${NOMI_GIORNO[i]} ${d.getDate()}/${d.getMonth() + 1}${delGiorno.length ? ` · ${delGiorno.length}` : ''}</div>
+      <div class="cal-grid-colonna ${eOggi ? 'oggi' : ''}" style="height:${altezza}px;--cal-grid-ora-px:${CAL_GRID_PX_PER_ORA}px;">${blocchi}</div>
     </div>`;
   }).join('');
   const etichettaSettimana = PRENOTA_SETTIMANA_OFFSET === 0 ? 'Questa settimana' : PRENOTA_SETTIMANA_OFFSET === 1 ? 'Prossima settimana' : PRENOTA_SETTIMANA_OFFSET === -1 ? 'Settimana scorsa' : `Settimana del ${dataISOLocale(lunedi).split('-').reverse().join('/')}`;
@@ -10801,7 +10905,10 @@ function agendaSettimanalePrenotaHtml() {
         <button type="button" class="btn small ghost" data-action="prenota-settimana-succ" title="Settimana successiva">›</button>
       </div>
     </div>
-    <div style="display:flex;gap:5px;overflow-x:auto;padding-bottom:2px;margin-bottom:12px;">${celle}</div>`;
+    <div class="cal-grid-wrap" style="margin-bottom:12px;">
+      <div class="cal-grid-ore" style="height:${altezza + 24}px;"><div style="height:24px;"></div><div style="position:relative;height:${altezza}px;">${tacchePerOreGrigliaHtml(range)}</div></div>
+      <div class="cal-grid-colonne">${colonne}</div>
+    </div>`;
 }
 function renderFormPrenotaAppuntamento() {
   const el = document.getElementById('prenotaAppuntamentoForm');
