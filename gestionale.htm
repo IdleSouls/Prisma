@@ -202,11 +202,20 @@ select.statoSel.stato-non-applicabile{background:var(--grigio-bg);color:var(--gr
    quando assente, con visibility:hidden invece di non renderlo — altrimenti le righe successive
    "scalano" a sinistra quando c'è una sola riga). */
 .riga-f24-modal{display:flex;gap:6px;align-items:center;margin-bottom:6px;}
-.riga-f24-modal input{border:1px solid var(--border);border-radius:6px;padding:7px 9px;font-size:12.5px;font-family:inherit;}
-.riga-f24-modal .col-tributo, .f24-righe-header .col-tributo{width:90px;flex:none;}
-.riga-f24-modal .col-descrizione, .f24-righe-header .col-descrizione{flex:1 1 140px;min-width:0;}
-.riga-f24-modal .col-importo, .f24-righe-header .col-importo{width:100px;flex:none;}
-.riga-f24-modal .col-pagato, .f24-righe-header .col-pagato{width:90px;flex:none;}
+/* Task #187 (Matteo: "la schermata per inserire gli f24 è ancora rotta", vedi screenshot: il campo
+   codice tributo enorme e la colonna "pagato" che esce dal bordo del modal). Causa: questi input
+   stanno dentro un ".field full" (serve solo per il layout a griglia dell'etichetta sopra), e la
+   regola generica ".field input{width:100%;min-width:150px}" (riga più sotto) ha specificità CSS
+   più alta di ".riga-f24-modal input" qui sotto, quindi vinceva lei imponendo 100%+150px minimi a
+   OGNI singolo campo della riga - 4 campi x 150px minimo non ci stanno in un modal da 560px, da cui
+   lo sballottamento. Le regole seguenti forzano esplicitamente le larghezze strette volute per
+   questa tabella, con !important per battere la specificità di ".field input" senza doverla
+   toccare (quella resta corretta per tutti gli altri campi dell'app).*/
+.riga-f24-modal input{border:1px solid var(--border);border-radius:6px;padding:7px 9px;font-size:12.5px;font-family:inherit;min-width:0!important;}
+.riga-f24-modal .col-tributo, .f24-righe-header .col-tributo{width:90px!important;flex:none;}
+.riga-f24-modal .col-descrizione, .f24-righe-header .col-descrizione{width:auto!important;flex:1 1 140px;min-width:0!important;}
+.riga-f24-modal .col-importo, .f24-righe-header .col-importo{width:100px!important;flex:none;}
+.riga-f24-modal .col-pagato, .f24-righe-header .col-pagato{width:90px!important;flex:none;}
 .riga-f24-modal .col-rimuovi{width:26px;flex:none;display:flex;justify-content:center;}
 .f24-righe-header{display:flex;gap:6px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-mut);margin-bottom:4px;padding:0 1px;}
 #f24RigheContainer{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;}
@@ -214,10 +223,12 @@ select.statoSel.stato-non-applicabile{background:var(--grigio-bg);color:var(--gr
    sicurezza+password...): stesso schema di allineamento colonne di riga-f24-modal/f24-righe-header
    qui sopra, larghezze condivise tra intestazione e righe. */
 .riga-cred-campo{display:flex;gap:6px;align-items:center;margin-bottom:6px;}
-.riga-cred-campo input{border:1px solid var(--border);border-radius:6px;padding:7px 9px;font-size:12.5px;font-family:inherit;}
-.riga-cred-campo .col-etichetta, .cred-campi-header .col-etichetta{width:170px;flex:none;}
-.riga-cred-campo .col-valore, .cred-campi-header .col-valore{flex:1 1 140px;min-width:0;}
-.riga-cred-campo .col-segreto, .cred-campi-header .col-segreto{width:80px;flex:none;font-size:11.5px;font-weight:400;white-space:nowrap;}
+/* Stesso bug/fix del #187 qui sopra: anche questi campi stanno dentro un ".field full", quindi
+   serve !important per battere ".field input{width:100%;min-width:150px}". */
+.riga-cred-campo input{border:1px solid var(--border);border-radius:6px;padding:7px 9px;font-size:12.5px;font-family:inherit;min-width:0!important;}
+.riga-cred-campo .col-etichetta, .cred-campi-header .col-etichetta{width:170px!important;flex:none;}
+.riga-cred-campo .col-valore, .cred-campi-header .col-valore{width:auto!important;flex:1 1 140px;min-width:0!important;}
+.riga-cred-campo .col-segreto, .cred-campi-header .col-segreto{width:80px!important;flex:none;font-size:11.5px;font-weight:400;white-space:nowrap;}
 .cred-campi-header{display:flex;gap:6px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-mut);margin-bottom:4px;padding:0 1px;}
 #credCampiContainer{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;}
 
@@ -12499,6 +12510,40 @@ function h(id) { return document.getElementById(id); }
 
 function chiudiModal() { h('modalRoot').innerHTML = ''; }
 
+/* Task #188 (Matteo: "se clicco fuori perdo tutti i dati inseriti, per esempio per inserire un
+   cliente ci vuole un po di tempo ed è snervante") - prima di chiudere un modal per click sul
+   fondo scuro o con Esc (le due vie "accidentali": un click o un tasto premuto per sbaglio),
+   confrontiamo lo stato dei campi del modal con quello al momento dell'apertura - se qualcosa è
+   stato scritto o modificato chiediamo conferma invece di buttare via tutto in silenzio. I
+   pulsanti espliciti "Annulla"/✕ restano invece immediati: sono una scelta consapevole, non un
+   click a vuoto.
+   MODAL_SNAPSHOT viene aggiornato da un MutationObserver su #modalRoot (vedi init), così funziona
+   per tutti i ~35 punti del codice che aprono un modal senza dover toccare ciascuno di essi.
+   L'input di ricerca globale (#ricercaInput) è escluso apposta: lì Esc deve chiudere subito,
+   altrimenti basterebbe aver digitato una lettera per far comparire una conferma inutile. */
+let MODAL_SNAPSHOT = null;
+function serializzaModal() {
+  const root = h('modalRoot');
+  if (!root || !root.children.length) return null;
+  const campi = root.querySelectorAll('input, textarea, select');
+  const parti = [];
+  campi.forEach((el, i) => {
+    if (el.id === 'ricercaInput') return;
+    const chiave = el.id || el.name || ('campo' + i);
+    const valore = (el.type === 'checkbox' || el.type === 'radio') ? (el.checked ? '1' : '0') : el.value;
+    parti.push(chiave + '=' + valore);
+  });
+  return parti.join('|');
+}
+function modalHaDatiNonSalvati() {
+  if (MODAL_SNAPSHOT === null) return false;
+  return serializzaModal() !== MODAL_SNAPSHOT;
+}
+function chiediPrimaDiChiudereModal() {
+  if (!modalHaDatiNonSalvati()) { chiudiModal(); return; }
+  if (confermaAzione('Hai inserito dei dati in questo modulo: chiudere comunque senza salvare?')) chiudiModal();
+}
+
 function onClickDelegato(e) {
   const el = e.target.closest('[data-action]');
   if (!el) return;
@@ -12544,7 +12589,7 @@ function onClickDelegato(e) {
     case 'chat-rif-scegli': inserisciRiferimentoChat(el.dataset.tipo, el.dataset.id, el.dataset.label); break;
     case 'ricerca-apri': { const r = RICERCA_RISULTATI[Number(el.dataset.idx)]; if (r && r.azione) r.azione(); break; }
     case 'azioni-apri': { const r = AZIONI_RISULTATI[Number(el.dataset.idx)]; if (r && r.azione) r.azione(); break; }
-    case 'chiudi-modal-backdrop': if (e.target === el) chiudiModal(); break;
+    case 'chiudi-modal-backdrop': if (e.target === el) chiediPrimaDiChiudereModal(); break;
 
     case 'goto-scadenze': setView('scadenze', { filtro: el.dataset.filtro }); break;
     case 'nav': setView(el.dataset.nav); break;
@@ -14694,6 +14739,11 @@ function init() {
   document.body.addEventListener('change', onChangeDelegato);
   document.body.addEventListener('input', onInputDelegato);
   document.body.addEventListener('focusout', onFocusOutDelegato);
+  // Task #188: ogni volta che #modalRoot cambia contenuto (apertura di un modal, o un modal che si
+  // ri-apre su se stesso dopo un salvataggio) si ri-fotografa lo stato dei campi come nuova
+  // "baseline" - childList basta perché i modali vengono montati con innerHTML = html, mai con
+  // append incrementali.
+  new MutationObserver(() => { MODAL_SNAPSHOT = serializzaModal(); }).observe(h('modalRoot'), { childList: true });
   h('navMenu').addEventListener('click', (e) => {
     const el = e.target.closest('[data-nav]');
     if (el) setView(el.dataset.nav);
@@ -14712,7 +14762,7 @@ function init() {
     }
     // Esc chiude qualsiasi overlay montato in #modalRoot (modali standard, ricerca globale,
     // anteprima a schermo intero del portale cliente) — non solo la ricerca.
-    if (e.key === 'Escape' && h('modalRoot').children.length) { chiudiModal(); return; }
+    if (e.key === 'Escape' && h('modalRoot').children.length) { chiediPrimaDiChiudereModal(); return; }
     // Invio invia il messaggio in chat (Maiusc+Invio va a capo normalmente) - task Matteo: "nella
     // chat se premo invio non manda il messaggio, facciamo in modo di si invece".
     if (e.target && e.target.id === 'chatTesto' && e.key === 'Enter' && !e.shiftKey) {

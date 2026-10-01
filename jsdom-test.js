@@ -5415,6 +5415,65 @@ async function main() {
   assert(stDopoElim.clienti.some(c => c.id === clienteTest.id), 'eliminaDatiAnno ha rimosso per errore il cliente usato nel test');
   console.log(`=== Gestione annualità: rilevamento automatico + export + eliminazione mirata dell'annualità ${annoTest} OK (2 record rimossi, anagrafiche e resto dei dati intatti)`);
 
+  // Task #188 (Matteo: "se clicco fuori perdo tutti i dati inseriti ed è snervante"): un click sul
+  // fondo scuro del modal, o Esc, con dati già digitati deve chiedere conferma invece di chiudere
+  // e buttare via tutto in silenzio. Si usa il modal F24 perché ha più campi testuali comodi da
+  // sporcare (ricerca cliente + descrizione).
+  window.setView('f24');
+  click(q('[data-action="nuovo-f24"]'));
+  await wait(20);
+  assert(q('#fDescrizione'), 'modal F24 non aperto per il test #188');
+  // Appena aperto, senza aver toccato nulla: un click sul backdrop deve chiudere subito, senza
+  // alcuna conferma (altrimenti ogni apertura/chiusura al volo diventerebbe fastidiosa).
+  let confermaChiesta = false;
+  const confirmOriginale188 = window.confirm;
+  window.confirm = () => { confermaChiesta = true; return true; };
+  click(q('.modal-backdrop'));
+  await wait(20);
+  assert(!confermaChiesta, 'chiudere un modal F24 intonso (nessun dato digitato) non deve chiedere conferma');
+  assert(!q('#fDescrizione'), 'il modal F24 intonso non si è chiuso al click sul backdrop');
+  console.log('=== #188: modal F24 intonso si chiude subito al click sul backdrop, senza conferma inutile OK');
+
+  // Riapri, scrivi qualcosa, e verifica che stavolta un click sul backdrop chieda conferma -
+  // rispondendo "Annulla" (false) il modal deve restare aperto CON il testo digitato ancora lì.
+  click(q('[data-action="nuovo-f24"]'));
+  await wait(20);
+  setVal(q('#fDescrizione'), 'Saldo IVA test #188');
+  confermaChiesta = false;
+  window.confirm = () => { confermaChiesta = true; return false; }; // simula "Annulla" sulla conferma
+  click(q('.modal-backdrop'));
+  await wait(20);
+  assert(confermaChiesta, 'chiudere un modal F24 con dati digitati deve chiedere conferma');
+  assert(q('#fDescrizione'), 'il modal si è chiuso nonostante la conferma rifiutata (dati persi)');
+  assert(q('#fDescrizione').value === 'Saldo IVA test #188', 'il testo digitato è andato perso nonostante la conferma rifiutata');
+  console.log('=== #188: click sul backdrop con dati digitati chiede conferma, e su "Annulla" il modal resta aperto coi dati intatti OK');
+
+  // Stavolta rispondi "OK" alla conferma: il modal deve chiudersi normalmente.
+  confermaChiesta = false;
+  window.confirm = () => { confermaChiesta = true; return true; };
+  click(q('.modal-backdrop'));
+  await wait(20);
+  assert(confermaChiesta, 'la seconda chiusura non ha richiesto conferma (snapshot non riaggiornato?)');
+  assert(!q('#fDescrizione'), 'il modal non si è chiuso nonostante la conferma accettata');
+  console.log('=== #188: su conferma accettata il modal si chiude normalmente OK');
+
+  // Stessa identica protezione deve valere per il tasto Esc, non solo per il click sul backdrop.
+  click(q('[data-action="nuovo-f24"]'));
+  await wait(20);
+  setVal(q('#fDescrizione'), 'Altro test Esc #188');
+  confermaChiesta = false;
+  window.confirm = () => { confermaChiesta = true; return false; };
+  window.document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await wait(20);
+  assert(confermaChiesta, 'Esc con dati digitati deve chiedere conferma come il click sul backdrop');
+  assert(q('#fDescrizione') && q('#fDescrizione').value === 'Altro test Esc #188', 'Esc ha chiuso/perso i dati nonostante la conferma rifiutata');
+  window.confirm = () => true;
+  window.document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await wait(20);
+  assert(!q('#fDescrizione'), 'Esc con conferma accettata non ha chiuso il modal');
+  console.log('=== #188: stessa protezione applicata anche al tasto Esc OK');
+  window.confirm = confirmOriginale188;
+
   console.log('\n✅ TUTTI I TEST END-TO-END PASSATI (' + errors.length + ' errori console catturati)');
   if (errors.length) {
     console.log('--- Dettaglio errori console/jsdom catturati durante il test ---');
