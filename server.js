@@ -154,7 +154,17 @@ function avviaNgrok(porta) {
     let risolto = false;
     let figlio;
     try {
-      figlio = spawn('ngrok', ['http', String(porta)], { cwd: CARTELLA, detached: true, stdio: 'ignore', windowsHide: true });
+      // Bug segnalato da Matteo ("ngrok per i clienti/collaboratori non funziona più"): su Windows
+      // "ngrok" installato con "npm install -g ngrok" (il modo più comune) crea uno shim "ngrok.cmd"
+      // (più un file "ngrok" senza estensione, pensato per Mac/Linux, che Windows non può eseguire).
+      // CreateProcess di Windows non sa avviare direttamente un .cmd: senza shell:true, spawn() fallisce
+      // SEMPRE con ENOENT per questo tipo di installazione, anche se "ngrok http ..." funziona benissimo
+      // digitato a mano in un terminale (che la risoluzione .cmd/PATHEXT la fa da solo). shell:true fa
+      // risolvere il comando a cmd.exe esattamente come farebbe un terminale - nessun rischio di
+      // injection, perché porta è sempre una delle due costanti numeriche fisse qui sopra, non un input
+      // dell'utente. Su macOS/Linux "ngrok" è di norma un vero eseguibile: lì questo problema non esiste,
+      // ma shell:true funziona comunque allo stesso modo.
+      figlio = spawn('ngrok', ['http', String(porta)], { cwd: CARTELLA, detached: true, stdio: 'ignore', windowsHide: true, shell: process.platform === 'win32' });
     } catch (err) {
       resolve({ ok: false, errore: 'Impossibile avviare ngrok: ' + err.message });
       return;
@@ -2641,15 +2651,25 @@ function avviaServerEsterniSeConfigurati() {
    blocca né rallenta l'avvio del server: ngrok parte come processo staccato (vedi avviaNgrok), qui
    si aspetta solo l'esito per loggarlo. */
 function avviaNgrokAutomaticoSeConfigurato() {
+  // Bug segnalato da Matteo ("ngrok per i clienti/collaboratori non funziona più"): finora l'esito
+  // di questo auto-avvio finiva SOLO in console.log, mai in scriviLog(). Prisma.exe di norma gira
+  // senza finestra nera (vedi "Avvia Prisma (senza finestra nera).vbs", che lo lancia con la
+  // finestra nascosta): quel console.log non lo vede nessuno, nemmeno Matteo. Risultato: un
+  // fallimento di ngrok era completamente invisibile, senza nessuna traccia da controllare dopo.
+  // Ora l'esito finisce anche in logs/prisma.log, consultabile sempre.
   const cfg = leggiConfigAccessoEsterno();
   if (cfg.ngrokAutoavvio.clienti) {
     avviaNgrok(PORTA_ESTERNA_CLIENTI).then((r) => {
-      console.log(r.ok ? '  ngrok (auto-avvio) avviato per la porta clienti ' + PORTA_ESTERNA_CLIENTI + '.' : '  ngrok (auto-avvio) NON avviato per la porta clienti: ' + r.errore);
+      const messaggio = r.ok ? 'ngrok (auto-avvio) avviato per la porta clienti ' + PORTA_ESTERNA_CLIENTI + '.' : 'ngrok (auto-avvio) NON avviato per la porta clienti: ' + r.errore;
+      console.log('  ' + messaggio);
+      scriviLog(messaggio);
     });
   }
   if (cfg.ngrokAutoavvio.team && cfg.team.utente && cfg.team.password) {
     avviaNgrok(PORTA_ESTERNA_TEAM).then((r) => {
-      console.log(r.ok ? '  ngrok (auto-avvio) avviato per la porta collaboratori ' + PORTA_ESTERNA_TEAM + '.' : '  ngrok (auto-avvio) NON avviato per la porta collaboratori: ' + r.errore);
+      const messaggio = r.ok ? 'ngrok (auto-avvio) avviato per la porta collaboratori ' + PORTA_ESTERNA_TEAM + '.' : 'ngrok (auto-avvio) NON avviato per la porta collaboratori: ' + r.errore;
+      console.log('  ' + messaggio);
+      scriviLog(messaggio);
     });
   }
 }
