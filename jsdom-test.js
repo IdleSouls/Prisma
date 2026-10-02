@@ -3325,24 +3325,31 @@ async function main() {
   assert(periodiBilCliente.length === 4, `atteso il cliente demo con 4 periodi di bilancio caricati (3 anni interi + 1 infra-annuale), trovati ${periodiBilCliente.length}`);
   // il periodo infra-annuale (più recente in ordine cronologico) deve comparire per ultimo, non ordinato come stringa
   assert(window.periodoBilancioInfraAnnuale(periodiBilCliente[periodiBilCliente.length-1]), 'il periodo infra-annuale più recente deve risultare l\'ultimo in ordine cronologico');
-  // Gli indici sono raggruppati per categoria (kpiIndiciCategorizzati: Redditività, Liquidità, ecc.),
-  // un .kpi-grid per categoria - non un'unica griglia da 4. Il totale corrisponde al numero di indici
-  // in CATALOGO_INDICI_BILANCIO, non più a un valore fisso.
-  assert(qa('.kpi-grid').length === Array.from(new Set(window.CATALOGO_INDICI_BILANCIO.map(i => i.categoria))).length, 'attesa una .kpi-grid per ciascuna categoria di indici');
+  // Redesign Bilanci&KPI (Matteo, ott. 2026: "dividiamo il tab in più sezioni per appartenenza,
+  // liquidità/redditività/ecc... vibe futuristica... l'imprenditore deve capire a colpo d'occhio"):
+  // 4 sezioni tematiche (Liquidità/Redditività/Solidità/Efficienza), ciascuna con la propria
+  // .kpi-grid di card dettaglio - il totale delle card resta pari al numero di indici nel catalogo,
+  // la sola distribuzione tra le 4 sezioni cambia in base a CATALOGO_INDICI_BILANCIO.
+  const categorieIndiciBilancio = Array.from(new Set(window.CATALOGO_INDICI_BILANCIO.map(i => i.categoria)));
+  assert(categorieIndiciBilancio.length === 4, `attese 4 categorie di indici (Liquidità/Redditività/Solidità/Efficienza), trovate ${categorieIndiciBilancio.length}: ${categorieIndiciBilancio.join(', ')}`);
+  assert(qa('.kpi-grid').length === 4, `attesa una .kpi-grid per ciascuna delle 4 sezioni, trovate ${qa('.kpi-grid').length}`);
   assert(qa('.kpi-grid .kpi').length === window.CATALOGO_INDICI_BILANCIO.length, `attese ${window.CATALOGO_INDICI_BILANCIO.length} card KPI nella vista Bilanci (una per indice del catalogo)`);
-  assert(qa('svg').length >= 3, 'attesi almeno 3 grafici SVG (ricavi, EBITDA, utile netto)');
-  // Task #177 (Matteo: "più grafici, meno indici buttati lì"): seconda riga di grafici di andamento
-  // per gli indici chiave (ROE, indice di indebitamento, current ratio, PFN/EBITDA) oltre ai 4
-  // esistenti in euro (ricavi/EBITDA/utile/PFN) - 8 grafici SVG totali nella vista Bilanci.
-  assert(qa('svg').length >= 8, `attesi almeno 8 grafici SVG nella vista Bilanci (4 valori assoluti + 4 indici chiave in andamento), trovati ${qa('svg').length}`);
-  assert(q('#content').textContent.includes('Andamento degli indici chiave'), 'manca la sezione "Andamento degli indici chiave" (task #177)');
-  // il grafico ROE deve usare la formattazione percentuale (graficoBarreSvg con formatoBarra/
-  // formatoTooltip personalizzati), non quella euro di default - altrimenti un ROE del 12% verrebbe
-  // mostrato come "12 €", un errore silenzioso facile da non notare a colpo d'occhio.
-  const testoIndiciChiave = qa('.card').find(c => (c.querySelector('.section-title')||{}).textContent === 'Andamento degli indici chiave');
-  assert(testoIndiciChiave, 'card "Andamento degli indici chiave" non trovata nel DOM');
-  assert(!testoIndiciChiave.textContent.includes('€'), 'i grafici di andamento degli indici (ROE, indice indebitamento, current ratio, PFN/EBITDA) non dovrebbero mostrare il simbolo euro - sono percentuali/rapporti, non valori assoluti');
-  assert(/%/.test(testoIndiciChiave.textContent), 'il grafico ROE dentro "Andamento degli indici chiave" dovrebbe mostrare una percentuale ("%")');
+  // Cruscotto di sintesi in cima: punteggio 0-100 "a testo-gradiente" + radar a 4 assi + badge di
+  // trend vs anno precedente - la sintesi visiva che l'imprenditore deve cogliere a colpo d'occhio.
+  assert(q('.bilanci-dash .cruscotto'), 'manca il cruscotto di sintesi in cima alla vista Bilanci');
+  assert(q('.bilanci-dash .cruscotto .punteggio-num'), 'manca il punteggio di sintesi 0-100 nel cruscotto');
+  assert(/^(\d+|n\/d)$/.test(q('.bilanci-dash .cruscotto .punteggio-num').textContent.trim()), 'il punteggio di sintesi dovrebbe essere un numero intero (o "n/d"), non un valore grezzo non arrotondato');
+  // 4 sezioni tematiche, ciascuna con titolo e icona riconoscibili
+  const titoliSezione = qa('.sezione-titolo').map(el => el.textContent);
+  assert(['Liquidità','Redditività','Solidità','Efficienza'].every(t => titoliSezione.includes(t)), `mancano una o più sezioni tematiche attese, trovate: ${titoliSezione.join(', ')}`);
+  // molti più grafici SVG di prima (gauge per ogni mini-gauge, donut, area, barre, radar, waterfall)
+  assert(qa('svg').length >= 20, `attesi almeno 20 grafici SVG nella nuova vista Bilanci (gauge/donut/area/barre/radar/waterfall), trovati ${qa('svg').length}`);
+  // la cascata (waterfall) del conto economico nella sezione Redditività, dai ricavi all'utile netto
+  const sezioneRedditivitaCard = qa('.sezione-bilancio').find(c => (c.querySelector('.sezione-titolo')||{}).textContent === 'Redditività');
+  assert(sezioneRedditivitaCard, 'sezione Redditività non trovata nel DOM');
+  assert(sezioneRedditivitaCard.textContent.includes('Costo del personale') && sezioneRedditivitaCard.textContent.includes('Utile netto'), 'la cascata (waterfall) del conto economico nella sezione Redditività non mostra le voci attese');
+  // il mini-gauge del ROE (dentro Redditività) deve mostrare una percentuale, non un euro
+  assert(/%/.test(sezioneRedditivitaCard.querySelector('.mini-gauge-riga').textContent), 'il mini-gauge del ROE nella sezione Redditività dovrebbe mostrare una percentuale ("%")');
   assert(qa('table.compact tbody tr').length === 4, 'attesa una riga di tabella per ciascuno dei 4 periodi caricati');
   assert(q('#content').textContent.includes('infra-annuale'), 'la tabella bilanci non mostra l\'etichetta "infra-annuale" per il periodo più recente');
 
