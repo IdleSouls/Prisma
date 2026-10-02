@@ -5778,69 +5778,75 @@ async function main() {
   // fondo scuro del modal, o Esc, con dati già digitati deve chiedere conferma invece di chiudere
   // e buttare via tutto in silenzio. Si usa il modal F24 perché ha più campi testuali comodi da
   // sporcare (ricerca cliente + descrizione).
+  // Task #203 (Matteo, dopo aver segnalato che su Nuovo cliente "non si riusciva più a scrivere"):
+  // la conferma non usa più window.confirm() nativo (che ruba il focus di sistema e non lo
+  // restituisce al campo) ma un overlay in stile Prisma (#confermaChiusuraOverlay, pulsanti
+  // data-action="conferma-chiusura-annulla"/"conferma-chiusura-conferma") - i test qui sotto
+  // cliccano quei pulsanti invece di mockare window.confirm.
   window.setView('f24');
   click(q('[data-action="nuovo-f24"]'));
   await wait(20);
   assert(q('#fDescrizione'), 'modal F24 non aperto per il test #188');
   // Appena aperto, senza aver toccato nulla: un click sul backdrop deve chiudere subito, senza
   // alcuna conferma (altrimenti ogni apertura/chiusura al volo diventerebbe fastidiosa).
-  let confermaChiesta = false;
-  const confirmOriginale188 = window.confirm;
-  window.confirm = () => { confermaChiesta = true; return true; };
   click(q('.modal-backdrop'));
   await wait(20);
-  assert(!confermaChiesta, 'chiudere un modal F24 intonso (nessun dato digitato) non deve chiedere conferma');
+  assert(!q('#confermaChiusuraOverlay'), 'chiudere un modal F24 intonso (nessun dato digitato) non deve mostrare l\'overlay di conferma');
   assert(!q('#fDescrizione'), 'il modal F24 intonso non si è chiuso al click sul backdrop');
   console.log('=== #188: modal F24 intonso si chiude subito al click sul backdrop, senza conferma inutile OK');
 
-  // Riapri, scrivi qualcosa, e verifica che stavolta un click sul backdrop chieda conferma -
-  // rispondendo "Annulla" (false) il modal deve restare aperto CON il testo digitato ancora lì.
+  // Riapri, scrivi qualcosa, e verifica che stavolta un click sul backdrop mostri l'overlay di
+  // conferma - cliccando "Continua a modificare" il modal deve restare aperto CON il testo intatto.
   click(q('[data-action="nuovo-f24"]'));
   await wait(20);
   setVal(q('#fDescrizione'), 'Saldo IVA test #188');
-  confermaChiesta = false;
-  window.confirm = () => { confermaChiesta = true; return false; }; // simula "Annulla" sulla conferma
   click(q('.modal-backdrop'));
   await wait(20);
-  assert(confermaChiesta, 'chiudere un modal F24 con dati digitati deve chiedere conferma');
-  assert(q('#fDescrizione'), 'il modal si è chiuso nonostante la conferma rifiutata (dati persi)');
-  assert(q('#fDescrizione').value === 'Saldo IVA test #188', 'il testo digitato è andato perso nonostante la conferma rifiutata');
-  console.log('=== #188: click sul backdrop con dati digitati chiede conferma, e su "Annulla" il modal resta aperto coi dati intatti OK');
+  assert(q('#confermaChiusuraOverlay'), 'chiudere un modal F24 con dati digitati deve mostrare l\'overlay di conferma (task #203)');
+  assert(q('.conferma-chiusura-testo').textContent.includes('chiudere comunque senza salvare'), 'testo dell\'overlay di conferma mancante o cambiato');
+  click(q('[data-action="conferma-chiusura-annulla"]'));
+  await wait(20);
+  assert(!q('#confermaChiusuraOverlay'), '"Continua a modificare" non ha chiuso l\'overlay di conferma');
+  assert(q('#fDescrizione'), 'il modal si è chiuso nonostante "Continua a modificare" (dati persi)');
+  assert(q('#fDescrizione').value === 'Saldo IVA test #188', 'il testo digitato è andato perso nonostante "Continua a modificare"');
+  console.log('=== #188/#203: click sul backdrop con dati digitati mostra l\'overlay di conferma in stile Prisma, e "Continua a modificare" lascia il modal aperto coi dati intatti OK');
 
-  // Stavolta rispondi "OK" alla conferma: il modal deve chiudersi normalmente.
-  confermaChiesta = false;
-  window.confirm = () => { confermaChiesta = true; return true; };
+  // Stavolta clicca "Chiudi senza salvare": il modal deve chiudersi normalmente.
   click(q('.modal-backdrop'));
   await wait(20);
-  assert(confermaChiesta, 'la seconda chiusura non ha richiesto conferma (snapshot non riaggiornato?)');
-  assert(!q('#fDescrizione'), 'il modal non si è chiuso nonostante la conferma accettata');
-  console.log('=== #188: su conferma accettata il modal si chiude normalmente OK');
+  assert(q('#confermaChiusuraOverlay'), 'la seconda chiusura non ha mostrato l\'overlay di conferma (snapshot non riaggiornato?)');
+  click(q('[data-action="conferma-chiusura-conferma"]'));
+  await wait(20);
+  assert(!q('#confermaChiusuraOverlay'), 'l\'overlay di conferma non si è chiuso dopo "Chiudi senza salvare"');
+  assert(!q('#fDescrizione'), 'il modal non si è chiuso nonostante "Chiudi senza salvare"');
+  console.log('=== #188: su "Chiudi senza salvare" il modal si chiude normalmente OK');
 
-  // Stessa identica protezione deve valere per il tasto Esc, non solo per il click sul backdrop.
+  // Stessa identica protezione deve valere per il tasto Esc, non solo per il click sul backdrop -
+  // e un secondo Esc (con l'overlay già aperto) deve chiudere SOLO l'overlay (scelta sicura),
+  // mai il modal sottostante.
   click(q('[data-action="nuovo-f24"]'));
   await wait(20);
   setVal(q('#fDescrizione'), 'Altro test Esc #188');
-  confermaChiesta = false;
-  window.confirm = () => { confermaChiesta = true; return false; };
   window.document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   await wait(20);
-  assert(confermaChiesta, 'Esc con dati digitati deve chiedere conferma come il click sul backdrop');
-  assert(q('#fDescrizione') && q('#fDescrizione').value === 'Altro test Esc #188', 'Esc ha chiuso/perso i dati nonostante la conferma rifiutata');
-  window.confirm = () => true;
+  assert(q('#confermaChiusuraOverlay'), 'Esc con dati digitati deve mostrare l\'overlay di conferma come il click sul backdrop');
+  assert(q('#fDescrizione') && q('#fDescrizione').value === 'Altro test Esc #188', 'Esc ha già chiuso/perso i dati prima ancora della scelta sull\'overlay');
   window.document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   await wait(20);
-  assert(!q('#fDescrizione'), 'Esc con conferma accettata non ha chiuso il modal');
-  console.log('=== #188: stessa protezione applicata anche al tasto Esc OK');
-  window.confirm = confirmOriginale188;
+  assert(!q('#confermaChiusuraOverlay'), 'un secondo Esc deve chiudere l\'overlay di conferma (scelta sicura), non riaprirne un altro');
+  assert(q('#fDescrizione') && q('#fDescrizione').value === 'Altro test Esc #188', 'il secondo Esc ha chiuso/svuotato il modal sottostante invece di limitarsi a chiudere l\'overlay');
+  click(q('.modal-backdrop')); // riapre l'overlay di conferma, stavolta la si accetta
+  await wait(20);
+  click(q('[data-action="conferma-chiusura-conferma"]'));
+  await wait(20);
+  assert(!q('#fDescrizione'), 'conferma accettata dopo Esc non ha chiuso il modal');
+  console.log('=== #188/#203: stessa protezione applicata anche al tasto Esc, incluso un secondo Esc che chiude solo l\'overlay OK');
 
   // Task #197 (regressione segnalata da Matteo: "quando ci sono delle finestre aggiuntive per
   // creare task, clienti, eventi ecc. se clicco fuori dalla finestra queste si chiudono ancora"):
   // il test #188 sopra copriva solo il modal F24. Qui si ripete la stessa identica protezione sui
   // tre modal che Matteo ha nominato esplicitamente, per bloccarla con un test anche lì.
   {
-    let confermaChiesta197 = false;
-    const confirmOriginale197 = window.confirm;
-
     // --- Cliente ---
     window.setView('clienti');
     await wait(20);
@@ -5848,17 +5854,14 @@ async function main() {
     await wait(20);
     assert(q('#fRagioneSociale'), 'modal Nuovo cliente non aperto per il test #197');
     setVal(q('#fRagioneSociale'), 'Prova Regressione #197 SRL');
-    confermaChiesta197 = false;
-    window.confirm = () => { confermaChiesta197 = true; return false; };
     click(q('.modal-backdrop'));
     await wait(20);
-    assert(confermaChiesta197, 'Task #197: chiudere il modal Cliente con dati digitati deve chiedere conferma');
-    assert(q('#fRagioneSociale') && q('#fRagioneSociale').value === 'Prova Regressione #197 SRL', 'Task #197: dati del modal Cliente persi nonostante la conferma rifiutata');
-    window.confirm = () => { confermaChiesta197 = true; return true; };
-    click(q('.modal-backdrop'));
+    assert(q('#confermaChiusuraOverlay'), 'Task #197: chiudere il modal Cliente con dati digitati deve mostrare l\'overlay di conferma (task #203)');
+    assert(q('#fRagioneSociale') && q('#fRagioneSociale').value === 'Prova Regressione #197 SRL', 'Task #197: dati del modal Cliente persi appena mostrato l\'overlay');
+    click(q('[data-action="conferma-chiusura-conferma"]'));
     await wait(20);
-    assert(!q('#fRagioneSociale'), 'Task #197: il modal Cliente non si è chiuso nonostante la conferma accettata');
-    console.log('=== #197: modal "Nuovo cliente" chiede conferma al click sul backdrop con dati digitati OK');
+    assert(!q('#fRagioneSociale'), 'Task #197: il modal Cliente non si è chiuso dopo "Chiudi senza salvare"');
+    console.log('=== #197/#203: modal "Nuovo cliente" mostra l\'overlay di conferma al click sul backdrop con dati digitati OK');
 
     // --- Task ---
     window.setView('taskteam');
@@ -5867,34 +5870,28 @@ async function main() {
     await wait(20);
     assert(q('#tTitolo'), 'modal Nuovo task non aperto per il test #197');
     setVal(q('#tTitolo'), 'Prova regressione task #197');
-    confermaChiesta197 = false;
-    window.confirm = () => { confermaChiesta197 = true; return false; };
     click(q('.modal-backdrop'));
     await wait(20);
-    assert(confermaChiesta197, 'Task #197: chiudere il modal Task con dati digitati deve chiedere conferma');
-    assert(q('#tTitolo') && q('#tTitolo').value === 'Prova regressione task #197', 'Task #197: dati del modal Task persi nonostante la conferma rifiutata');
-    window.confirm = () => { confermaChiesta197 = true; return true; };
-    click(q('.modal-backdrop'));
+    assert(q('#confermaChiusuraOverlay'), 'Task #197: chiudere il modal Task con dati digitati deve mostrare l\'overlay di conferma');
+    assert(q('#tTitolo') && q('#tTitolo').value === 'Prova regressione task #197', 'Task #197: dati del modal Task persi appena mostrato l\'overlay');
+    click(q('[data-action="conferma-chiusura-conferma"]'));
     await wait(20);
-    assert(!q('#tTitolo'), 'Task #197: il modal Task non si è chiuso nonostante la conferma accettata');
-    console.log('=== #197: modal "Nuovo task" chiede conferma al click sul backdrop con dati digitati OK');
+    assert(!q('#tTitolo'), 'Task #197: il modal Task non si è chiuso dopo "Chiudi senza salvare"');
+    console.log('=== #197/#203: modal "Nuovo task" mostra l\'overlay di conferma al click sul backdrop con dati digitati OK');
 
     // --- Evento: appuntamento (default all'apertura) ---
     window.apriModalNuovoEvento(window.oggiISO ? window.oggiISO() : '2026-01-15');
     await wait(20);
     assert(q('#nevOggetto'), 'modal Nuovo evento (appuntamento) non aperto per il test #197');
     setVal(q('#nevOggetto'), 'Prova regressione evento #197');
-    confermaChiesta197 = false;
-    window.confirm = () => { confermaChiesta197 = true; return false; };
     click(q('.modal-backdrop'));
     await wait(20);
-    assert(confermaChiesta197, 'Task #197: chiudere il modal Evento (appuntamento) con dati digitati deve chiedere conferma');
-    assert(q('#nevOggetto') && q('#nevOggetto').value === 'Prova regressione evento #197', 'Task #197: dati del modal Evento persi nonostante la conferma rifiutata');
-    window.confirm = () => { confermaChiesta197 = true; return true; };
-    click(q('.modal-backdrop'));
+    assert(q('#confermaChiusuraOverlay'), 'Task #197: chiudere il modal Evento (appuntamento) con dati digitati deve mostrare l\'overlay di conferma');
+    assert(q('#nevOggetto') && q('#nevOggetto').value === 'Prova regressione evento #197', 'Task #197: dati del modal Evento persi appena mostrato l\'overlay');
+    click(q('[data-action="conferma-chiusura-conferma"]'));
     await wait(20);
-    assert(!q('#nevOggetto'), 'Task #197: il modal Evento (appuntamento) non si è chiuso nonostante la conferma accettata');
-    console.log('=== #197: modal "Nuovo evento" (appuntamento) chiede conferma al click sul backdrop con dati digitati OK');
+    assert(!q('#nevOggetto'), 'Task #197: il modal Evento (appuntamento) non si è chiuso dopo "Chiudi senza salvare"');
+    console.log('=== #197/#203: modal "Nuovo evento" (appuntamento) mostra l\'overlay di conferma al click sul backdrop con dati digitati OK');
 
     // --- Evento: scadenza ricorrente, DOPO aver cambiato tipo dentro al modal (self-refresh del
     // sotto-form #nuovoEventoForm, non di #modalRoot - il caso più a rischio per MODAL_SNAPSHOT) ---
@@ -5904,19 +5901,15 @@ async function main() {
     await wait(20);
     assert(q('#nevScadNome'), 'modal Nuovo evento (scadenza) non aperto dopo il cambio tipo per il test #197');
     setVal(q('#nevScadNome'), 'Prova regressione scadenza #197');
-    confermaChiesta197 = false;
-    window.confirm = () => { confermaChiesta197 = true; return false; };
     click(q('.modal-backdrop'));
     await wait(20);
-    assert(confermaChiesta197, 'Task #197: chiudere il modal Evento (scadenza, dopo cambio tipo) con dati digitati deve chiedere conferma');
-    assert(q('#nevScadNome') && q('#nevScadNome').value === 'Prova regressione scadenza #197', 'Task #197: dati del modal Evento (scadenza) persi nonostante la conferma rifiutata');
-    window.confirm = () => { confermaChiesta197 = true; return true; };
-    click(q('.modal-backdrop'));
+    assert(q('#confermaChiusuraOverlay'), 'Task #197: chiudere il modal Evento (scadenza, dopo cambio tipo) con dati digitati deve mostrare l\'overlay di conferma');
+    assert(q('#nevScadNome') && q('#nevScadNome').value === 'Prova regressione scadenza #197', 'Task #197: dati del modal Evento (scadenza) persi appena mostrato l\'overlay');
+    click(q('[data-action="conferma-chiusura-conferma"]'));
     await wait(20);
-    assert(!q('#nevScadNome'), 'Task #197: il modal Evento (scadenza) non si è chiuso nonostante la conferma accettata');
-    console.log('=== #197: modal "Nuovo evento" (scadenza, dopo cambio tipo a metà modulo) chiede conferma correttamente OK');
+    assert(!q('#nevScadNome'), 'Task #197: il modal Evento (scadenza) non si è chiuso dopo "Chiudi senza salvare"');
+    console.log('=== #197/#203: modal "Nuovo evento" (scadenza, dopo cambio tipo a metà modulo) mostra l\'overlay di conferma correttamente OK');
 
-    window.confirm = confirmOriginale197;
     window.setView('dashboard');
     await wait(20);
   }

@@ -338,6 +338,15 @@ tr.riga-selezionata{background:var(--blu-light);}
 .modal legend{font-size:12px;font-weight:700;color:var(--blu-scuro);padding:0 6px;}
 .modal .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px;padding-top:16px;border-top:1px solid var(--border);}
 .modal .full{grid-column:1 / -1;}
+/* Task #203 (Matteo: su Nuovo cliente "non si riesce più a scrivere" dopo la notifica di dati non
+   salvati, e "possiamo darle un font grafico in linea con l'app?"): sostituisce il window.confirm()
+   nativo - che ruba il focus di sistema e non lo restituisce al campo che si stava compilando - con
+   questo overlay in stile Prisma. z-index sopra .modal-backdrop (50) apposta: resta sopra al modal
+   sottostante, che intanto non viene mai toccato (niente furto di focus, niente dati persi). */
+.conferma-chiusura-overlay{position:fixed;inset:0;background:rgba(20,26,36,.35);display:flex;align-items:center;justify-content:center;z-index:200;padding:20px;}
+.conferma-chiusura-box{background:#fff;border-radius:12px;max-width:380px;width:100%;padding:22px 24px;box-shadow:0 20px 60px rgba(0,0,0,.3);}
+.conferma-chiusura-testo{font-size:14px;line-height:1.5;color:var(--text);margin-bottom:18px;}
+.conferma-chiusura-azioni{display:flex;justify-content:flex-end;gap:10px;}
 
 .tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:16px;}
 .tabs .tab{padding:9px 14px;font-size:13px;font-weight:600;color:var(--text-mut);border-bottom:2px solid transparent;cursor:pointer;}
@@ -13341,7 +13350,39 @@ function modalHaDatiNonSalvati() {
 }
 function chiediPrimaDiChiudereModal() {
   if (!modalHaDatiNonSalvati()) { chiudiModal(); return; }
-  if (confermaAzione('Hai inserito dei dati in questo modulo: chiudere comunque senza salvare?')) chiudiModal();
+  mostraConfermaChiusuraModal();
+}
+// Matteo (dopo aver segnalato che sulla scheda Nuovo cliente "non si riusciva più a scrivere"):
+// il window.confirm() nativo usato qui prima ruba il focus del SISTEMA OPERATIVO (non solo della
+// pagina) per mostrare il suo dialog - alla chiusura il focus non torna da solo dentro al campo di
+// testo che si stava compilando, quindi il modulo sembra "bloccato" finché non si riclicca dentro
+// al campo (la tastiera in realtà funzionava sempre, il cursore era solo altrove). In più,
+// window.confirm() ha il font di sistema, non quello di Prisma ("possiamo darle un font grafico in
+// linea con l'app?"). Questo overlay sostituisce il confirm nativo SOLO per questa conferma
+// specifica (chiusura modal con dati non salvati): è un <div> su document.body, fuori da
+// #modalRoot apposta, così non tocca mai il modal/il campo sottostante - nessun furto di focus,
+// nessuna perdita di stato, il modulo resta esattamente com'era se si sceglie di continuare.
+function mostraConfermaChiusuraModal() {
+  if (h('confermaChiusuraOverlay')) return; // già aperto, non raddoppiare
+  const div = document.createElement('div');
+  div.id = 'confermaChiusuraOverlay';
+  div.className = 'conferma-chiusura-overlay';
+  div.innerHTML = `<div class="conferma-chiusura-box">
+    <div class="conferma-chiusura-testo">Hai inserito dei dati in questo modulo: chiudere comunque senza salvare?</div>
+    <div class="conferma-chiusura-azioni">
+      <button type="button" class="btn" data-action="conferma-chiusura-annulla">Continua a modificare</button>
+      <button type="button" class="btn danger" data-action="conferma-chiusura-conferma">Chiudi senza salvare</button>
+    </div>
+  </div>`;
+  document.body.appendChild(div);
+  // Il focus va sul pulsante "sicuro" (continua a modificare): Invio/Spazio per sbaglio non perde
+  // dati, serve un click/Tab esplicito sull'altro pulsante per buttare via quanto scritto.
+  const btnAnnulla = div.querySelector('[data-action="conferma-chiusura-annulla"]');
+  if (btnAnnulla) btnAnnulla.focus();
+}
+function chiudiConfermaChiusuraModal() {
+  const el = h('confermaChiusuraOverlay');
+  if (el) el.remove();
 }
 
 function onClickDelegato(e) {
@@ -13390,6 +13431,8 @@ function onClickDelegato(e) {
     case 'ricerca-apri': { const r = RICERCA_RISULTATI[Number(el.dataset.idx)]; if (r && r.azione) r.azione(); break; }
     case 'azioni-apri': { const r = AZIONI_RISULTATI[Number(el.dataset.idx)]; if (r && r.azione) r.azione(); break; }
     case 'chiudi-modal-backdrop': if (e.target === el) chiediPrimaDiChiudereModal(); break;
+    case 'conferma-chiusura-annulla': chiudiConfermaChiusuraModal(); break;
+    case 'conferma-chiusura-conferma': chiudiConfermaChiusuraModal(); chiudiModal(); break;
 
     case 'goto-scadenze': setView('scadenze', { filtro: el.dataset.filtro }); break;
     case 'nav': setView(el.dataset.nav); break;
@@ -15712,6 +15755,10 @@ function init() {
       modalRicercaGlobale();
       return;
     }
+    // Task #203: se l'overlay di conferma chiusura è aperto, Esc lo tratta come "Continua a
+    // modificare" (scelta sicura, mai perdita dati) invece di richiamare chiediPrimaDiChiudereModal
+    // sul modal sottostante - altrimenti con Esc ripetuto si rischierebbe di aprirne un secondo.
+    if (e.key === 'Escape' && h('confermaChiusuraOverlay')) { chiudiConfermaChiusuraModal(); return; }
     // Esc chiude qualsiasi overlay montato in #modalRoot (modali standard, ricerca globale,
     // anteprima a schermo intero del portale cliente) — non solo la ricerca.
     if (e.key === 'Escape' && h('modalRoot').children.length) { chiediPrimaDiChiudereModal(); return; }
