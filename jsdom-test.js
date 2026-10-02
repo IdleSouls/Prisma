@@ -5114,7 +5114,33 @@ async function main() {
     assert(corpoConverti.nomeFile === 'Preventivo Rossi.docx' && corpoConverti.formatoDestinazione === 'pdf' && corpoConverti.contenutoBase64, '/api/converti non ha ricevuto nomeFile/formatoDestinazione/contenutoBase64 corretti');
     assert(window.document.body.textContent.includes('Conversione completata') && window.document.body.textContent.includes('documento.pdf'), 'dopo la conversione riuscita non compare il messaggio di completamento col nome del file risultante');
     assert(q('[data-action="strumenti-scarica"]'), 'manca il pulsante "Scarica" dopo una conversione riuscita');
+    assert(q('[data-action="strumenti-salva-cartella"]'), 'manca il pulsante "Salva nella cartella del file originario" dopo una conversione riuscita (task #202)');
     console.log('=== Strumenti: upload .docx, conversione via /api/converti, risultato scaricabile mostrato correttamente OK');
+
+    // Task #202 (Matteo: "aggiungiamo anche la possibilità di trascinare i file"): la dropzone
+    // intorno al pulsante "Scegli file" reagisce a dragover/dragleave/drop con lo stesso esito di
+    // selezionaFileConversione, passando dal percorso condiviso elaboraFileConversione.
+    click(q('[data-action="strumenti-reset"]'));
+    await wait(20);
+    const zonaDrop = q('[data-dropzone="converti-file"]');
+    assert(zonaDrop, 'manca la dropzone per trascinare il file nel convertitore (task #202)');
+
+    const dragOverFinto = new window.Event('dragover', { bubbles: true, cancelable: true });
+    dragOverFinto.dataTransfer = {};
+    zonaDrop.dispatchEvent(dragOverFinto);
+    assert(zonaDrop.classList.contains('dropzone-attiva'), 'il trascinamento sopra la dropzone deve accenderne il contorno (classe dropzone-attiva)');
+
+    const dragLeaveFinto = new window.Event('dragleave', { bubbles: true, cancelable: true });
+    zonaDrop.dispatchEvent(dragLeaveFinto);
+    assert(!zonaDrop.classList.contains('dropzone-attiva'), 'uscendo dalla dropzone senza rilasciare il contorno acceso deve spegnersi');
+
+    const fileFintoTrascinato = new window.File(['contenuto finto'], 'Bilancio Trascinato.docx', { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+    const dropFinto = new window.Event('drop', { bubbles: true, cancelable: true });
+    dropFinto.dataTransfer = { files: [fileFintoTrascinato] };
+    zonaDrop.dispatchEvent(dropFinto);
+    await wait(30);
+    assert(window.document.body.textContent.includes('Bilancio Trascinato.docx'), 'il file trascinato sulla dropzone non è stato preso in carico dal convertitore (task #202)');
+    console.log('=== Strumenti: trascinare un file sulla dropzone lo carica come con "Scegli file..." OK');
 
     // un .pdf offre DUE destinazioni (Word e PDF/A, task #136): compare il select, cambiarlo aggiorna
     // sia l'etichetta del pulsante sia il formatoDestinazione inviato a /api/converti
@@ -5159,6 +5185,24 @@ async function main() {
     window.fetch = fetchOriginaleStrumenti;
     window.setHttpSyncAttivoTest(false);
     window.setView('dashboard');
+    await wait(20);
+  }
+
+  // Task #202 (root cause del bug "il convertitore ci metto sempre almeno due volte prima di
+  // riuscire a prendere il file"): mentre un dialog nativo del sistema (il selettore file, ma anche
+  // stampa/salvataggio) è aperto, la finestra perde il focus del sistema operativo. Un polling in
+  // background che chiamasse render() in quella finestra di tempo ricostruirebbe il DOM e
+  // staccherebbe l'<input type="file"> dal dialog ancora in corso. staModificandoQualcosa() -
+  // chiamata da tutto il polling in background prima di un render() - deve quindi considerare "sto
+  // modificando qualcosa" anche la semplice assenza del focus di sistema, non solo campo
+  // attivo/dettaglio aperto.
+  {
+    assert(window.staModificandoQualcosa() === false, 'con la finestra a fuoco e nessun campo/dettaglio aperto, staModificandoQualcosa deve restituire false');
+    window.dispatchEvent(new window.Event('blur'));
+    assert(window.staModificandoQualcosa() === true, 'senza il focus di sistema (dialog nativo potenzialmente aperto) staModificandoQualcosa deve restituire true, per non ricostruire il DOM sotto un selettore file in corso (task #202)');
+    window.dispatchEvent(new window.Event('focus'));
+    assert(window.staModificandoQualcosa() === false, 'tornato il focus di sistema, e senza altri blocchi, staModificandoQualcosa deve tornare false');
+    console.log('=== Task #202: senza focus di sistema staModificandoQualcosa blocca i re-render in background (dialog "Scegli file" al sicuro) OK');
     await wait(20);
   }
 

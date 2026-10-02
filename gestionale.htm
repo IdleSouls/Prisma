@@ -430,6 +430,12 @@ tr.riga-selezionata{background:var(--blu-light);}
 .icon-x:hover{color:var(--text);}
 
 .helptext{font-size:11.5px;color:var(--text-mut);margin-top:2px;}
+/* Task #202: dropzone per il convertitore file (Matteo: "aggiungiamo anche la possibilità di
+   trascinare i file così è più facile") - bordo tratteggiato che si accende quando un file viene
+   trascinato sopra (classe aggiunta/tolta a mano da onDragOverDelegato/onDragLeaveDelegato, nessun
+   render() di mezzo: scatterebbe continuamente durante il trascinamento, troppo pesante). */
+.dropzone-file{padding:14px;border:2px dashed var(--border);border-radius:10px;text-align:center;transition:border-color .15s,background .15s;}
+.dropzone-file.dropzone-attiva{border-color:var(--blu-mid);background:var(--blu-light);}
 select[multiple]{min-height:150px;}
 .chk-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;margin:0 0 10px 0;}
 .adm-gruppo{margin:0 0 10px 0;border:1px solid var(--border);border-radius:8px;padding:10px 12px;background:#FAFBFC;}
@@ -1998,19 +2004,34 @@ function operatoreCorrente() {
 // responsabili visti negli ultimi 30 secondi.
 let PRESENZA_ONLINE = {};
 function operatoreOnline(nome) { return !!(nome && PRESENZA_ONLINE[nome]); }
+// Task #202 (Matteo: convertitore file, "ci metto sempre almeno due volte prima di riuscire a
+// prendere il file, la prima volta va a vuoto"): quando si apre un dialog nativo del sistema (il
+// selettore file di "Scegli file...", ma anche un dialog di stampa o di salvataggio) la finestra
+// dell'app perde il focus del sistema operativo - il browser non ha altro modo di saperlo. Se il
+// polling presenza (ogni 4s, vedi avviaPollingPresenza) scatta in quella finestra di tempo e chiama
+// render(), l'intero DOM viene ricostruito e l'<input type="file"> a cui il dialog è ancora agganciato
+// resta orfano (staccato dall'albero): la scelta del file fa comunque scattare l'evento "change" sul
+// nodo, ma un evento su un nodo non più attaccato a document.body non risale mai al listener
+// delegato lì sopra, quindi sembra "non aver preso" il file. Il tentativo successivo funziona perché
+// nel frattempo non c'è più nessun dialog in corso. Finestra senza focus del sistema = non toccare
+// il DOM, qualunque sia il motivo (impostato in init() con window.addEventListener('blur'/'focus')).
+let FINESTRA_HA_FOCUS = true;
 /* Guardia condivisa contro i re-render "in background" (polling presenza, sync stato remoto): un
    render() ricostruisce tutto il DOM da zero, quindi qualunque stato che vive SOLO nel DOM invece
    che in una variabile JS sparisce silenziosamente. Oltre a "si sta scrivendo" (INPUT/TEXTAREA, già
-   gestito prima) questo copre due bug segnalati da Matteo:
+   gestito prima) questo copre tre bug segnalati da Matteo:
    - un <select> con il menu a tendina aperto (focus sul <select> mentre il browser mostra le
      opzioni): ricostruire l'elemento sotto al dito lo chiude di scatto.
    - un <details> aperto a mano (es. la spiegazione di un indice in Bilanci&KPI, o "utente e
      password" in Accesso esterno): l'attributo "open" è nativo del browser, non tracciato in
      nessuna variabile, quindi un re-render lo richiude sempre, anche se l'utente lo sta ancora
      leggendo ("molti menù a tendina si chiudono da soli poco dopo averli aperti").
+   - la finestra dell'app senza focus di sistema (dialog nativo "Scegli file" o di stampa in corso,
+     task #202): vedi commento su FINESTRA_HA_FOCUS sopra.
    Non copre i casi con logica ad hoc più fine (es. applicaStatoRemotoSeLibero fa un'eccezione per
    #chatTesto): quei punti mantengono il proprio controllo aggiuntivo oltre a questo. */
 function staModificandoQualcosa() {
+  if (!FINESTRA_HA_FOCUS) return true;
   const el = document.activeElement;
   const inCampo = el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') && document.body.contains(el);
   if (inCampo) return true;
@@ -12241,6 +12262,12 @@ function caricaLogoStudio(inputEl) {
 }
 function selezionaFileConversione(inputEl) {
   const file = inputEl.files && inputEl.files[0];
+  elaboraFileConversione(file);
+}
+// Estratta da selezionaFileConversione (task #202, richiesta di Matteo: "aggiungiamo anche la
+// possibilità di trascinare i file") così la stessa validazione/lettura serve sia al classico
+// <input type="file"> sia al trascinamento sulla dropzone - vedi onDropDelegato.
+function elaboraFileConversione(file) {
   if (!file) return;
   STRUMENTI_RISULTATO = null;
   STRUMENTI_ERRORE = null;
@@ -12252,6 +12279,9 @@ function selezionaFileConversione(inputEl) {
     render();
     return;
   }
+  // Task #202: il nome della cartella di origine serve solo per proporre lo stesso percorso nel
+  // dialog "Salva come" del risultato (vedi salvaRisultatoNellaCartellaOriginaria) - MAI il percorso
+  // assoluto completo, che il browser non concede a pagine web per motivi di sicurezza.
   const reader = new FileReader();
   reader.onerror = () => { STRUMENTI_ERRORE = 'Errore di lettura del file.'; render(); };
   reader.onload = () => {
@@ -12261,6 +12291,30 @@ function selezionaFileConversione(inputEl) {
     render();
   };
   reader.readAsDataURL(file);
+}
+// Task #202: dropzone condivisa con la lista import (vedi CSS .dropzone-file) - preventDefault su
+// dragover è obbligatorio, altrimenti il browser normalmente navigherebbe via mostrando il file
+// trascinato invece di far scattare "drop", e l'evento non arriverebbe mai qui.
+function onDragOverDelegato(e) {
+  const zona = e.target.closest && e.target.closest('[data-dropzone]');
+  if (!zona) return;
+  e.preventDefault();
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+  zona.classList.add('dropzone-attiva');
+}
+function onDragLeaveDelegato(e) {
+  const zona = e.target.closest && e.target.closest('[data-dropzone]');
+  if (!zona) return;
+  zona.classList.remove('dropzone-attiva');
+}
+function onDropDelegato(e) {
+  const zona = e.target.closest && e.target.closest('[data-dropzone]');
+  if (!zona) return;
+  e.preventDefault();
+  zona.classList.remove('dropzone-attiva');
+  const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if (!file) return;
+  if (zona.dataset.dropzone === 'converti-file') elaboraFileConversione(file);
 }
 function avviaConversione() {
   if (!STRUMENTI_FILE || STRUMENTI_IN_CORSO) return;
@@ -12294,6 +12348,40 @@ async function scaricaRisultatoConversione() {
     alert('Impossibile scaricare il file convertito in questo browser.');
   }
 }
+// Task #202 (Matteo: "quando il file viene prodotto aggiungerei un pulsante per salvarlo nella
+// stessa cartella del file originario"): una pagina web NON può leggere il percorso assoluto di un
+// file scelto dall'utente (sicurezza del browser, vale anche qui anche se gira in Electron in locale
+// - niente File.path, rimosso da Electron stesso nelle versioni recenti), quindi non esiste un modo
+// onesto per scrivere lì senza far vedere all'utente nessun dialog. La via più vicina alla richiesta:
+// window.showSaveFilePicker apre il "Salva come" nativo di Windows, che in pratica riparte quasi
+// sempre dall'ultima cartella usata in un dialog di apertura/salvataggio della stessa sessione -
+// cioè, di norma, proprio la cartella da cui si è scelto/trascinato il file originale. Un clic su
+// "Salva" invece di dover ripescare la cartella a mano. Se il browser non supporta questa API
+// (Firefox, Safari, versioni vecchie) o l'utente annulla, si ricade sul download normale di sempre.
+async function salvaRisultatoNellaCartellaOriginaria() {
+  if (!STRUMENTI_RISULTATO) return;
+  const ext = (STRUMENTI_RISULTATO.nomeFile.split('.').pop() || '').toLowerCase();
+  const blob = blobDaBase64(STRUMENTI_RISULTATO.base64, MIME_STRUMENTI[ext] || 'application/octet-stream');
+  if (typeof window === 'undefined' || typeof window.showSaveFilePicker !== 'function') {
+    toast('Questo browser non permette di scegliere la cartella: uso il download normale.');
+    return scaricaRisultatoConversione();
+  }
+  try {
+    const mime = MIME_STRUMENTI[ext] || 'application/octet-stream';
+    const handle = await window.showSaveFilePicker({
+      suggestedName: STRUMENTI_RISULTATO.nomeFile,
+      types: [{ description: ext.toUpperCase(), accept: { [mime]: ['.' + ext] } }],
+    });
+    const scrittore = await handle.createWritable();
+    await scrittore.write(blob);
+    await scrittore.close();
+    toast('File convertito salvato.');
+  } catch (err) {
+    if (err && err.name === 'AbortError') return; // annullato dall'utente dal dialog, non è un errore
+    console.error('Salvataggio diretto non riuscito, ripiego sul download', err);
+    scaricaRisultatoConversione();
+  }
+}
 function renderStrumenti() {
   if (!HTTP_SYNC_ATTIVO) {
     return `<div class="card"><div class="section-title">Convertitore Word ↔ PDF</div>
@@ -12319,7 +12407,10 @@ function renderStrumenti() {
   return `<div class="card" style="max-width:640px;">
     <div class="section-title">Convertitore Word ↔ PDF ↔ PDF/A</div>
     <div class="helptext" style="margin-bottom:12px;">Carica un file .docx/.doc/.odt per convertirlo in PDF, oppure un .pdf per renderlo modificabile in Word o per trasformarlo in PDF/A (formato di archiviazione a norma, adatto alla conservazione digitale). Conversione locale su questo PC — i documenti non escono verso servizi online.</div>
-    <label class="btn" style="margin:0;display:inline-block;">📄 Scegli file...<input type="file" accept=".doc,.docx,.odt,.pdf" style="display:none;" data-action="strumenti-scegli-file"></label>
+    <div class="dropzone-file" data-dropzone="converti-file">
+      <label class="btn" style="margin:0;display:inline-block;">📄 Scegli file...<input type="file" accept=".doc,.docx,.odt,.pdf" style="display:none;" data-action="strumenti-scegli-file"></label>
+      <div class="helptext" style="margin-top:8px;">oppure trascina qui il file</div>
+    </div>
     ${f ? `<div style="margin-top:12px;padding:10px 12px;background:var(--bg);border-radius:8px;">
       <div style="font-weight:600;font-size:13.5px;">${escapeHtml(f.nome)}</div>
       <div class="helptext">${(f.dimensione/1024).toFixed(1)} KB</div>
@@ -12331,6 +12422,7 @@ function renderStrumenti() {
     ${STRUMENTI_RISULTATO ? `<div style="margin-top:14px;padding:12px;background:var(--verde-bg);border-radius:8px;">
       <div style="font-weight:600;font-size:13.5px;color:var(--verde);">✅ Conversione completata: ${escapeHtml(STRUMENTI_RISULTATO.nomeFile)}</div>
       <button class="btn primary small" style="margin-top:8px;" data-action="strumenti-scarica">⬇ Scarica</button>
+      <button class="btn small" style="margin-top:8px;margin-left:8px;" data-action="strumenti-salva-cartella">📁 Salva nella cartella del file originario</button>
     </div>` : ''}
   </div>`;
 }
@@ -14514,6 +14606,7 @@ function onClickDelegato(e) {
     case 'strumenti-converti': avviaConversione(); break;
     case 'strumenti-reset': resetStrumentiFile(); break;
     case 'strumenti-scarica': scaricaRisultatoConversione(); break;
+    case 'strumenti-salva-cartella': salvaRisultatoNellaCartellaOriginaria(); break;
 
     case 'rubrica-copia': copiaTestoNegliAppunti(el.dataset.testo, 'Contatto copiato negli appunti.'); break;
 
@@ -15591,6 +15684,13 @@ function init() {
   document.body.addEventListener('change', onChangeDelegato);
   document.body.addEventListener('input', onInputDelegato);
   document.body.addEventListener('focusout', onFocusOutDelegato);
+  document.body.addEventListener('dragover', onDragOverDelegato);
+  document.body.addEventListener('dragleave', onDragLeaveDelegato);
+  document.body.addEventListener('drop', onDropDelegato);
+  // Task #202: vedi FINESTRA_HA_FOCUS sopra - un dialog nativo (scegli file, stampa...) toglie il
+  // focus alla finestra senza che il DOM lo sappia in nessun altro modo.
+  window.addEventListener('blur', () => { FINESTRA_HA_FOCUS = false; });
+  window.addEventListener('focus', () => { FINESTRA_HA_FOCUS = true; });
   // Task #188: ogni volta che #modalRoot cambia contenuto (apertura di un modal, o un modal che si
   // ri-apre su se stesso dopo un salvataggio) si ri-fotografa lo stato dei campi come nuova
   // "baseline" - childList basta perché i modali vengono montati con innerHTML = html, mai con
