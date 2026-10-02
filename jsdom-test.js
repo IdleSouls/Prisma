@@ -5833,6 +5833,94 @@ async function main() {
   console.log('=== #188: stessa protezione applicata anche al tasto Esc OK');
   window.confirm = confirmOriginale188;
 
+  // Task #197 (regressione segnalata da Matteo: "quando ci sono delle finestre aggiuntive per
+  // creare task, clienti, eventi ecc. se clicco fuori dalla finestra queste si chiudono ancora"):
+  // il test #188 sopra copriva solo il modal F24. Qui si ripete la stessa identica protezione sui
+  // tre modal che Matteo ha nominato esplicitamente, per bloccarla con un test anche lì.
+  {
+    let confermaChiesta197 = false;
+    const confirmOriginale197 = window.confirm;
+
+    // --- Cliente ---
+    window.setView('clienti');
+    await wait(20);
+    click(q('[data-action="nuovo-cliente"]'));
+    await wait(20);
+    assert(q('#fRagioneSociale'), 'modal Nuovo cliente non aperto per il test #197');
+    setVal(q('#fRagioneSociale'), 'Prova Regressione #197 SRL');
+    confermaChiesta197 = false;
+    window.confirm = () => { confermaChiesta197 = true; return false; };
+    click(q('.modal-backdrop'));
+    await wait(20);
+    assert(confermaChiesta197, 'Task #197: chiudere il modal Cliente con dati digitati deve chiedere conferma');
+    assert(q('#fRagioneSociale') && q('#fRagioneSociale').value === 'Prova Regressione #197 SRL', 'Task #197: dati del modal Cliente persi nonostante la conferma rifiutata');
+    window.confirm = () => { confermaChiesta197 = true; return true; };
+    click(q('.modal-backdrop'));
+    await wait(20);
+    assert(!q('#fRagioneSociale'), 'Task #197: il modal Cliente non si è chiuso nonostante la conferma accettata');
+    console.log('=== #197: modal "Nuovo cliente" chiede conferma al click sul backdrop con dati digitati OK');
+
+    // --- Task ---
+    window.setView('taskteam');
+    await wait(20);
+    click(q('[data-action="nuovo-task-team"]'));
+    await wait(20);
+    assert(q('#tTitolo'), 'modal Nuovo task non aperto per il test #197');
+    setVal(q('#tTitolo'), 'Prova regressione task #197');
+    confermaChiesta197 = false;
+    window.confirm = () => { confermaChiesta197 = true; return false; };
+    click(q('.modal-backdrop'));
+    await wait(20);
+    assert(confermaChiesta197, 'Task #197: chiudere il modal Task con dati digitati deve chiedere conferma');
+    assert(q('#tTitolo') && q('#tTitolo').value === 'Prova regressione task #197', 'Task #197: dati del modal Task persi nonostante la conferma rifiutata');
+    window.confirm = () => { confermaChiesta197 = true; return true; };
+    click(q('.modal-backdrop'));
+    await wait(20);
+    assert(!q('#tTitolo'), 'Task #197: il modal Task non si è chiuso nonostante la conferma accettata');
+    console.log('=== #197: modal "Nuovo task" chiede conferma al click sul backdrop con dati digitati OK');
+
+    // --- Evento: appuntamento (default all'apertura) ---
+    window.apriModalNuovoEvento(window.oggiISO ? window.oggiISO() : '2026-01-15');
+    await wait(20);
+    assert(q('#nevOggetto'), 'modal Nuovo evento (appuntamento) non aperto per il test #197');
+    setVal(q('#nevOggetto'), 'Prova regressione evento #197');
+    confermaChiesta197 = false;
+    window.confirm = () => { confermaChiesta197 = true; return false; };
+    click(q('.modal-backdrop'));
+    await wait(20);
+    assert(confermaChiesta197, 'Task #197: chiudere il modal Evento (appuntamento) con dati digitati deve chiedere conferma');
+    assert(q('#nevOggetto') && q('#nevOggetto').value === 'Prova regressione evento #197', 'Task #197: dati del modal Evento persi nonostante la conferma rifiutata');
+    window.confirm = () => { confermaChiesta197 = true; return true; };
+    click(q('.modal-backdrop'));
+    await wait(20);
+    assert(!q('#nevOggetto'), 'Task #197: il modal Evento (appuntamento) non si è chiuso nonostante la conferma accettata');
+    console.log('=== #197: modal "Nuovo evento" (appuntamento) chiede conferma al click sul backdrop con dati digitati OK');
+
+    // --- Evento: scadenza ricorrente, DOPO aver cambiato tipo dentro al modal (self-refresh del
+    // sotto-form #nuovoEventoForm, non di #modalRoot - il caso più a rischio per MODAL_SNAPSHOT) ---
+    window.apriModalNuovoEvento(window.oggiISO ? window.oggiISO() : '2026-01-15');
+    await wait(20);
+    click(q('[data-action="nuovo-evento-tipo"][data-tipo="scadenza"]'));
+    await wait(20);
+    assert(q('#nevScadNome'), 'modal Nuovo evento (scadenza) non aperto dopo il cambio tipo per il test #197');
+    setVal(q('#nevScadNome'), 'Prova regressione scadenza #197');
+    confermaChiesta197 = false;
+    window.confirm = () => { confermaChiesta197 = true; return false; };
+    click(q('.modal-backdrop'));
+    await wait(20);
+    assert(confermaChiesta197, 'Task #197: chiudere il modal Evento (scadenza, dopo cambio tipo) con dati digitati deve chiedere conferma');
+    assert(q('#nevScadNome') && q('#nevScadNome').value === 'Prova regressione scadenza #197', 'Task #197: dati del modal Evento (scadenza) persi nonostante la conferma rifiutata');
+    window.confirm = () => { confermaChiesta197 = true; return true; };
+    click(q('.modal-backdrop'));
+    await wait(20);
+    assert(!q('#nevScadNome'), 'Task #197: il modal Evento (scadenza) non si è chiuso nonostante la conferma accettata');
+    console.log('=== #197: modal "Nuovo evento" (scadenza, dopo cambio tipo a metà modulo) chiede conferma correttamente OK');
+
+    window.confirm = confirmOriginale197;
+    window.setView('dashboard');
+    await wait(20);
+  }
+
   console.log('\n✅ TUTTI I TEST END-TO-END PASSATI (' + errors.length + ' errori console catturati)');
   if (errors.length) {
     console.log('--- Dettaglio errori console/jsdom catturati durante il test ---');
