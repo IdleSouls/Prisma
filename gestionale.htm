@@ -12065,6 +12065,13 @@ let ACCESSO_ESTERNO_DRAFT = null;
 // stesso) nello stesso giro, cosi' la card puo' mostrare i due segnali separati: "porta locale" vs
 // "tunnel ngrok verso internet". Se l'interrogazione a ngrok fallisce (es. ngrok non installato)
 // tunnelReali resta null - la card lo tratta come "non verificabile", non come "sicuramente spento".
+//
+// Task #199 (Matteo: "ngrok per i clienti non funziona più" / "anche per i collaboratori non
+// va"): la causa reale era il piano ngrok gratuito, che assegna UN SOLO dominio pubblico per
+// account - due tunnel ngrok simultanei (uno per porta, come prima) finivano sempre in conflitto
+// sullo stesso dominio. Clienti e collaboratori condividono ora LA STESSA porta/lo stesso tunnel
+// (vedi server.js, PORTA_ESTERNA): un solo "/api/accesso-esterno" senza più portaClienti/portaTeam
+// separati, un solo tunnel da interrogare su /api/ngrok-tunnels.
 function caricaStatoAccessoEsterno() {
   if (!HTTP_SYNC_ATTIVO || ACCESSO_ESTERNO_CARICAMENTO || ACCESSO_ESTERNO_CACHE !== null) return;
   ACCESSO_ESTERNO_CARICAMENTO = true;
@@ -12074,8 +12081,6 @@ function caricaStatoAccessoEsterno() {
   ])
     .then(([info, tunnelInfo]) => {
       ACCESSO_ESTERNO_CACHE = (info && info.ok) ? info : 'errore';
-      // Solo la porta team ha ancora un login condiviso da digitare qui - la porta clienti è sempre
-      // attiva da sola e non ha più credenziali proprie (vedi cardAccessoEsterno).
       if (ACCESSO_ESTERNO_CACHE !== 'errore' && !ACCESSO_ESTERNO_DRAFT) {
         ACCESSO_ESTERNO_DRAFT = {
           team: { utente: info.team.utente || '', password: info.team.password || '' },
@@ -12122,79 +12127,54 @@ function cardAccessoEsterno() {
     return `<div class="card"><div class="section-title">Accesso esterno (ngrok)</div><div class="helptext">⚠️ Non è stato possibile leggere lo stato dell'accesso esterno dal server locale.</div></div>`;
   }
   const info = ACCESSO_ESTERNO_CACHE;
-  // Task #117 (Matteo: "manca il pulsante dedicato per attivare le porte da ngrok"): prima
-  // l'attivazione era un effetto collaterale poco visibile del pulsante "Salva e attiva" del form
-  // credenziali - ora ogni porta ha in cima un interruttore ON/OFF ben distinto (grande, con stato a
-  // colori) SEPARATO dalla modifica di utente/password, così è chiaro con un colpo d'occhio se la
-  // porta è aperta adesso, e un pulsante dedicato per spegnerla/riaccenderla senza dover ritoccare
-  // le credenziali. Il form utente/password resta sotto, per chi deve cambiarle.
-  // Task #173 (Matteo: "togli il pulsante 'copia comando ngrok' sia per i clienti che i
-  // collaboratori [...] vorrei che all'avvio di prisma [...] si attivassero via ngrok [...] e che
-  // poi siano correttamente gestibili dalle impostazioni"): tolto il pulsante "copia comando" (non
-  // serve più, "Avvia ngrok" lo fa già in automatico); aggiunto l'interruttore "avvia ngrok
-  // all'avvio di Prisma" per gestire da qui il nuovo comportamento automatico lato server.
-  const autoavvio = (info.ngrokAutoavvio || { clienti: true, team: true });
-  const toggleAutoavvio = (tipo, attivo) => `<label style="display:flex;align-items:center;gap:7px;font-size:12.5px;cursor:pointer;margin-top:10px;">
-    <input type="checkbox" data-action="ngrok-autoavvio-toggle" data-tipo="${tipo}" ${attivo ? 'checked' : ''}>
-    Avvia ngrok automaticamente a ogni avvio di Prisma
-  </label>`;
-  const rigaTipo = (tipo, titolo, spiegazione, dati, porta) => {
-    // Valori mostrati/validati per il pulsante: sempre il DRAFT (ultimo digitato da questa
-    // postazione), mai "dati" (istantanea del server, aggiornata solo dopo un salvataggio) - vedi
-    // il commento su ACCESSO_ESTERNO_DRAFT più sopra.
-    const draft = ACCESSO_ESTERNO_DRAFT[tipo];
-    const credenzialiPronte = !!(draft.utente.trim() && draft.password.trim());
-    return `
-    <div style="margin-bottom:24px;border:1px solid var(--border);border-radius:10px;padding:14px;">
+  // Task #199 (Matteo: "ngrok per i clienti non funziona più" / "anche per i collaboratori non
+  // va"): clienti e collaboratori condividevano prima due porte e due tunnel ngrok separati - sul
+  // piano ngrok gratuito (un solo dominio pubblico per account) finivano SEMPRE in conflitto tra
+  // loro. Ora è UNA porta sola (vedi server.js, PORTA_ESTERNA): un solo tunnel ngrok, un solo
+  // interruttore di avvio automatico, un solo pulsante "Avvia ngrok". La distinzione tra "chiunque"
+  // (portale cliente, link personali) e "solo i collaboratori di fiducia" (accesso completo) resta
+  // la stessa di prima, ma per PERCORSO sullo stesso indirizzo, non più per porta diversa.
+  const draft = ACCESSO_ESTERNO_DRAFT.team;
+  const credenzialiPronte = !!(draft.utente.trim() && draft.password.trim());
+  const porta = info.porta;
+  return `<div class="card">
+    <div class="section-title">Accesso esterno (ngrok)</div>
+    <div class="helptext" style="margin-bottom:16px;">La porta qui sotto è già aperta sul PC dello studio — quello che manca è solo il "megafono" verso internet: scarica <a href="https://ngrok.com/download" target="_blank" rel="noopener">ngrok</a> una volta (e configuralo con il tuo authtoken, richiesto dalla versione gratuita: <code>ngrok config add-authtoken &lt;il-tuo-token&gt;</code>). Con l'avvio automatico attivo Prisma lancia da solo ngrok ad ogni avvio del server, senza bisogno di premere nulla; il pulsante 🚀 "Avvia ngrok" resta comunque per avviarlo al volo (es. dopo averlo chiuso a mano, o se l'avvio automatico è disattivato). Un solo tunnel ngrok basta per entrambi: i clienti usano il loro link personale (/portale/&lt;codice&gt;), i collaboratori aprono l'indirizzo base qui sotto e inseriscono le credenziali che imposti più sotto. Nota per chi ha un account ngrok gratuito: il piano free assegna un unico dominio pubblico fisso, quindi è possibile UN SOLO tunnel alla volta - prima serviva un tunnel per porta (e andavano in conflitto), ora basta questo.</div>
+    <div style="border:1px solid var(--border);border-radius:10px;padding:14px;">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
-        <div style="font-size:12px;font-weight:700;color:var(--text-mut);text-transform:uppercase;letter-spacing:.03em;">${escapeHtml(titolo)} · porta ${porta}</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;">${dati.attivo ? '<span class="badge ok">🟢 Porta locale attiva</span>' : '<span class="badge">⚪ Porta locale spenta</span>'}${badgeTunnelNgrok(porta)}</div>
+        <div style="font-size:12px;font-weight:700;color:var(--text-mut);text-transform:uppercase;letter-spacing:.03em;">Porta ${porta}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;"><span class="badge ok">🟢 Porta locale sempre attiva</span>${badgeTunnelNgrok(porta)}</div>
       </div>
-      <div class="helptext" style="margin-bottom:12px;">${spiegazione}</div>
+      <div class="helptext" style="margin-bottom:12px;">Il portale cliente (link personali /portale/&lt;codice&gt;, mai i dati completi dello studio) è sempre raggiungibile qui, senza bisogno di attivare nulla: ogni cliente ha il proprio link e, se gliel'hai impostata, la propria password (vedi la sua scheda anagrafica). "Porta locale sempre attiva" riguarda solo questo PC: per essere raggiungibile da internet serve comunque un tunnel ngrok attivo (vedi badge a destra).</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
-        ${dati.attivo
-          ? `<button class="btn danger" data-action="disattiva-accesso-esterno" data-tipo="${tipo}">⏻ Disattiva porta ${titolo.toLowerCase()}</button>`
-          : `<button class="btn primary" data-action="salva-accesso-esterno" data-tipo="${tipo}" ${credenzialiPronte ? '' : 'disabled title="Imposta prima utente e password qui sotto"'}>⏻ Attiva porta ${titolo.toLowerCase()}</button>`}
         <button class="btn small" data-action="avvia-ngrok" data-porta="${porta}">🚀 Avvia ngrok</button>
         <button class="btn small" data-action="copia-link-rete" data-porta="${porta}">🖧 Copia link rete locale</button>
         <button class="btn small" data-action="copia-link-ngrok" data-porta="${porta}">🌐 Copia link ngrok</button>
       </div>
-      ${toggleAutoavvio(tipo, autoavvio[tipo])}
-      ${!credenzialiPronte && !dati.attivo ? `<div class="helptext" style="margin:10px 0;color:var(--arancio,#c0790c);">⚠️ Imposta utente e password qui sotto: il pulsante "Attiva porta" si accende appena sono entrambi compilati.</div>` : ''}
-      <details ${dati.attivo ? '' : 'open'}>
-        <summary style="cursor:pointer;font-size:12px;font-weight:600;color:var(--text-mut);margin-bottom:8px;">Utente e password di accesso</summary>
-        <div class="grid2" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;max-width:480px;margin-top:8px;">
-          <div class="field"><label>Utente</label><input type="text" id="accEst_${tipo}_utente" value="${escapeHtml(draft.utente)}" placeholder="es. studio" data-action="accesso-esterno-campo" data-tipo="${tipo}" data-campo="utente"></div>
-          <div class="field"><label>Password</label><input type="text" id="accEst_${tipo}_password" value="${escapeHtml(draft.password)}" placeholder="scegli una password" data-action="accesso-esterno-campo" data-tipo="${tipo}" data-campo="password"></div>
+      <label style="display:flex;align-items:center;gap:7px;font-size:12.5px;cursor:pointer;margin-bottom:16px;">
+        <input type="checkbox" data-action="ngrok-autoavvio-toggle" ${info.ngrokAutoavvio !== false ? 'checked' : ''}>
+        Avvia ngrok automaticamente a ogni avvio di Prisma
+      </label>
+      <div style="border-top:1px solid var(--border);padding-top:14px;">
+        <div style="font-size:12px;font-weight:700;color:var(--text-mut);text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px;">Accesso collaboratori (gestionale completo)</div>
+        <div class="helptext" style="margin-bottom:10px;">Espone il gestionale completo, come se si fosse in studio: usala solo con collaboratori di fiducia e una password robusta. Con utente e password impostati qui sotto, chi apre l'indirizzo base (senza un codice /portale/...) e li inserisce vede l'app intera; senza, l'indirizzo base resta comunque protetto da login, nessuno può entrare.</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">${info.team.attivo ? '<span class="badge ok">🟢 Accesso collaboratori attivo</span>' : '<span class="badge">⚪ Accesso collaboratori non impostato</span>'}</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+          ${info.team.attivo
+            ? `<button class="btn danger" data-action="disattiva-accesso-esterno" data-tipo="team">⏻ Disattiva accesso collaboratori</button>`
+            : `<button class="btn primary" data-action="salva-accesso-esterno" data-tipo="team" ${credenzialiPronte ? '' : 'disabled title="Imposta prima utente e password qui sotto"'}>⏻ Attiva accesso collaboratori</button>`}
         </div>
-        <div class="helptext" style="margin-top:6px;">Cambiare qui utente/password e premere di nuovo "Attiva porta ${titolo.toLowerCase()}" aggiorna le credenziali sulla porta già aperta, senza doverla spegnere prima.</div>
-      </details>
-    </div>`;
-  };
-  // Porta clienti: nessun login condiviso da attivare - è sempre in ascolto da sola sul PC dello
-  // studio, la protezione è ormai per singolo cliente (link personale + password scelta per lui
-  // nella sua scheda, vedi cardPasswordPortaleCliente). Qui resta solo il comando ngrok da lanciare
-  // quando serve renderla raggiungibile da internet. Task #173: tolto anche "copia link rete
-  // locale" (Matteo: "non serve, se servisse lo recuperiamo dal task portale clienti") - resta solo
-  // per la porta collaboratori qui sopra.
-  const rigaClienti = `
-    <div style="margin-bottom:24px;border:1px solid var(--border);border-radius:10px;padding:14px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
-        <div style="font-size:12px;font-weight:700;color:var(--text-mut);text-transform:uppercase;letter-spacing:.03em;">Porta clienti · porta ${info.portaClienti}</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;">${info.clienti.attivo ? '<span class="badge ok">🟢 Porta locale sempre attiva</span>' : '<span class="badge">⚪ Non attiva</span>'}${badgeTunnelNgrok(info.portaClienti)}</div>
+        ${!credenzialiPronte && !info.team.attivo ? `<div class="helptext" style="margin:0 0 10px;color:var(--arancio,#c0790c);">⚠️ Imposta utente e password qui sotto: il pulsante "Attiva accesso collaboratori" si accende appena sono entrambi compilati.</div>` : ''}
+        <details ${info.team.attivo ? '' : 'open'}>
+          <summary style="cursor:pointer;font-size:12px;font-weight:600;color:var(--text-mut);margin-bottom:8px;">Utente e password di accesso</summary>
+          <div class="grid2" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;max-width:480px;margin-top:8px;">
+            <div class="field"><label>Utente</label><input type="text" id="accEst_team_utente" value="${escapeHtml(draft.utente)}" placeholder="es. studio" data-action="accesso-esterno-campo" data-tipo="team" data-campo="utente"></div>
+            <div class="field"><label>Password</label><input type="text" id="accEst_team_password" value="${escapeHtml(draft.password)}" placeholder="scegli una password" data-action="accesso-esterno-campo" data-tipo="team" data-campo="password"></div>
+          </div>
+          <div class="helptext" style="margin-top:6px;">Cambiare qui utente/password e premere di nuovo "Attiva accesso collaboratori" le aggiorna, senza dover disattivare nulla prima.</div>
+        </details>
       </div>
-      <div class="helptext" style="margin-bottom:12px;">Espone SOLO il portale cliente (link personali /portale/&lt;codice&gt;), mai i dati completi dello studio. Si avvia da sola con il server, senza bisogno di attivarla: ogni cliente ha il proprio link e, se gliel'hai impostata, la propria password (vedi la sua scheda anagrafica). "Porta locale sempre attiva" riguarda solo questo PC: per essere raggiungibile da internet serve comunque un tunnel ngrok attivo (vedi badge a destra).</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn small" data-action="avvia-ngrok" data-porta="${info.portaClienti}">🚀 Avvia ngrok</button>
-        <button class="btn small" data-action="copia-link-ngrok" data-porta="${info.portaClienti}">🌐 Copia link ngrok</button>
-      </div>
-      ${toggleAutoavvio('clienti', autoavvio.clienti)}
-    </div>`;
-  return `<div class="card">
-    <div class="section-title">Accesso esterno (ngrok)</div>
-    <div class="helptext" style="margin-bottom:16px;">Le porte qui sotto sono già aperte sul PC dello studio — quello che manca è solo il "megafono" verso internet: scarica <a href="https://ngrok.com/download" target="_blank" rel="noopener">ngrok</a> una volta (e configuralo con il tuo authtoken, richiesto dalla versione gratuita: <code>ngrok config add-authtoken &lt;il-tuo-token&gt;</code>). Con l'avvio automatico attivo (interruttore sotto ogni porta) Prisma lancia da solo ngrok per quella porta a ogni avvio del server, senza bisogno di premere nulla; il pulsante 🚀 "Avvia ngrok" resta comunque per avviarlo al volo (es. dopo averlo chiuso a mano, o se l'avvio automatico è disattivato). "🌐 Copia link ngrok" copia l'indirizzo pubblico vero (es. https://xxxx.ngrok-free.app): funziona da internet, ma solo mentre ngrok resta aperto su questo PC.</div>
-    ${rigaClienti}
-    ${rigaTipo('team', 'Porta collaboratori', 'Espone il gestionale completo, come se si fosse in studio: usala solo con collaboratori di fiducia e una password robusta.', info.team, info.portaTeam)}
+    </div>
   </div>`;
 }
 
@@ -15097,18 +15077,18 @@ function onChangeDelegato(e) {
   const id = el.dataset.id;
 
   switch (action) {
-    // Task #173: interruttore "avvia ngrok automaticamente a ogni avvio di Prisma" per porta.
+    // Task #173/#199: interruttore "avvia ngrok automaticamente a ogni avvio di Prisma" - un
+    // booleano unico ora che clienti e collaboratori condividono la stessa porta/lo stesso tunnel.
     case 'ngrok-autoavvio-toggle': {
-      const tipo = el.dataset.tipo;
       const attivo = el.checked;
       fetch('/api/ngrok-autoavvio', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ [tipo]: attivo }),
+        body: JSON.stringify({ ngrokAutoavvio: attivo }),
       }).then(r => r.json()).then(d => {
         if (!d.ok) { toast('Non sono riuscito a salvare la preferenza.', true); el.checked = !attivo; return; }
         if (ACCESSO_ESTERNO_CACHE && ACCESSO_ESTERNO_CACHE !== 'errore') ACCESSO_ESTERNO_CACHE.ngrokAutoavvio = d.ngrokAutoavvio;
-        toast(attivo ? 'ngrok si avvierà da solo per questa porta ad ogni avvio di Prisma.' : 'Avvio automatico di ngrok disattivato per questa porta.');
+        toast(attivo ? 'ngrok si avvierà da solo ad ogni avvio di Prisma.' : 'Avvio automatico di ngrok disattivato.');
       }).catch(() => { toast('Non sono riuscito a contattare il server locale.', true); el.checked = !attivo; });
       break;
     }

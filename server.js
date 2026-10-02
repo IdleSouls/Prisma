@@ -1646,16 +1646,18 @@ function gestisciRichiesta(req, res) {
   }
 
   if (url === '/api/avvia-ngrok' && req.method === 'POST') {
+    // Task #199: una sola porta ormai, "porta" nel corpo non serve più davvero - resta accettata
+    // (se presente deve combaciare) solo per non rompere eventuali chiamate già in volo da un
+    // frontend non ancora aggiornato nello stesso identico momento di un redeploy.
     leggiCorpoRichiesta(req, (corpo) => {
       let richiesta;
       try { richiesta = JSON.parse(corpo || '{}'); } catch (err) { richiesta = {}; }
-      const porta = Number(richiesta.porta);
-      if (porta !== PORTA_ESTERNA_CLIENTI && porta !== PORTA_ESTERNA_TEAM) {
+      if (richiesta.porta !== undefined && Number(richiesta.porta) !== PORTA_ESTERNA) {
         res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ ok: false, errore: 'Porta non valida.' }));
         return;
       }
-      avviaNgrok(porta).then((risultato) => {
+      avviaNgrok(PORTA_ESTERNA).then((risultato) => {
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify(risultato));
       });
@@ -1668,30 +1670,24 @@ function gestisciRichiesta(req, res) {
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify({
       ok: true,
-      portaClienti: PORTA_ESTERNA_CLIENTI,
-      portaTeam: PORTA_ESTERNA_TEAM,
-      // clienti: nessuna credenziale condivisa - la porta è sempre attiva da sola (vedi
-      // avviaServerEsterniSeConfigurati), la protezione è per singolo cliente.
-      clienti: { attivo: serverEsternoClienti.listening },
-      team: { utente: cfg.team.utente, password: cfg.team.password, attivo: serverEsternoTeam.listening },
+      porta: PORTA_ESTERNA,
+      // "attivo" per il collaboratore significa "credenziali impostate" (vedi autenticazioneBasicOk
+      // in creaServerEsterno) - non c'è più un listener separato da aprire/chiudere, vedi task #199.
+      team: { utente: cfg.team.utente, password: cfg.team.password, attivo: !!(cfg.team.utente && cfg.team.password) },
       ngrokAutoavvio: cfg.ngrokAutoavvio,
     }));
     return;
   }
 
-  // Task #173: interruttore "avvia ngrok automaticamente all'avvio di Prisma" per porta, da
-  // Impostazioni - separata dalla route sopra (che riguarda solo le credenziali della porta team)
-  // così la si può chiamare per entrambe le porte con lo stesso schema {clienti, team}.
+  // Task #173/#199: interruttore "avvia ngrok automaticamente all'avvio di Prisma" - un booleano
+  // unico ora che la porta è una sola (prima era {clienti, team}, una voce a porta).
   if (url === '/api/ngrok-autoavvio' && req.method === 'POST') {
     leggiCorpoRichiesta(req, (corpo) => {
       try {
         const dati = JSON.parse(corpo || '{}');
         const cfgAttuale = leggiConfigAccessoEsterno();
-        const ngrokAutoavvio = {
-          clienti: dati.clienti !== undefined ? !!dati.clienti : cfgAttuale.ngrokAutoavvio.clienti,
-          team: dati.team !== undefined ? !!dati.team : cfgAttuale.ngrokAutoavvio.team,
-        };
-        scriviConfigAccessoEsterno({ clienti: cfgAttuale.clienti, team: cfgAttuale.team, ngrokAutoavvio });
+        const ngrokAutoavvio = dati.ngrokAutoavvio !== undefined ? !!dati.ngrokAutoavvio : cfgAttuale.ngrokAutoavvio;
+        scriviConfigAccessoEsterno({ team: cfgAttuale.team, ngrokAutoavvio });
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ ok: true, ngrokAutoavvio }));
       } catch (err) {
@@ -1703,38 +1699,19 @@ function gestisciRichiesta(req, res) {
   }
 
   if (url === '/api/accesso-esterno' && req.method === 'POST') {
+    // Task #199: non c'è più la porta clienti da configurare qui (non l'ha mai avuta, un login
+    // condiviso) né un listener separato da aprire/chiudere per il collaboratore - "attivo" è solo
+    // una funzione di utente/password non vuoti, controllata al volo da autenticazioneBasicOk.
     leggiCorpoRichiesta(req, (corpo) => {
       try {
         const dati = JSON.parse(corpo);
-        // La porta clienti non si configura più da qui (niente più login condiviso): questa route
-        // resta solo per la porta team.
-        if (dati.tipo === 'clienti') {
-          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify({ ok: true, attivo: serverEsternoClienti.listening }));
-          return;
-        }
-        const tipo = 'team';
         const utente = String(dati.utente || '').trim();
         const password = String(dati.password || '');
         const cfg = leggiConfigAccessoEsterno();
-        cfg[tipo] = { utente, password };
+        cfg.team = { utente, password };
         scriviConfigAccessoEsterno(cfg);
-
-        const srv = serverEsternoTeam;
-        const porta = PORTA_ESTERNA_TEAM;
-        const finisci = () => {
-          if (utente && password) {
-            srv.listen(porta, '0.0.0.0', () => {
-              res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-              res.end(JSON.stringify({ ok: true, attivo: true }));
-            });
-          } else {
-            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-            res.end(JSON.stringify({ ok: true, attivo: false }));
-          }
-        };
-        if (srv.listening) srv.close(finisci);
-        else finisci();
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: true, attivo: !!(utente && password) }));
       } catch (err) {
         res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ ok: false, errore: err.message }));
@@ -2482,14 +2459,26 @@ function gestisciRichiesta(req, res) {
 const server = http.createServer(gestisciRichiesta);
 
 // ---------------------------------------------------------------------------
-// Accesso esterno (ngrok): porta 8421 per i clienti (solo /portale/... e le API del
-// portale cliente), porta 8422 per i collaboratori esterni (accesso completo, come se
-// fossero in studio). Entrambe protette da Basic Auth + un limite di richieste per IP,
-// perché a differenza della porta 8420 (solo rete locale dello studio) queste due, una
-// volta collegate a ngrok, sono raggiungibili da tutto internet.
+// Accesso esterno (ngrok): UNA SOLA porta (8421) per sia il portale clienti (percorsi
+// /portale/... e le API del portale, sempre aperti - un cliente non ha credenziali
+// condivise, la protezione è per singolo cliente) sia l'accesso completo da collaboratore
+// esterno (qualsiasi altro percorso, incluso "/": richiede Basic Auth con utente/password
+// dello studio). Protetta anche da un limite di richieste per IP, perché a differenza
+// della porta 8420 (solo rete locale dello studio) questa, una volta collegata a ngrok,
+// è raggiungibile da tutto internet.
+//
+// FINO AL task #199 (Matteo: "ngrok per i clienti non funziona più" / "anche per i
+// collaboratori non va") c'erano DUE porte separate (8421 clienti, 8422 collaboratori),
+// ognuna col proprio tunnel ngrok. La causa reale del "non va" per entrambe: il piano
+// gratuito di ngrok assegna UN SOLO dominio pubblico fisso per account (dal 2023 in poi,
+// niente più sottodomini casuali diversi ad ogni avvio) - due tunnel ngrok simultanei,
+// uno per porta, finiscono quindi SEMPRE in conflitto sullo stesso identico dominio
+// (ERR_NGROK_334/6030), a prescindere da qualunque fix lato Prisma. Unendo le due porte
+// in una sola serve UN SOLO tunnel ngrok, quindi un solo dominio: il limite del piano
+// free non è più un problema. Chi ha già un piano ngrok a pagamento con più domini può
+// comunque continuare a usare solo questa porta - ngrok la raggiunge lo stesso.
 // ---------------------------------------------------------------------------
-const PORTA_ESTERNA_CLIENTI = 8421;
-const PORTA_ESTERNA_TEAM = 8422;
+const PORTA_ESTERNA = 8421;
 const FILE_ACCESSO_ESTERNO = path.join(CARTELLA, 'accesso-esterno.json');
 
 // Password personale opzionale per referente (vedi commento su sessioneAttivaPerNome più sopra) -
@@ -2510,23 +2499,35 @@ function scriviResponsabiliPassword(cfg) {
 
 // Task #173 (Matteo: "vorrei che all'avvio di prisma sia portale clienti che porta collaboratori
 // si attivassero via ngrok [...] non che siano sempre attivi ma che ad ogni avvio si avviino anche
-// loro e che poi siano correttamente gestibili dalle impostazioni"): ngrokAutoavvio.clienti/team
-// decide se avviaNgrokAutomaticoSeConfigurato() (vedi più sotto) lancia ngrok da solo per quella
-// porta ad ogni avvio del server. Default true per ENTRAMBE quando il file non esiste ancora/non
-// ha il campo (installazione esistente che si aggiorna a questa versione): è esattamente il
-// comportamento che Matteo ha chiesto diventi lo standard, non un'opzione da accendere a mano.
+// loro e che poi siano correttamente gestibili dalle impostazioni"): ngrokAutoavvio decide se
+// avviaNgrokAutomaticoSeConfigurato() (vedi più sotto) lancia ngrok da solo ad ogni avvio del
+// server. Default true quando il file non esiste ancora/non ha il campo (installazione esistente
+// che si aggiorna a questa versione): è il comportamento che Matteo ha chiesto diventi lo
+// standard, non un'opzione da accendere a mano.
+//
+// Task #199 (fix "ngrok non funziona"): fino a qui ngrokAutoavvio era un oggetto {clienti, team} -
+// una porta/tunnel ciascuno. Con l'unione delle due porte in una sola (vedi commento sopra
+// PORTA_ESTERNA) serve un solo interruttore. Il campo "clienti" nel file resta letto SOLO per
+// MIGRARE in automatico le installazioni esistenti (come quella di Matteo) senza perdere la loro
+// preferenza: se anche solo una delle due vecchie porte aveva l'auto-avvio attivo, lo resta
+// anche nella versione unificata (comportamento più permissivo = quello che l'utente già aveva
+// scelto per almeno una delle due). Il campo "clienti" sotto utente/password non serve più (la
+// porta clienti non ha mai avuto credenziali proprie) ma resta ignorato senza errori se letto da
+// un file vecchio, non viene più riscritto da scriviConfigAccessoEsterno in poi.
 function leggiConfigAccessoEsterno() {
   try {
     const raw = fs.readFileSync(FILE_ACCESSO_ESTERNO, 'utf8');
     const cfg = JSON.parse(raw);
-    const auto = cfg.ngrokAutoavvio || {};
+    const auto = cfg.ngrokAutoavvio;
+    const ngrokAutoavvio = (auto && typeof auto === 'object')
+      ? (auto.clienti !== false || auto.team !== false) // formato vecchio {clienti,team}: migra a true se almeno una era true
+      : (auto !== false); // formato nuovo (booleano) o campo assente: default true
     return {
-      clienti: { utente: (cfg.clienti && cfg.clienti.utente) || '', password: (cfg.clienti && cfg.clienti.password) || '' },
       team: { utente: (cfg.team && cfg.team.utente) || '', password: (cfg.team && cfg.team.password) || '' },
-      ngrokAutoavvio: { clienti: auto.clienti !== false, team: auto.team !== false },
+      ngrokAutoavvio,
     };
   } catch (err) {
-    return { clienti: { utente: '', password: '' }, team: { utente: '', password: '' }, ngrokAutoavvio: { clienti: true, team: true } };
+    return { team: { utente: '', password: '' }, ngrokAutoavvio: true };
   }
 }
 function scriviConfigAccessoEsterno(cfg) {
@@ -2599,94 +2600,73 @@ function chiediBasicAuth(res, realm) {
   res.end('Accesso non autorizzato.');
 }
 
-function creaServerEsterno(porta, tipo, realm) {
+// Task #199: le due porte/server separati sono diventati UNO solo (vedi commento sopra
+// PORTA_ESTERNA per il perché). La distinzione clienti/collaboratori non è più per PORTA, ma per
+// PERCORSO: i percorsi del portale clienti restano aperti senza login condiviso (protezione per
+// singolo cliente, token nel link + eventuale password sua propria - vedi
+// costruisciVistaPortaleClienteEsterna/portalePassword in gestionale.htm), QUALSIASI altro percorso
+// (compreso "/") richiede il login Basic Auth dello studio per l'accesso completo da collaboratore.
+function creaServerEsterno() {
   return http.createServer((req, res) => {
     const ip = (req.socket && req.socket.remoteAddress) || 'sconosciuto';
-    if (!rateLimitOk(porta, ip)) {
+    if (!rateLimitOk(PORTA_ESTERNA, ip)) {
       res.writeHead(429, { 'Content-Type': 'text/plain; charset=utf-8', 'Retry-After': '60' });
       res.end('Troppe richieste. Riprova tra un minuto.');
       return;
     }
-    // La porta clienti NON ha più un login condiviso: l'unica cosa che vi si può raggiungere è il
-    // portale di UN cliente alla volta (whitelist di percorsi qui sotto), protetto individualmente
-    // dal suo token nel link + l'eventuale password che lo studio gli ha assegnato (vedi
-    // costruisciVistaPortaleClienteEsterna/portalePassword in gestionale.htm) - un login studio
-    // unico per tutti i clienti non aveva senso "per cliente" ed è quello che Matteo ha chiesto di
-    // togliere ("il portale clienti deve avviarsi ogni volta da solo"). La porta team resta invece
-    // protetta da utente/password unica dello studio, come richiesto esplicitamente.
-    if (tipo === 'team' && !autenticazioneBasicOk(req, tipo)) {
-      chiediBasicAuth(res, realm);
+    const url = req.url.split('?')[0];
+    const percorsoPortale = url.indexOf('/portale/') === 0 || url.indexOf('/api/portale-') === 0 || url === '/portale-manifest.json' || url === '/portale-sw.js' || url === '/portale-push-chiave';
+    if (percorsoPortale) {
+      gestisciRichiesta(req, res); // portale cliente: sempre aperto, nessun login condiviso
       return;
     }
-    const url = req.url.split('?')[0];
-    if (tipo === 'clienti') {
-      // sulla porta clienti si accede SOLO al portale (mai all'app completa/dati di altri clienti)
-      const permesso = url === '/' || url.indexOf('/portale/') === 0 || url.indexOf('/api/portale-') === 0 || url === '/portale-manifest.json' || url === '/portale-sw.js' || url === '/portale-push-chiave';
-      if (!permesso) {
-        res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
-        res.end('Accesso non consentito su questa porta.');
-        return;
-      }
-      if (url === '/') {
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end('<!doctype html><html><body style="font-family:sans-serif;padding:40px;"><p>Usa il link di accesso fornito dal tuo studio (formato /portale/&lt;codice&gt;).</p></body></html>');
-        return;
-      }
+    // Qualsiasi altro percorso, "/" compreso: accesso completo come se si fosse in studio, serve il
+    // login del collaboratore. Se non configurato (utente/password vuoti) autenticazioneBasicOk
+    // restituisce sempre false: l'accesso resta di fatto disattivato, senza bisogno di un listener
+    // separato da aprire/chiudere come prima.
+    if (!autenticazioneBasicOk(req, 'team')) {
+      chiediBasicAuth(res, 'Accesso Prisma');
+      return;
     }
-    // porta team: accesso completo, stesso comportamento della rete locale
     gestisciRichiesta(req, res);
   });
 }
 
-const serverEsternoClienti = creaServerEsterno(PORTA_ESTERNA_CLIENTI, 'clienti', 'Portale clienti Prisma');
-const serverEsternoTeam = creaServerEsterno(PORTA_ESTERNA_TEAM, 'team', 'Accesso team Prisma');
+const serverEsterno = creaServerEsterno();
 
 function avviaServerEsterniSeConfigurati() {
-  const cfg = leggiConfigAccessoEsterno();
-  // La porta clienti si avvia SEMPRE da sola, senza bisogno di credenziali salvate: non ha più un
-  // login condiviso, la protezione è ormai per singolo cliente (token del link + password propria).
-  if (!serverEsternoClienti.listening) {
-    serverEsternoClienti.listen(PORTA_ESTERNA_CLIENTI, '0.0.0.0', () => {
-      console.log('  Accesso esterno CLIENTI attivo su porta ' + PORTA_ESTERNA_CLIENTI + ' (collega ngrok a questa porta).');
-    });
-  }
-  if (cfg.team.utente && cfg.team.password) {
-    serverEsternoTeam.listen(PORTA_ESTERNA_TEAM, '0.0.0.0', () => {
-      console.log('  Accesso esterno TEAM attivo su porta ' + PORTA_ESTERNA_TEAM + ' (collega ngrok a questa porta).');
+  // Si avvia SEMPRE: il portale clienti non ha mai avuto bisogno di credenziali salvate per
+  // essere raggiungibile, e ora che condivide la porta con l'accesso collaboratori non c'è più un
+  // secondo listener da aprire solo se configurato - l'accesso completo resta comunque bloccato
+  // dal login finché utente/password non sono impostati (vedi creaServerEsterno sopra).
+  if (!serverEsterno.listening) {
+    serverEsterno.listen(PORTA_ESTERNA, '0.0.0.0', () => {
+      console.log('  Accesso esterno (portale clienti + collaboratori) attivo su porta ' + PORTA_ESTERNA + ' (collega ngrok a questa porta).');
     });
   }
 }
 
-/* Task #173 (Matteo: "vorrei che all'avvio di prisma sia portale clienti che porta collaboratori
-   si attivassero via ngrok [...] non che siano sempre attivi ma che ad ogni avvio si avviino anche
-   loro"): chiamata DOPO avviaServerEsterniSeConfigurati() qui sopra, così le porte locali sono già
-   in ascolto quando ngrok (che impiega comunque un paio di secondi a esporre il tunnel) comincia a
-   collegarsi. Per la porta team ha senso avviare ngrok solo se la porta stessa è configurata
-   (utente+password) - altrimenti il tunnel sarebbe aperto verso una porta che non risponde. Non
-   blocca né rallenta l'avvio del server: ngrok parte come processo staccato (vedi avviaNgrok), qui
-   si aspetta solo l'esito per loggarlo. */
+/* Task #173 (Matteo: "vorrei che all'avvio di prisma [...] si attivasse via ngrok [...] non che
+   sia sempre attiva ma che ad ogni avvio si avvii anche lei"): chiamata DOPO
+   avviaServerEsterniSeConfigurati() qui sopra, così la porta locale è già in ascolto quando ngrok
+   (che impiega comunque un paio di secondi a esporre il tunnel) comincia a collegarsi. Non blocca
+   né rallenta l'avvio del server: ngrok parte come processo staccato (vedi avviaNgrok), qui si
+   aspetta solo l'esito per loggarlo.
+
+   Task #199 (fix "ngrok non funziona"): un solo tunnel ora, non più due - niente più rischio che
+   i due finiscano in conflitto sull'unico dominio pubblico del piano ngrok gratuito (vedi
+   commento sopra PORTA_ESTERNA). L'esito finisce anche in scriviLog(), non solo in console.log:
+   Prisma.exe di norma gira senza finestra nera (vedi "Avvia Prisma (senza finestra nera).vbs"),
+   quindi quel console.log non lo vede nessuno - prima un fallimento era completamente invisibile,
+   ora resta sempre una traccia in logs/prisma.log da controllare. */
 function avviaNgrokAutomaticoSeConfigurato() {
-  // Bug segnalato da Matteo ("ngrok per i clienti/collaboratori non funziona più"): finora l'esito
-  // di questo auto-avvio finiva SOLO in console.log, mai in scriviLog(). Prisma.exe di norma gira
-  // senza finestra nera (vedi "Avvia Prisma (senza finestra nera).vbs", che lo lancia con la
-  // finestra nascosta): quel console.log non lo vede nessuno, nemmeno Matteo. Risultato: un
-  // fallimento di ngrok era completamente invisibile, senza nessuna traccia da controllare dopo.
-  // Ora l'esito finisce anche in logs/prisma.log, consultabile sempre.
   const cfg = leggiConfigAccessoEsterno();
-  if (cfg.ngrokAutoavvio.clienti) {
-    avviaNgrok(PORTA_ESTERNA_CLIENTI).then((r) => {
-      const messaggio = r.ok ? 'ngrok (auto-avvio) avviato per la porta clienti ' + PORTA_ESTERNA_CLIENTI + '.' : 'ngrok (auto-avvio) NON avviato per la porta clienti: ' + r.errore;
-      console.log('  ' + messaggio);
-      scriviLog(messaggio);
-    });
-  }
-  if (cfg.ngrokAutoavvio.team && cfg.team.utente && cfg.team.password) {
-    avviaNgrok(PORTA_ESTERNA_TEAM).then((r) => {
-      const messaggio = r.ok ? 'ngrok (auto-avvio) avviato per la porta collaboratori ' + PORTA_ESTERNA_TEAM + '.' : 'ngrok (auto-avvio) NON avviato per la porta collaboratori: ' + r.errore;
-      console.log('  ' + messaggio);
-      scriviLog(messaggio);
-    });
-  }
+  if (!cfg.ngrokAutoavvio) return;
+  avviaNgrok(PORTA_ESTERNA).then((r) => {
+    const messaggio = r.ok ? 'ngrok (auto-avvio) avviato per la porta ' + PORTA_ESTERNA + '.' : 'ngrok (auto-avvio) NON avviato: ' + r.errore;
+    console.log('  ' + messaggio);
+    scriviLog(messaggio);
+  });
 }
 
 // ---------------------------------------------------------------------------
