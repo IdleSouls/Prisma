@@ -5188,6 +5188,161 @@ async function main() {
     await wait(20);
   }
 
+  // ---------- Strumenti: unisci/dividi PDF (task #204, richiesta Matteo: "manca uno strumento per
+  // unire e dividere i file, possiamo implementarlo?") ----------
+  {
+    const fetchOriginalePdf = window.fetch;
+    let statoPdfFinto = { ok: true, disponibile: false };
+    const richiestePdf = [];
+    window.fetch = (url, opts) => {
+      richiestePdf.push({ url, opts });
+      if (url === '/api/pdf-stato') return Promise.resolve({ json: async () => statoPdfFinto });
+      if (url === '/api/pdf-info') return Promise.resolve({ json: async () => ({ ok: true, numeroPagine: 6 }) });
+      if (url === '/api/pdf-unisci') return Promise.resolve({ json: async () => ({ ok: true, nomeFile: 'documenti-uniti.pdf', contenutoBase64: 'ZmludG8=' }) });
+      if (url === '/api/pdf-dividi') return Promise.resolve({ json: async () => ({ ok: true, nomeFile: 'Fattura_pag2-4.pdf', contenutoBase64: 'ZmludG8=' }) });
+      return Promise.reject(new Error('URL non atteso nel mock pdf: ' + url));
+    };
+    window.setHttpSyncAttivoTest(true);
+
+    // libreria pdf-lib non installata sul PC: istruzioni chiare, niente form
+    window.resetPdfStatoTest();
+    window.setView('strumenti');
+    await wait(30);
+    assert(window.document.body.textContent.includes('pdf-lib'), 'senza pdf-lib disponibile deve comparire l\'istruzione di installazione (task #204)');
+    assert(!q('[data-dropzone="unisci-pdf-file"]'), 'senza pdf-lib disponibile non deve comparire la dropzone di Unisci PDF');
+    console.log('=== Strumenti: pdf-lib non disponibile, istruzioni di installazione mostrate OK (task #204)');
+
+    // con pdf-lib disponibile: due card distinte, Unisci e Dividi
+    statoPdfFinto = { ok: true, disponibile: true };
+    window.resetPdfStatoTest();
+    window.setView('strumenti');
+    await wait(30);
+    assert(window.document.body.textContent.includes('Unisci PDF'), 'manca la card "Unisci PDF"');
+    assert(window.document.body.textContent.includes('Dividi PDF'), 'manca la card "Dividi PDF"');
+    const zonaDropUnisci = q('[data-dropzone="unisci-pdf-file"]');
+    const zonaDropDividi = q('[data-dropzone="dividi-pdf-file"]');
+    assert(zonaDropUnisci, 'manca la dropzone di Unisci PDF');
+    assert(zonaDropDividi, 'manca la dropzone di Dividi PDF');
+
+    // --- Unisci: due file caricati via "Scegli file...", riordino, rimozione, unione ---
+    const fileA = new window.File(['%PDF-finto-A'], 'A.pdf', { type: 'application/pdf' });
+    const fileB = new window.File(['%PDF-finto-B'], 'B.pdf', { type: 'application/pdf' });
+    const fileC = new window.File(['%PDF-finto-C'], 'C.pdf', { type: 'application/pdf' });
+    assert(!q('[data-action="pdfu-unisci"]'), 'senza file caricati non deve comparire ancora il pulsante Unisci');
+    window.selezionaFileUnisciPdf({ files: [fileA] });
+    await wait(30);
+    assert(window.document.body.textContent.includes('A.pdf'), 'A.pdf non mostrato nella lista di Unisci PDF dopo la selezione');
+    let btnUnisci = q('[data-action="pdfu-unisci"]');
+    assert(btnUnisci && btnUnisci.disabled, 'con un solo file caricato il pulsante Unisci deve restare disabilitato (ne servono almeno due)');
+
+    window.selezionaFileUnisciPdf({ files: [fileB, fileC] });
+    await wait(30);
+    assert(window.document.body.textContent.includes('B.pdf') && window.document.body.textContent.includes('C.pdf'), 'B.pdf/C.pdf non mostrati dopo una seconda selezione multipla');
+    btnUnisci = q('[data-action="pdfu-unisci"]');
+    assert(btnUnisci && !btnUnisci.disabled, 'con tre file caricati il pulsante Unisci deve essere attivo');
+
+    // riordino: sposto il terzo file (C.pdf, idx 2) su di una posizione -> deve finire al centro
+    click(q('[data-action="pdfu-sposta-su"][data-idx="2"]'));
+    await wait(20);
+    assert(window.document.body.textContent.indexOf('B.pdf') > window.document.body.textContent.indexOf('A.pdf') && window.document.body.textContent.indexOf('C.pdf') < window.document.body.textContent.indexOf('B.pdf'), 'lo spostamento "su" di C.pdf non ha cambiato l\'ordine della lista come atteso (task #204)');
+
+    // rimozione: dopo il riordino sopra l'elenco è A, C, B (A.pdf resta comunque primo) - lo rimuovo
+    const righePdfU = qa('[data-action="pdfu-rimuovi"]');
+    assert(righePdfU.length === 3, `attesi 3 pulsanti di rimozione nella lista di Unisci PDF, trovati ${righePdfU.length}`);
+    click(righePdfU[0]); // rimuove il primo elemento della lista attuale (A.pdf)
+    await wait(20);
+    assert(!window.document.body.textContent.includes('A.pdf'), 'A.pdf non è stato rimosso dalla lista di Unisci PDF dopo il click su "Rimuovi"');
+    btnUnisci = q('[data-action="pdfu-unisci"]');
+    assert(btnUnisci && !btnUnisci.disabled, 'con due file rimasti il pulsante Unisci deve restare attivo');
+
+    richiestePdf.length = 0;
+    click(btnUnisci);
+    await wait(30);
+    const richiestaUnisci = richiestePdf.find(r => r.url === '/api/pdf-unisci');
+    assert(richiestaUnisci, 'click su "Unisci" non ha chiamato /api/pdf-unisci');
+    const corpoUnisci = JSON.parse(richiestaUnisci.opts.body);
+    assert(Array.isArray(corpoUnisci.file) && corpoUnisci.file.length === 2, '/api/pdf-unisci non ha ricevuto i due file rimasti nell\'ordine corretto');
+    assert(window.document.body.textContent.includes('documenti-uniti.pdf'), 'dopo l\'unione riuscita non compare il nome del file risultante');
+    assert(q('[data-action="pdfu-scarica"]'), 'manca il pulsante "Scarica" dopo un\'unione riuscita');
+    assert(q('[data-action="pdfu-salva-cartella"]'), 'manca il pulsante "Salva nella cartella del file originario" dopo un\'unione riuscita (task #204)');
+    console.log('=== Strumenti: Unisci PDF - selezione multipla, riordino, rimozione e unione via /api/pdf-unisci OK (task #204)');
+
+    click(q('[data-action="pdfu-reset"]'));
+    await wait(20);
+    assert(!window.document.body.textContent.includes('documenti-uniti.pdf'), 'il reset di Unisci PDF non ha svuotato lista/risultato');
+
+    // trascinamento di più file insieme sulla dropzone di Unisci (il reset sopra ha rifatto il
+    // render, quindi il vecchio riferimento alla dropzone è "staccato" dal DOM - va ripreso)
+    const fileD = new window.File(['%PDF-finto-D'], 'D.pdf', { type: 'application/pdf' });
+    const fileE = new window.File(['%PDF-finto-E'], 'E.pdf', { type: 'application/pdf' });
+    const dropUnisciFinto = new window.Event('drop', { bubbles: true, cancelable: true });
+    dropUnisciFinto.dataTransfer = { files: [fileD, fileE] };
+    q('[data-dropzone="unisci-pdf-file"]').dispatchEvent(dropUnisciFinto);
+    await wait(30);
+    assert(window.document.body.textContent.includes('D.pdf') && window.document.body.textContent.includes('E.pdf'), 'trascinare due file insieme sulla dropzone di Unisci non li ha caricati entrambi (task #204)');
+    console.log('=== Strumenti: trascinare più file insieme sulla dropzone di Unisci PDF li carica tutti OK (task #204)');
+
+    click(q('[data-action="pdfu-reset"]'));
+    await wait(20);
+
+    // --- Dividi: un file caricato, numero pagine letto da /api/pdf-info, intervallo modificato, divisione ---
+    const filePdfDaDividere = new window.File(['%PDF-finto-dividi'], 'Fattura.pdf', { type: 'application/pdf' });
+    window.selezionaFileDividiPdf({ files: [filePdfDaDividere] });
+    await wait(30);
+    const richiestaInfo = richiestePdf.find(r => r.url === '/api/pdf-info');
+    assert(richiestaInfo, 'scegliere il file in Dividi PDF non ha chiamato /api/pdf-info per leggere il numero di pagine');
+    assert(window.document.body.textContent.includes('6 pagine'), 'il numero di pagine letto da /api/pdf-info (6) non compare dopo la selezione');
+    const campoDa = q('[data-action="pdfd-cambia-da"]');
+    const campoA = q('[data-action="pdfd-cambia-a"]');
+    assert(campoDa && campoA, 'mancano i campi "da pagina"/"a pagina" dopo aver letto il numero di pagine');
+    assert(Number(campoDa.value) === 1 && Number(campoA.value) === 6, 'l\'intervallo pagine predefinito dovrebbe coprire tutto il documento (1-6) appena caricato');
+
+    setVal(campoDa, '2');
+    setVal(campoA, '4');
+    await wait(20);
+
+    richiestePdf.length = 0;
+    click(q('[data-action="pdfd-dividi"]'));
+    await wait(30);
+    const richiestaDividi = richiestePdf.find(r => r.url === '/api/pdf-dividi');
+    assert(richiestaDividi, 'click su "Estrai pagine" non ha chiamato /api/pdf-dividi');
+    const corpoDividi = JSON.parse(richiestaDividi.opts.body);
+    assert(corpoDividi.da === 2 && corpoDividi.a === 4 && corpoDividi.nomeFile === 'Fattura.pdf', '/api/pdf-dividi non ha ricevuto nomeFile/da/a corretti (attesi Fattura.pdf, 2, 4)');
+    assert(window.document.body.textContent.includes('Fattura_pag2-4.pdf'), 'dopo la divisione riuscita non compare il nome del file estratto');
+    assert(q('[data-action="pdfd-scarica"]'), 'manca il pulsante "Scarica" dopo una divisione riuscita');
+    assert(q('[data-action="pdfd-salva-cartella"]'), 'manca il pulsante "Salva nella cartella del file originario" dopo una divisione riuscita (task #204)');
+    console.log('=== Strumenti: Dividi PDF - numero pagine letto dal server, intervallo modificabile, divisione via /api/pdf-dividi OK (task #204)');
+
+    click(q('[data-action="pdfd-reset"]'));
+    await wait(20);
+
+    // trascinamento di un file sulla dropzone di Dividi (dopo i vari reset/render sopra, la
+    // dropzone va ripresa dal DOM corrente invece di usare il riferimento iniziale, ormai staccato)
+    const fileTrascinatoDividi = new window.File(['%PDF-finto-trascinato'], 'Trascinato.pdf', { type: 'application/pdf' });
+    const dropDividiFinto = new window.Event('drop', { bubbles: true, cancelable: true });
+    dropDividiFinto.dataTransfer = { files: [fileTrascinatoDividi] };
+    q('[data-dropzone="dividi-pdf-file"]').dispatchEvent(dropDividiFinto);
+    await wait(30);
+    assert(window.document.body.textContent.includes('Trascinato.pdf'), 'trascinare un file sulla dropzone di Dividi PDF non lo ha caricato (task #204)');
+    console.log('=== Strumenti: trascinare un file sulla dropzone di Dividi PDF lo carica correttamente OK (task #204)');
+
+    // un file non-PDF viene rifiutato subito, senza chiamare il server, in entrambi gli strumenti
+    click(q('[data-action="pdfd-reset"]'));
+    await wait(20);
+    richiestePdf.length = 0;
+    const fileNonPdf = new window.File(['x'], 'appunti.txt', { type: 'text/plain' });
+    window.selezionaFileDividiPdf({ files: [fileNonPdf] });
+    await wait(20);
+    assert(window.document.body.textContent.includes('non è un PDF'), 'un file .txt scelto in Dividi PDF dovrebbe mostrare un errore chiaro');
+    assert(richiestePdf.length === 0, 'un file non-PDF in Dividi PDF non dovrebbe chiamare alcun endpoint del server');
+    console.log('=== Strumenti: file non-PDF rifiutato subito in Dividi PDF, senza chiamate al server OK (task #204)');
+
+    window.fetch = fetchOriginalePdf;
+    window.setHttpSyncAttivoTest(false);
+    window.setView('dashboard');
+    await wait(20);
+  }
+
   // Task #202 (root cause del bug "il convertitore ci metto sempre almeno due volte prima di
   // riuscire a prendere il file"): mentre un dialog nativo del sistema (il selettore file, ma anche
   // stampa/salvataggio) è aperto, la finestra perde il focus del sistema operativo. Un polling in

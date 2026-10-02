@@ -12321,9 +12321,13 @@ function onDropDelegato(e) {
   if (!zona) return;
   e.preventDefault();
   zona.classList.remove('dropzone-attiva');
-  const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-  if (!file) return;
-  if (zona.dataset.dropzone === 'converti-file') elaboraFileConversione(file);
+  const files = e.dataTransfer && e.dataTransfer.files;
+  if (!files || !files.length) return;
+  if (zona.dataset.dropzone === 'converti-file') elaboraFileConversione(files[0]);
+  // Task #204: Unisci PDF accetta più file in un colpo (anche trascinati insieme dalla stessa
+  // cartella), Dividi PDF ne lavora sempre uno solo alla volta.
+  if (zona.dataset.dropzone === 'unisci-pdf-file') Array.from(files).forEach(elaboraFileUnisciPdf);
+  if (zona.dataset.dropzone === 'dividi-pdf-file') elaboraFileDividiPdf(files[0]);
 }
 function avviaConversione() {
   if (!STRUMENTI_FILE || STRUMENTI_IN_CORSO) return;
@@ -12367,29 +12371,36 @@ async function scaricaRisultatoConversione() {
 // cioè, di norma, proprio la cartella da cui si è scelto/trascinato il file originale. Un clic su
 // "Salva" invece di dover ripescare la cartella a mano. Se il browser non supporta questa API
 // (Firefox, Safari, versioni vecchie) o l'utente annulla, si ricade sul download normale di sempre.
-async function salvaRisultatoNellaCartellaOriginaria() {
-  if (!STRUMENTI_RISULTATO) return;
-  const ext = (STRUMENTI_RISULTATO.nomeFile.split('.').pop() || '').toLowerCase();
-  const blob = blobDaBase64(STRUMENTI_RISULTATO.base64, MIME_STRUMENTI[ext] || 'application/octet-stream');
+// Estratta a funzione generica (task #204: serve anche a Unisci/Dividi PDF, non solo al
+// convertitore) - vedi il commento sopra per il perché del comportamento ("riparte quasi sempre
+// dall'ultima cartella usata"). onRipiegaSuDownload è chiamato se l'API non è supportata o
+// qualcosa va storto, per far comunque arrivare il file all'utente col download normale.
+async function salvaBase64NellaCartellaOriginaria(nomeFile, base64, onRipiegaSuDownload, messaggioSuccesso) {
+  const ext = (nomeFile.split('.').pop() || '').toLowerCase();
+  const mime = MIME_STRUMENTI[ext] || 'application/octet-stream';
+  const blob = blobDaBase64(base64, mime);
   if (typeof window === 'undefined' || typeof window.showSaveFilePicker !== 'function') {
     toast('Questo browser non permette di scegliere la cartella: uso il download normale.');
-    return scaricaRisultatoConversione();
+    return onRipiegaSuDownload();
   }
   try {
-    const mime = MIME_STRUMENTI[ext] || 'application/octet-stream';
     const handle = await window.showSaveFilePicker({
-      suggestedName: STRUMENTI_RISULTATO.nomeFile,
+      suggestedName: nomeFile,
       types: [{ description: ext.toUpperCase(), accept: { [mime]: ['.' + ext] } }],
     });
     const scrittore = await handle.createWritable();
     await scrittore.write(blob);
     await scrittore.close();
-    toast('File convertito salvato.');
+    toast(messaggioSuccesso || 'File salvato.');
   } catch (err) {
     if (err && err.name === 'AbortError') return; // annullato dall'utente dal dialog, non è un errore
     console.error('Salvataggio diretto non riuscito, ripiego sul download', err);
-    scaricaRisultatoConversione();
+    onRipiegaSuDownload();
   }
+}
+function salvaRisultatoNellaCartellaOriginaria() {
+  if (!STRUMENTI_RISULTATO) return;
+  return salvaBase64NellaCartellaOriginaria(STRUMENTI_RISULTATO.nomeFile, STRUMENTI_RISULTATO.base64, scaricaRisultatoConversione, 'File convertito salvato.');
 }
 function renderStrumenti() {
   if (!HTTP_SYNC_ATTIVO) {
@@ -12398,42 +12409,279 @@ function renderStrumenti() {
     </div>`;
   }
   caricaStatoConversione();
+  let cardConvertitore;
   if (CONVERSIONE_STATO_CACHE === null || CONVERSIONE_STATO_CARICAMENTO) {
-    return `<div class="card"><div class="section-title">Convertitore Word ↔ PDF</div><div class="helptext">Verifica dello strumento in corso…</div></div>`;
-  }
-  if (CONVERSIONE_STATO_CACHE === 'errore') {
-    return `<div class="card"><div class="section-title">Convertitore Word ↔ PDF</div><div class="helptext">⚠️ Non sono riuscito a verificare se il convertitore è disponibile su questo PC.</div></div>`;
-  }
-  if (!CONVERSIONE_STATO_CACHE.disponibile) {
-    return `<div class="card"><div class="section-title">Convertitore Word ↔ PDF</div>
+    cardConvertitore = `<div class="card"><div class="section-title">Convertitore Word ↔ PDF</div><div class="helptext">Verifica dello strumento in corso…</div></div>`;
+  } else if (CONVERSIONE_STATO_CACHE === 'errore') {
+    cardConvertitore = `<div class="card"><div class="section-title">Convertitore Word ↔ PDF</div><div class="helptext">⚠️ Non sono riuscito a verificare se il convertitore è disponibile su questo PC.</div></div>`;
+  } else if (!CONVERSIONE_STATO_CACHE.disponibile) {
+    cardConvertitore = `<div class="card"><div class="section-title">Convertitore Word ↔ PDF</div>
       <div class="helptext">Per convertire i file serve <b>LibreOffice</b> installato sul PC dove gira il server locale — gratuito, e la conversione resta tutta in locale: nessun documento del cliente esce verso servizi online.</div>
       <div class="helptext" style="margin-top:10px;">1) Scarica e installa LibreOffice da <a href="https://www.libreoffice.org/download/download/" target="_blank" rel="noopener">libreoffice.org</a> (pochi minuti).<br>2) Riavvia il server locale (chiudi e riapri "Avvia Gestionale").<br>3) Torna in questa pagina: lo strumento si attiva da solo, nessuna configurazione.</div>
     </div>`;
+  } else {
+    const f = STRUMENTI_FILE;
+    const opzioni = f ? opzioniConversionePer(f.estensione) : null;
+    const etichettaScelta = opzioni ? (opzioni.find(o => o.verso === STRUMENTI_FORMATO_SCELTO) || opzioni[0]).label : '';
+    cardConvertitore = `<div class="card" style="max-width:640px;">
+      <div class="section-title">Convertitore Word ↔ PDF ↔ PDF/A</div>
+      <div class="helptext" style="margin-bottom:12px;">Carica un file .docx/.doc/.odt per convertirlo in PDF, oppure un .pdf per renderlo modificabile in Word o per trasformarlo in PDF/A (formato di archiviazione a norma, adatto alla conservazione digitale). Conversione locale su questo PC — i documenti non escono verso servizi online.</div>
+      <div class="dropzone-file" data-dropzone="converti-file">
+        <label class="btn" style="margin:0;display:inline-block;">📄 Scegli file...<input type="file" accept=".doc,.docx,.odt,.pdf" style="display:none;" data-action="strumenti-scegli-file"></label>
+        <div class="helptext" style="margin-top:8px;">oppure trascina qui il file</div>
+      </div>
+      ${f ? `<div style="margin-top:12px;padding:10px 12px;background:var(--bg);border-radius:8px;">
+        <div style="font-weight:600;font-size:13.5px;">${escapeHtml(f.nome)}</div>
+        <div class="helptext">${(f.dimensione/1024).toFixed(1)} KB</div>
+        ${opzioni.length > 1 ? `<div class="field" style="margin-top:8px;max-width:280px;"><label>Converti in</label><select data-action="strumenti-scegli-formato">${opzioni.map(o => `<option value="${o.verso}" ${STRUMENTI_FORMATO_SCELTO===o.verso?'selected':''}>${escapeHtml(o.label)}</option>`).join('')}</select></div>` : ''}
+      </div>
+      <button class="btn primary" style="margin-top:10px;" data-action="strumenti-converti" ${STRUMENTI_IN_CORSO?'disabled':''}>${STRUMENTI_IN_CORSO?'Conversione in corso…':'Converti in ' + escapeHtml(etichettaScelta)}</button>
+      <button class="btn ghost" style="margin-top:10px;margin-left:8px;" data-action="strumenti-reset">Annulla</button>` : ''}
+      ${STRUMENTI_ERRORE ? `<div class="helptext" style="margin-top:10px;color:var(--rosso);">⚠️ ${escapeHtml(STRUMENTI_ERRORE)}</div>` : ''}
+      ${STRUMENTI_RISULTATO ? `<div style="margin-top:14px;padding:12px;background:var(--verde-bg);border-radius:8px;">
+        <div style="font-weight:600;font-size:13.5px;color:var(--verde);">✅ Conversione completata: ${escapeHtml(STRUMENTI_RISULTATO.nomeFile)}</div>
+        <button class="btn primary small" style="margin-top:8px;" data-action="strumenti-scarica">⬇ Scarica</button>
+        <button class="btn small" style="margin-top:8px;margin-left:8px;" data-action="strumenti-salva-cartella">📁 Salva nella cartella del file originario</button>
+      </div>` : ''}
+    </div>`;
   }
-  const f = STRUMENTI_FILE;
-  const opzioni = f ? opzioniConversionePer(f.estensione) : null;
-  const etichettaScelta = opzioni ? (opzioni.find(o => o.verso === STRUMENTI_FORMATO_SCELTO) || opzioni[0]).label : '';
-  return `<div class="card" style="max-width:640px;">
-    <div class="section-title">Convertitore Word ↔ PDF ↔ PDF/A</div>
-    <div class="helptext" style="margin-bottom:12px;">Carica un file .docx/.doc/.odt per convertirlo in PDF, oppure un .pdf per renderlo modificabile in Word o per trasformarlo in PDF/A (formato di archiviazione a norma, adatto alla conservazione digitale). Conversione locale su questo PC — i documenti non escono verso servizi online.</div>
-    <div class="dropzone-file" data-dropzone="converti-file">
-      <label class="btn" style="margin:0;display:inline-block;">📄 Scegli file...<input type="file" accept=".doc,.docx,.odt,.pdf" style="display:none;" data-action="strumenti-scegli-file"></label>
-      <div class="helptext" style="margin-top:8px;">oppure trascina qui il file</div>
+  return cardConvertitore + renderUnisciDividiPdf();
+}
+
+/* -------------------- STRUMENTI: unisci/dividi PDF (task #204) --------------------
+   Matteo: "manca uno strumento per unire e dividere i file, possiamo implementarlo?". Usa pdf-lib
+   lato server (gestionale.htm manda solo i base64, come già fa il convertitore sopra) - libreria
+   JS pura, nessun programma esterno da installare come LibreOffice. Due strumenti distinti perché
+   "unire" lavora su PIÙ file in ingresso e "dividere" su UNO solo con un intervallo di pagine:
+   provare a forzarli nella stessa interfaccia sarebbe stato più confuso, non più semplice. */
+let PDF_STATO_CACHE = null;
+let PDF_STATO_CARICAMENTO = false;
+function caricaStatoPdf() {
+  if (!HTTP_SYNC_ATTIVO || PDF_STATO_CARICAMENTO || PDF_STATO_CACHE !== null) return;
+  PDF_STATO_CARICAMENTO = true;
+  fetch('/api/pdf-stato')
+    .then(r => r.json())
+    .then(info => { PDF_STATO_CACHE = (info && info.ok) ? info : 'errore'; })
+    .catch(() => { PDF_STATO_CACHE = 'errore'; })
+    .finally(() => {
+      PDF_STATO_CARICAMENTO = false;
+      if (VIEW === 'strumenti') render();
+    });
+}
+// --- Unisci PDF ---
+let PDFU_FILE = [];       // [{nome, base64, dimensione}, ...] nell'ordine in cui verranno uniti
+let PDFU_RISULTATO = null;
+let PDFU_ERRORE = null;
+let PDFU_IN_CORSO = false;
+function resetPdfUnisci() { PDFU_FILE = []; PDFU_RISULTATO = null; PDFU_ERRORE = null; PDFU_IN_CORSO = false; render(); }
+function leggiFilePdfComeBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Errore di lettura del file.'));
+    reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+    reader.readAsDataURL(file);
+  });
+}
+async function elaboraFileUnisciPdf(file) {
+  if (!file) return;
+  if ((file.name.split('.').pop() || '').toLowerCase() !== 'pdf') {
+    PDFU_ERRORE = `"${file.name}" non è un PDF: per ora questo strumento unisce solo file .pdf.`;
+    render();
+    return;
+  }
+  try {
+    const base64 = await leggiFilePdfComeBase64(file);
+    PDFU_ERRORE = null;
+    PDFU_RISULTATO = null;
+    PDFU_FILE.push({ nome: file.name, base64, dimensione: file.size });
+    render();
+  } catch (err) {
+    PDFU_ERRORE = 'Errore di lettura del file.';
+    render();
+  }
+}
+function selezionaFileUnisciPdf(inputEl) {
+  const files = inputEl.files ? Array.from(inputEl.files) : [];
+  files.forEach(elaboraFileUnisciPdf);
+  inputEl.value = ''; // altrimenti riselezionare lo stesso file una seconda volta non fa scattare "change"
+}
+function rimuoviFileUnisciPdf(idx) { PDFU_FILE.splice(idx, 1); PDFU_RISULTATO = null; render(); }
+function spostaFileUnisciPdf(idx, delta) {
+  const nuovoIdx = idx + delta;
+  if (nuovoIdx < 0 || nuovoIdx >= PDFU_FILE.length) return;
+  const tmp = PDFU_FILE[idx]; PDFU_FILE[idx] = PDFU_FILE[nuovoIdx]; PDFU_FILE[nuovoIdx] = tmp;
+  render();
+}
+function avviaUnionePdf() {
+  if (PDFU_FILE.length < 2 || PDFU_IN_CORSO) return;
+  PDFU_IN_CORSO = true; PDFU_ERRORE = null; PDFU_RISULTATO = null; render();
+  fetch('/api/pdf-unisci', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ file: PDFU_FILE.map(f => ({ nomeFile: f.nome, contenutoBase64: f.base64 })) }),
+  })
+    .then(r => r.json())
+    .then(esito => {
+      if (esito && esito.ok) PDFU_RISULTATO = { nomeFile: esito.nomeFile, base64: esito.contenutoBase64 };
+      else PDFU_ERRORE = (esito && esito.errore) || 'Unione non riuscita.';
+    })
+    .catch(() => { PDFU_ERRORE = 'Impossibile contattare il server locale.'; })
+    .finally(() => { PDFU_IN_CORSO = false; render(); });
+}
+function scaricaRisultatoUnionePdf() {
+  if (!PDFU_RISULTATO) return;
+  salvaFileScaricabile(PDFU_RISULTATO.nomeFile, blobDaBase64(PDFU_RISULTATO.base64, 'application/pdf'))
+    .then(ok => { if (ok) toast('PDF unito scaricato.'); })
+    .catch(err => { console.error('Download PDF unito non riuscito', err); alert('Impossibile scaricare il file in questo browser.'); });
+}
+function salvaUnionePdfNellaCartella() {
+  if (!PDFU_RISULTATO) return;
+  salvaBase64NellaCartellaOriginaria(PDFU_RISULTATO.nomeFile, PDFU_RISULTATO.base64, scaricaRisultatoUnionePdf, 'PDF unito salvato.');
+}
+
+// --- Dividi PDF ---
+let PDFD_FILE = null;      // {nome, base64, dimensione}
+let PDFD_NUMPAGINE = null; // numero di pagine del PDF caricato, chiesto al server appena scelto
+let PDFD_DA = 1;
+let PDFD_A = 1;
+let PDFD_RISULTATO = null;
+let PDFD_ERRORE = null;
+let PDFD_IN_CORSO = false;
+function resetPdfDividi() { PDFD_FILE = null; PDFD_NUMPAGINE = null; PDFD_DA = 1; PDFD_A = 1; PDFD_RISULTATO = null; PDFD_ERRORE = null; PDFD_IN_CORSO = false; render(); }
+async function elaboraFileDividiPdf(file) {
+  if (!file) return;
+  if ((file.name.split('.').pop() || '').toLowerCase() !== 'pdf') {
+    PDFD_ERRORE = `"${file.name}" non è un PDF.`;
+    render();
+    return;
+  }
+  PDFD_RISULTATO = null; PDFD_ERRORE = null;
+  try {
+    const base64 = await leggiFilePdfComeBase64(file);
+    PDFD_FILE = { nome: file.name, base64, dimensione: file.size };
+    render();
+    const esito = await fetch('/api/pdf-info', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contenutoBase64: base64 }),
+    }).then(r => r.json());
+    if (esito && esito.ok) {
+      PDFD_NUMPAGINE = esito.numeroPagine;
+      PDFD_DA = 1;
+      PDFD_A = esito.numeroPagine;
+    } else {
+      PDFD_ERRORE = (esito && esito.errore) || 'Impossibile leggere il numero di pagine del PDF.';
+      PDFD_FILE = null;
+    }
+    render();
+  } catch (err) {
+    PDFD_ERRORE = 'Errore di lettura del file.';
+    PDFD_FILE = null;
+    render();
+  }
+}
+function selezionaFileDividiPdf(inputEl) {
+  const file = inputEl.files && inputEl.files[0];
+  elaboraFileDividiPdf(file);
+}
+function avviaDivisionePdf() {
+  if (!PDFD_FILE || PDFD_IN_CORSO) return;
+  const da = Number(PDFD_DA), a = Number(PDFD_A);
+  if (!da || !a || da < 1 || a < da) { PDFD_ERRORE = 'Intervallo di pagine non valido: controlla "da" e "a".'; render(); return; }
+  PDFD_IN_CORSO = true; PDFD_ERRORE = null; PDFD_RISULTATO = null; render();
+  fetch('/api/pdf-dividi', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nomeFile: PDFD_FILE.nome, contenutoBase64: PDFD_FILE.base64, da, a }),
+  })
+    .then(r => r.json())
+    .then(esito => {
+      if (esito && esito.ok) PDFD_RISULTATO = { nomeFile: esito.nomeFile, base64: esito.contenutoBase64 };
+      else PDFD_ERRORE = (esito && esito.errore) || 'Divisione non riuscita.';
+    })
+    .catch(() => { PDFD_ERRORE = 'Impossibile contattare il server locale.'; })
+    .finally(() => { PDFD_IN_CORSO = false; render(); });
+}
+function scaricaRisultatoDivisionePdf() {
+  if (!PDFD_RISULTATO) return;
+  salvaFileScaricabile(PDFD_RISULTATO.nomeFile, blobDaBase64(PDFD_RISULTATO.base64, 'application/pdf'))
+    .then(ok => { if (ok) toast('Estratto PDF scaricato.'); })
+    .catch(err => { console.error('Download estratto PDF non riuscito', err); alert('Impossibile scaricare il file in questo browser.'); });
+}
+function salvaDivisionePdfNellaCartella() {
+  if (!PDFD_RISULTATO) return;
+  salvaBase64NellaCartellaOriginaria(PDFD_RISULTATO.nomeFile, PDFD_RISULTATO.base64, scaricaRisultatoDivisionePdf, 'Estratto PDF salvato.');
+}
+
+function renderUnisciDividiPdf() {
+  caricaStatoPdf();
+  if (PDF_STATO_CACHE === null || PDF_STATO_CARICAMENTO) {
+    return `<div class="card"><div class="section-title">Unisci e dividi PDF</div><div class="helptext">Verifica dello strumento in corso…</div></div>`;
+  }
+  if (PDF_STATO_CACHE === 'errore') {
+    return `<div class="card"><div class="section-title">Unisci e dividi PDF</div><div class="helptext">⚠️ Non sono riuscito a verificare se lo strumento è disponibile su questo PC.</div></div>`;
+  }
+  if (!PDF_STATO_CACHE.disponibile) {
+    return `<div class="card"><div class="section-title">Unisci e dividi PDF</div>
+      <div class="helptext">Serve la libreria <b>pdf-lib</b> installata nella cartella del server (gratuita, nessun programma da scaricare: a differenza del convertitore sopra, qui basta un comando).</div>
+      <div class="helptext" style="margin-top:10px;">1) Apri un terminale nella cartella di Prisma (dove sta server.js).<br>2) Scrivi <code>npm install pdf-lib</code> e premi Invio.<br>3) Riavvia il server locale (chiudi e riapri "Avvia Gestionale"): lo strumento si attiva da solo.</div>
+    </div>`;
+  }
+
+  // --- card Unisci ---
+  const cardUnisci = `<div class="card" style="max-width:640px;">
+    <div class="section-title">Unisci PDF</div>
+    <div class="helptext" style="margin-bottom:12px;">Carica due o più file .pdf: verranno uniti in un unico documento, nell'ordine mostrato sotto (usa le freccette per cambiarlo). Tutto in locale su questo PC.</div>
+    <div class="dropzone-file" data-dropzone="unisci-pdf-file">
+      <label class="btn" style="margin:0;display:inline-block;">📄 Scegli file PDF...<input type="file" accept=".pdf" multiple style="display:none;" data-action="pdfu-scegli-file"></label>
+      <div class="helptext" style="margin-top:8px;">oppure trascina qui i file (anche più di uno insieme)</div>
     </div>
-    ${f ? `<div style="margin-top:12px;padding:10px 12px;background:var(--bg);border-radius:8px;">
-      <div style="font-weight:600;font-size:13.5px;">${escapeHtml(f.nome)}</div>
-      <div class="helptext">${(f.dimensione/1024).toFixed(1)} KB</div>
-      ${opzioni.length > 1 ? `<div class="field" style="margin-top:8px;max-width:280px;"><label>Converti in</label><select data-action="strumenti-scegli-formato">${opzioni.map(o => `<option value="${o.verso}" ${STRUMENTI_FORMATO_SCELTO===o.verso?'selected':''}>${escapeHtml(o.label)}</option>`).join('')}</select></div>` : ''}
+    ${PDFU_FILE.length ? `<div style="margin-top:12px;">
+      ${PDFU_FILE.map((f, i) => `<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg);border-radius:8px;margin-bottom:6px;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${i+1}. ${escapeHtml(f.nome)}</div>
+          <div class="helptext">${(f.dimensione/1024).toFixed(1)} KB</div>
+        </div>
+        <button type="button" class="icon-x" title="Sposta su" data-action="pdfu-sposta-su" data-idx="${i}" ${i===0?'disabled style="opacity:.3;"':''}>↑</button>
+        <button type="button" class="icon-x" title="Sposta giù" data-action="pdfu-sposta-giu" data-idx="${i}" ${i===PDFU_FILE.length-1?'disabled style="opacity:.3;"':''}>↓</button>
+        <button type="button" class="icon-x" title="Rimuovi" data-action="pdfu-rimuovi" data-idx="${i}">✕</button>
+      </div>`).join('')}
     </div>
-    <button class="btn primary" style="margin-top:10px;" data-action="strumenti-converti" ${STRUMENTI_IN_CORSO?'disabled':''}>${STRUMENTI_IN_CORSO?'Conversione in corso…':'Converti in ' + escapeHtml(etichettaScelta)}</button>
-    <button class="btn ghost" style="margin-top:10px;margin-left:8px;" data-action="strumenti-reset">Annulla</button>` : ''}
-    ${STRUMENTI_ERRORE ? `<div class="helptext" style="margin-top:10px;color:var(--rosso);">⚠️ ${escapeHtml(STRUMENTI_ERRORE)}</div>` : ''}
-    ${STRUMENTI_RISULTATO ? `<div style="margin-top:14px;padding:12px;background:var(--verde-bg);border-radius:8px;">
-      <div style="font-weight:600;font-size:13.5px;color:var(--verde);">✅ Conversione completata: ${escapeHtml(STRUMENTI_RISULTATO.nomeFile)}</div>
-      <button class="btn primary small" style="margin-top:8px;" data-action="strumenti-scarica">⬇ Scarica</button>
-      <button class="btn small" style="margin-top:8px;margin-left:8px;" data-action="strumenti-salva-cartella">📁 Salva nella cartella del file originario</button>
+    <button class="btn primary" style="margin-top:6px;" data-action="pdfu-unisci" ${(PDFU_FILE.length < 2 || PDFU_IN_CORSO)?'disabled':''}>${PDFU_IN_CORSO ? 'Unione in corso…' : `Unisci ${PDFU_FILE.length} file in un PDF`}</button>
+    <button class="btn ghost" style="margin-top:6px;margin-left:8px;" data-action="pdfu-reset">Annulla</button>
+    ${PDFU_FILE.length === 1 ? `<div class="helptext" style="margin-top:6px;">Serve almeno un secondo file da unire.</div>` : ''}` : ''}
+    ${PDFU_ERRORE ? `<div class="helptext" style="margin-top:10px;color:var(--rosso);">⚠️ ${escapeHtml(PDFU_ERRORE)}</div>` : ''}
+    ${PDFU_RISULTATO ? `<div style="margin-top:14px;padding:12px;background:var(--verde-bg);border-radius:8px;">
+      <div style="font-weight:600;font-size:13.5px;color:var(--verde);">✅ PDF unito: ${escapeHtml(PDFU_RISULTATO.nomeFile)}</div>
+      <button class="btn primary small" style="margin-top:8px;" data-action="pdfu-scarica">⬇ Scarica</button>
+      <button class="btn small" style="margin-top:8px;margin-left:8px;" data-action="pdfu-salva-cartella">📁 Salva nella cartella del file originario</button>
     </div>` : ''}
   </div>`;
+
+  // --- card Dividi ---
+  const cardDividi = `<div class="card" style="max-width:640px;">
+    <div class="section-title">Dividi PDF</div>
+    <div class="helptext" style="margin-bottom:12px;">Carica un file .pdf ed estrai un intervallo di pagine in un nuovo documento (es. "da pagina 2 a 5"). Per estrarre più parti, ripeti l'operazione con intervalli diversi.</div>
+    <div class="dropzone-file" data-dropzone="dividi-pdf-file">
+      <label class="btn" style="margin:0;display:inline-block;">📄 Scegli file PDF...<input type="file" accept=".pdf" style="display:none;" data-action="pdfd-scegli-file"></label>
+      <div class="helptext" style="margin-top:8px;">oppure trascina qui il file</div>
+    </div>
+    ${PDFD_FILE ? `<div style="margin-top:12px;padding:10px 12px;background:var(--bg);border-radius:8px;">
+      <div style="font-weight:600;font-size:13.5px;">${escapeHtml(PDFD_FILE.nome)}</div>
+      <div class="helptext">${(PDFD_FILE.dimensione/1024).toFixed(1)} KB${PDFD_NUMPAGINE ? ' · ' + PDFD_NUMPAGINE + ' pagine' : ''}</div>
+      ${PDFD_NUMPAGINE ? `<div style="display:flex;gap:10px;margin-top:8px;">
+        <div class="field" style="max-width:110px;"><label>Da pagina</label><input type="number" min="1" max="${PDFD_NUMPAGINE}" value="${PDFD_DA}" data-action="pdfd-cambia-da"></div>
+        <div class="field" style="max-width:110px;"><label>A pagina</label><input type="number" min="1" max="${PDFD_NUMPAGINE}" value="${PDFD_A}" data-action="pdfd-cambia-a"></div>
+      </div>` : ''}
+    </div>
+    <button class="btn primary" style="margin-top:10px;" data-action="pdfd-dividi" ${(!PDFD_NUMPAGINE || PDFD_IN_CORSO)?'disabled':''}>${PDFD_IN_CORSO ? 'Divisione in corso…' : 'Estrai pagine'}</button>
+    <button class="btn ghost" style="margin-top:10px;margin-left:8px;" data-action="pdfd-reset">Annulla</button>` : ''}
+    ${PDFD_ERRORE ? `<div class="helptext" style="margin-top:10px;color:var(--rosso);">⚠️ ${escapeHtml(PDFD_ERRORE)}</div>` : ''}
+    ${PDFD_RISULTATO ? `<div style="margin-top:14px;padding:12px;background:var(--verde-bg);border-radius:8px;">
+      <div style="font-weight:600;font-size:13.5px;color:var(--verde);">✅ Estratto creato: ${escapeHtml(PDFD_RISULTATO.nomeFile)}</div>
+      <button class="btn primary small" style="margin-top:8px;" data-action="pdfd-scarica">⬇ Scarica</button>
+      <button class="btn small" style="margin-top:8px;margin-left:8px;" data-action="pdfd-salva-cartella">📁 Salva nella cartella del file originario</button>
+    </div>` : ''}
+  </div>`;
+
+  return cardUnisci + cardDividi;
 }
 
 /* -------------------- CREDENZIALI: vault password (task #134) --------------------
@@ -14651,6 +14899,19 @@ function onClickDelegato(e) {
     case 'strumenti-scarica': scaricaRisultatoConversione(); break;
     case 'strumenti-salva-cartella': salvaRisultatoNellaCartellaOriginaria(); break;
 
+    case 'pdfu-sposta-su': spostaFileUnisciPdf(Number(el.dataset.idx), -1); break;
+    case 'pdfu-sposta-giu': spostaFileUnisciPdf(Number(el.dataset.idx), 1); break;
+    case 'pdfu-rimuovi': rimuoviFileUnisciPdf(Number(el.dataset.idx)); break;
+    case 'pdfu-unisci': avviaUnionePdf(); break;
+    case 'pdfu-reset': resetPdfUnisci(); break;
+    case 'pdfu-scarica': scaricaRisultatoUnionePdf(); break;
+    case 'pdfu-salva-cartella': salvaUnionePdfNellaCartella(); break;
+
+    case 'pdfd-dividi': avviaDivisionePdf(); break;
+    case 'pdfd-reset': resetPdfDividi(); break;
+    case 'pdfd-scarica': scaricaRisultatoDivisionePdf(); break;
+    case 'pdfd-salva-cartella': salvaDivisionePdfNellaCartella(); break;
+
     case 'rubrica-copia': copiaTestoNegliAppunti(el.dataset.testo, 'Contatto copiato negli appunti.'); break;
 
     case 'nuova-credenziale': modalCredenziale(null); break;
@@ -15168,6 +15429,10 @@ function onChangeDelegato(e) {
     case 'importa-backup': importaBackup(el); break;
     case 'importa-dati-anno': importaDatiAnno(el); break;
     case 'strumenti-scegli-file': selezionaFileConversione(el); break;
+    case 'pdfu-scegli-file': selezionaFileUnisciPdf(el); break;
+    case 'pdfd-scegli-file': selezionaFileDividiPdf(el); break;
+    case 'pdfd-cambia-da': PDFD_DA = Number(el.value) || 1; break;
+    case 'pdfd-cambia-a': PDFD_A = Number(el.value) || 1; break;
     case 'carica-logo-studio': caricaLogoStudio(el); break;
     case 'cambia-posizione-logo': STATE.meta.logoPosizione = el.value; salvaStato(); break;
 
@@ -15803,6 +16068,14 @@ window.setHttpSyncAttivoTest = (v) => { HTTP_SYNC_ATTIVO = !!v; };
 // Solo per i test: azzera la cache modulo dello stato del convertitore Word/PDF, così un test può
 // verificare più scenari (LibreOffice assente/presente) senza dover riavviare l'intera pagina.
 window.resetConversioneStatoTest = () => { CONVERSIONE_STATO_CACHE = null; };
+// Stessa ragione, per lo strumento Unisci/Dividi PDF (task #204): azzera sia la cache di
+// disponibilità sia lo stato delle due card, così un test può ripartire da zero tra uno scenario e
+// l'altro senza riavviare l'intera pagina.
+window.resetPdfStatoTest = () => {
+  PDF_STATO_CACHE = null;
+  PDFU_FILE = []; PDFU_RISULTATO = null; PDFU_ERRORE = null; PDFU_IN_CORSO = false;
+  PDFD_FILE = null; PDFD_NUMPAGINE = null; PDFD_DA = 1; PDFD_A = 1; PDFD_RISULTATO = null; PDFD_ERRORE = null; PDFD_IN_CORSO = false;
+};
 // Stessa ragione: azzera la cache/draft di Accesso esterno (ngrok) così un test può rileggere lo
 // stato (via fetch mockata) con scenari diversi senza riavviare l'intera pagina.
 window.resetAccessoEsternoTest = () => { ACCESSO_ESTERNO_CACHE = null; ACCESSO_ESTERNO_DRAFT = null; };

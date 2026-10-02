@@ -419,6 +419,47 @@ try {
 } catch (err) {
   JSDOM = null;
 }
+// ---------------------------------------------------------------------------
+// Strumenti: unisci/dividi PDF (task #204, Matteo: "manca uno strumento per unire e dividere i
+// file, possiamo implementarlo?"). Usa "pdf-lib" - libreria JavaScript pura, nessun programma
+// esterno da installare sul PC (a differenza di LibreOffice per il convertitore Word/PDF qui
+// sopra). Stessa filosofia di jsdom: dipendenza OPZIONALE, se non installata lo strumento resta
+// visibile in Prisma ma spiega come attivarlo invece di fallire in modo oscuro. Per attivarlo:
+// "npm install pdf-lib" in questa cartella, poi riavviare il server.
+// ---------------------------------------------------------------------------
+let PDFLib = null;
+try { PDFLib = require('pdf-lib'); } catch (err) { PDFLib = null; }
+async function unisciPdfBuffer(buffers) {
+  const { PDFDocument } = PDFLib;
+  const unito = await PDFDocument.create();
+  for (const buf of buffers) {
+    const sorgente = await PDFDocument.load(buf);
+    const pagine = await unito.copyPages(sorgente, sorgente.getPageIndices());
+    pagine.forEach(p => unito.addPage(p));
+  }
+  return Buffer.from(await unito.save());
+}
+async function numeroPaginePdfBuffer(buf) {
+  const { PDFDocument } = PDFLib;
+  const doc = await PDFDocument.load(buf);
+  return doc.getPageCount();
+}
+// da/a sono 1-based e inclusivi (come li capisce chi non è programmatore): "da pagina 2 a pagina 5"
+// prende le pagine 2,3,4,5. Vengono comunque ricondotti dentro i limiti reali del documento, così
+// un intervallo scritto a mano un po' impreciso non fa fallire l'estrazione.
+async function estraiPaginePdfBuffer(buf, daPagina, aPagina) {
+  const { PDFDocument } = PDFLib;
+  const sorgente = await PDFDocument.load(buf);
+  const totale = sorgente.getPageCount();
+  const da = Math.max(1, Math.min(daPagina, totale));
+  const a = Math.max(da, Math.min(aPagina, totale));
+  const indici = [];
+  for (let i = da - 1; i <= a - 1; i++) indici.push(i);
+  const nuovo = await PDFDocument.create();
+  const pagine = await nuovo.copyPages(sorgente, indici);
+  pagine.forEach(p => nuovo.addPage(p));
+  return Buffer.from(await nuovo.save());
+}
 const LS_KEY_PORTALE = 'gestionaleStudioState_v1'; // deve combaciare ESATTAMENTE con LS_KEY in gestionale.htm
 
 // Notifiche push (richiesta Matteo: avviso sul cellulare del cliente quando lo studio pubblica una
@@ -1951,6 +1992,77 @@ function gestisciRichiesta(req, res) {
         res.end(JSON.stringify({ ok: false, errore: err.message }));
       } finally {
         if (cartellaTemp) { try { fs.rmSync(cartellaTemp, { recursive: true, force: true }); } catch (e) { /* pulizia best-effort */ } }
+      }
+    });
+    return;
+  }
+
+  // Task #204: stesso ruolo di /api/conversione-stato sopra, ma per lo strumento Unisci/Dividi PDF.
+  if (url === '/api/pdf-stato' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ ok: true, disponibile: !!PDFLib }));
+    return;
+  }
+
+  // Quante pagine ha il PDF appena caricato - serve all'interfaccia di "Dividi PDF" per proporre
+  // un intervallo di default (1 - ultima pagina) e segnalare subito un numero fuori range.
+  if (url === '/api/pdf-info' && req.method === 'POST') {
+    leggiCorpoRichiesta(req, async (corpo) => {
+      try {
+        if (!PDFLib) throw new Error('Libreria PDF non disponibile su questo PC: vedi le istruzioni nello strumento "Dividi PDF".');
+        const dati = JSON.parse(corpo);
+        if (!dati.contenutoBase64) throw new Error('File mancante.');
+        const buf = Buffer.from(dati.contenutoBase64, 'base64');
+        const numeroPagine = await numeroPaginePdfBuffer(buf);
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: true, numeroPagine }));
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, errore: 'PDF non leggibile: ' + err.message }));
+      }
+    });
+    return;
+  }
+
+  if (url === '/api/pdf-unisci' && req.method === 'POST') {
+    leggiCorpoRichiesta(req, async (corpo) => {
+      try {
+        if (!PDFLib) throw new Error('Libreria PDF non disponibile su questo PC: installa "pdf-lib" (vedi le istruzioni nello strumento) e riavvia il server.');
+        const dati = JSON.parse(corpo);
+        const elenco = Array.isArray(dati.file) ? dati.file : [];
+        if (elenco.length < 2) throw new Error('Servono almeno due file PDF da unire.');
+        const buffers = elenco.map(f => Buffer.from(f.contenutoBase64, 'base64'));
+        const unito = await unisciPdfBuffer(buffers);
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: true, nomeFile: 'documenti-uniti.pdf', contenutoBase64: unito.toString('base64') }));
+      } catch (err) {
+        console.error('[gestionale] Errore unione PDF:', err.message);
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, errore: err.message }));
+      }
+    });
+    return;
+  }
+
+  if (url === '/api/pdf-dividi' && req.method === 'POST') {
+    leggiCorpoRichiesta(req, async (corpo) => {
+      try {
+        if (!PDFLib) throw new Error('Libreria PDF non disponibile su questo PC: installa "pdf-lib" (vedi le istruzioni nello strumento) e riavvia il server.');
+        const dati = JSON.parse(corpo);
+        if (!dati.contenutoBase64) throw new Error('File mancante.');
+        const da = Number(dati.da), a = Number(dati.a);
+        if (!Number.isFinite(da) || !Number.isFinite(a) || da < 1 || a < da) throw new Error('Intervallo di pagine non valido.');
+        const buf = Buffer.from(dati.contenutoBase64, 'base64');
+        const estratto = await estraiPaginePdfBuffer(buf, da, a);
+        const nomeVoluto = nomeFileSicuro(String(dati.nomeFile || 'documento'));
+        const nomeBase = path.basename(nomeVoluto, path.extname(nomeVoluto));
+        const nomeOutput = `${nomeBase}_pag${da}-${a}.pdf`;
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: true, nomeFile: nomeOutput, contenutoBase64: estratto.toString('base64') }));
+      } catch (err) {
+        console.error('[gestionale] Errore divisione PDF:', err.message);
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, errore: err.message }));
       }
     });
     return;
