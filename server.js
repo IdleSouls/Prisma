@@ -164,13 +164,26 @@ function avviaNgrok(porta) {
       // injection, perché porta è sempre una delle due costanti numeriche fisse qui sopra, non un input
       // dell'utente. Su macOS/Linux "ngrok" è di norma un vero eseguibile: lì questo problema non esiste,
       // ma shell:true funziona comunque allo stesso modo.
-      figlio = spawn('ngrok', ['http', String(porta)], { cwd: CARTELLA, detached: true, stdio: 'ignore', windowsHide: true, shell: process.platform === 'win32' });
+      // Bug segnalato da Matteo ("ngrok sembra avviato ma..." non bastava a capire perché): con
+      // stdio:'ignore' l'output REALE di ngrok (il motivo preciso per cui si è chiuso) finiva
+      // scartato nel nulla - il messaggio d'errore poteva solo elencare le cause più comuni
+      // (authtoken, porta già in uso) senza sapere quale fosse quella vera. stdout resta ignorato
+      // (solo rumore), ma stderr è ora "pipe": si legge il poco testo che ngrok scrive nel primo
+      // istante di vita (gli errori di avvio ngrok li scrive lì) e lo si allega al messaggio.
+      figlio = spawn('ngrok', ['http', String(porta)], { cwd: CARTELLA, detached: true, stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true, shell: process.platform === 'win32' });
     } catch (err) {
       resolve({ ok: false, errore: 'Impossibile avviare ngrok: ' + err.message });
       return;
     }
     const voce = { pid: figlio.pid, avviatoIl: new Date().toISOString(), terminato: false };
     processiNgrok.set(porta, voce);
+    let erroreNgrok = '';
+    if (figlio.stderr) {
+      figlio.stderr.on('data', (chunk) => {
+        if (erroreNgrok.length < 2000) erroreNgrok += chunk.toString('utf8');
+      });
+      figlio.stderr.on('error', () => {}); // es. EPIPE se il processo muore mentre si legge: da ignorare, non è l'errore che ci interessa
+    }
     // ENOENT (ngrok non installato/non nel PATH) o un'uscita immediata del processo (es. authtoken
     // mancante, porta già in uso su un altro tunnel) arrivano entro pochi centesimi di secondo: una
     // breve attesa (800ms) basta a distinguerli da un avvio riuscito, senza far percepire il
@@ -191,14 +204,18 @@ function avviaNgrok(porta) {
     // promise con ok:false, quindi quel fallimento veniva riportato come un avvio riuscito (il
     // messaggio generico "sembra avviato ma..." che si vede poi lato client dopo gli 8 tentativi a
     // vuoto su /api/ngrok-tunnels). Ora un'uscita con codice diverso da 0 entro la stessa finestra di
-    // 800ms viene trattata subito come fallimento, con un messaggio che nomina le cause più comuni
-    // invece di lasciar credere che l'avvio sia riuscito.
+    // 800ms viene trattata subito come fallimento, col testo vero scritto da ngrok su stderr quando
+    // disponibile (vedi sopra) invece di un messaggio generico che elenca solo le cause possibili.
     figlio.once('exit', (codice) => {
       voce.terminato = true;
       if (risolto) return;
       if (codice === 0 || codice === null) return; // uscita "pulita" entro 800ms è anomala ma non un errore noto: si lascia decidere al timeout sotto
       risolto = true;
-      resolve({ ok: false, errore: 'ngrok si è chiuso subito dopo l\'avvio (codice ' + codice + '): controlla di avere configurato l\'authtoken con "ngrok config add-authtoken <token>" e che questa porta non sia già usata da un altro tunnel ngrok avviato a mano.' });
+      const dettaglio = erroreNgrok.trim();
+      const messaggio = dettaglio
+        ? 'ngrok si è chiuso subito dopo l\'avvio (codice ' + codice + '): ' + dettaglio.split('\n').slice(-6).join(' / ')
+        : 'ngrok si è chiuso subito dopo l\'avvio (codice ' + codice + '), senza scrivere nulla su schermo: controlla di avere configurato l\'authtoken con "ngrok config add-authtoken <token>" e che questa porta non sia già usata da un altro tunnel ngrok avviato a mano.';
+      resolve({ ok: false, errore: messaggio });
     });
     figlio.unref();
     setTimeout(() => {
