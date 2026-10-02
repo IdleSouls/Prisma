@@ -144,6 +144,25 @@ function rilanciaProcesso() {
    stesso): ngrok potrebbe comunque essere stato avviato a mano da terminale, o essere caduto senza
    che questo processo se ne accorga. */
 const processiNgrok = new Map(); // porta -> { pid, avviatoIl, terminato }
+// Spostata qui (prima stava dentro gestisciRichiesta, usata solo da /api/ngrok-tunnels) perché ora
+// serve anche ad avviaNgrok() per sapere se il tunnel è davvero partito - vedi commento lì sotto.
+// Interroga ngrok sulla STESSA macchina, sulla sua API di ispezione locale (porta fissa 4040, non
+// configurabile dall'esterno: è ngrok stesso a tenerla sempre lì quando è in esecuzione).
+function interrogaNgrokLocale() {
+  return new Promise((resolve, reject) => {
+    const richiesta = http.get('http://127.0.0.1:4040/api/tunnels', { timeout: 1500 }, (risposta) => {
+      const pezzi = [];
+      risposta.on('data', (d) => pezzi.push(d));
+      risposta.on('end', () => {
+        try { resolve(JSON.parse(Buffer.concat(pezzi).toString('utf8'))); }
+        catch (err) { reject(new Error('Risposta di ngrok non leggibile.')); }
+      });
+      risposta.on('error', reject);
+    });
+    richiesta.on('timeout', () => richiesta.destroy(new Error('ngrok non risponde (non è in esecuzione su questo PC?).')));
+    richiesta.on('error', () => reject(new Error('ngrok non risulta in esecuzione su questo PC.')));
+  });
+}
 function avviaNgrok(porta) {
   return new Promise((resolve) => {
     const esistente = processiNgrok.get(porta);
@@ -151,43 +170,62 @@ function avviaNgrok(porta) {
       resolve({ ok: true, giaAttivo: true, pid: esistente.pid });
       return;
     }
+    // Bug trovato ANCORA dopo tre giri di fix precedenti (shell:true per l'ENOENT, la risoluzione
+    // "exit" non risolveva mai la promise, poi la cattura di stdout+stderr con 'close' al posto di
+    // 'exit'): Matteo continuava a vedere lo stesso messaggio generico ("si è chiuso subito dopo
+    // l'avvio [...] senza scrivere nulla su schermo"), segno che il buffer restava vuoto SEMPRE,
+    // non per un problema di ordine degli eventi ma perché il processo non arrivava proprio a
+    // scrivere nulla prima di sparire. La causa vera: Prisma.exe è un'app Electron, e server.js
+    // (quindi anche questa funzione) gira DENTRO lo stesso processo di Electron - vedi
+    // electron-app/main.js, avviaServer() fa require(server.js) nello stesso processo, non lo
+    // lancia come eseguibile separato. Su Windows, Electron assegna i propri processi (e di norma
+    // anche i loro figli) a un "Job Object" di sistema con il limite KILL_ON_JOB_CLOSE: un
+    // processo figlio nato da dentro Electron eredita quel job e Windows può terminarlo quasi
+    // subito, PRIMA che faccia in tempo a scrivere alcunché - risultato tipico: nessun output e
+    // codice di uscita 1, esattamente quello che si vedeva. "detached:true" su Windows prova a
+    // uscire dal job solo se il job stesso lo permette esplicitamente (flag BREAKAWAY_OK), ed
+    // Electron di norma non lo permette - ecco perché detached:true da solo non bastava. Prova
+    // indiretta: ngrok lanciato A MANO da Matteo in un terminale normale (fuori da qualunque job
+    // di Electron) ha sempre dato l'errore vero per esteso (ERR_NGROK_334) - mai questo silenzio.
+    //
+    // Fix: invece di tenere ngrok come figlio diretto (o figlio di un cmd.exe comunque dentro il
+    // nostro stesso albero di processi), lo si lancia tramite il comando Windows "start": è il
+    // sistema operativo stesso a occuparsi della creazione del processo finale, che così non
+    // eredita il job di Electron - il rimedio più citato per questo preciso problema (processi
+    // "a vita lunga" lanciati da dentro un'app Electron su Windows che muoiono subito). "/B" evita
+    // che si apra una finestra di console (resta invisibile, coerente con windowsHide altrove).
+    // Il rovescio della medaglia: con "start" il processo che TENIAMO D'OCCHIO (cmd.exe) termina
+    // subito, con successo, non appena ha DATO IL VIA a ngrok - non quando ngrok stesso parte o
+    // fallisce - quindi non si può più dedurre nulla dal suo codice di uscita, né leggere il suo
+    // output in pipe come nei tentativi precedenti. Si usa invece l'opzione nativa "--log=<file>"
+    // di ngrok per fargli scrivere il proprio log reale su disco indipendentemente da come viene
+    // lanciato, e si interroga la sua API locale (la stessa di /api/ngrok-tunnels) per sapere con
+    // certezza se il tunnel è davvero su: se non lo è entro pochi secondi, si legge quel file di
+    // log per il motivo vero. Su macOS/Linux (dove questo problema di Job Object non esiste) si
+    // mantiene il lancio diretto di sempre.
+    const fileLogNgrok = path.join(CARTELLA_LOG, 'ngrok-' + porta + '.log');
+    try { fs.mkdirSync(CARTELLA_LOG, { recursive: true }); fs.writeFileSync(fileLogNgrok, '', 'utf8'); } catch (err) { /* best-effort: se non si riesce a pulirlo si legge comunque quel che c'è */ }
+
+    let comandoLanciatore, argomentiLanciatore;
+    if (process.platform === 'win32') {
+      const comandoNgrok = 'ngrok http ' + String(porta) + ' --log="' + fileLogNgrok + '"';
+      comandoLanciatore = 'cmd.exe';
+      argomentiLanciatore = ['/d', '/s', '/c', 'start', '""', '/B', comandoNgrok];
+    } else {
+      comandoLanciatore = 'ngrok';
+      argomentiLanciatore = ['http', String(porta), '--log=' + fileLogNgrok];
+    }
+
     let risolto = false;
     let figlio;
     try {
-      // Bug segnalato da Matteo ("ngrok per i clienti/collaboratori non funziona più"): su Windows
-      // "ngrok" installato con "npm install -g ngrok" (il modo più comune) crea uno shim "ngrok.cmd"
-      // (più un file "ngrok" senza estensione, pensato per Mac/Linux, che Windows non può eseguire).
-      // CreateProcess di Windows non sa avviare direttamente un .cmd: senza shell:true, spawn() fallisce
-      // SEMPRE con ENOENT per questo tipo di installazione, anche se "ngrok http ..." funziona benissimo
-      // digitato a mano in un terminale (che la risoluzione .cmd/PATHEXT la fa da solo). shell:true fa
-      // risolvere il comando a cmd.exe esattamente come farebbe un terminale - nessun rischio di
-      // injection, perché porta è sempre una delle due costanti numeriche fisse qui sopra, non un input
-      // dell'utente. Su macOS/Linux "ngrok" è di norma un vero eseguibile: lì questo problema non esiste,
-      // ma shell:true funziona comunque allo stesso modo.
-      // Bug segnalato da Matteo ("ngrok sembra avviato ma..." non bastava a capire perché): con
-      // stdio:'ignore' l'output REALE di ngrok (il motivo preciso per cui si è chiuso) finiva
-      // scartato nel nulla - il messaggio d'errore poteva solo elencare le cause più comuni
-      // (authtoken, porta già in uso) senza sapere quale fosse quella vera. stdout resta ignorato
-      // (solo rumore), ma stderr è ora "pipe": si legge il poco testo che ngrok scrive nel primo
-      // istante di vita (gli errori di avvio ngrok li scrive lì) e lo si allega al messaggio.
-      figlio = spawn('ngrok', ['http', String(porta)], { cwd: CARTELLA, detached: true, stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true, shell: process.platform === 'win32' });
+      figlio = spawn(comandoLanciatore, argomentiLanciatore, { cwd: CARTELLA, detached: true, stdio: 'ignore', windowsHide: true });
     } catch (err) {
       resolve({ ok: false, errore: 'Impossibile avviare ngrok: ' + err.message });
       return;
     }
     const voce = { pid: figlio.pid, avviatoIl: new Date().toISOString(), terminato: false };
     processiNgrok.set(porta, voce);
-    let erroreNgrok = '';
-    if (figlio.stderr) {
-      figlio.stderr.on('data', (chunk) => {
-        if (erroreNgrok.length < 2000) erroreNgrok += chunk.toString('utf8');
-      });
-      figlio.stderr.on('error', () => {}); // es. EPIPE se il processo muore mentre si legge: da ignorare, non è l'errore che ci interessa
-    }
-    // ENOENT (ngrok non installato/non nel PATH) o un'uscita immediata del processo (es. authtoken
-    // mancante, porta già in uso su un altro tunnel) arrivano entro pochi centesimi di secondo: una
-    // breve attesa (800ms) basta a distinguerli da un avvio riuscito, senza far percepire il
-    // pulsante come bloccato più del necessario.
     figlio.once('error', (err) => {
       voce.terminato = true;
       if (risolto) return;
@@ -197,32 +235,43 @@ function avviaNgrok(porta) {
         : ('Impossibile avviare ngrok: ' + err.message);
       resolve({ ok: false, errore: messaggio });
     });
-    // Bug trovato dopo il fix dello spawn (Matteo: "ngrok sembra avviato ma non ha ancora esposto
-    // un tunnel"): il commento qui sopra parlava già di un'uscita immediata del processo (authtoken
-    // mancante, porta già usata da un altro tunnel) come caso da intercettare entro gli 800ms, ma il
-    // codice non lo faceva mai - 'exit' si limitava a segnare voce.terminato senza mai risolvere la
-    // promise con ok:false, quindi quel fallimento veniva riportato come un avvio riuscito (il
-    // messaggio generico "sembra avviato ma..." che si vede poi lato client dopo gli 8 tentativi a
-    // vuoto su /api/ngrok-tunnels). Ora un'uscita con codice diverso da 0 entro la stessa finestra di
-    // 800ms viene trattata subito come fallimento, col testo vero scritto da ngrok su stderr quando
-    // disponibile (vedi sopra) invece di un messaggio generico che elenca solo le cause possibili.
-    figlio.once('exit', (codice) => {
-      voce.terminato = true;
-      if (risolto) return;
-      if (codice === 0 || codice === null) return; // uscita "pulita" entro 800ms è anomala ma non un errore noto: si lascia decidere al timeout sotto
-      risolto = true;
-      const dettaglio = erroreNgrok.trim();
-      const messaggio = dettaglio
-        ? 'ngrok si è chiuso subito dopo l\'avvio (codice ' + codice + '): ' + dettaglio.split('\n').slice(-6).join(' / ')
-        : 'ngrok si è chiuso subito dopo l\'avvio (codice ' + codice + '), senza scrivere nulla su schermo: controlla di avere configurato l\'authtoken con "ngrok config add-authtoken <token>" e che questa porta non sia già usata da un altro tunnel ngrok avviato a mano.';
-      resolve({ ok: false, errore: messaggio });
-    });
     figlio.unref();
-    setTimeout(() => {
+
+    // Fino a ~5 secondi (10 tentativi ogni 500ms) per dare tempo a ngrok di aprire il tunnel e
+    // comparire sulla sua API locale - stesso schema di tentativi già usato lato client su
+    // /api/ngrok-tunnels, solo fatto anche qui lato server per poter dare un errore vero.
+    let tentativi = 0;
+    const MAX_TENTATIVI = 10;
+    const controllaTunnelAttivo = () => {
       if (risolto) return;
+      tentativi++;
+      interrogaNgrokLocale().then((dati) => {
+        if (risolto) return;
+        const attivo = (dati.tunnels || []).some((t) => {
+          const m = /:(\d+)\s*$/.exec(String((t.config && t.config.addr) || ''));
+          return m && Number(m[1]) === porta;
+        });
+        if (attivo) {
+          risolto = true;
+          resolve({ ok: true, pid: figlio.pid });
+          return;
+        }
+        riprovaOFallisci();
+      }).catch(() => { riprovaOFallisci(); });
+    };
+    const riprovaOFallisci = () => {
+      if (risolto) return;
+      if (tentativi < MAX_TENTATIVI) { setTimeout(controllaTunnelAttivo, 500); return; }
       risolto = true;
-      resolve({ ok: true, pid: figlio.pid });
-    }, 800);
+      voce.terminato = true;
+      let dettaglio = '';
+      try { dettaglio = fs.readFileSync(fileLogNgrok, 'utf8').trim(); } catch (err) { /* ignora: nessun log leggibile */ }
+      const messaggio = dettaglio
+        ? 'ngrok non ha esposto il tunnel entro pochi secondi. Ultime righe del suo log: ' + dettaglio.split('\n').slice(-6).join(' / ')
+        : 'ngrok non ha esposto il tunnel entro pochi secondi, e non ha scritto nulla nel suo log: controlla di avere configurato l\'authtoken con "ngrok config add-authtoken <token>" e che questa porta non sia già usata da un altro tunnel ngrok avviato a mano.';
+      resolve({ ok: false, errore: messaggio });
+    };
+    setTimeout(controllaTunnelAttivo, 500);
   });
 }
 const FILE_PAGINA = path.join(CARTELLA, 'gestionale.htm');
@@ -1627,24 +1676,11 @@ function gestisciRichiesta(req, res) {
   // Secondo pulsante richiesto da Matteo: il link ngrok VERO (pubblico, es. https://xxxx.ngrok-free.app),
   // non l'indirizzo di rete locale - ngrok non lo comunica a Prisma in automatico, ma lo espone lui
   // stesso in locale sulla sua API di ispezione (http://127.0.0.1:4040/api/tunnels) quando è in
-  // esecuzione sullo STESSO PC del server. Interrogata solo su richiesta esplicita del pulsante, mai
-  // in polling: se ngrok non è aperto in quel momento fallisce in fretta (timeout corto) e il client
-  // mostra un messaggio chiaro invece di un link sbagliato.
-  function interrogaNgrokLocale() {
-    return new Promise((resolve, reject) => {
-      const richiesta = http.get('http://127.0.0.1:4040/api/tunnels', { timeout: 1500 }, (risposta) => {
-        const pezzi = [];
-        risposta.on('data', (d) => pezzi.push(d));
-        risposta.on('end', () => {
-          try { resolve(JSON.parse(Buffer.concat(pezzi).toString('utf8'))); }
-          catch (err) { reject(new Error('Risposta di ngrok non leggibile.')); }
-        });
-        risposta.on('error', reject);
-      });
-      richiesta.on('timeout', () => richiesta.destroy(new Error('ngrok non risponde (non è in esecuzione su questo PC?).')));
-      richiesta.on('error', () => reject(new Error('ngrok non risulta in esecuzione su questo PC.')));
-    });
-  }
+  // esecuzione sullo STESSO PC del server. Interrogata qui su richiesta esplicita del pulsante (mai
+  // in polling continuo: se ngrok non è aperto in quel momento fallisce in fretta - timeout corto -
+  // e il client mostra un messaggio chiaro invece di un link sbagliato); interrogaNgrokLocale() ora
+  // vive a livello di modulo (vedi sopra, vicino ad avviaNgrok) perché serve anche lì per sapere se
+  // il tunnel è davvero partito, non solo qui.
   if (url === '/api/ngrok-tunnels' && req.method === 'GET') {
     interrogaNgrokLocale().then((dati) => {
       // Ogni tunnel espone config.addr come "http://localhost:<porta>" (o senza schema a seconda
