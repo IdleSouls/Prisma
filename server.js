@@ -184,7 +184,22 @@ function avviaNgrok(porta) {
         : ('Impossibile avviare ngrok: ' + err.message);
       resolve({ ok: false, errore: messaggio });
     });
-    figlio.once('exit', () => { voce.terminato = true; });
+    // Bug trovato dopo il fix dello spawn (Matteo: "ngrok sembra avviato ma non ha ancora esposto
+    // un tunnel"): il commento qui sopra parlava già di un'uscita immediata del processo (authtoken
+    // mancante, porta già usata da un altro tunnel) come caso da intercettare entro gli 800ms, ma il
+    // codice non lo faceva mai - 'exit' si limitava a segnare voce.terminato senza mai risolvere la
+    // promise con ok:false, quindi quel fallimento veniva riportato come un avvio riuscito (il
+    // messaggio generico "sembra avviato ma..." che si vede poi lato client dopo gli 8 tentativi a
+    // vuoto su /api/ngrok-tunnels). Ora un'uscita con codice diverso da 0 entro la stessa finestra di
+    // 800ms viene trattata subito come fallimento, con un messaggio che nomina le cause più comuni
+    // invece di lasciar credere che l'avvio sia riuscito.
+    figlio.once('exit', (codice) => {
+      voce.terminato = true;
+      if (risolto) return;
+      if (codice === 0 || codice === null) return; // uscita "pulita" entro 800ms è anomala ma non un errore noto: si lascia decidere al timeout sotto
+      risolto = true;
+      resolve({ ok: false, errore: 'ngrok si è chiuso subito dopo l\'avvio (codice ' + codice + '): controlla di avere configurato l\'authtoken con "ngrok config add-authtoken <token>" e che questa porta non sia già usata da un altro tunnel ngrok avviato a mano.' });
+    });
     figlio.unref();
     setTimeout(() => {
       if (risolto) return;
