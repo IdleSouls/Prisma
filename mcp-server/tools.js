@@ -797,6 +797,28 @@ export function creaServer(filePath, baseUrl) {
     async (campi) => testoEsitoScrittura(await inviaComando(url, 'impostaModulo', campi))
   );
 
+  // ---------- TEMPI E REDDITIVITA ----------
+  server.registerTool(
+    'tempi_e_redditivita',
+    { title: 'Ore lavorate e redditività clienti', description: 'Redditività per cliente dell\'anno corrente (ore, compensi emessi, costo = ore x costo orario, margine, euro/ora, dal margine più basso) e registrazioni ore. Filtro facoltativo: cliente.', inputSchema: { cliente: z.string().optional() } },
+    async ({ cliente }) => {
+      const { vista } = caricaVista(filePath);
+      let t = vista.tempi || [], red = (vista.redditivita || {}).clienti || [];
+      if (cliente) { const c = trovaCliente(vista, cliente); if (!c) return testoJson({ errore: 'Cliente non trovato: ' + cliente }); t = t.filter(x => x.clienteId === c.id); red = red.filter(x => x.clienteId === c.id); }
+      return testoJson({ anno: (vista.redditivita || {}).anno, costoOrario: (vista.redditivita || {}).costoOrario, redditivita: red, registrazioni: t.slice(-100) });
+    }
+  );
+  server.registerTool(
+    'registra_tempo',
+    { title: 'Registra ore lavorate', description: 'Registra il tempo dedicato a un cliente (ore decimali, es. 1.5).', inputSchema: { clienteId: z.string(), ore: z.number().positive().max(24), servizio: z.string().optional().describe('Contabilità, IVA e adempimenti, Dichiarazioni, Bilancio, Paghe, Consulenza, Altro'), data: z.string().optional().describe('YYYY-MM-DD, default oggi'), descrizione: z.string().optional(), operatore: z.string().optional() } },
+    async (campi) => testoEsitoScrittura(await inviaComando(url, 'registraTempo', campi))
+  );
+  server.registerTool(
+    'elimina_tempo',
+    { title: 'Elimina registrazione ore', description: 'Elimina una registrazione di ore.', inputSchema: { id: z.string(), conferma: z.literal(true).describe(descrConferma('quale registrazione e cliente')) } },
+    async ({ id }) => testoEsitoScrittura(await inviaComando(url, 'eliminaTempo', { id }))
+  );
+
   // ---------- RACCOLTA DOCUMENTI ----------
   server.registerTool(
     'elenco_richieste_documenti',

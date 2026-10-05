@@ -1884,6 +1884,38 @@ async function main() {
     console.log('=== Incassi (task #207): registrazione, scaduto, banner solleciti, sollecito via portale (una volta ogni 15 gg), pagamento parziale/saldo, MCP OK');
   }
 
+  // ---------- Task #206: Tempi e redditività ----------
+  {
+    const st = () => window.getSTATE();
+    const cid = st().clienti[0].id;
+    click(q('[data-nav="tempi"]'));
+    await wait(20);
+    assert(q('[data-action="nuovo-tempo"]'), 'la vista Tempi non mostra "+ Registra ore"');
+    click(q('[data-action="nuovo-tempo"]'));
+    await wait(20);
+    setVal(q('#tmpCliente'), cid); setVal(q('#tmpOre'), '2'); setVal(q('#tmpMin'), '30');
+    click(q('[data-action="salva-tempo"]'));
+    await wait(20);
+    const t = st().tempi.find(x => x.clienteId === cid);
+    assert(t && t.minuti === 150, 'ore non registrate (attesi 150 minuti)');
+    const anno = String(new Date().getFullYear());
+    const inc = window.aggiungiIncasso({ clienteId: cid, importo: 500, descrizione: 'Test redditività', dataEmissione: anno + '-02-01', dataScadenza: anno + '-03-01' });
+    const r = window.riepilogoRedditivita(anno).find(x => x.clienteId === cid);
+    assert(r && r.minuti === 150 && r.ricavi === 500, 'riepilogo ore/ricavi errato');
+    assert(Math.abs(r.margine - (500 - 2.5 * window.costoOrarioStudio())) < 0.01 && Math.abs(r.euroOra - 200) < 0.01, 'margine o €/ora errati');
+    assert(q('body').textContent.includes('Redditività per cliente'), 'tabella redditività assente');
+    try { window.aggiungiTempo({ clienteId: cid, minuti: 0 }); assert(false, 'durata 0 deve essere rifiutata'); } catch (e) { assert(/durata/i.test(e.message), 'messaggio errore durata inatteso'); }
+    const fetchPrima = window.fetch; window.fetch = () => Promise.resolve({ ok: true, json: () => ({}) });
+    await window.eseguiComandoMCP({ id: 'cmdT1', azione: 'registraTempo', parametri: { clienteId: cid, ore: 1.5, servizio: 'Consulenza' } });
+    window.fetch = fetchPrima;
+    assert(st().tempi.some(x => x.minuti === 90 && x.servizio === 'Consulenza'), 'registraTempo via MCP fallita');
+    assert(window.esportaVistaMCP().redditivita.clienti.some(x => x.clienteId === cid), 'la vista MCP non espone la redditività');
+    const s2 = st(); s2.tempi = []; s2.incassi = s2.incassi.filter(i => i.id !== inc.id); window.setSTATE(s2);
+    click(q('[data-nav="dashboard"]'));
+    await wait(20);
+    console.log('=== Tempi e redditività (task #206): registrazione ore, riepilogo per cliente, margine, €/ora, validazione, MCP OK');
+  }
+
   // ---------- Task #208: Raccolta documenti guidata (studio + portale + solleciti) ----------
   {
     const st = () => window.getSTATE();

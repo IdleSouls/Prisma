@@ -1719,6 +1719,7 @@ function statoIniziale() {
     appuntamenti: [],
     incassi: [],
     richiesteDocumenti: [],
+    tempi: [],
     /* Procedure interne dello studio (task #146): raccolta di SOP/indicazioni operative per lo staff
        ("come si apre una nuova attività X", quali documenti servono ecc.), strutturate come i Modelli
        documenti (categoria/nome/contenuto) più una checklist di documenti necessari. Usate anche dal
@@ -2600,6 +2601,8 @@ const AZIONI_MCP = {
     salvaStato();
     return { modulo: p.modulo, attivo: !!p.attivo };
   },
+  registraTempo: (p) => { const t = aggiungiTempo({ clienteId: p.clienteId, minuti: Math.round((Number(p.ore) || 0) * 60), servizio: p.servizio, data: p.data, descrizione: p.descrizione, operatore: p.operatore }); return { id: t.id }; },
+  eliminaTempo: (p) => { if (!(STATE.tempi || []).find(x => x.id === p.id)) throw new Error('Registrazione non trovata: ' + p.id); eliminaTempo(p.id); return { ok: true }; },
   creaRichiestaDocumenti: (p) => { const r = aggiungiRichiestaDocumenti({ clienteId: p.clienteId, titolo: p.titolo, scadenza: p.scadenza, voci: p.voci || [] }); return { id: r.id, voci: r.voci.map(v => ({ id: v.id, nome: v.nome })) }; },
   impostaStatoDocumentoRichiesto: (p) => { const r = impostaStatoVoceRichiesta(p.richiestaId, p.voceId, p.stato); return { stato: statoRichiestaDocumenti(r) }; },
   sollecitaRichiestaDocumenti: (p) => { if (!richiestaDocumentiById(p.id)) throw new Error('Richiesta non trovata: ' + p.id); return { inviato: sollecitaRichiestaDocumenti(p.id) }; },
@@ -4085,6 +4088,7 @@ function eliminaCliente(id) {
   STATE.preventivi = STATE.preventivi.filter(p => p.clienteId !== id);
   STATE.incassi = (STATE.incassi || []).filter(i => i.clienteId !== id);
   STATE.richiesteDocumenti = (STATE.richiesteDocumenti || []).filter(r => r.clienteId !== id);
+  STATE.tempi = (STATE.tempi || []).filter(t => t.clienteId !== id);
 
   // Entità tenute in oggetti indicizzati per clienteId: basta togliere la chiave.
   delete STATE.onboarding[id];
@@ -4248,6 +4252,7 @@ const NAV = [
     { id: 'preventivi', label: 'Preventivi e mandati', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5h8l5 5v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-18a1 1 0 0 1 1-1z"/><path d="M14 2.5v5h5"/><path d="M8 12.5l2.5 2.5 5.5-6"/></svg>' },
     { id: 'incassi', label: 'Incassi', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9v.01M18 15v.01"/></svg>' },
     { id: 'raccolta', label: 'Raccolta documenti', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9v.01M18 15v.01"/></svg>' },
+    { id: 'tempi', label: 'Tempi e redditività', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9v.01M18 15v.01"/></svg>' },
     { id: 'portale', label: 'Portale cliente', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2"/><line x1="3" y1="8.5" x2="21" y2="8.5"/><circle cx="6" cy="6.5" r=".6" fill="currentColor" stroke="none"/><circle cx="8.2" cy="6.5" r=".6" fill="currentColor" stroke="none"/></svg>' },
   ]},
   { group: 'Analisi cliente', items: [
@@ -4285,6 +4290,7 @@ const PAGE_TITLES = {
   contabilita: ['Contabilità', 'Import periodico da Excel/CSV: nessuna doppia registrazione, nessuna data indovinata'],
   modelli: ['Modelli documenti', 'Testi precompilati per preventivi, mandati e documenti antiriciclaggio: i segnaposto {{così}} si trasformano in campi da compilare'],
   incassi: ['Incassi', 'Compensi da incassare, scadenze di pagamento e solleciti ai clienti'],
+  tempi: ['Tempi e redditività', 'Ore lavorate per cliente e servizio, costo orario e margine rispetto ai compensi'],
   raccolta: ['Raccolta documenti', 'Elenchi di documenti da chiedere ai clienti, con caricamento dal portale e solleciti'],
   procedure: ['Procedure interne', 'Indicazioni operative per lo staff, passo per passo, con la checklist dei documenti necessari'],
   strumenti: ['Strumenti', 'Convertitore file Word ↔ PDF ↔ PDF/A (serve LibreOffice installato sul PC del server locale)'],
@@ -4329,6 +4335,7 @@ const MODULI = [
   { id: 'procedure', label: 'Procedure interne', desc: 'Istruzioni operative passo per passo per lo staff.', tabs: ['procedure'] },
   { id: 'antiriciclaggio', label: 'Antiriciclaggio', desc: 'Adeguata verifica, profilo di rischio e storico verifiche.', tabs: ['antiriciclaggio'] },
   { id: 'preventivi', label: 'Preventivi e mandati', desc: 'Preventivi, mandati e lettere di incarico da modelli.', tabs: ['preventivi'] },
+  { id: 'tempi', label: 'Tempi e redditività', desc: 'Registra le ore per cliente e servizio e scopri quali clienti rendono davvero.', tabs: ['tempi'] },
   { id: 'raccolta', label: 'Raccolta documenti', desc: 'Checklist di documenti da chiedere ai clienti: il cliente li carica dal portale, tu li approvi e sollecita chi manca.', tabs: ['raccolta'] },
   { id: 'incassi', label: 'Incassi e solleciti', desc: 'Compensi da incassare, scadenze di pagamento e solleciti ai clienti.', tabs: ['incassi'] },
   { id: 'onboarding', label: 'Onboarding clienti', desc: 'Checklist di attivazione per un nuovo cliente.', tabs: ['onboarding'] },
@@ -4472,6 +4479,7 @@ function render() {
     case 'procedure': content.innerHTML = renderProcedureInterne(); break;
     case 'incassi': content.innerHTML = renderIncassi(); break;
     case 'raccolta': content.innerHTML = renderRaccolta(); break;
+    case 'tempi': content.innerHTML = renderTempi(); break;
     case 'strumenti': content.innerHTML = renderStrumenti(); break;
     case 'credenziali': content.innerHTML = renderCredenziali(); break;
     case 'portale': content.innerHTML = renderPortaleCliente(); break;
@@ -7581,6 +7589,70 @@ function modalRegistraIncasso(id) {
       </div>
       <div class="helptext">Se è meno del residuo, resta da incassare la differenza (pagamento parziale).</div>
       <div class="modal-actions"><button class="btn" data-action="chiudi-modal">Annulla</button><button class="btn primary" data-action="incasso-registra" data-id="${i.id}">Conferma incasso</button></div>
+    </div></div>`;
+}
+
+/* -------------------- TEMPI E REDDITIVITÀ (task #206) --------------------
+   Ore lavorate per cliente e servizio. Ricavi = compensi (STATE.incassi emessi) nell'anno scelto;
+   costo = ore x costo orario dello studio (STATE.meta.costoOrarioStudio, modificabile qui).
+   Margine = ricavi - costo; "€/ora" = ricavi / ore. Stima gestionale, non dato di bilancio. */
+let TEMPI_FILTRO = { anno: String(new Date().getFullYear()), cliente: 'Tutti' };
+const SERVIZI_TEMPI = ['Contabilità', 'IVA e adempimenti', 'Dichiarazioni', 'Bilancio', 'Paghe', 'Consulenza', 'Altro'];
+function costoOrarioStudio() { const v = Number(STATE.meta.costoOrarioStudio); return v > 0 ? v : 40; }
+function aggiungiTempo(d) {
+  if (!clienteById(d.clienteId)) throw new Error('Cliente non trovato: ' + d.clienteId);
+  const minuti = Math.round(Number(d.minuti));
+  if (!(minuti > 0) || minuti > 1440) throw new Error('Indica una durata tra 1 minuto e 24 ore.');
+  const t = { id: uid('tempo'), clienteId: d.clienteId, data: d.data || oggiISO(), minuti, servizio: d.servizio || 'Altro', descrizione: (d.descrizione || '').trim().slice(0, 300), operatore: d.operatore || operatoreCorrente() || '' };
+  if (!STATE.tempi) STATE.tempi = [];
+  STATE.tempi.push(t); salvaStato(); return t;
+}
+function eliminaTempo(id) { STATE.tempi = (STATE.tempi || []).filter(t => t.id !== id); salvaStato(); }
+function riepilogoRedditivita(anno) {
+  const costo = costoOrarioStudio(); const per = {};
+  const riga = (cid) => per[cid] || (per[cid] = { clienteId: cid, minuti: 0, ricavi: 0 });
+  (STATE.tempi || []).filter(t => (t.data || '').slice(0, 4) === anno).forEach(t => { riga(t.clienteId).minuti += t.minuti; });
+  (STATE.incassi || []).filter(i => (i.dataEmissione || i.creatoIl || '').slice(0, 4) === anno).forEach(i => { riga(i.clienteId).ricavi += Number(i.importo) || 0; });
+  return Object.values(per).map(r => { const ore = r.minuti / 60; const costoTot = ore * costo; return Object.assign(r, { ore, costo: costoTot, margine: r.ricavi - costoTot, euroOra: ore > 0 ? r.ricavi / ore : null }); })
+    .sort((a, b) => a.margine - b.margine);
+}
+function fmtOre(min) { return (min / 60).toLocaleString('it-IT', { maximumFractionDigits: 1 }) + ' h'; }
+function renderTempi() {
+  if (STATE.clienti.length === 0) return `<div class="card"><div class="empty"><div class="big">Aggiungi prima un cliente</div>Le ore sono sempre legate a un cliente.</div></div>`;
+  const anni = Array.from(new Set([TEMPI_FILTRO.anno, String(new Date().getFullYear())].concat((STATE.tempi || []).map(t => (t.data || '').slice(0, 4))))).filter(Boolean).sort().reverse();
+  const riep = riepilogoRedditivita(TEMPI_FILTRO.anno);
+  const totMin = riep.reduce((n, r) => n + r.minuti, 0), totRic = riep.reduce((n, r) => n + r.ricavi, 0);
+  const totMarg = riep.reduce((n, r) => n + r.margine, 0);
+  const kpi = `<div class="kpi-grid">
+    <div class="kpi"><div class="label">Ore registrate</div><div class="value">${fmtOre(totMin)}</div></div>
+    <div class="kpi"><div class="label">Compensi emessi</div><div class="value">${fmtEuro(totRic)}</div></div>
+    <div class="kpi"><div class="label">Margine stimato</div><div class="value" style="color:${totMarg < 0 ? 'var(--rosso)' : 'inherit'};">${fmtEuro(totMarg)}</div></div></div>`;
+  const barra = `<div class="toolbar" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;">
+    <button class="btn primary" data-action="nuovo-tempo">+ Registra ore</button>
+    <div class="field" style="margin:0;"><label>Anno</label><select data-action="tempi-filtro-anno">${anni.map(a => `<option ${a === TEMPI_FILTRO.anno ? 'selected' : ''}>${a}</option>`).join('')}</select></div>
+    <div class="field" style="margin:0;"><label>Cliente (elenco ore)</label><select data-action="tempi-filtro-cliente"><option>Tutti</option>${STATE.clienti.slice().sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale)).map(c => `<option value="${c.id}" ${TEMPI_FILTRO.cliente === c.id ? 'selected' : ''}>${escapeHtml(c.ragioneSociale)}</option>`).join('')}</select></div>
+    <div class="field" style="margin:0;"><label>Costo orario studio (€)</label><input type="number" min="1" step="1" style="width:110px;" data-action="tempi-costo-orario" value="${costoOrarioStudio()}"></div></div>`;
+  const tabRed = riep.length ? `<div class="card"><h3 style="margin:0 0 8px;">Redditività per cliente ${TEMPI_FILTRO.anno}</h3><table class="tbl"><thead><tr><th>Cliente</th><th style="text-align:right;">Ore</th><th style="text-align:right;">Compensi</th><th style="text-align:right;">Costo</th><th style="text-align:right;">Margine</th><th style="text-align:right;">€/ora</th></tr></thead><tbody>${riep.map(r => `<tr><td>${escapeHtml(nomeCliente(r.clienteId))}</td><td style="text-align:right;">${fmtOre(r.minuti)}</td><td style="text-align:right;">${fmtEuro(r.ricavi)}</td><td style="text-align:right;">${fmtEuro(r.costo)}</td><td style="text-align:right;color:${r.margine < 0 ? 'var(--rosso)' : 'var(--verde)'};font-weight:600;">${fmtEuro(r.margine)}</td><td style="text-align:right;">${r.euroOra == null ? '—' : fmtEuro(r.euroOra)}</td></tr>`).join('')}</tbody></table><div class="helptext">Ordinati dal margine più basso. Compensi = incassi emessi nell'anno (modulo Incassi); costo = ore × costo orario. È una stima gestionale.</div></div>`
+    : `<div class="card"><div class="empty"><div class="big">Ancora nessun dato</div>Registra le ore lavorate e inserisci i compensi in Incassi per vedere quali clienti rendono di più.</div></div>`;
+  let lista = (STATE.tempi || []).filter(t => (t.data || '').slice(0, 4) === TEMPI_FILTRO.anno);
+  if (TEMPI_FILTRO.cliente !== 'Tutti') lista = lista.filter(t => t.clienteId === TEMPI_FILTRO.cliente);
+  lista = lista.sort((a, b) => (b.data || '').localeCompare(a.data || '')).slice(0, 100);
+  const elenco = lista.length ? `<div class="card" style="margin-top:12px;"><h3 style="margin:0 0 8px;">Ultime ore registrate</h3><table class="tbl"><tbody>${lista.map(t => `<tr><td>${fmtData(t.data)}</td><td>${escapeHtml(nomeCliente(t.clienteId))}</td><td>${escapeHtml(t.servizio)}${t.descrizione ? ` <span class="helptext">${escapeHtml(t.descrizione)}</span>` : ''}</td><td>${escapeHtml(t.operatore || '')}</td><td style="text-align:right;">${fmtOre(t.minuti)}</td><td style="text-align:right;"><button class="btn small danger" data-action="elimina-tempo" data-id="${t.id}">✕</button></td></tr>`).join('')}</tbody></table></div>` : '';
+  return kpi + barra + tabRed + elenco;
+}
+function modalTempo() {
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
+    <div class="modal" style="max-width:480px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;"><div><h2>Registra ore</h2><div class="modal-sub">Tempo dedicato a un cliente.</div></div><button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button></div>
+      <div class="grid2">
+        <div class="field full" style="grid-column:1/-1;"><label>Cliente *</label><select id="tmpCliente">${STATE.clienti.slice().sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale)).map(c => `<option value="${c.id}" ${TEMPI_FILTRO.cliente === c.id ? 'selected' : ''}>${escapeHtml(c.ragioneSociale)}</option>`).join('')}</select></div>
+        <div class="field"><label>Servizio</label><select id="tmpServizio">${SERVIZI_TEMPI.map(x => `<option>${x}</option>`).join('')}</select></div>
+        <div class="field"><label>Data</label><input id="tmpData" type="date" value="${oggiISO()}"></div>
+        <div class="field"><label>Ore</label><input id="tmpOre" type="number" min="0" step="1" value="1"></div>
+        <div class="field"><label>Minuti</label><input id="tmpMin" type="number" min="0" max="59" step="5" value="0"></div>
+        <div class="field full" style="grid-column:1/-1;"><label>Note</label><input id="tmpNote" placeholder="facoltative"></div>
+      </div>
+      <div class="modal-actions"><button class="btn" data-action="chiudi-modal">Annulla</button><button class="btn primary" data-action="salva-tempo">Registra</button></div>
     </div></div>`;
 }
 
@@ -14823,6 +14895,14 @@ function onClickDelegato(e) {
     case 'nuovo-incasso': modalIncasso(null); break;
     case 'modifica-incasso': modalIncasso(id); break;
     case 'incasso-registra-apri': modalRegistraIncasso(id); break;
+    case 'nuovo-tempo': modalTempo(); break;
+    case 'salva-tempo': {
+      try { aggiungiTempo({ clienteId: h('tmpCliente').value, servizio: h('tmpServizio').value, data: h('tmpData').value, minuti: (Number(h('tmpOre').value) || 0) * 60 + (Number(h('tmpMin').value) || 0), descrizione: h('tmpNote').value }); }
+      catch (err) { toast(err.message, true); return; }
+      chiudiModal(); render(); toast('Ore registrate.');
+      break;
+    }
+    case 'elimina-tempo': eliminaTempo(id); render(); break;
     case 'nuova-richiesta-doc': modalRichiestaDocumenti(); break;
     case 'salva-richiesta-doc': {
       try { aggiungiRichiestaDocumenti({ clienteId: h('raccCliente').value, titolo: h('raccTitolo').value, scadenza: h('raccScadenza').value, voci: h('raccVoci').value.split('\n') }); }
@@ -16435,6 +16515,9 @@ function onChangeDelegato(e) {
       break;
     }
     case 'toggle-mcp-conferma': STATE.meta.mcpChiediConferma = !!el.checked; salvaStato(); toast(el.checked ? 'Ogni azione di Claude richiederà la tua conferma.' : 'Le azioni di Claude vengono eseguite senza conferma (restano nel registro).'); break;
+    case 'tempi-filtro-anno': TEMPI_FILTRO.anno = el.value; render(); break;
+    case 'tempi-filtro-cliente': TEMPI_FILTRO.cliente = el.value; render(); break;
+    case 'tempi-costo-orario': { const v = Number(el.value); if (v > 0) { STATE.meta.costoOrarioStudio = v; salvaStato(); render(); } break; }
     case 'racc-filtro-cliente': RACC_FILTRO.cliente = el.value; render(); break;
     case 'racc-filtro-stato': RACC_FILTRO.stato = el.value; render(); break;
     case 'racc-da-procedura': {
@@ -17004,6 +17087,8 @@ function esportaVistaMCP() {
     })),
     moduli: MODULI.map(m => ({ id: m.id, nome: m.label, attivo: moduloAttivo(m.id) })),
     team: { responsabili: STATE.meta.responsabili || [], consulenti: STATE.meta.consulenti || [], ruoli: STATE.meta.ruoli || {} },
+    tempi: (STATE.tempi || []).map(t => ({ id: t.id, clienteId: t.clienteId, cliente: nomeCliente(t.clienteId), data: t.data, ore: Math.round(t.minuti / 6) / 10, servizio: t.servizio, descrizione: t.descrizione, operatore: t.operatore })),
+    redditivita: (() => { const a = String(new Date().getFullYear()); return { anno: a, costoOrario: costoOrarioStudio(), clienti: riepilogoRedditivita(a).map(r => ({ clienteId: r.clienteId, cliente: nomeCliente(r.clienteId), ore: Math.round(r.ore * 10) / 10, compensi: r.ricavi, costo: Math.round(r.costo), margine: Math.round(r.margine), euroOra: r.euroOra == null ? null : Math.round(r.euroOra) })) }; })(),
     richiesteDocumenti: (STATE.richiesteDocumenti || []).map(r => ({ id: r.id, clienteId: r.clienteId, cliente: nomeCliente(r.clienteId), titolo: r.titolo, scadenza: r.scadenza, stato: statoRichiestaDocumenti(r), solleciti: (r.solleciti || []).length, voci: (r.voci || []).map(v => ({ id: v.id, nome: v.nome, stato: v.stato })) })),
     incassi: (STATE.incassi || []).map(i => ({ id: i.id, clienteId: i.clienteId, cliente: nomeCliente(i.clienteId), descrizione: i.descrizione, numero: i.numero, importo: i.importo, incassato: i.importoIncassato || 0, residuo: residuoIncasso(i), dataEmissione: i.dataEmissione, dataScadenza: i.dataScadenza, stato: statoIncasso(i), solleciti: (i.solleciti || []).length })),
     appuntamenti: (STATE.appuntamenti || []).map(a => ({

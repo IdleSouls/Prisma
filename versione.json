@@ -1,17 +1,17 @@
 {
-  "versione": "1.3.0",
-  "note": "Raccolta documenti guidata: checklist per cliente, caricamento dal portale, approvazione e solleciti",
+  "versione": "1.4.0",
+  "note": "Tempi e redditività per cliente/servizio",
   "richiedeNpmInstall": false,
   "file": [
     {
       "nome": "gestionale.htm",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale.htm",
-      "sha256": "fb04452d87e66e4de0e154741eb047569fd88533faa0b2c92a7d377d7f143df9"
+      "sha256": "5ddb4b6688400da42a37fe8494e0763f5c6a215c49da4da4865bd49ff38c5ca0"
     },
     {
       "nome": "server.js",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/server.js",
-      "sha256": "9441486648d9de6fcb7597d769497be8e2e6c07782f8c4dd4b9074401f2f3498"
+      "sha256": "52dd7db0b0a865da0a658ee5aa20979d447e518077761290fe45deba40e53fe0"
     },
     {
       "nome": "portale-cliente.htm",
