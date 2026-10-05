@@ -2554,6 +2554,14 @@ const AZIONI_MCP = {
     if (attivitaScelte.length && !valoriCustomFinale.dettaglioAttivita) valoriCustomFinale.dettaglioAttivita = testoElencoAttivita(attivitaScelte);
     return creaPreventivoDaModello({ clienteId: p.clienteId, modelloId: p.modelloId, oggetto: p.oggetto, importo: importoFinale, dataEmissione: p.dataEmissione, validoFino: p.validoFino, stato: p.stato, note: p.note, valoriCustom: valoriCustomFinale, attivitaScelte });
   },
+  // Appuntamenti, procedure interne e catalogo attività (audit copertura MCP)
+  creaAppuntamento: (p) => { if (!p.data) throw new Error('Serve la data (YYYY-MM-DD).'); const a = aggiungiAppuntamento(p); return { creato: true, id: a.id }; },
+  modificaAppuntamento: (p) => { if (!trovaAppuntamento(p.id)) throw new Error('Appuntamento non trovato: ' + p.id); aggiornaAppuntamento(p.id, p.patch || {}); return { aggiornato: true }; },
+  eliminaAppuntamento: (p) => { if (!trovaAppuntamento(p.id)) throw new Error('Appuntamento non trovato: ' + p.id); rimuoviAppuntamento(p.id); return { eliminato: true }; },
+  creaProcedura: (p) => { if (!p.nome || !p.contenuto) throw new Error('Servono nome e contenuto.'); const n = aggiungiProceduraInterna({ categoria: p.categoria || 'Amministrazione studio', nome: p.nome, contenuto: p.contenuto, checklistDocumenti: p.checklistDocumenti || [], motiviAppuntamento: p.motiviAppuntamento || [] }); return { creata: true, id: n.id }; },
+  modificaProcedura: (p) => { if (!STATE.procedureInterne.find(x => x.id === p.id)) throw new Error('Procedura non trovata: ' + p.id); aggiornaProceduraInterna(p.id, p.patch || {}); return { aggiornata: true }; },
+  eliminaProcedura: (p) => { if (!STATE.procedureInterne.find(x => x.id === p.id)) throw new Error('Procedura non trovata: ' + p.id); eliminaProceduraInterna(p.id); return { eliminata: true }; },
+  creaAttivitaCatalogo: (p) => { if (!p.nome) throw new Error('Serve il nome.'); const n = aggiungiAttivitaCatalogo({ nome: p.nome, descrizione: p.descrizione || '', prezzo: p.prezzo != null ? Number(p.prezzo) : null, richiedeMandato: !!p.richiedeMandato }); return { creata: true, id: n && n.id }; },
   modificaPreventivo: (p) => { if (!STATE.preventivi.find(x => x.id === p.id)) throw new Error('Preventivo/mandato non trovato: ' + p.id); aggiornaPreventivo(p.id, p.patch || {}); return { aggiornato: true }; },
   eliminaPreventivo: (p) => { if (!STATE.preventivi.find(x => x.id === p.id)) throw new Error('Preventivo/mandato non trovato: ' + p.id); eliminaPreventivo(p.id); return { eliminato: true }; },
 };
@@ -13356,7 +13364,7 @@ function renderImpostazioniDati() {
   return `
   <div class="card">
     <div class="section-title">Backup e ripristino</div>
-    <div class="helptext" style="margin-bottom:12px;">Tutti i dati vivono solo nel browser (localStorage) — <b>cache cancellata o app reinstallata = dati persi</b>. Esporta un backup regolarmente.</div>
+    <div class="helptext" style="margin-bottom:12px;">Tutti i dati sono sul server dello studio (dati-studio.json) con copie automatiche alle 8/12/16 e a ogni avvio (ultimi 30 giorni, vedi sotto). Fai comunque ogni tanto un export e conservane una copia su un altro disco/cloud.</div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;">
       <button class="btn primary" data-action="esporta-backup">⬇ Esporta backup JSON</button>
       <label class="btn" style="margin:0;">⬆ Importa backup JSON<input type="file" accept="application/json" id="importFile" style="display:none;" data-action="importa-backup"></label>
@@ -16090,6 +16098,24 @@ function esportaVistaMCP() {
     preventivi: preventiviOut,
     modelliDocumento: modelliDocumentoOut,
     catalogoAttivitaStudio: catalogoAttivitaOut,
+    appuntamenti: (STATE.appuntamenti || []).map(a => ({
+      id: a.id, clienteId: a.clienteId || null, cliente: a.clienteId ? nomeCliente(a.clienteId) : null, data: a.data, ora: a.ora || '',
+      durataMinuti: a.durataMinuti, oggetto: a.oggetto, note: a.note || '', stato: a.stato, consulente: a.consulente || null,
+      motivo: a.motivo || null, procedureId: a.procedureId || null, prenotatoDaSegreteria: !!a.prenotatoDaSegreteria,
+    })),
+    procedureInterne: (STATE.procedureInterne || []).map(p => ({
+      id: p.id, categoria: p.categoria, nome: p.nome, contenuto: p.contenuto, checklistDocumenti: p.checklistDocumenti || [],
+      attivo: !!p.attivo, motiviAppuntamento: p.motiviAppuntamento || [],
+    })),
+    // Solo metadati dei documenti (mai il contenuto dei file).
+    documenti: (STATE.documenti || []).map(d => ({
+      id: d.id, clienteId: d.clienteId, cliente: nomeCliente(d.clienteId), categoria: d.categoria, nome: d.nome,
+      dataCaricamento: d.dataCaricamento || null, dataScadenza: d.dataScadenza || null,
+    })),
+    ritenute: (STATE.ritenuteRighe || []).map(r => ({
+      id: r.id, clienteId: r.clienteId, cliente: nomeCliente(r.clienteId), dataFattura: r.dataFattura, dataPagamento: r.dataPagamento || null,
+      numeroFattura: r.numeroFattura, percipiente: r.percipiente, importo: r.importo, stato: r.statoRit,
+    })),
   };
 }
 

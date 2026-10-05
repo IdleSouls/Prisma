@@ -1,0 +1,27 @@
+{
+  "versione": "1.1.0",
+  "note": "Aggiornamenti verificati con sha256, backup di documenti e configurazione, nuovi strumenti MCP (appuntamenti, procedure, documenti, ritenute, tariffario), sezione Guide, fix procedura appuntamento.",
+  "richiedeNpmInstall": false,
+  "file": [
+    {
+      "nome": "gestionale.htm",
+      "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale.htm",
+      "sha256": "735a2310bcf55599a6759ac4c6d8af171066694e14dec3a3bbf2177ad7011a1a"
+    },
+    {
+      "nome": "server.js",
+      "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/server.js",
+      "sha256": "f4ea0650c8ef0d00fa6e38e63fb819d3bf3ea47f28951825eee9bafee00a9f1c"
+    },
+    {
+      "nome": "portale-cliente.htm",
+      "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/portale-cliente.htm",
+      "sha256": "a60a1e1a5b7f34aa3de565de193bcc428688ba3ac9f9385dceaaa49f119f567d"
+    },
+    {
+      "nome": "portale-sw.js",
+      "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/portale-sw.js",
+      "sha256": "2ef5a0fe81a09f871a56489a86ae276f0e2f123d845afa484ff703650b47b24e"
+    }
+  ]
+}

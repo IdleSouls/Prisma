@@ -43,6 +43,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
+const vm = require('vm');
 const { exec, execFile, execFileSync, spawn } = require('child_process');
 
 // Presenza operatori online (task Matteo: pallini online/offline in chat) - stato SOLO in memoria,
@@ -409,14 +410,14 @@ scriviLog('Avvio di Prisma...');
 // L'URL sotto va sostituito con quello reale del repository di Matteo (una volta creato) - finché
 // resta questo placeholder il controllo fallisce con un messaggio chiaro invece di un errore
 // tecnico, non c'è nessun crash.
-const URL_MANIFESTO_AGGIORNAMENTI = 'https://raw.githubusercontent.com/IdleSouls/Prisma/main/aggiornamenti/versione.json';
+const URL_MANIFESTO_AGGIORNAMENTI = 'https://raw.githubusercontent.com/IdleSouls/Prisma/main/versione.json';
 // Cambiala qui a ogni nuova versione pubblicata (deve combaciare con quella scritta nel
 // "versione.json" caricato su GitHub, altrimenti il confronto non ha senso).
-const VERSIONE_LOCALE = '1.0.0';
+const VERSIONE_LOCALE = '1.1.0';
 // Solo questi file possono essere sovrascritti da un aggiornamento - mai un nome libero/a piacere
 // del manifesto, per non correre il rischio (anche solo teorico, es. account GitHub compromesso)
 // di far scrivere un file arbitrario altrove sul PC del cliente.
-const FILE_AGGIORNABILI = ['gestionale.htm', 'server.js', 'portale-cliente.htm'];
+const FILE_AGGIORNABILI = ['gestionale.htm', 'server.js', 'portale-cliente.htm', 'portale-sw.js'];
 // Anche l'host da cui si scaricano i file va verificato, non solo il nome: evita che un manifesto
 // alterato reindirizzi il download altrove.
 const HOST_CONSENTITO_AGGIORNAMENTI = 'raw.githubusercontent.com';
@@ -478,7 +479,12 @@ async function applicaAggiornamento(manifesto) {
   // GitHub compromesso) cancella l'unica copia buona senza lasciare nulla da cui tornare indietro.
   eseguiBackup('prima di un aggiornamento verso la versione ' + manifesto.versione);
   scriviLog('Aggiornamento in corso verso la versione ' + manifesto.versione + '...');
-  const risultati = [];
+  // Fase 1: scarica e VERIFICA tutto prima di toccare un solo file (un aggiornamento a metà, con
+  // gestionale.htm nuovo e server.js vecchio, è peggio di nessun aggiornamento). Ogni file deve
+  // avere lo sha256 nel manifesto: se non combacia (manifesto e file non ancora allineati sulla
+  // CDN di GitHub, o file alterato) si annulla tutto e si riprova più tardi. I .js devono anche
+  // compilare: un server.js con errore di sintassi non deve mai sostituire quello funzionante.
+  const scaricati = [];
   for (const voce of manifesto.file) {
     if (!voce || typeof voce.nome !== 'string' || typeof voce.url !== 'string') continue;
     if (!FILE_AGGIORNABILI.includes(voce.nome)) {
@@ -491,16 +497,31 @@ async function applicaAggiornamento(manifesto) {
       scriviLog('Aggiornamento: ignorato "' + voce.nome + '", host non consentito (' + u.hostname + ').');
       continue;
     }
+    if (typeof voce.sha256 !== 'string' || !/^[0-9a-f]{64}$/i.test(voce.sha256)) {
+      throw new Error('Il manifesto non riporta lo sha256 di ' + voce.nome + ': aggiornamento annullato per sicurezza.');
+    }
     const contenuto = await scaricaTesto(voce.url, 20000);
     if (!contenuto || contenuto.length === 0) { throw new Error('Download vuoto per ' + voce.nome + '.'); }
-    // Scrive prima su file temporaneo e sostituisce solo dopo: se il download si interrompe a metà,
-    // il file live non viene mai lasciato a metà scritto (stesso principio del salvataggio dati).
-    const destinazione = path.join(CARTELLA, voce.nome);
+    const hash = crypto.createHash('sha256').update(contenuto).digest('hex');
+    if (hash.toLowerCase() !== voce.sha256.toLowerCase()) {
+      throw new Error('Il file ' + voce.nome + ' scaricato non combacia con il manifesto (sha256 diverso): aggiornamento annullato, riprova tra qualche minuto.');
+    }
+    if (/\.js$/.test(voce.nome)) {
+      try { new vm.Script(contenuto.toString('utf8'), { filename: voce.nome }); }
+      catch (err) { throw new Error('Il file ' + voce.nome + ' non è JavaScript valido (' + err.message + '): aggiornamento annullato.'); }
+    }
+    scaricati.push({ nome: voce.nome, contenuto });
+  }
+  if (!scaricati.length) throw new Error('Il manifesto non contiene nessun file aggiornabile.');
+  // Fase 2: scrittura (prima su temporaneo, poi rename: mai un file lasciato a metà).
+  const risultati = [];
+  for (const f of scaricati) {
+    const destinazione = path.join(CARTELLA, f.nome);
     const temporaneo = destinazione + '.aggiornamento-tmp';
-    fs.writeFileSync(temporaneo, contenuto);
+    fs.writeFileSync(temporaneo, f.contenuto);
     fs.renameSync(temporaneo, destinazione);
-    risultati.push(voce.nome);
-    scriviLog('Aggiornamento: scritto "' + voce.nome + '" (' + contenuto.length + ' byte).');
+    risultati.push(f.nome);
+    scriviLog('Aggiornamento: scritto "' + f.nome + '" (' + f.contenuto.length + ' byte).');
   }
   scriviLog('Aggiornamento completato: ' + risultati.join(', ') + '.');
   return risultati;
@@ -1161,7 +1182,7 @@ function elencoBackup() {
 // dati-studio.json - stesso ritmo (8/12/16 + avvio), stessa rotazione 30 giorni, stessa dedup
 // "non ricreare se identico all'ultimo". Un ripristino da qui riporta ANCHE il codice a un punto
 // nel tempo preciso, non solo i dati.
-const FILE_PIATTAFORMA_BACKUP = ['gestionale.htm', 'server.js', 'portale-cliente.htm'];
+const FILE_PIATTAFORMA_BACKUP = ['gestionale.htm', 'server.js', 'portale-cliente.htm', 'portale-sw.js'];
 
 function pulisciBackupVecchi() {
   try {
@@ -1201,6 +1222,41 @@ function eseguiBackupPiattaforma(motivo, suffisso) {
   if (creati.length) console.log(`[gestionale] Backup piattaforma creato (${motivo}): ${creati.map(n => 'backup/' + n).join(', ')}`);
 }
 
+// Copia di sicurezza dei documenti dei clienti (cartella documenti-clienti/) e dei file di
+// configurazione: finora il backup copriva solo dati-studio.json e il codice. Qui è uno "specchio
+// cumulativo": si copia solo ciò che manca o è cambiato e NON si cancella mai nulla, così anche un
+// documento eliminato per sbaglio dall'app resta recuperabile da backup/documenti-clienti/.
+const FILE_CONFIG_BACKUP = ['accesso-esterno.json', 'push-abbonamenti.json', 'responsabili-password.json', 'license.json', 'package.json'];
+function specchiaCartella(origine, destinazione) {
+  if (!fs.existsSync(origine)) return 0;
+  let copiati = 0;
+  fs.mkdirSync(destinazione, { recursive: true });
+  for (const voce of fs.readdirSync(origine, { withFileTypes: true })) {
+    const o = path.join(origine, voce.name), d = path.join(destinazione, voce.name);
+    if (voce.isDirectory()) { copiati += specchiaCartella(o, d); continue; }
+    if (!voce.isFile()) continue;
+    const so = fs.statSync(o);
+    if (fs.existsSync(d)) { const sd = fs.statSync(d); if (sd.size === so.size && sd.mtimeMs >= so.mtimeMs) continue; }
+    fs.copyFileSync(o, d);
+    copiati++;
+  }
+  return copiati;
+}
+function eseguiBackupDocumentiEConfig() {
+  try {
+    const n = specchiaCartella(path.join(CARTELLA, 'documenti-clienti'), path.join(CARTELLA_BACKUP, 'documenti-clienti'));
+    const cfg = path.join(CARTELLA_BACKUP, 'config');
+    fs.mkdirSync(cfg, { recursive: true });
+    for (const f of FILE_CONFIG_BACKUP) {
+      const o = path.join(CARTELLA, f);
+      if (fs.existsSync(o)) fs.copyFileSync(o, path.join(cfg, f));
+    }
+    if (n) console.log(`[gestionale] Backup documenti clienti: ${n} file copiati in backup/documenti-clienti`);
+  } catch (err) {
+    console.error('[gestionale] Errore nel backup di documenti/configurazione:', err.message);
+  }
+}
+
 // motivo: solo per il log in console, non cambia il comportamento. Non crea un doppione se il
 // contenuto è identico all'ultimo backup salvato (es. giornata senza nessuna modifica) - evita di
 // riempire la cartella di copie inutili tenendo comunque uno storico reale quando qualcosa cambia.
@@ -1221,6 +1277,7 @@ function eseguiBackup(motivo) {
       }
     }
     eseguiBackupPiattaforma(motivo, suffisso);
+    eseguiBackupDocumentiEConfig();
     pulisciBackupVecchi();
   } catch (err) {
     console.error('[gestionale] Errore creando il backup:', err.message);

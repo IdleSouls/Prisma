@@ -588,5 +588,133 @@ export function creaServer(filePath, baseUrl) {
     async ({ annualeId, nomeSotto, patch }) => testoEsitoScrittura(await inviaComando(url, 'aggiornaSottoAdempimento', { annualeId, nomeSotto, patch }))
   );
 
+  // ---------- APPUNTAMENTI / PROCEDURE / DOCUMENTI / RITENUTE / CATALOGO (audit copertura) ----------
+  server.registerTool(
+    'elenco_appuntamenti',
+    {
+      title: 'Elenco appuntamenti',
+      description: 'Appuntamenti del calendario (data, ora, cliente, consulente, stato, procedura collegata). Filtri facoltativi: dal/al (YYYY-MM-DD), consulente.',
+      inputSchema: { dal: z.string().optional(), al: z.string().optional(), consulente: z.string().optional() },
+    },
+    async ({ dal, al, consulente }) => {
+      const { vista } = caricaVista(filePath);
+      let a = vista.appuntamenti || [];
+      if (dal) a = a.filter(x => x.data >= dal);
+      if (al) a = a.filter(x => x.data <= al);
+      if (consulente) a = a.filter(x => normalizza(x.consulente) === normalizza(consulente));
+      return testoJson(a.sort((x, y) => (x.data + x.ora).localeCompare(y.data + y.ora)));
+    }
+  );
+  server.registerTool(
+    'crea_appuntamento',
+    {
+      title: 'Crea appuntamento',
+      description: 'Crea un appuntamento nel calendario. Richiede il gestionale aperto via server.js.',
+      inputSchema: {
+        data: z.string().describe('YYYY-MM-DD'), ora: z.string().optional().describe('HH:MM'), durataMinuti: z.number().optional(),
+        clienteId: z.string().optional(), oggetto: z.string().optional(), note: z.string().optional(), consulente: z.string().optional(),
+      },
+    },
+    async (campi) => testoEsitoScrittura(await inviaComando(url, 'creaAppuntamento', campi))
+  );
+  server.registerTool(
+    'modifica_appuntamento',
+    {
+      title: 'Modifica appuntamento',
+      description: 'Aggiorna solo i campi indicati di un appuntamento (data, ora, oggetto, stato, consulente, note...). Per "nessuna procedura collegata" usa procedureId "__nessuna__".',
+      inputSchema: { id: z.string(), patch: z.record(z.unknown()).describe(DESCR_PATCH_GENERICO) },
+    },
+    async ({ id, patch }) => testoEsitoScrittura(await inviaComando(url, 'modificaAppuntamento', { id, patch }))
+  );
+  server.registerTool(
+    'elimina_appuntamento',
+    {
+      title: 'Elimina appuntamento',
+      description: 'Elimina definitivamente un appuntamento.',
+      inputSchema: { id: z.string(), conferma: z.literal(true).describe(descrConferma('quale appuntamento, data e cliente')) },
+    },
+    async ({ id }) => testoEsitoScrittura(await inviaComando(url, 'eliminaAppuntamento', { id }))
+  );
+
+  server.registerTool(
+    'elenco_procedure',
+    {
+      title: 'Procedure interne',
+      description: 'Procedure interne dello studio (passo-passo + checklist documenti).',
+      inputSchema: { cerca: z.string().optional() },
+    },
+    async ({ cerca }) => {
+      const { vista } = caricaVista(filePath);
+      let p = vista.procedureInterne || [];
+      if (cerca) p = p.filter(x => normalizza(x.nome + ' ' + x.categoria).includes(normalizza(cerca)));
+      return testoJson(p);
+    }
+  );
+  server.registerTool(
+    'crea_procedura',
+    {
+      title: 'Crea procedura interna',
+      description: 'Crea una procedura interna. Richiede il gestionale aperto via server.js.',
+      inputSchema: { nome: z.string().min(1), contenuto: z.string().min(1), categoria: z.string().optional(), checklistDocumenti: z.array(z.string()).optional(), motiviAppuntamento: z.array(z.string()).optional() },
+    },
+    async (campi) => testoEsitoScrittura(await inviaComando(url, 'creaProcedura', campi))
+  );
+  server.registerTool(
+    'modifica_procedura',
+    {
+      title: 'Modifica procedura interna',
+      description: 'Aggiorna solo i campi indicati di una procedura interna.',
+      inputSchema: { id: z.string(), patch: z.record(z.unknown()).describe(DESCR_PATCH_GENERICO) },
+    },
+    async ({ id, patch }) => testoEsitoScrittura(await inviaComando(url, 'modificaProcedura', { id, patch }))
+  );
+  server.registerTool(
+    'elimina_procedura',
+    {
+      title: 'Elimina procedura interna',
+      description: 'Elimina definitivamente una procedura interna.',
+      inputSchema: { id: z.string(), conferma: z.literal(true).describe(descrConferma('quale procedura, nome incluso')) },
+    },
+    async ({ id }) => testoEsitoScrittura(await inviaComando(url, 'eliminaProcedura', { id }))
+  );
+
+  server.registerTool(
+    'elenco_documenti',
+    {
+      title: 'Documenti dei clienti (solo metadati)',
+      description: 'Elenco dei documenti archiviati (cliente, categoria, nome, date). Non restituisce mai il contenuto dei file.',
+      inputSchema: { cliente: z.string().optional().describe('Nome o id del cliente.') },
+    },
+    async ({ cliente }) => {
+      const { vista } = caricaVista(filePath);
+      let d = vista.documenti || [];
+      if (cliente) { const c = trovaCliente(vista, cliente); if (!c) return testoJson({ errore: 'Cliente non trovato: ' + cliente }); d = d.filter(x => x.clienteId === c.id); }
+      return testoJson(d);
+    }
+  );
+  server.registerTool(
+    'elenco_ritenute',
+    {
+      title: 'Ritenute d\'acconto',
+      description: 'Fatture con ritenuta d\'acconto per cliente e stato (da pagare/segnalata/pagata...).',
+      inputSchema: { cliente: z.string().optional() },
+    },
+    async ({ cliente }) => {
+      const { vista } = caricaVista(filePath);
+      let r = vista.ritenute || [];
+      if (cliente) { const c = trovaCliente(vista, cliente); if (!c) return testoJson({ errore: 'Cliente non trovato: ' + cliente }); r = r.filter(x => x.clienteId === c.id); }
+      return testoJson(r);
+    }
+  );
+  server.registerTool(
+    'crea_attivita_catalogo',
+    {
+      title: 'Aggiungi attività al tariffario',
+      description: 'Aggiunge una voce al catalogo attività/tariffario dello studio.',
+      inputSchema: { nome: z.string().min(1), descrizione: z.string().optional(), prezzo: z.number().optional(), richiedeMandato: z.boolean().optional() },
+    },
+    async (campi) => testoEsitoScrittura(await inviaComando(url, 'creaAttivitaCatalogo', campi))
+  );
+
   return server;
 }

@@ -24,7 +24,7 @@ async function main() {
   await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
 
   const tools = await client.listTools();
-  assert(tools.tools.length === 30, `attesi 30 tool esposti (9 lettura + 21 scrittura), trovati ${tools.tools.length}`);
+  assert(tools.tools.length === 41, `attesi 41 tool esposti (13 lettura + 28 scrittura), trovati ${tools.tools.length}`);
   console.log('=== listTools() OK:', tools.tools.map(t => t.name).join(', '));
 
   // stato_generale: coerente col file grezzo
