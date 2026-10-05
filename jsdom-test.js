@@ -2004,6 +2004,19 @@ async function main() {
   // motivo di default "Apertura nuova attività": il campo "Altro" resta nascosto finché non si sceglie "Altro"
   assert(q('#prenMotivoAltroWrap').style.display === 'none', 'il campo "Specifica" (motivo Altro) non dovrebbe essere visibile per un motivo diverso da "Altro"');
 
+  // Icona orologio accanto ai campi orario: apre il selettore nativo e l'orario scelto finisce nel campo
+  {
+    const btnOrologio = q('.btn-orologio[data-target="prenOraInizio"]');
+    assert(btnOrologio, 'ora inizio: manca l\'icona dell\'orologio accanto al campo');
+    assert(q('.btn-orologio[data-target="prenOraFine"]'), 'ora fine: manca l\'icona dell\'orologio accanto al campo');
+    click(btnOrologio); // non deve lanciare errori (jsdom non ha showPicker: ripiego su focus/click)
+    const picker = btnOrologio.parentElement.querySelector('.orario-picker-nascosto');
+    picker.value = '11:45';
+    picker.dispatchEvent(new window.Event('change', { bubbles: true }));
+    await wait(20);
+    assert(q('#prenOraInizio').value === '11:45', 'scegliendo un orario dal selettore, il campo di testo deve aggiornarsi');
+    setVal(q('#prenOraInizio'), '');
+  }
   setVal(q('#prenData'), '2026-11-10');
   setVal(q('#prenOraInizio'), '15:30');
   setVal(q('#prenTelefono'), '0444 999888');

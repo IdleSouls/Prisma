@@ -255,6 +255,10 @@ tr.riga-selezionata{background:var(--blu-light);}
 /* Campo orario testuale (task #171): niente min-width:150px ereditato da sopra - un orario sono 5
    caratteri, un campo largo quanto un nome cliente avrebbe solo reintrodotto la "zona morta" a
    destra delle cifre di cui si lamentava Matteo con il vecchio input type="time". */
+.orario-wrap{position:relative;display:inline-flex;align-items:center;gap:6px;}
+.btn-orologio{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border:1px solid var(--border);border-radius:6px;background:#fff;color:var(--text-mut,#6b7385);cursor:pointer;padding:0;}
+.btn-orologio:hover{background:var(--blu-light,#e7eefc);color:var(--blu-mid,#2e63c7);}
+.orario-picker-nascosto{position:absolute;left:0;bottom:0;width:1px;height:1px;opacity:0;pointer-events:none;border:0;padding:0;}
 .campo-orario{min-width:0;width:78px;text-align:center;font-variant-numeric:tabular-nums;letter-spacing:.02em;}
 .field textarea{min-width:260px;}
 .field.grow input, .field.grow select{min-width:220px;}
@@ -11271,7 +11275,14 @@ function campoOrarioHtml(id, valore, opts) {
   opts = opts || {};
   const azione = opts.azione || 'orario-autoformat';
   const extra = opts.extra || '';
-  return `<input type="text" inputmode="numeric" class="campo-orario" id="${id}" value="${escapeHtml(valore || '')}" placeholder="--:--" maxlength="5" autocomplete="off" data-action="${azione}" ${extra}>`;
+  // Digitazione da tastiera (campo di testo) + icona orologio che apre il selettore nativo (Matteo:
+  // "lasciamo l'icona dell'orologio nelle caselle di ora inizio e ora fine, così cliccando
+  // sull'orologio si apre la finestra per selezionare l'orario"). Il selettore è un <input type=time>
+  // nascosto: quando si sceglie, il valore passa nel campo di testo e si lancia 'change' su di esso, così
+  // le azioni esistenti (anche l'auto-salvataggio dei modali già aperti) funzionano identiche.
+  return `<span class="orario-wrap"><input type="text" inputmode="numeric" class="campo-orario" id="${id}" value="${escapeHtml(valore || '')}" placeholder="--:--" maxlength="5" autocomplete="off" data-action="${azione}" ${extra}>`
+    + `<button type="button" class="btn-orologio" data-action="orario-apri-picker" data-target="${id}" title="Scegli l'orario" aria-label="Scegli l'orario"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/></svg></button>`
+    + `<input type="time" class="orario-picker-nascosto" tabindex="-1" aria-hidden="true" data-action="orario-picker-scelto" data-target="${id}"></span>`;
 }
 function formattaInputOrario(el) {
   let v = el.value.replace(/[^0-9]/g, '').slice(0, 4);
@@ -13963,6 +13974,14 @@ function onClickDelegato(e) {
 
   switch (action) {
     case 'nav-toggle-gruppo': toggleNavGruppo(el.dataset.gruppo); renderNav(); break;
+    case 'orario-apri-picker': {
+      const campo = document.getElementById(el.dataset.target);
+      const picker = el.parentElement && el.parentElement.querySelector('.orario-picker-nascosto');
+      if (!campo || !picker) break;
+      picker.value = orarioValido(campo.value) ? campo.value.trim() : '';
+      try { if (typeof picker.showPicker === 'function') picker.showPicker(); else { picker.focus(); picker.click(); } } catch (e) { campo.focus(); }
+      break;
+    }
     case 'nuovo-cliente': modalCliente(null); break;
     case 'apri-cliente': chiudiModal(); SCHEDA_CLIENTE = id; setView('schedacliente'); break;
     case 'modifica-cliente': modalCliente(id); break;
@@ -15464,6 +15483,15 @@ function onChangeDelegato(e) {
       toast(el.checked ? 'Tab Contabilità riattivato.' : 'Tab Contabilità sospeso: resta nel menu solo se lo riattivi da qui, i dati restano tutti salvati.');
       break;
     // Task #214: accende/spegne un modulo - vedi MODULI/operatorePuoVedere. Solo flag in STATE.meta.
+    // Selettore orario nativo (icona orologio): copia l'orario scelto nel campo di testo e lo "cambia"
+    // come se l'avessi digitato, così vale per qualunque azione agganciata a quel campo.
+    case 'orario-picker-scelto': {
+      const campo = document.getElementById(el.dataset.target);
+      if (!campo || !el.value) break;
+      campo.value = el.value;
+      campo.dispatchEvent(new Event('change', { bubbles: true }));
+      break;
+    }
     case 'toggle-modulo': {
       const id = el.dataset.modulo;
       if (!MODULI.some(m => m.id === id)) break;
