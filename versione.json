@@ -1,17 +1,17 @@
 {
-  "versione": "1.1.0",
-  "note": "Aggiornamenti verificati con sha256, backup di documenti e configurazione, nuovi strumenti MCP (appuntamenti, procedure, documenti, ritenute, tariffario), sezione Guide, fix procedura appuntamento.",
+  "versione": "1.1.1",
+  "note": "Editor documenti visuale (foglio A4, barra strumenti, campi a chip), stampa/Word con carta intestata, fix scroll chat.",
   "richiedeNpmInstall": false,
   "file": [
     {
       "nome": "gestionale.htm",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale.htm",
-      "sha256": "735a2310bcf55599a6759ac4c6d8af171066694e14dec3a3bbf2177ad7011a1a"
+      "sha256": "14eec9880df42d20912b4bc10eec3a4d6cea36a0e0cfb91ed0e8904d3e69e567"
     },
     {
       "nome": "server.js",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/server.js",
-      "sha256": "f4ea0650c8ef0d00fa6e38e63fb819d3bf3ea47f28951825eee9bafee00a9f1c"
+      "sha256": "32002a054c8e9942e2e8cf07dfd3bba4392a5d32aa990ed4369d8304b7596f77"
     },
     {
       "nome": "portale-cliente.htm",

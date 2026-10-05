@@ -1619,7 +1619,11 @@ async function main() {
   // dettaglio: l'anteprima (editabile) mostra lo stesso testo salvato, poi cambia stato dal select del dettaglio
   click(q(`[data-action="apri-preventivo"][data-id="${prevCreato.id}"]`));
   await wait(20);
-  assert(q('#prevAnteprimaCorpo') && q('#prevAnteprimaCorpo').value === prevCreato.corpo, 'l\'anteprima del dettaglio non mostra il testo salvato sul documento');
+  {
+    const rt = window.editorDocumentoToTesto(q('#prevAnteprimaCorpo')), orig = prevCreato.corpo.replace(/\s+$/, '');
+    let i = 0; while (i < rt.length && rt[i] === orig[i]) i++;
+    assert(rt === orig, 'round-trip editor diverso alla pos ' + i + ': orig=' + JSON.stringify(orig.slice(Math.max(0, i - 20), i + 30)) + ' rt=' + JSON.stringify(rt.slice(Math.max(0, i - 20), i + 30)));
+  }
   assert(q('[data-action="preventivo-rigenera"]'), 'il pulsante "Rigenera dal modello" dovrebbe essere presente: il modello di origine esiste ancora');
   setVal(q('[data-action="prev-cambia-stato"]'), 'Accettato');
   await wait(20);
@@ -1634,7 +1638,7 @@ async function main() {
   // manuale deve sparire dopo "Rigenera dal modello" (con conferma, mockata a true in questo test)
   click(q(`[data-action="apri-preventivo"][data-id="${prevCreato.id}"]`));
   await wait(20);
-  setVal(q('#prevAnteprimaCorpo'), prevCreato.corpo + '\n\nP.S. ritocco manuale di prova.');
+  q('#prevAnteprimaCorpo').insertAdjacentHTML('beforeend', '<div class="d-riga"><br></div><div class="d-riga">P.S. ritocco manuale di prova.</div>');
   click(q('[data-action="preventivo-salva-testo"]'));
   await wait(20);
   assert(window.getSTATE().preventivi.find(p => p.id === prevCreato.id).corpo.includes('P.S. ritocco manuale di prova.'), 'il ritocco manuale del testo ("Salva testo") non è stato salvato in STATE');
@@ -1803,12 +1807,27 @@ async function main() {
   // quindi qui basta verificare che il testo RTF generato sia corretto (intestazione, euristica di
   // grassetto sui titoli in maiuscolo, escape di graffe e caratteri accentati).
   {
-    const rtf = window.generaRtfDaTesto('Studio Rossi\nSpett.le Cliente\n\nCONDIZIONI GENERALI\nTesto normale con {graffe} e caratteri accentati.');
+    const rtf = window.generaRtfDaTesto('Spett.le Cliente\n\nCONDIZIONI GENERALI\n## Sezione\n**grassetto** e *corsivo*\n- voce\nTesto normale con {graffe} e caratteri accentati.');
     assert(rtf.startsWith('{\\rtf1'), 'il testo RTF generato non ha l\'intestazione RTF corretta');
-    assert(rtf.includes('{\\b\\fs26 Studio Rossi}'), 'la prima riga (nome studio) dovrebbe essere in grassetto nell\'RTF');
-    assert(rtf.includes('{\\b\\fs26 CONDIZIONI GENERALI}'), 'una riga tutta maiuscola dovrebbe diventare un titolo in grassetto nell\'RTF');
+    assert(rtf.includes('\\b\\fs30') , 'l\'intestazione dello studio dovrebbe essere in grassetto nell\'RTF');
+    assert(rtf.includes('{\\pard\\sb200\\b\\fs24 CONDIZIONI GENERALI') , 'una riga tutta maiuscola dovrebbe diventare un titolo in grassetto nell\'RTF');
+    assert(rtf.includes('{\\b grassetto}') && rtf.includes('{\\i corsivo}') && rtf.includes('\\bullet'), 'la marcatura (grassetto/corsivo/elenco) non è stata convertita in RTF');
     assert(!rtf.includes('{graffe}') && rtf.includes('\\{graffe\\}'), 'le graffe nel testo originale devono essere escapate per non rompere la sintassi RTF');
     console.log('=== Task #138: generazione RTF per l\'esportazione Word — intestazione, grassetto sui titoli, escape delle graffe OK');
+  }
+
+  // Task #223: motore documenti - marcatura leggera, retrocompatibilità coi modelli vecchi, carta intestata
+  {
+    const html = window.testoDocumentoToHtml('# Titolo\n\nCONDIZIONI GENERALI\n**grassetto** e *corsivo*\n- uno\n- due\n^^ centrato\n---', 'lettura');
+    assert(html.includes('<h1>Titolo</h1>') && html.includes('<h2>CONDIZIONI GENERALI</h2>'), 'titoli (marcati e in maiuscolo) non resi come tali');
+    assert(html.includes('<strong>grassetto</strong>') && html.includes('<em>corsivo</em>') && html.includes('<ul><li>uno</li><li>due</li></ul>') && html.includes('text-align:center') && html.includes('<hr>'), 'marcatura inline/elenco/centrato/riga non resa correttamente');
+    const nomeStudio = window.getSTATE().meta.studioNome;
+    const stampa = window.documentoStampaHtml({ oggetto: 'Prova', categoria: 'Preventivo', corpo: nomeStudio + '\nC.F. 123\n\nCorpo del documento' });
+    assert(stampa.includes('@page') && stampa.includes('Corpo del documento'), 'la pagina di stampa non contiene stile A4 o corpo');
+    assert(stampa.split(nomeStudio).length - 1 === 1, 'il blocco di intestazione vecchio nel testo non è stato sostituito dalla carta intestata (nome studio duplicato)');
+    const senza = window.testoDocumentoSenzaMarcatura('# T\n**b** *i*\n- x');
+    assert(senza === 'T\nb i\nx', 'testoDocumentoSenzaMarcatura non ha tolto la marcatura: ' + JSON.stringify(senza));
+    console.log('=== Task #223: motore documenti (marcatura, retrocompatibilità, carta intestata, export senza marcatura) OK');
   }
 
   // ---------- 8d-quinquies) Modelli documenti: pagina di gestione CRUD (task #124) ----------
@@ -1832,19 +1851,24 @@ async function main() {
 
   setVal(q('#modCategoria'), 'Preventivo'); // stessa categoria del modello predefinito esistente
   setVal(q('#modNome'), 'Preventivo di prova (test)');
-  setVal(q('#modCorpo'), 'Testo iniziale di prova per {{cliente.ragioneSociale}}, oggetto: {{oggetto}}, nota libera: {{notaLibera}}.');
+  // Task #223: l'editor è un foglio visuale (contenteditable). Si imposta l'HTML a partire dal testo
+  // marcato, come farebbe il caricamento di un modello, poi si verifica il round-trip e i chip.
+  q('#modCorpo').innerHTML = window.testoDocumentoToHtml('Testo iniziale di prova per {{cliente.ragioneSociale}}, oggetto: {{oggetto}}, nota libera: {{notaLibera}}.', 'editor');
   await wait(20);
-  // Task #175: il testo digitato resta invariato (il formato salvato non cambia, solo l'aspetto)
-  // e il backdrop sotto la textarea mostra gli stessi segnaposto avvolti in <mark> colorati.
-  assert(q('#modCorpo').value === 'Testo iniziale di prova per {{cliente.ragioneSociale}}, oggetto: {{oggetto}}, nota libera: {{notaLibera}}.', 'il testo del modello non dovrebbe essere alterato dall\'evidenziazione visiva dei segnaposto');
-  const backdropIniziale = q('#modCorpoHighlight');
-  assert(backdropIniziale, 'manca il div di evidenziazione (#modCorpoHighlight) accanto alla textarea del modello (task #175)');
-  assert(backdropIniziale.querySelectorAll('mark').length === 3, `attesi 3 segnaposto evidenziati (<mark>) nel backdrop, trovati ${backdropIniziale.querySelectorAll('mark').length}`);
-  assert(backdropIniziale.innerHTML.includes('<mark>{{cliente.ragioneSociale}}</mark>'), 'il segnaposto {{cliente.ragioneSociale}} non risulta evidenziato nel backdrop');
-  click(q('[data-action="modello-inserisci-placeholder"][data-chiave="studio.nome"]'));
+  assert(q('#modCorpo').getAttribute('contenteditable') === 'true', 'l\'editor del modello dovrebbe essere un foglio contenteditable (task #223)');
+  assert(q('#modCorpo').querySelectorAll('.campo-chip').length === 3, `attesi 3 chip campo nel foglio, trovati ${q('#modCorpo').querySelectorAll('.campo-chip').length}`);
+  assert(q('#modCorpo').querySelectorAll('.campo-chip.custom').length === 1, 'solo "nota libera" dovrebbe essere un chip "da compilare" (custom)');
+  assert(window.editorDocumentoToTesto(q('#modCorpo')) === 'Testo iniziale di prova per {{cliente.ragioneSociale}}, oggetto: {{oggetto}}, nota libera: {{notaLibera}}.', 'il round-trip editor -> testo ha alterato il modello');
+  assert(q('.doc-toolbar [data-cmd="bold"]') && q('.doc-toolbar [data-cmd="h2"]') && q('.doc-toolbar [data-cmd="ul"]'), 'manca la barra strumenti di formattazione');
+  click(q('[data-action="doc-campo"][data-chiave="studio.nome"]'));
   await wait(20);
-  assert(q('#modCorpo').value.includes('{{studio.nome}}'), 'il pulsante di inserimento rapido del segnaposto non ha aggiunto il token nel testo del modello');
-  assert(q('#modCorpoHighlight').innerHTML.includes('<mark>{{studio.nome}}</mark>'), 'il backdrop non si è aggiornato dopo l\'inserimento rapido del segnaposto (evento input sintetico mancante?)');
+  assert(window.editorDocumentoToTesto(q('#modCorpo')).includes('{{studio.nome}}'), 'il pulsante di inserimento rapido del campo non ha aggiunto il chip nel foglio');
+  setVal(q('#docNuovoCampoNome'), 'Data inizio incarico');
+  click(q('[data-action="doc-campo-nuovo"]'));
+  await wait(20);
+  assert(window.editorDocumentoToTesto(q('#modCorpo')).includes('{{dataInizioIncarico}}'), 'il campo personalizzato "Data inizio incarico" non è stato inserito come {{dataInizioIncarico}}');
+  // si toglie il campo di prova per non alterare le verifiche successive sul modello
+  qa('#modCorpo .campo-chip').forEach(c => { if (c.getAttribute('data-chiave') === 'dataInizioIncarico') c.remove(); });
   setChecked(q('#modPredefinito'), true);
   click(q('[data-action="salva-modello"]'));
   await wait(20);
@@ -1856,7 +1880,7 @@ async function main() {
   assert(campiModelloTest.length === 1 && campiModelloTest[0] === 'notaLibera', `il modello di test dovrebbe esporre solo il campo personalizzato "notaLibera" (oggetto è riservato), trovati: ${campiModelloTest.join(', ')}`);
   const modelloPreventivoOriginale = window.getSTATE().modelliDocumento.find(m => m.nome === 'Preventivo standard');
   assert(modelloPreventivoOriginale && modelloPreventivoOriginale.predefinito === false, 'il modello "Preventivo standard" dovrebbe aver perso il flag predefinito a favore del nuovo modello di test nella stessa categoria (un solo predefinito per categoria)');
-  console.log('=== Modelli documenti: creazione, validazione, datalist categorie, inserimento rapido segnaposto, esclusività del flag "predefinito" per categoria OK');
+  console.log('=== Modelli documenti: creazione, validazione, datalist categorie, editor visuale con chip e barra strumenti, esclusività del flag "predefinito" per categoria OK');
 
   // duplicazione
   click(q(`[data-action="duplica-modello"][data-id="${modelloTest.id}"]`));

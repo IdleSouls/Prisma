@@ -285,6 +285,29 @@ tr.riga-selezionata{background:var(--blu-light);}
    box-shadow, mai padding o font-weight) perché qualunque proprietà che cambia la larghezza del
    testo evidenziato rispetto al testo reale nella textarea fa risfasare tutto ciò che segue sulla
    stessa riga - questa è la seconda causa del disallineamento nello screenshot. */
+
+/* ===== Editor documenti (task #223): foglio A4 visuale al posto della "console di codice" ===== */
+.doc-toolbar{display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding:6px;background:#F3F5FA;border:1px solid var(--border);border-bottom:none;border-radius:8px 8px 0 0;}
+.doc-toolbar button{border:1px solid transparent;background:transparent;border-radius:6px;min-width:32px;height:30px;padding:0 8px;font-size:13px;cursor:pointer;color:#161B26;}
+.doc-toolbar button:hover{background:#fff;border-color:var(--border);}
+.doc-toolbar .sep{width:1px;height:20px;background:var(--border);margin:0 4px;}
+.doc-sfondo{background:#E9ECF3;border:1px solid var(--border);border-radius:0 0 8px 8px;padding:18px 12px;max-height:56vh;overflow:auto;}
+.doc-foglio{background:#fff;max-width:640px;margin:0 auto;padding:44px 52px;box-shadow:0 2px 14px rgba(20,30,60,.16);font-family:Georgia,'Times New Roman',serif;font-size:14px;line-height:1.65;color:#161B26;min-height:380px;}
+.doc-foglio:focus{outline:none;}
+.doc-foglio h1{font-size:20px;margin:0 0 10px;text-align:center;letter-spacing:.02em;}
+.doc-foglio h2{font-size:15px;margin:16px 0 6px;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid #d6dbe6;padding-bottom:3px;}
+.doc-foglio .d-riga{min-height:1.65em;}
+.doc-foglio ul{margin:4px 0 4px 22px;padding:0;}
+.doc-foglio hr{border:none;border-top:1px solid #c9cfdd;margin:12px 0;}
+.campo-chip{display:inline-block;background:#E7EEFC;color:#2E63C7;border:1px solid rgba(46,99,199,.3);border-radius:10px;padding:0 8px;font:600 12px/20px system-ui,Segoe UI,sans-serif;margin:0 1px;white-space:nowrap;user-select:all;}
+.campo-chip.custom{background:#FFF1DC;color:#9A5B00;border-color:rgba(154,91,0,.3);}
+.doc-campi{margin-top:10px;border:1px solid var(--border);border-radius:8px;background:#fff;}
+.doc-campi summary{cursor:pointer;padding:8px 12px;font-weight:600;font-size:13px;}
+.doc-campi-corpo{padding:4px 12px 12px;display:flex;flex-direction:column;gap:8px;}
+.doc-campi-gruppo{display:flex;flex-wrap:wrap;gap:6px;align-items:center;}
+.doc-campi-gruppo .tit{font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-mut);width:100%;}
+.doc-campi button.chip-btn{border:1px solid rgba(46,99,199,.3);background:#E7EEFC;color:#2E63C7;border-radius:12px;padding:2px 10px;font-size:12px;cursor:pointer;}
+.doc-campi button.chip-btn:hover{background:#d5e2fb;}
 .modello-editor-wrap{position:relative;font-family:Georgia,'Times New Roman',serif;font-size:13px;line-height:1.6;}
 .modello-editor-wrap .modello-editor-ta{position:relative;z-index:2;background:transparent!important;color:transparent;caret-color:#161B26;font:inherit;}
 .modello-editor-highlight{position:absolute;top:0;left:0;right:0;bottom:0;z-index:1;overflow:auto;white-space:pre-wrap;word-wrap:break-word;padding:7px 9px;border:1px solid transparent;border-radius:6px;pointer-events:none;color:#161B26;background:#fff;font:inherit;}
@@ -4329,6 +4352,14 @@ function render() {
   document.getElementById('pageTitle').textContent = title;
   document.getElementById('pageSub').textContent = sub;
   const content = document.getElementById('content');
+  // Task #196: ogni render() ricrea il DOM e la conversazione della chat ripartiva dal primo
+  // messaggio. Si ricorda la posizione (e se si era in fondo) PRIMA di ridisegnare, poi si
+  // ripristina: in fondo se si era in fondo o se è un'altra conversazione, altrimenti dov'eravamo.
+  const corpoChatPrima = VIEW === 'chat' ? document.getElementById('chatThreadCorpo') : null;
+  const statoScrollChat = corpoChatPrima ? {
+    con: CHAT_CON, top: corpoChatPrima.scrollTop,
+    inFondo: corpoChatPrima.scrollHeight - corpoChatPrima.scrollTop - corpoChatPrima.clientHeight < 40,
+  } : null;
   switch (VIEW) {
     case 'oggi': content.innerHTML = renderOggi(); break;
     case 'dashboard': content.innerHTML = renderDashboard(); break;
@@ -4358,6 +4389,13 @@ function render() {
     case 'impostazioni': content.innerHTML = renderImpostazioni(); break;
     case 'chat': content.innerHTML = renderChat(); break;
     default: content.innerHTML = '<div class="empty">Vista non trovata.</div>';
+  }
+  if (VIEW === 'chat') {
+    const corpoChat = document.getElementById('chatThreadCorpo');
+    if (corpoChat) {
+      if (statoScrollChat && statoScrollChat.con === CHAT_CON && !statoScrollChat.inFondo) corpoChat.scrollTop = statoScrollChat.top;
+      else corpoChat.scrollTop = corpoChat.scrollHeight;
+    }
   }
 }
 
@@ -6805,6 +6843,171 @@ function modalDocumento() {
 /* -------------------- RENDER: MODELLI DOCUMENTO (task #122-128) -------------------- */
 const CATEGORIE_MODELLO_BASE = ['Preventivo', 'Mandato professionale', 'Lettera di incarico', 'AML - Dichiarazione cliente', 'AML - Nota di accettazione incarico'];
 
+
+/* ============================================================================================
+   EDITOR DOCUMENTI (task #223, Matteo: "la finestra per modificare i modelli non è pratica, sembra
+   una console di codice e non è graficamente bello nel risultato").
+   Il testo di modelli e documenti RESTA una stringa (retrocompatibile con tutto ciò che già esiste:
+   MCP, backup, rigenera dal modello), ma con una marcatura leggera che l'utente non vede mai:
+     "# titolo"  "## sezione"  "**grassetto**"  "*corsivo*"  "- elenco"  "^^ centrato"  ">> a destra"  "---"
+   Un testo senza marcatura (tutti i modelli precedenti) si legge come prima: in più le righe tutte
+   in maiuscolo diventano titoli di sezione. L'editor è un foglio A4 contenteditable con barra
+   strumenti; i segnaposto {{così}} compaiono come "chip" colorati con un nome leggibile.
+   ============================================================================================ */
+function etichettaCampoDocumento(chiave) {
+  const a = PLACEHOLDER_AUTO_LEGENDA.find(x => x.chiave === chiave);
+  if (a) return a.label.replace(/\s*\(.*\)\s*$/, '');
+  const risv = { oggetto: 'Oggetto', importo: 'Importo', dataEmissione: 'Data emissione', validoFino: 'Valido fino al', dettaglioAttivita: 'Elenco attività' };
+  return risv[chiave] || etichettaCampoPersonalizzato(chiave);
+}
+function chipCampoHtml(chiave) {
+  const auto = PLACEHOLDER_AUTO_LEGENDA.some(x => x.chiave === chiave) || PLACEHOLDER_RISERVATI.includes(chiave);
+  return `<span class="campo-chip${auto ? '' : ' custom'}" contenteditable="false" data-chiave="${escapeHtml(chiave)}">${escapeHtml(etichettaCampoDocumento(chiave))}</span>`;
+}
+function inlineDocumentoHtml(riga, conChip) {
+  let t = escapeHtml(riga);
+  t = t.replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g, (m, k) => conChip ? chipCampoHtml(k) : '<span class="campo-vuoto">' + escapeHtml(etichettaCampoDocumento(k)) + '</span>');
+  t = t.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+  t = t.replace(/(^|[^*\w])\*([^*\n]+)\*(?![*\w])/g, '$1<em>$2</em>');
+  return t;
+}
+function eRigaTitoloMaiuscolo(r) {
+  const t = r.trim().replace(/^\d+[.)]\s*/, '');
+  return t.length >= 4 && t === t.toUpperCase() && /[A-ZÀÈÉÌÒÙ]{3}/.test(t) && !/\{\{/.test(t) && !/[a-z]/.test(t);
+}
+/* Testo marcato -> HTML. modo 'editor': una <div> per riga (round-trip esatto con editorDocumentoToTesto);
+   modo 'lettura': HTML tipografico per stampa/anteprima (paragrafi, titoli, elenchi). */
+function testoDocumentoToHtml(testo, modo) {
+  const righe = String(testo || '').replace(/\r/g, '').split('\n');
+  const ed = modo === 'editor';
+  let out = '', inUl = false;
+  const chiudiUl = () => { if (inUl) { out += '</ul>'; inUl = false; } };
+  righe.forEach((r) => {
+    let m;
+    if ((m = /^- (.*)$/.exec(r))) {
+      if (!inUl) { out += '<ul>'; inUl = true; }
+      out += '<li>' + inlineDocumentoHtml(m[1], ed) + '</li>';
+      return;
+    }
+    chiudiUl();
+    if (r.trim() === '') { out += ed ? '<div class="d-riga"><br></div>' : '<div style="height:.7em"></div>'; return; }
+    if (r.trim() === '---') { out += '<hr>'; return; }
+    if ((m = /^# (.*)$/.exec(r))) { out += '<h1>' + inlineDocumentoHtml(m[1], ed) + '</h1>'; return; }
+    if ((m = /^## (.*)$/.exec(r))) { out += '<h2>' + inlineDocumentoHtml(m[1], ed) + '</h2>'; return; }
+    if ((m = /^\^\^ (.*)$/.exec(r))) { out += '<div class="d-riga" style="text-align:center">' + inlineDocumentoHtml(m[1], ed) + '</div>'; return; }
+    if ((m = /^>> (.*)$/.exec(r))) { out += '<div class="d-riga" style="text-align:right">' + inlineDocumentoHtml(m[1], ed) + '</div>'; return; }
+    if (!ed && eRigaTitoloMaiuscolo(r)) { out += '<h2>' + inlineDocumentoHtml(r.trim(), false) + '</h2>'; return; }
+    out += '<div class="d-riga">' + inlineDocumentoHtml(r, ed) + '</div>';
+  });
+  chiudiUl();
+  return out;
+}
+/* HTML dell'editor -> testo marcato. */
+function editorDocumentoToTesto(root) {
+  const righe = [];
+  const inline = (n) => {
+    if (n.nodeType === 3) return n.nodeValue.replace(/ /g, ' ');
+    if (n.nodeType !== 1) return '';
+    const tag = n.tagName;
+    if (n.classList && n.classList.contains('campo-chip')) return '{{' + n.getAttribute('data-chiave') + '}}';
+    if (tag === 'BR') return '\n';
+    const dentro = Array.from(n.childNodes).map(inline).join('');
+    const stile = (n.getAttribute('style') || '').toLowerCase();
+    const grassetto = tag === 'B' || tag === 'STRONG' || /font-weight:\s*(bold|[6-9]00)/.test(stile);
+    const corsivo = tag === 'I' || tag === 'EM' || /font-style:\s*italic/.test(stile);
+    let r = dentro;
+    if (r.trim() === '') return r;
+    if (grassetto) r = '**' + r.trim() + '**';
+    if (corsivo) r = '*' + r.trim() + '*';
+    return r;
+  };
+  const allineamento = (n) => {
+    const a = ((n.style && n.style.textAlign) || n.getAttribute('align') || '').toLowerCase();
+    return a === 'center' ? '^^ ' : (a === 'right' ? '>> ' : '');
+  };
+  const blocco = (n) => {
+    if (n.nodeType === 3) { const t = n.nodeValue.replace(/ /g, ' '); t.split('\n').forEach(x => righe.push(x)); return; }
+    if (n.nodeType !== 1) return;
+    const tag = n.tagName;
+    if (tag === 'UL' || tag === 'OL') { Array.from(n.children).forEach(li => righe.push('- ' + inline(li).replace(/\n/g, ' ').trim())); return; }
+    if (tag === 'HR') { righe.push('---'); return; }
+    if (tag === 'H1' || tag === 'H2') { righe.push((tag === 'H1' ? '# ' : '## ') + inline(n).replace(/\n/g, ' ').trim()); return; }
+    if (tag === 'DIV' || tag === 'P') {
+      const figliBlocco = Array.from(n.children).some(c => ['DIV', 'P', 'UL', 'OL', 'H1', 'H2', 'HR'].includes(c.tagName));
+      if (figliBlocco) { Array.from(n.childNodes).forEach(blocco); return; }
+      let t = inline(n);
+      if (t === '\n') t = ''; // riga vuota = <div><br></div>
+      const pre = allineamento(n);
+      t.split('\n').forEach((x, i) => righe.push(i === 0 ? (x.trim() === '' ? '' : pre + x) : x));
+      return;
+    }
+    righe.push(inline(n));
+  };
+  Array.from(root.childNodes).forEach(blocco);
+  while (righe.length && righe[righe.length - 1].trim() === '') righe.pop();
+  return righe.join('\n');
+}
+function testoDocumentoSenzaMarcatura(testo) {
+  return String(testo || '').split('\n').map(r => r.replace(/^(#{1,2} |- |\^\^ |>> )/, '').replace(/^---$/, '').replace(/\*\*([^*]+)\*\*/g, '$1').replace(/(^|[^*\w])\*([^*\n]+)\*(?![*\w])/g, '$1$2')).join('\n');
+}
+/* Barra strumenti + foglio + pannello campi. id: id dell'elemento editabile. */
+function editorDocumentoHtml(id, testo, conCampi) {
+  const btn = (cmd, label, titolo) => `<button type="button" onmousedown="event.preventDefault()" data-action="doc-fmt" data-cmd="${cmd}" title="${titolo}">${label}</button>`;
+  const gruppi = [
+    ['Cliente', PLACEHOLDER_AUTO_LEGENDA.filter(x => x.chiave.startsWith('cliente.'))],
+    ['Studio', PLACEHOLDER_AUTO_LEGENDA.filter(x => x.chiave.startsWith('studio.'))],
+    ['Data', PLACEHOLDER_AUTO_LEGENDA.filter(x => x.chiave.startsWith('data.'))],
+    ['Dati del documento', PLACEHOLDER_RISERVATI.map(k => ({ chiave: k, label: etichettaCampoDocumento(k) }))],
+  ];
+  const pannelloCampi = conCampi ? `<details class="doc-campi" open>
+      <summary>＋ Inserisci un campo (si compila da solo)</summary>
+      <div class="doc-campi-corpo">
+        ${gruppi.map(([tit, lista]) => `<div class="doc-campi-gruppo"><div class="tit">${tit}</div>${lista.map(x => `<button type="button" class="chip-btn" onmousedown="event.preventDefault()" data-action="doc-campo" data-chiave="${x.chiave}" title="${escapeHtml(x.label)}">${escapeHtml(etichettaCampoDocumento(x.chiave))}</button>`).join('')}</div>`).join('')}
+        <div class="doc-campi-gruppo"><div class="tit">Campo da compilare ogni volta</div>
+          <input type="text" id="docNuovoCampoNome" placeholder="es. Data inizio incarico" style="flex:1;min-width:180px;border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:13px;">
+          <button type="button" class="btn small" data-action="doc-campo-nuovo">Aggiungi campo</button>
+        </div>
+      </div>
+    </details>` : '';
+  return `<div class="doc-toolbar">
+      ${btn('bold', '<b>G</b>', 'Grassetto')}${btn('italic', '<i>C</i>', 'Corsivo')}<span class="sep"></span>
+      ${btn('h1', 'Titolo', 'Titolo del documento')}${btn('h2', 'Sezione', 'Titolo di sezione')}${btn('p', 'Testo', 'Testo normale')}<span class="sep"></span>
+      ${btn('ul', '• Elenco', 'Elenco puntato')}<span class="sep"></span>
+      ${btn('left', '⇤', 'Allinea a sinistra')}${btn('center', '↔', 'Centra')}${btn('right', '⇥', 'Allinea a destra')}
+    </div>
+    <div class="doc-sfondo"><div class="doc-foglio doc-editor" id="${id}" contenteditable="true" spellcheck="true">${testoDocumentoToHtml(testo, 'editor')}</div></div>
+    ${pannelloCampi}`;
+}
+let DOC_RANGE = null;
+document.addEventListener('selectionchange', () => {
+  const sel = window.getSelection && window.getSelection();
+  if (!sel || !sel.rangeCount) return;
+  const nodo = sel.anchorNode && (sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement);
+  const ed = nodo && nodo.closest && nodo.closest('.doc-editor');
+  if (ed) DOC_RANGE = { ed, range: sel.getRangeAt(0).cloneRange() };
+});
+function docEditorAttivo() {
+  return (DOC_RANGE && document.body.contains(DOC_RANGE.ed)) ? DOC_RANGE.ed : document.querySelector('.doc-editor');
+}
+function docEseguiComando(cmd) {
+  const ed = docEditorAttivo();
+  if (!ed) return;
+  ed.focus();
+  if (DOC_RANGE && DOC_RANGE.ed === ed) { const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(DOC_RANGE.range); }
+  const mappa = { bold: ['bold'], italic: ['italic'], ul: ['insertUnorderedList'], left: ['justifyLeft'], center: ['justifyCenter'], right: ['justifyRight'], h1: ['formatBlock', 'h1'], h2: ['formatBlock', 'h2'], p: ['formatBlock', 'div'] };
+  const c = mappa[cmd];
+  if (c && document.execCommand) document.execCommand(c[0], false, c[1] || null);
+}
+function docInserisciCampo(chiave) {
+  const ed = docEditorAttivo();
+  if (!ed) return;
+  ed.focus();
+  if (DOC_RANGE && DOC_RANGE.ed === ed) { const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(DOC_RANGE.range); }
+  const html = chipCampoHtml(chiave) + '&nbsp;';
+  if (document.execCommand && document.execCommand('insertHTML', false, html)) return;
+  ed.insertAdjacentHTML('beforeend', html);
+}
+
 function renderModelliDocumento() {
   const modelli = STATE.modelliDocumento;
   const intro = `<div style="display:flex;justify-content:flex-end;margin-bottom:10px;"><button class="btn primary" data-action="nuovo-modello">+ Nuovo modello</button></div>`;
@@ -6816,7 +7019,7 @@ function renderModelliDocumento() {
     const modelliCat = modelli.filter(m => m.categoria === cat).sort((a,b) => (b.predefinito?1:0) - (a.predefinito?1:0) || a.nome.localeCompare(b.nome));
     const righe = modelliCat.map(m => {
       const nCampi = placeholderPersonalizzatiModello(m.corpo).length;
-      const anteprima = m.corpo.replace(/\s+/g, ' ').trim();
+      const anteprima = testoDocumentoSenzaMarcatura(m.corpo).replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g, (x, k) => '[' + etichettaCampoDocumento(k) + ']').replace(/\s+/g, ' ').trim();
       return `<div class="card" style="margin-bottom:8px;">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;">
           <div>
@@ -6851,9 +7054,9 @@ function modalModelloDocumento(id) {
   if (id && !editing) { toast('Modello non trovato.'); return; }
   const categorieEsistenti = Array.from(new Set(CATEGORIE_MODELLO_BASE.concat(STATE.modelliDocumento.map(m => m.categoria))));
   const html = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
-    <div class="modal" style="max-width:760px;">
+    <div class="modal" style="max-width:860px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-        <div><h2>${editing?'Modifica modello':'Nuovo modello documento'}</h2><div class="modal-sub">Scrivi il testo con segnaposto {{così}}: quelli automatici (elenco sotto) si compilano da soli, gli altri diventano campi da compilare a ogni documento creato da questo modello.</div></div>
+        <div><h2>${editing?'Modifica modello':'Nuovo modello documento'}</h2><div class="modal-sub">Scrivi il documento come in Word: i campi (nome cliente, studio, data...) si inseriscono con un clic e si compilano da soli.</div></div>
         <button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button>
       </div>
       <form id="formModello" onsubmit="return false;">
@@ -6863,17 +7066,8 @@ function modalModelloDocumento(id) {
           <div class="field"><label>Nome modello *</label><input id="modNome" value="${editing?escapeHtml(editing.nome):''}" placeholder="es. Preventivo standard"></div>
         </div>
         <div class="field full" style="grid-column:1/-1;margin-top:10px;">
-          <label>Testo del modello * <span style="font-weight:400;color:var(--text-mut);">— i segnaposto <mark style="background:#E7EEFC;color:#2E63C7;border-radius:3px;padding:0 3px;">{{così}}</mark> si colorano da soli mentre scrivi, per distinguerli dal resto del testo</span></label>
-          <div class="modello-editor-wrap">
-            <div id="modCorpoHighlight" class="modello-editor-highlight" aria-hidden="true">${evidenziaSegnaposto(editing?editing.corpo:'')}</div>
-            <textarea id="modCorpo" class="modello-editor-ta" style="min-height:280px;" spellcheck="false">${editing?escapeHtml(editing.corpo):''}</textarea>
-          </div>
-        </div>
-        <div style="margin-top:8px;">
-          <div class="helptext" style="margin-bottom:6px;">Clic per inserire un segnaposto automatico nel punto del cursore:</div>
-          <div style="display:flex;flex-wrap:wrap;gap:6px;">
-            ${PLACEHOLDER_AUTO_LEGENDA.map(p => `<button type="button" class="btn small" data-action="modello-inserisci-placeholder" data-chiave="${p.chiave}" title="${escapeHtml(p.label)}">{{${p.chiave}}}</button>`).join('')}
-          </div>
+          <label>Testo del modello * <span style="font-weight:400;color:var(--text-mut);">— scrivi direttamente sul foglio; i campi colorati si compilano da soli quando crei il documento</span></label>
+          ${editorDocumentoHtml('modCorpo', editing ? editing.corpo : '', true)}
         </div>
         <div class="grid2" style="margin-top:14px;">
           <label style="display:flex;align-items:center;gap:8px;font-weight:400;"><input type="checkbox" id="modAttivo" ${(!editing || editing.attivo)?'checked':''}> Attivo (selezionabile quando si crea un documento)</label>
@@ -6887,22 +7081,6 @@ function modalModelloDocumento(id) {
     </div>
   </div>`;
   document.getElementById('modalRoot').innerHTML = html;
-  // Task #175: l'evidenziazione dei segnaposto è puramente visiva (il backdrop sotto la textarea
-  // trasparente) e lo scroll NON passa dalla delegazione globale su document.body (gli eventi
-  // 'scroll' sui singoli elementi non fanno bubbling, a differenza di 'input'/'change' usati
-  // altrove in questa app) - per questo qui, in via eccezionale, si registrano due listener diretti
-  // invece di passare da onInputDelegato.
-  const taModCorpo = document.getElementById('modCorpo');
-  const hlModCorpo = document.getElementById('modCorpoHighlight');
-  if (taModCorpo && hlModCorpo) {
-    const sincronizzaEvidenziazioneModCorpo = () => {
-      hlModCorpo.innerHTML = evidenziaSegnaposto(taModCorpo.value) + '\n';
-      hlModCorpo.scrollTop = taModCorpo.scrollTop;
-      hlModCorpo.scrollLeft = taModCorpo.scrollLeft;
-    };
-    taModCorpo.addEventListener('input', sincronizzaEvidenziazioneModCorpo);
-    taModCorpo.addEventListener('scroll', sincronizzaEvidenziazioneModCorpo);
-  }
 }
 
 /* -------------------- RENDER: PROCEDURE INTERNE (task #146) --------------------
@@ -7033,12 +7211,49 @@ let PREV_FILTRO = { cliente: 'Tutti', categoria: 'Tutti', stato: 'Tutti' };
    vero contesto browser (non implementato in jsdom, quindi mai testabile end-to-end) — avvolto in
    try/catch perché in ambienti dove i popup sono bloccati o print() non è disponibile il documento
    deve comunque restare aperto e leggibile/stampabile a mano dall'utente, non far fallire silenziosamente. */
+
+/* Carta intestata + corpo tipografico per stampa/PDF (task #223). Se il modello ha già in testa
+   un blocco con il nome dello studio (tutti i modelli precedenti) quel blocco viene sostituito
+   dall'intestazione grafica, per non duplicarlo. */
+function intestazioneStudioHtml() {
+  const m = STATE.meta;
+  const logo = m.logoStudio ? `<img src="${m.logoStudio}" alt="" style="max-width:150px;max-height:64px;">` : '';
+  const dati = `<div style="font-size:15px;font-weight:700;letter-spacing:.02em;">${escapeHtml(m.studioNome || '')}</div>
+    <div style="font-size:11.5px;color:#4a5163;line-height:1.5;">${[m.iscrizione, m.indirizzoStudio, m.cfStudio ? 'C.F. ' + m.cfStudio : ''].filter(Boolean).map(escapeHtml).join('<br>')}</div>`;
+  const pos = m.logoPosizione || 'sinistra';
+  const contenuto = logo
+    ? (pos === 'centro' ? `<div style="text-align:center;">${logo}<div style="margin-top:6px;">${dati}</div></div>`
+      : `<div style="display:flex;gap:16px;align-items:center;${pos === 'destra' ? 'flex-direction:row-reverse;text-align:right;' : ''}">${logo}<div>${dati}</div></div>`)
+    : `<div>${dati}</div>`;
+  return `<div style="border-bottom:2px solid #1F3A6E;padding-bottom:10px;margin-bottom:22px;">${contenuto}</div>`;
+}
+function togliBloccoIntestazioneVecchio(testo) {
+  const righe = String(testo || '').split('\n');
+  const nome = (STATE.meta.studioNome || '').trim().toLowerCase();
+  if (!nome) return testo;
+  const primo = righe.findIndex(r => r.trim() !== '');
+  if (primo !== 0 || righe[0].replace(/^(#{1,2} |\*\*|\^\^ )/, '').replace(/\*\*$/, '').trim().toLowerCase() !== nome) return testo;
+  const fine = righe.findIndex(r => r.trim() === '');
+  return fine === -1 ? testo : righe.slice(fine + 1).join('\n');
+}
+function documentoStampaHtml(p) {
+  const corpo = testoDocumentoToHtml(togliBloccoIntestazioneVecchio(p.corpo || ''), 'lettura');
+  return `<!DOCTYPE html><html><head><title>${escapeHtml(p.oggetto || p.categoria)}</title><meta charset="utf-8"><style>
+    @page{size:A4;margin:18mm 18mm 20mm;}
+    body{font-family:Georgia,'Times New Roman',serif;font-size:13.5px;line-height:1.65;color:#161B26;max-width:760px;margin:30px auto;padding:0 24px;}
+    h1{font-size:20px;text-align:center;margin:0 0 12px;letter-spacing:.02em;}
+    h2{font-size:14px;text-transform:uppercase;letter-spacing:.05em;margin:20px 0 6px;border-bottom:1px solid #cfd5e3;padding-bottom:3px;page-break-after:avoid;}
+    ul{margin:4px 0 4px 22px;padding:0;} hr{border:none;border-top:1px solid #c9cfdd;margin:14px 0;}
+    .d-riga{min-height:0;} .campo-vuoto{background:#fff3cd;padding:0 3px;}
+    @media print{body{margin:0;padding:0;max-width:none;}}
+  </style></head><body>${intestazioneStudioHtml()}${corpo}</body></html>`;
+}
 function apriStampaPreventivo(id) {
   const p = STATE.preventivi.find(x => x.id === id);
   if (!p) { toast('Documento non trovato.'); return; }
   const win = window.open('', '_blank');
   if (!win) { toast('Impossibile aprire la finestra di stampa (popup bloccato dal browser?).', true); return; }
-  win.document.write(`<!DOCTYPE html><html><head><title>${escapeHtml(p.oggetto || p.categoria)}</title><meta charset="utf-8"><style>body{font-family:Georgia,'Times New Roman',serif;max-width:720px;margin:40px auto;padding:0 24px;line-height:1.7;white-space:pre-wrap;font-size:14px;color:#111;}</style></head><body>${escapeHtml(p.corpo || '')}</body></html>`);
+  win.document.write(documentoStampaHtml(p));
   win.document.close();
   win.focus();
   try { win.print(); } catch (e) { /* il documento resta comunque aperto e stampabile manualmente */ }
@@ -7052,7 +7267,7 @@ async function esportaPreventivoFile(id) {
   const slug = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
   const nomeFile = `${slug(p.categoria)}-${slug(nomeCliente(p.clienteId))}-${p.dataEmissione || oggiISO()}.txt`;
   try {
-    const ok = await salvaFileScaricabile(nomeFile, new Blob([p.corpo || ''], { type: 'text/plain;charset=utf-8;' }));
+    const ok = await salvaFileScaricabile(nomeFile, new Blob([testoDocumentoSenzaMarcatura(p.corpo || '')], { type: 'text/plain;charset=utf-8;' }));
     if (ok) toast('Documento esportato.');
   } catch (err) {
     console.error('Esportazione documento non riuscita', err);
@@ -7077,16 +7292,30 @@ function escapeRtf(testo) {
   }
   return out;
 }
+function inlineRtf(riga) {
+  const parti = String(riga).split(/(\*\*[^*]+\*\*|\*[^*\n]+\*)/);
+  return parti.map(x => {
+    if (/^\*\*[^*]+\*\*$/.test(x)) return `{\\b ${escapeRtf(x.slice(2, -2))}}`;
+    if (/^\*[^*\n]+\*$/.test(x)) return `{\\i ${escapeRtf(x.slice(1, -1))}}`;
+    return escapeRtf(x);
+  }).join('');
+}
 function generaRtfDaTesto(testo) {
-  const righe = (testo || '').split('\n');
-  const corpo = righe.map((riga, i) => {
-    const trimmed = riga.trim();
-    const eTitolo = trimmed.length > 2 && trimmed === trimmed.toUpperCase() && /[A-ZÀÈÉÌÒÙ]/.test(trimmed);
-    const testoRiga = escapeRtf(riga) || ' ';
-    if (i === 0 || eTitolo) return `{\\b\\fs26 ${testoRiga}}\\par`;
-    return `${testoRiga}\\par`;
+  const righe = togliBloccoIntestazioneVecchio(testo || '').split('\n');
+  const intest = [STATE.meta.studioNome, STATE.meta.iscrizione, STATE.meta.indirizzoStudio, STATE.meta.cfStudio ? 'C.F. ' + STATE.meta.cfStudio : ''].filter(Boolean);
+  const testa = intest.map((r, i) => i === 0 ? `{\\pard\\b\\fs30 ${escapeRtf(r)}\\par}` : `{\\pard\\fs18 ${escapeRtf(r)}\\par}`).join('\n') + '\n{\\pard\\brdrb\\brdrs\\brdrw15\\par}';
+  const corpo = righe.map((riga) => {
+    let m;
+    if ((m = /^# (.*)$/.exec(riga))) return `{\\pard\\qc\\b\\fs34 ${inlineRtf(m[1])}\\par}`;
+    if ((m = /^## (.*)$/.exec(riga))) return `{\\pard\\sb200\\b\\fs24 ${inlineRtf(m[1].toUpperCase())}\\par}`;
+    if ((m = /^- (.*)$/.exec(riga))) return `{\\pard\\fi-300\\li500 \\bullet\\tab ${inlineRtf(m[1])}\\par}`;
+    if ((m = /^\^\^ (.*)$/.exec(riga))) return `{\\pard\\qc ${inlineRtf(m[1])}\\par}`;
+    if ((m = /^>> (.*)$/.exec(riga))) return `{\\pard\\qr ${inlineRtf(m[1])}\\par}`;
+    if (riga.trim() === '---') return '{\\pard\\brdrb\\brdrs\\brdrw10\\par}';
+    if (eRigaTitoloMaiuscolo(riga)) return `{\\pard\\sb200\\b\\fs24 ${escapeRtf(riga.trim())}\\par}`;
+    return `{\\pard ${inlineRtf(riga) || ' '}\\par}`;
   }).join('\n');
-  return `{\\rtf1\\ansi\\ansicpg1252\\deff0{\\fonttbl{\\f0\\froman Times New Roman;}}\\f0\\fs22\n${corpo}\n}`;
+  return `{\\rtf1\\ansi\\ansicpg1252\\deff0{\\fonttbl{\\f0\\froman Times New Roman;}}\\f0\\fs22\n${testa}\n${corpo}\n}`;
 }
 async function esportaPreventivoRtf(id) {
   const p = STATE.preventivi.find(x => x.id === id);
@@ -7317,7 +7546,7 @@ function modalDettaglioPreventivo(id) {
   }
 
   const html = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
-    <div class="modal" style="max-width:640px;">
+    <div class="modal" style="max-width:820px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;">
         <div><h2>${escapeHtml(p.categoria)} — ${escapeHtml(nomeCliente(p.clienteId))}</h2><div class="modal-sub">${escapeHtml(p.oggetto||'')}${p.nomeModello?' · modello: '+escapeHtml(p.nomeModello):''}</div></div>
         <button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button>
@@ -7331,7 +7560,7 @@ function modalDettaglioPreventivo(id) {
       ${p.note ? `<div class="field full" style="margin-top:6px;"><label>Note interne</label><div class="helptext">${escapeHtml(p.note)}</div></div>` : ''}
       <div class="field full" style="margin-top:10px;">
         <label>Testo del documento</label>
-        <textarea id="prevAnteprimaCorpo" style="white-space:pre-wrap;font-family:Georgia,'Times New Roman',serif;font-size:13px;line-height:1.6;background:#fafafa;border:1px solid var(--border);border-radius:8px;padding:14px;min-height:260px;margin:4px 0 0;width:100%;box-sizing:border-box;">${escapeHtml(p.corpo||'')}</textarea>
+        ${editorDocumentoHtml('prevAnteprimaCorpo', p.corpo || '', false)}
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;">
         <button class="btn small primary" data-action="preventivo-salva-testo" data-id="${p.id}">💾 Salva testo</button>
@@ -13970,6 +14199,7 @@ function serializzaModal() {
     const valore = (el.type === 'checkbox' || el.type === 'radio') ? (el.checked ? '1' : '0') : el.value;
     parti.push(chiave + '=' + valore);
   });
+  root.querySelectorAll('.doc-editor').forEach((ed, i) => parti.push('doc' + i + '=' + editorDocumentoToTesto(ed)));
   return parti.join('|');
 }
 function modalHaDatiNonSalvati() {
@@ -14515,7 +14745,7 @@ function onClickDelegato(e) {
     case 'salva-modello': {
       const categoria = h('modCategoria').value.trim();
       const nomeModello = h('modNome').value.trim();
-      const corpo = h('modCorpo').value;
+      const corpo = editorDocumentoToTesto(h('modCorpo'));
       if (!categoria || !nomeModello || !corpo.trim()) { toast('Compila categoria, nome e testo del modello.'); return; }
       const attivo = h('modAttivo').checked;
       const predefinito = h('modPredefinito').checked;
@@ -14528,18 +14758,17 @@ function onClickDelegato(e) {
       chiudiModal(); render(); toast(id ? 'Modello aggiornato.' : 'Modello creato.');
       break;
     }
-    case 'modello-inserisci-placeholder': {
-      const ta = document.getElementById('modCorpo');
-      if (!ta) return;
-      const token = `{{${el.dataset.chiave}}}`;
-      const start = ta.selectionStart, end = ta.selectionEnd;
-      ta.value = ta.value.slice(0, start) + token + ta.value.slice(end);
-      ta.focus();
-      ta.selectionStart = ta.selectionEnd = start + token.length;
-      // Task #175: aggiorna anche l'evidenziazione colorata del segnaposto appena inserito - i
-      // listener sono attaccati direttamente sulla textarea (vedi modalModelloDocumento), un
-      // 'input' sintetico li fa scattare come se l'utente avesse digitato.
-      ta.dispatchEvent(new Event('input', { bubbles: true }));
+    case 'doc-fmt': docEseguiComando(el.dataset.cmd); break;
+    case 'doc-campo': docInserisciCampo(el.dataset.chiave); break;
+    case 'doc-campo-nuovo': {
+      const inp = document.getElementById('docNuovoCampoNome');
+      const nome = inp ? inp.value.trim() : '';
+      if (!nome) { toast('Scrivi il nome del campo (es. "Data inizio incarico").'); return; }
+      const parole = nome.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, ' ').trim().split(/\s+/);
+      const chiave = parole.map((w, i) => i === 0 ? w.toLowerCase() : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join('');
+      if (!chiave) { toast('Nome campo non valido.'); return; }
+      docInserisciCampo(chiave);
+      inp.value = '';
       break;
     }
 
@@ -14654,7 +14883,7 @@ function onClickDelegato(e) {
     case 'preventivo-salva-testo': {
       const ta = document.getElementById('prevAnteprimaCorpo');
       if (!ta) return;
-      aggiornaPreventivo(id, { corpo: ta.value });
+      aggiornaPreventivo(id, { corpo: editorDocumentoToTesto(ta) });
       toast('Testo del documento salvato.');
       break;
     }
