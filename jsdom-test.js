@@ -5840,6 +5840,23 @@ async function main() {
     assert(richiesteAutoavvio.length === 1 && richiesteAutoavvio[0].ngrokAutoavvio === true, '#199: attivare l\'interruttore non ha chiamato /api/ngrok-autoavvio con {ngrokAutoavvio:true}');
     console.log('=== #199: interruttore "avvia ngrok automaticamente all\'avvio" (booleano unico) riflette lo stato dal server e salva il cambiamento OK');
 
+    // Area riservata clienti: menù a tendina, copia link (attiva l'accesso al volo), password qui e non più nel tab Portale.
+    const sezCli = q('#sezioneAreaRiservataCliente');
+    assert(sezCli, 'manca la sezione "Area riservata clienti" sotto l\'accesso esterno');
+    const selCli = sezCli.querySelector('select[data-action="acc-cliente-seleziona"]');
+    assert(selCli && selCli.options.length >= 2, 'il menù a tendina deve elencare i clienti');
+    const idCli = selCli.options[1].value;
+    selCli.value = idCli; fire(selCli, 'change'); await wait(20);
+    const cliSel = window.clienteById(idCli);
+    cliSel.portaleToken = null;
+    const copiati = [];
+    window.copiaTestoNegliAppunti = (t) => copiati.push(t);
+    click(q('#sezioneAreaRiservataCliente [data-action="copia-link-cliente"][data-modo="ngrok"]'));
+    await wait(40);
+    assert(/^https:\/\/abc123\.ngrok-free\.app\/portale\/[0-9a-f]{48}$/.test(copiati[0] || ''), `link ngrok cliente errato: ${JSON.stringify(copiati)}`);
+    assert(q('#sezioneAreaRiservataCliente input[id^="portPassword_"]'), 'la gestione password deve stare nella sezione impostazioni');
+    console.log('=== Impostazioni: area riservata clienti - tendina, copia link ngrok (attiva accesso) e password OK');
+
     window.fetch = fetchOriginaleNgrok;
     window.resetAccessoEsternoTest();
     window.setHttpSyncAttivoTest(false);

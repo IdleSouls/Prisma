@@ -10511,7 +10511,7 @@ function cardAccessoPortaleReale(cliente) {
         <button class="btn small" data-action="portale-rigenera-link" data-id="${cliente.id}" title="Genera un nuovo link: quello vecchio smette subito di funzionare">Rigenera link</button>
         <button class="btn small danger" data-action="portale-disattiva-accesso" data-id="${cliente.id}">Disattiva accesso</button>
       </div>
-      ${cardPasswordPortaleCliente(cliente)}`
+      <div class="helptext">La password di accesso si gestisce in Impostazioni → Accesso esterno → Area riservata clienti.</div>`
     : `<div class="helptext" style="margin-bottom:12px;">${escapeHtml(cliente.ragioneSociale)} non ha ancora un accesso al portale. Attivandolo genera un link personale (con un token di sicurezza, non indovinabile) da mandargli via email o chat: da lì vede solo i propri dati, mai quelli di altri clienti.</div>
       <button class="btn small" data-action="portale-attiva-accesso" data-id="${cliente.id}">Attiva accesso portale</button>`;
   return `<div class="card" id="cardAccessoPortaleReale">
@@ -12183,7 +12183,7 @@ function cardAccessoEsterno() {
         <div style="font-size:12px;font-weight:700;color:var(--text-mut);text-transform:uppercase;letter-spacing:.03em;">Porta ${porta}</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;"><span class="badge ok">🟢 Porta locale sempre attiva</span>${badgeTunnelNgrok(porta)}</div>
       </div>
-      <div class="helptext" style="margin-bottom:12px;">Il portale cliente (link personali /portale/&lt;codice&gt;, mai i dati completi dello studio) è sempre raggiungibile qui, senza bisogno di attivare nulla: ogni cliente ha il proprio link e, se gliel'hai impostata, la propria password (vedi la sua scheda anagrafica). "Porta locale sempre attiva" riguarda solo questo PC: per essere raggiungibile da internet serve comunque un tunnel ngrok attivo (vedi badge a destra).</div>
+      <div class="helptext" style="margin-bottom:12px;">Il portale cliente (link personali /portale/&lt;codice&gt;, mai i dati completi dello studio) è sempre raggiungibile qui, senza bisogno di attivare nulla: ogni cliente ha il proprio link e, se gliel'hai impostata, la propria password (vedi "Area riservata clienti" qui sotto). "Porta locale sempre attiva" riguarda solo questo PC: per essere raggiungibile da internet serve comunque un tunnel ngrok attivo (vedi badge a destra).</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
         <button class="btn small" data-action="avvia-ngrok" data-porta="${porta}">🚀 Avvia ngrok</button>
         <button class="btn small" data-action="copia-link-rete" data-porta="${porta}">🖧 Copia link rete locale</button>
@@ -12213,7 +12213,54 @@ function cardAccessoEsterno() {
         </details>
       </div>
     </div>
+    ${sezioneAreaRiservataCliente()}
   </div>`;
+}
+
+/* Richiesta di Matteo: sotto l'accesso esterno, un menù a tendina con tutti i clienti; scelto un
+   cliente, "Copia link" (rete locale o ngrok) copia il link della SUA area riservata, e sotto si
+   gestisce la password di accesso (tolta dal tab Portale cliente). Se il cliente non ha ancora un
+   accesso attivo, copiando il link lo si attiva al volo. Nota: il portale non ha un "nome utente"
+   - il link personale con token identifica già il cliente - quindi si gestisce solo la password. */
+let ACC_CLIENTE_SEL = null;
+function sezioneAreaRiservataCliente() {
+  const attivi = STATE.clienti.filter(c => c.stato !== 'cessato').sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale));
+  if (!attivi.length) return '';
+  if (!ACC_CLIENTE_SEL || !attivi.find(c => c.id === ACC_CLIENTE_SEL)) ACC_CLIENTE_SEL = attivi[0].id;
+  const c = clienteById(ACC_CLIENTE_SEL);
+  return `<div id="sezioneAreaRiservataCliente" style="border:1px solid var(--border);border-radius:10px;padding:14px;margin-top:16px;">
+    <div style="font-size:12px;font-weight:700;color:var(--text-mut);text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px;">Area riservata clienti</div>
+    <div class="helptext" style="margin-bottom:10px;">Scegli un cliente e copia il link personale della sua area riservata (da mandargli). Se non ha ancora un accesso, viene attivato copiando il link.</div>
+    <div class="field" style="max-width:420px;margin-bottom:10px;"><label>Cliente</label>
+      <select data-action="acc-cliente-seleziona">${attivi.map(x => `<option value="${x.id}" ${x.id === ACC_CLIENTE_SEL ? 'selected' : ''}>${escapeHtml(x.ragioneSociale)}</option>`).join('')}</select>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+      <button class="btn small" data-action="copia-link-cliente" data-id="${c.id}" data-modo="rete">🖧 Copia link rete locale</button>
+      <button class="btn small" data-action="copia-link-cliente" data-id="${c.id}" data-modo="ngrok">🌐 Copia link ngrok</button>
+      ${c.portaleToken ? `<span class="badge ok">Accesso attivo</span>` : `<span class="badge">Accesso non ancora attivo</span>`}
+    </div>
+    <div style="margin-top:12px;">${cardPasswordPortaleCliente(c)}</div>
+  </div>`;
+}
+function copiaLinkClientePortale(id, modo) {
+  let c = clienteById(id);
+  if (!c) return;
+  if (!c.portaleToken) { c = attivaPortaleCliente(id); render(); }
+  const token = c.portaleToken;
+  const copia = (base, msg) => copiaTestoNegliAppunti(base.replace(/\/+$/, '') + '/portale/' + token, msg);
+  const porta = ACCESSO_ESTERNO_CACHE && ACCESSO_ESTERNO_CACHE !== 'errore' ? ACCESSO_ESTERNO_CACHE.porta : 8421;
+  if (modo === 'ngrok') {
+    fetch('/api/ngrok-tunnels').then(r => r.json()).then(d => {
+      const t = d.ok ? (d.tunnel || []).find(x => x.porta === porta) : null;
+      if (!t) { toast('ngrok non è attivo in questo momento: premi "🚀 Avvia ngrok" e riprova.', true); return; }
+      copia(t.publicUrl, 'Link dell\'area riservata copiato (ngrok): funziona da internet.');
+    }).catch(() => toast('Non sono riuscito a interrogare ngrok dal server locale.', true));
+  } else {
+    fetch('/api/indirizzi-rete').then(r => r.json()).then(d => {
+      if (!d.ok || !d.indirizzi || !d.indirizzi.length) { toast('Nessun indirizzo di rete locale rilevato su questo PC.', true); return; }
+      copia('http://' + d.indirizzi[0] + ':' + porta, 'Link dell\'area riservata copiato (rete locale): funziona solo dalla rete dello studio.');
+    }).catch(() => toast('Non sono riuscito a leggere l\'indirizzo di rete dal server locale.', true));
+  }
 }
 
 /* -------------------- STRUMENTI: convertitore Word <-> PDF (task #133) -------------------- */
@@ -13991,6 +14038,7 @@ function onClickDelegato(e) {
 
     case 'copia-link-rete': copiaLinkRete(Number(el.dataset.porta)); break;
     case 'copia-link-ngrok': copiaLinkNgrok(Number(el.dataset.porta)); break;
+    case 'copia-link-cliente': copiaLinkClientePortale(el.dataset.id, el.dataset.modo); break;
 
     case 'salva-accesso-esterno': {
       const tipo = el.dataset.tipo;
@@ -15482,6 +15530,7 @@ function onInputDelegato(e) {
     case 'aml-filtro-q': AML_FILTRO_Q = el.value; render(); restoreFocus('[data-action="aml-filtro-q"]'); break;
     case 'proc-filtro-q': PROC_FILTRO_Q = el.value; render(); restoreFocus('[data-action="proc-filtro-q"]'); break;
     case 'portale-password-campo': PORTALE_PASSWORD_DRAFT[el.dataset.id] = el.value; break;
+    case 'acc-cliente-seleziona': ACC_CLIENTE_SEL = el.value; render(); break;
     case 'responsabile-password-campo': RESPONSABILE_PASSWORD_DRAFT[el.dataset.nome] = el.value; break;
     case 'accp-password-campo': PORTALE_PASSWORD_DRAFT_SEC[el.dataset.accesso] = el.value; break;
     case 'accp-rinomina': {
