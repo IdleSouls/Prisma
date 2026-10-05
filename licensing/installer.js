@@ -109,8 +109,8 @@ function principale() {
 
   // ---- 2) Copia i file dell'app nella cartella di destinazione ----
   fs.mkdirSync(DEST, { recursive: true });
-  const fileDaCopiare = ['gestionale.htm', 'portale-cliente.htm', 'Prisma.exe', 'server.js', 'Avvia Gestionale.bat'];
-  const cartelleDaCopiare = ['mcp-server', 'logo', 'asset'];
+  const fileDaCopiare = ['gestionale.htm', 'portale-cliente.htm', 'portale-sw.js', 'Prisma.exe', 'server.js', 'package.json', 'versione.json', 'Prisma.mcpb', 'Avvia Gestionale.bat'];
+  const cartelleDaCopiare = ['mcp-server', 'logo', 'asset', 'node_modules', 'Documenti-Prisma'];
   let haCopiatoServerEseguibile = false;
   for (const nome of fileDaCopiare) {
     const src = path.join(USB, nome);
