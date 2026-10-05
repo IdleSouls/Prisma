@@ -1323,7 +1323,28 @@ function panelF24Storico() {
   return `<div class="panel">${panelHeader(ICONE.scadenze, 'var(--blu-light)', 'var(--blu-mid)', 'I tuoi F24', VISTA.f24Tutti.length)}${righe}</div>`;
 }
 
+function renderRaccoltaDocumenti() {
+  const rich = VISTA.richiesteDocumenti || [];
+  if (!rich.length) return '';
+  return rich.map(r => {
+    const voci = r.voci.map(v => {
+      const fatto = v.stato !== 'Da caricare';
+      return `<div class="item" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+        <div><div class="t">${fatto ? '✅' : '⬜'} ${escapeHtml(v.nome)}</div>
+        <div class="s">${v.stato === 'Ricevuto' ? 'Ricevuto dallo studio' : (v.stato === 'Caricato' ? 'Caricato' + (v.fileNome ? ': ' + escapeHtml(v.fileNome) : '') + ' - in verifica' : 'Da consegnare')}</div></div>
+        ${v.stato === 'Ricevuto' ? '' : `<button class="btn-invia" style="margin-top:0;" data-action="voce-carica" data-richiesta="${r.id}" data-voce="${v.id}">${v.stato === 'Caricato' ? 'Sostituisci' : 'Carica file'}</button>`}
+      </div>`;
+    }).join('');
+    const fatte = r.voci.filter(v => v.stato !== 'Da caricare').length;
+    return `<div class="panel" style="border-left:4px solid var(--blu-mid);">${panelHeader(ICONE.documenti, 'var(--viola-bg)', 'var(--viola)', 'Da consegnare: ' + escapeHtml(r.titolo), fatte + '/' + r.voci.length)}
+      ${r.scadenza ? `<div class="s" style="margin:0 0 8px;">Entro il ${fmtData(r.scadenza)}</div>` : ''}${voci}<div class="esito-invio" id="esitoVoce_${r.id}"></div></div>`;
+  }).join('');
+}
 function renderDocumenti() {
+  const raccolta = renderRaccoltaDocumenti();
+  return raccolta + renderDocumentiArchivio();
+}
+function renderDocumentiArchivio() {
   if (!VISTA.documenti.length) {
     return `<div class="panel">${panelHeader(ICONE.documenti, 'var(--viola-bg)', 'var(--viola)', 'Documenti', 0)}<div class="empty">Nessun documento condiviso per ora.</div></div>`;
   }
@@ -1963,6 +1984,25 @@ function gestisciClicCorpo(e) {
     renderCorpo();
     const box = document.getElementById('testoNuovoMessaggio');
     if (box) { box.scrollIntoView({ behavior: 'smooth', block: 'center' }); box.focus(); }
+    return;
+  }
+
+  if (azione === 'voce-carica') {
+    const inp = document.createElement('input'); inp.type = 'file';
+    inp.onchange = () => {
+      const file = inp.files && inp.files[0]; if (!file) return;
+      const esitoEl = document.getElementById('esitoVoce_' + el.dataset.richiesta);
+      el.disabled = true;
+      if (esitoEl) { esitoEl.textContent = 'Caricamento in corso...'; esitoEl.className = 'esito-invio'; }
+      leggiFileBase64(file)
+        .then((base64) => postJSON('/api/portale-richiesta-documento', { token: TOKEN, richiestaId: el.dataset.richiesta, voceId: el.dataset.voce, nomeFile: file.name, contenutoBase64: base64 }))
+        .then((dati) => {
+          if (dati && dati.accodato) { el.disabled = false; toastEsitoInvio('Il server dello studio non è raggiungibile ora: riprova tra poco.'); return; }
+          return ricaricaVista().then(() => toastEsitoInvio('Documento caricato, grazie. Lo studio lo verificherà.'));
+        })
+        .catch((err) => { el.disabled = false; const e2 = document.getElementById('esitoVoce_' + el.dataset.richiesta); if (e2) { e2.textContent = err.message; e2.className = 'esito-invio errore'; } });
+    };
+    inp.click();
     return;
   }
 

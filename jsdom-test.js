@@ -1884,6 +1884,59 @@ async function main() {
     console.log('=== Incassi (task #207): registrazione, scaduto, banner solleciti, sollecito via portale (una volta ogni 15 gg), pagamento parziale/saldo, MCP OK');
   }
 
+  // ---------- Task #208: Raccolta documenti guidata (studio + portale + solleciti) ----------
+  {
+    const st = () => window.getSTATE();
+    const cid = st().clienti[0].id;
+    click(q('[data-nav="raccolta"]'));
+    await wait(20);
+    assert(q('[data-action="nuova-richiesta-doc"]'), 'la vista Raccolta documenti non mostra "+ Nuova richiesta"');
+    click(q('[data-action="nuova-richiesta-doc"]'));
+    await wait(20);
+    setVal(q('#raccCliente'), cid);
+    setVal(q('#raccTitolo'), 'Test raccolta');
+    setVal(q('#raccVoci'), 'Documento identità\nEstratti conto\n');
+    click(q('[data-action="salva-richiesta-doc"]'));
+    await wait(20);
+    const r = st().richiesteDocumenti.find(x => x.titolo === 'Test raccolta');
+    assert(r && r.voci.length === 2 && r.voci.every(v => v.stato === 'Da caricare'), 'richiesta non creata con 2 voci "Da caricare"');
+    assert(st().comunicazioni.some(c => c.clienteId === cid && c.oggetto === 'Documenti da consegnare: Test raccolta' && c.visibilePortale), 'manca l\'avviso al cliente sul portale');
+    assert(window.statoRichiestaDocumenti(r) === 'In attesa', 'stato iniziale deve essere In attesa');
+    // portale: la vista del cliente espone la richiesta
+    const cl = window.clienteById(cid); cl.portaleToken = 'tok-racc-test';
+    const vista = window.costruisciVistaPortaleClienteEsterna('tok-racc-test');
+    assert(vista.richiesteDocumenti.length === 1 && vista.richiesteDocumenti[0].voci.length === 2, 'la vista portale non espone la richiesta');
+    assert(!JSON.stringify(vista.richiesteDocumenti).includes('filePercorso'), 'la vista portale non deve esporre percorsi di file');
+    // caricamento dal portale
+    const ok = window.caricaDocumentoRichiestaPortaleEsterno('tok-racc-test', r.id, r.voci[0].id, { percorso: 'x/doc.pdf', nomeFile: 'doc.pdf', dimensione: 10 });
+    assert(ok && st().richiesteDocumenti.find(x => x.id === r.id).voci[0].stato === 'Caricato', 'caricamento dal portale non registrato');
+    assert(window.caricaDocumentoRichiestaPortaleEsterno('token-sbagliato', r.id, r.voci[1].id, { percorso: 'x/a.pdf', nomeFile: 'a.pdf', dimensione: 1 }) === null, 'un token non valido non deve poter caricare');
+    assert(st().comunicazioni.some(c => c.direzione === 'cliente' && c.oggetto === 'Documento caricato: Documento identità' && !c.vistaStudio), 'lo studio non è avvisato del documento caricato');
+    // approvazione + sollecito solo per le voci mancanti
+    window.render(); await wait(20);
+    click(q(`[data-action="voce-richiesta-stato"][data-voce="${r.voci[0].id}"][data-stato="Ricevuto"]`));
+    await wait(20);
+    assert(st().richiesteDocumenti.find(x => x.id === r.id).voci[0].stato === 'Ricevuto', 'approvazione non registrata');
+    const nCom = st().comunicazioni.length;
+    window.sollecitaRichiestaDocumenti(r.id);
+    const soll = st().comunicazioni[st().comunicazioni.length - 1];
+    assert(st().comunicazioni.length === nCom + 1 && soll.corpo.includes('Estratti conto') && !soll.corpo.includes('Documento identità'), 'il sollecito deve citare solo i documenti mancanti');
+    window.impostaStatoVoceRichiesta(r.id, r.voci[1].id, 'Ricevuto');
+    assert(window.statoRichiestaDocumenti(st().richiesteDocumenti.find(x => x.id === r.id)) === 'Completa', 'tutte le voci ricevute = Completa');
+    // MCP
+    const fetchPrima = window.fetch; window.fetch = () => Promise.resolve({ ok: true, json: () => ({}) });
+    await window.eseguiComandoMCP({ id: 'cmdR1', azione: 'creaRichiestaDocumenti', parametri: { clienteId: cid, titolo: 'Via MCP racc', voci: ['A', 'B'] } });
+    window.fetch = fetchPrima;
+    assert(window.esportaVistaMCP().richiesteDocumenti.some(x => x.titolo === 'Via MCP racc' && x.voci.length === 2), 'creaRichiestaDocumenti via MCP / vista MCP non funzionano');
+    const s2 = st();
+    s2.richiesteDocumenti = []; delete window.clienteById(cid).portaleToken;
+    s2.comunicazioni = s2.comunicazioni.filter(c => !/Test raccolta|Via MCP racc|Documento caricato: Documento identità/.test(c.oggetto));
+    window.setSTATE(s2);
+    click(q('[data-nav="dashboard"]'));
+    await wait(20);
+    console.log('=== Raccolta documenti (task #208): richiesta, avviso portale, vista cliente, upload da portale, approvazione, sollecito mirato, MCP OK');
+  }
+
   // ---------- 8d-quinquies) Modelli documenti: pagina di gestione CRUD (task #124) ----------
   click(q('[data-nav="modelli"]'));
   await wait(20);

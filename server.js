@@ -413,7 +413,7 @@ scriviLog('Avvio di Prisma...');
 const URL_MANIFESTO_AGGIORNAMENTI = 'https://raw.githubusercontent.com/IdleSouls/Prisma/main/versione.json';
 // Cambiala qui a ogni nuova versione pubblicata (deve combaciare con quella scritta nel
 // "versione.json" caricato su GitHub, altrimenti il confronto non ha senso).
-const VERSIONE_LOCALE = '1.2.0';
+const VERSIONE_LOCALE = '1.3.0';
 // Solo questi file possono essere sovrascritti da un aggiornamento - mai un nome libero/a piacere
 // del manifesto, per non correre il rischio (anche solo teorico, es. account GitHub compromesso)
 // di far scrivere un file arbitrario altrove sul PC del cliente.
@@ -687,6 +687,21 @@ function messaggioPortaleCliente(token, testo, scadenzaIdRif, fileInfo) {
   } catch (err) {
     console.error('[gestionale] Errore salvando un messaggio dal portale cliente:', err.message);
     return { errore: 'Errore interno salvando il messaggio.' };
+  }
+}
+function caricoRichiestaDocumentiPortaleCliente(token, richiestaId, voceId, fileInfo) {
+  const { win, errore } = motorePortale();
+  if (!win) return { errore };
+  try {
+    ricaricaDatiMotorePortale(win);
+    const r = win.caricaDocumentoRichiestaPortaleEsterno(token, richiestaId, voceId, fileInfo || null);
+    if (!r) return { esito: null };
+    scriviDati(win.getSTATE());
+    notificaClientiSSE(null);
+    return { esito: r };
+  } catch (err) {
+    console.error('[gestionale] Errore salvando un documento richiesto dal portale cliente:', err.message);
+    return { errore: 'Errore interno salvando il documento.' };
   }
 }
 function rispostaPortaleCliente(token, comunicazioneId, testo, fileInfo) {
@@ -2634,6 +2649,31 @@ function gestisciRichiesta(req, res) {
       }
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify({ ok: true }));
+    });
+    return;
+  }
+
+  // Il cliente carica il file di una voce della "Raccolta documenti": corpo {token, richiestaId, voceId, nomeFile, contenutoBase64}.
+  if (url === '/api/portale-richiesta-documento' && req.method === 'POST') {
+    leggiCorpoRichiesta(req, (corpo) => {
+      const rispondi = (codice, obj) => { res.writeHead(codice, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(obj)); };
+      let dati;
+      try { dati = JSON.parse(corpo); } catch (err) { return rispondi(400, { ok: false, errore: 'Richiesta non valida.' }); }
+      const token = (dati && typeof dati.token === 'string') ? dati.token.trim() : '';
+      if (!token || typeof dati.richiestaId !== 'string' || typeof dati.voceId !== 'string' || !dati.nomeFile || typeof dati.contenutoBase64 !== 'string' || !dati.contenutoBase64) {
+        return rispondi(400, { ok: false, errore: 'Scegli il file da caricare.' });
+      }
+      const clienteToken = risolviClienteDaTokenPortale(token);
+      if (!clienteToken) return rispondi(404, { ok: false, errore: 'Link non valido o non più attivo.' });
+      let fileInfo;
+      try {
+        const scritto = scriviFileClienteCaricato({ clienteId: clienteToken.id, clienteNome: clienteToken.ragioneSociale, sottocartella: 'Dal cliente', nomeFile: dati.nomeFile, contenutoBase64: dati.contenutoBase64 });
+        fileInfo = { percorso: scritto.percorso, nomeFile: scritto.nomeFile, dimensione: scritto.dimensione };
+      } catch (err) { return rispondi(400, { ok: false, errore: 'File non caricato: ' + err.message }); }
+      const { esito, errore } = caricoRichiestaDocumentiPortaleCliente(token, dati.richiestaId, dati.voceId, fileInfo);
+      if (errore) return rispondi(503, { ok: false, errore: 'Il servizio non è al momento disponibile. Riprova più tardi o contatta lo studio.' });
+      if (!esito) return rispondi(404, { ok: false, errore: 'Richiesta non trovata o già completata.' });
+      rispondi(200, { ok: true });
     });
     return;
   }

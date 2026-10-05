@@ -1718,6 +1718,7 @@ function statoIniziale() {
        scadenze fiscali/adempimenti che restano generate dal motore scadenze esistente. */
     appuntamenti: [],
     incassi: [],
+    richiesteDocumenti: [],
     /* Procedure interne dello studio (task #146): raccolta di SOP/indicazioni operative per lo staff
        ("come si apre una nuova attività X", quali documenti servono ecc.), strutturate come i Modelli
        documenti (categoria/nome/contenuto) più una checklist di documenti necessari. Usate anche dal
@@ -2599,6 +2600,10 @@ const AZIONI_MCP = {
     salvaStato();
     return { modulo: p.modulo, attivo: !!p.attivo };
   },
+  creaRichiestaDocumenti: (p) => { const r = aggiungiRichiestaDocumenti({ clienteId: p.clienteId, titolo: p.titolo, scadenza: p.scadenza, voci: p.voci || [] }); return { id: r.id, voci: r.voci.map(v => ({ id: v.id, nome: v.nome })) }; },
+  impostaStatoDocumentoRichiesto: (p) => { const r = impostaStatoVoceRichiesta(p.richiestaId, p.voceId, p.stato); return { stato: statoRichiestaDocumenti(r) }; },
+  sollecitaRichiestaDocumenti: (p) => { if (!richiestaDocumentiById(p.id)) throw new Error('Richiesta non trovata: ' + p.id); return { inviato: sollecitaRichiestaDocumenti(p.id) }; },
+  eliminaRichiestaDocumenti: (p) => { if (!richiestaDocumentiById(p.id)) throw new Error('Richiesta non trovata: ' + p.id); eliminaRichiestaDocumenti(p.id); return { ok: true }; },
   creaIncasso: (p) => { if (!clienteById(p.clienteId)) throw new Error('Cliente non trovato: ' + p.clienteId); if (!(Number(p.importo) > 0)) throw new Error('Importo non valido.'); const i = aggiungiIncasso(p); return { creato: true, id: i.id }; },
   modificaIncasso: (p) => { if (!(STATE.incassi || []).find(x => x.id === p.id)) throw new Error('Incasso non trovato: ' + p.id); aggiornaIncasso(p.id, p.patch || {}); return { aggiornato: true }; },
   registraIncasso: (p) => { const i = registraPagamentoIncasso(p.id, p.importo, p.data); return { stato: statoIncasso(i), residuo: residuoIncasso(i) }; },
@@ -4079,6 +4084,7 @@ function eliminaCliente(id) {
   STATE.taskTeam = STATE.taskTeam.filter(t => t.clienteId !== id);
   STATE.preventivi = STATE.preventivi.filter(p => p.clienteId !== id);
   STATE.incassi = (STATE.incassi || []).filter(i => i.clienteId !== id);
+  STATE.richiesteDocumenti = (STATE.richiesteDocumenti || []).filter(r => r.clienteId !== id);
 
   // Entità tenute in oggetti indicizzati per clienteId: basta togliere la chiave.
   delete STATE.onboarding[id];
@@ -4241,6 +4247,7 @@ const NAV = [
     { id: 'documenti', label: 'Documenti', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6.5a1.5 1.5 0 0 1 1.5-1.5h4.5l2 2.5h8.5a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18z"/></svg>' },
     { id: 'preventivi', label: 'Preventivi e mandati', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5h8l5 5v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-18a1 1 0 0 1 1-1z"/><path d="M14 2.5v5h5"/><path d="M8 12.5l2.5 2.5 5.5-6"/></svg>' },
     { id: 'incassi', label: 'Incassi', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9v.01M18 15v.01"/></svg>' },
+    { id: 'raccolta', label: 'Raccolta documenti', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9v.01M18 15v.01"/></svg>' },
     { id: 'portale', label: 'Portale cliente', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2"/><line x1="3" y1="8.5" x2="21" y2="8.5"/><circle cx="6" cy="6.5" r=".6" fill="currentColor" stroke="none"/><circle cx="8.2" cy="6.5" r=".6" fill="currentColor" stroke="none"/></svg>' },
   ]},
   { group: 'Analisi cliente', items: [
@@ -4278,6 +4285,7 @@ const PAGE_TITLES = {
   contabilita: ['Contabilità', 'Import periodico da Excel/CSV: nessuna doppia registrazione, nessuna data indovinata'],
   modelli: ['Modelli documenti', 'Testi precompilati per preventivi, mandati e documenti antiriciclaggio: i segnaposto {{così}} si trasformano in campi da compilare'],
   incassi: ['Incassi', 'Compensi da incassare, scadenze di pagamento e solleciti ai clienti'],
+  raccolta: ['Raccolta documenti', 'Elenchi di documenti da chiedere ai clienti, con caricamento dal portale e solleciti'],
   procedure: ['Procedure interne', 'Indicazioni operative per lo staff, passo per passo, con la checklist dei documenti necessari'],
   strumenti: ['Strumenti', 'Convertitore file Word ↔ PDF ↔ PDF/A (serve LibreOffice installato sul PC del server locale)'],
   credenziali: ['Password', 'Credenziali e accessi dello studio e dei clienti — Entratel, Telemaco, home banking, software, ecc.'],
@@ -4321,6 +4329,7 @@ const MODULI = [
   { id: 'procedure', label: 'Procedure interne', desc: 'Istruzioni operative passo per passo per lo staff.', tabs: ['procedure'] },
   { id: 'antiriciclaggio', label: 'Antiriciclaggio', desc: 'Adeguata verifica, profilo di rischio e storico verifiche.', tabs: ['antiriciclaggio'] },
   { id: 'preventivi', label: 'Preventivi e mandati', desc: 'Preventivi, mandati e lettere di incarico da modelli.', tabs: ['preventivi'] },
+  { id: 'raccolta', label: 'Raccolta documenti', desc: 'Checklist di documenti da chiedere ai clienti: il cliente li carica dal portale, tu li approvi e sollecita chi manca.', tabs: ['raccolta'] },
   { id: 'incassi', label: 'Incassi e solleciti', desc: 'Compensi da incassare, scadenze di pagamento e solleciti ai clienti.', tabs: ['incassi'] },
   { id: 'onboarding', label: 'Onboarding clienti', desc: 'Checklist di attivazione per un nuovo cliente.', tabs: ['onboarding'] },
   { id: 'bilanci', label: 'Bilanci e KPI', desc: 'Situazioni economico-patrimoniali, indici e grafici.', tabs: ['bilanci'] },
@@ -4462,6 +4471,7 @@ function render() {
     case 'modelli': content.innerHTML = renderModelliDocumento(); break;
     case 'procedure': content.innerHTML = renderProcedureInterne(); break;
     case 'incassi': content.innerHTML = renderIncassi(); break;
+    case 'raccolta': content.innerHTML = renderRaccolta(); break;
     case 'strumenti': content.innerHTML = renderStrumenti(); break;
     case 'credenziali': content.innerHTML = renderCredenziali(); break;
     case 'portale': content.innerHTML = renderPortaleCliente(); break;
@@ -7571,6 +7581,118 @@ function modalRegistraIncasso(id) {
       </div>
       <div class="helptext">Se è meno del residuo, resta da incassare la differenza (pagamento parziale).</div>
       <div class="modal-actions"><button class="btn" data-action="chiudi-modal">Annulla</button><button class="btn primary" data-action="incasso-registra" data-id="${i.id}">Conferma incasso</button></div>
+    </div></div>`;
+}
+
+/* -------------------- RACCOLTA DOCUMENTI (task #208) --------------------
+   Lo studio crea per un cliente un elenco di documenti da consegnare (anche partendo dalla checklist
+   di una procedura interna). Il cliente lo vede nel portale (scheda Documenti), carica un file per
+   ogni voce e lo studio lo approva. I solleciti non partono mai da soli: sono una comunicazione sul
+   portale, inviata solo dopo conferma. Voce: 'Da caricare' -> 'Caricato' (dal cliente) -> 'Ricevuto' (approvato). */
+const GIORNI_TRA_SOLLECITI_RACCOLTA = 7;
+let RACC_FILTRO = { cliente: 'Tutti', stato: 'Aperte' };
+function statoRichiestaDocumenti(r) {
+  const v = r.voci || [];
+  if (v.length && v.every(x => x.stato === 'Ricevuto')) return 'Completa';
+  if (v.some(x => x.stato === 'Da caricare')) return (r.scadenza && r.scadenza < oggiISO()) ? 'Scaduta' : 'In attesa';
+  return 'Da verificare';
+}
+function aggiungiRichiestaDocumenti(d) {
+  const nomi = (d.voci || []).map(x => String(x).trim()).filter(Boolean);
+  if (!clienteById(d.clienteId)) throw new Error('Cliente non trovato: ' + d.clienteId);
+  if (!nomi.length) throw new Error('Serve almeno un documento da richiedere.');
+  const r = { id: uid('racc'), clienteId: d.clienteId, titolo: (d.titolo || '').trim() || 'Documenti da consegnare', scadenza: d.scadenza || '', creatoIl: oggiISO(), solleciti: [],
+    voci: nomi.map(n => ({ id: uid('voce'), nome: n.slice(0, 200), stato: 'Da caricare' })) };
+  if (!STATE.richiesteDocumenti) STATE.richiesteDocumenti = [];
+  STATE.richiesteDocumenti.push(r);
+  // Avviso sul portale: il cliente trova l'elenco anche tra le comunicazioni.
+  STATE.comunicazioni.push({ id: uid('com'), clienteId: r.clienteId, data: oggiISO(), categoria: 'Documentale', stato: 'Inviata', oggetto: 'Documenti da consegnare: ' + r.titolo,
+    corpo: 'Ti chiediamo di caricare questi documenti dalla scheda Documenti del portale' + (r.scadenza ? ' entro il ' + fmtData(r.scadenza) : '') + ':\n- ' + nomi.join('\n- '), note: '', visibilePortale: true, creataIl: new Date().toISOString() });
+  salvaStato();
+  return r;
+}
+function richiestaDocumentiById(id) { return (STATE.richiesteDocumenti || []).find(x => x.id === id); }
+function impostaStatoVoceRichiesta(rid, vid, stato) {
+  const r = richiestaDocumentiById(rid); if (!r) throw new Error('Richiesta non trovata: ' + rid);
+  const v = (r.voci || []).find(x => x.id === vid); if (!v) throw new Error('Voce non trovata: ' + vid);
+  if (['Da caricare', 'Caricato', 'Ricevuto'].indexOf(stato) < 0) throw new Error('Stato non valido: ' + stato);
+  v.stato = stato; if (stato === 'Ricevuto') v.ricevutoIl = oggiISO();
+  salvaStato(); return r;
+}
+function eliminaRichiestaDocumenti(id) { STATE.richiesteDocumenti = (STATE.richiesteDocumenti || []).filter(x => x.id !== id); salvaStato(); }
+function richiesteDaSollecitare() {
+  const oggi = oggiISO();
+  return (STATE.richiesteDocumenti || []).filter(r => {
+    if (!(r.voci || []).some(v => v.stato === 'Da caricare')) return false;
+    const ultimo = (r.solleciti || []).length ? r.solleciti[r.solleciti.length - 1].data : r.creatoIl;
+    return giorniTra(ultimo, oggi) >= GIORNI_TRA_SOLLECITI_RACCOLTA;
+  });
+}
+function sollecitaRichiestaDocumenti(id) {
+  const r = richiestaDocumentiById(id); if (!r) return false;
+  const mancanti = (r.voci || []).filter(v => v.stato === 'Da caricare').map(v => v.nome);
+  if (!mancanti.length) return false;
+  const oggi = oggiISO();
+  const com = { id: uid('com'), clienteId: r.clienteId, data: oggi, categoria: 'Documentale', stato: 'Inviata', oggetto: 'Promemoria documenti: ' + r.titolo,
+    corpo: 'Gentile cliente, per procedere ci mancano ancora questi documenti' + (r.scadenza ? ' (richiesti entro il ' + fmtData(r.scadenza) + ')' : '') + ':\n- ' + mancanti.join('\n- ') + '\nPuoi caricarli direttamente dalla scheda Documenti del portale. Grazie!', note: '', visibilePortale: true, creataIl: new Date().toISOString() };
+  STATE.comunicazioni.push(com);
+  r.solleciti.push({ data: oggi, comunicazioneId: com.id });
+  salvaStato(); return true;
+}
+function renderRaccolta() {
+  if (STATE.clienti.length === 0) return `<div class="card"><div class="empty"><div class="big">Aggiungi prima un cliente</div>Le richieste di documenti sono sempre legate a un cliente.</div></div>`;
+  const tutte = STATE.richiesteDocumenti || [];
+  const aperte = tutte.filter(r => statoRichiestaDocumenti(r) !== 'Completa');
+  const daVerificare = tutte.reduce((n, r) => n + (r.voci || []).filter(v => v.stato === 'Caricato').length, 0);
+  const daSoll = richiesteDaSollecitare();
+  const kpi = `<div class="kpi-grid">
+    <div class="kpi"><div class="label">Richieste aperte</div><div class="value">${aperte.length}</div></div>
+    <div class="kpi"><div class="label">Documenti da verificare</div><div class="value" style="color:${daVerificare ? 'var(--arancio)' : 'inherit'};">${daVerificare}</div></div>
+    <div class="kpi"><div class="label">Da sollecitare</div><div class="value">${daSoll.length}</div></div></div>`;
+  const barra = `<div class="toolbar" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;">
+    <button class="btn primary" data-action="nuova-richiesta-doc">+ Nuova richiesta</button>
+    ${daSoll.length ? `<button class="btn" data-action="sollecita-tutte-richieste-doc">Sollecita ${daSoll.length === 1 ? 'questo cliente' : 'tutti (' + daSoll.length + ')'}</button>` : ''}
+    <div class="field" style="margin:0;"><label>Cliente</label><select data-action="racc-filtro-cliente"><option>Tutti</option>${STATE.clienti.slice().sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale)).map(c => `<option value="${c.id}" ${RACC_FILTRO.cliente === c.id ? 'selected' : ''}>${escapeHtml(c.ragioneSociale)}</option>`).join('')}</select></div>
+    <div class="field" style="margin:0;"><label>Stato</label><select data-action="racc-filtro-stato">${['Aperte', 'Complete', 'Tutte'].map(x => `<option ${RACC_FILTRO.stato === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div></div>`;
+  let lista = tutte.slice();
+  if (RACC_FILTRO.cliente !== 'Tutti') lista = lista.filter(r => r.clienteId === RACC_FILTRO.cliente);
+  if (RACC_FILTRO.stato === 'Aperte') lista = lista.filter(r => statoRichiestaDocumenti(r) !== 'Completa');
+  else if (RACC_FILTRO.stato === 'Complete') lista = lista.filter(r => statoRichiestaDocumenti(r) === 'Completa');
+  lista.sort((a, b) => (b.creatoIl || '').localeCompare(a.creatoIl || ''));
+  if (!lista.length) return kpi + barra + `<div class="card"><div class="empty"><div class="big">Nessuna richiesta</div>Crea un elenco di documenti da chiedere a un cliente: li caricherà dal portale e li vedrai qui.</div></div>`;
+  const card = (r) => {
+    const st = statoRichiestaDocumenti(r);
+    const badge = st === 'Completa' ? '<span class="badge attivo">Completa</span>' : (st === 'Scaduta' ? '<span class="badge stato-errore">Scaduta</span>' : (st === 'Da verificare' ? '<span class="badge info">Da verificare</span>' : '<span class="badge">In attesa</span>'));
+    const ricevute = (r.voci || []).filter(v => v.stato === 'Ricevuto').length;
+    const righe = (r.voci || []).map(v => {
+      const b = v.stato === 'Ricevuto' ? '<span class="badge attivo">Ricevuto</span>' : (v.stato === 'Caricato' ? '<span class="badge info">Caricato</span>' : '<span class="badge">Da caricare</span>');
+      const file = v.filePercorso ? ` <a href="${linkScaricaFileReale(v.filePercorso)}" target="_blank">📎 ${escapeHtml(v.fileNome || 'file')}</a>` : '';
+      const az = v.stato === 'Caricato' ? `<button class="btn small primary" data-action="voce-richiesta-stato" data-id="${r.id}" data-voce="${v.id}" data-stato="Ricevuto">Approva</button> <button class="btn small" data-action="voce-richiesta-stato" data-id="${r.id}" data-voce="${v.id}" data-stato="Da caricare">Richiedi di nuovo</button>`
+        : (v.stato === 'Da caricare' ? `<button class="btn small" data-action="voce-richiesta-stato" data-id="${r.id}" data-voce="${v.id}" data-stato="Ricevuto" title="Già in studio (es. consegnato a mano)">Segna ricevuto</button>` : '');
+      return `<tr><td>${escapeHtml(v.nome)}${file}</td><td>${b}</td><td style="text-align:right;white-space:nowrap;">${az}</td></tr>`;
+    }).join('');
+    return `<div class="card" style="margin-bottom:12px;"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;">
+      <div><strong>${escapeHtml(nomeCliente(r.clienteId))}</strong> · ${escapeHtml(r.titolo)} ${badge}<div class="helptext">${ricevute}/${(r.voci || []).length} ricevuti${r.scadenza ? ' · entro il ' + fmtData(r.scadenza) : ''}${(r.solleciti || []).length ? ' · ' + r.solleciti.length + ' solleciti' : ''}</div></div>
+      <div>${(r.voci || []).some(v => v.stato === 'Da caricare') ? `<button class="btn small" data-action="sollecita-richiesta-doc" data-id="${r.id}">Sollecita</button> ` : ''}<button class="btn small danger" data-action="elimina-richiesta-doc" data-id="${r.id}">Elimina</button></div></div>
+      <table class="tbl" style="margin-top:8px;"><tbody>${righe}</tbody></table></div>`;
+  };
+  return kpi + barra + lista.map(card).join('');
+}
+function modalRichiestaDocumenti() {
+  const procs = (STATE.procedureInterne || []).filter(p => (p.checklistDocumenti || []).length);
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
+    <div class="modal" style="max-width:560px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div><h2>Nuova richiesta documenti</h2><div class="modal-sub">Il cliente la vedrà nel portale e potrà caricare un file per ogni voce.</div></div>
+        <button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button></div>
+      <div class="grid2">
+        <div class="field full" style="grid-column:1/-1;"><label>Cliente *</label><select id="raccCliente">${STATE.clienti.slice().sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale)).map(c => `<option value="${c.id}">${escapeHtml(c.ragioneSociale)}</option>`).join('')}</select></div>
+        <div class="field"><label>Titolo</label><input id="raccTitolo" placeholder="es. Dichiarazione redditi 2026"></div>
+        <div class="field"><label>Da consegnare entro</label><input id="raccScadenza" type="date"></div>
+        ${procs.length ? `<div class="field full" style="grid-column:1/-1;"><label>Parti da una procedura (facoltativo)</label><select data-action="racc-da-procedura"><option value="">— scegli —</option>${procs.map(p => `<option value="${p.id}">${escapeHtml(p.nome)}</option>`).join('')}</select></div>` : ''}
+        <div class="field full" style="grid-column:1/-1;"><label>Documenti richiesti * (uno per riga)</label><textarea id="raccVoci" rows="7" placeholder="Documento d'identità&#10;Estratti conto&#10;Fatture acquisti"></textarea></div>
+      </div>
+      <div class="modal-actions"><button class="btn" data-action="chiudi-modal">Annulla</button><button class="btn primary" data-action="salva-richiesta-doc">Crea e avvisa il cliente</button></div>
     </div></div>`;
 }
 
@@ -10887,6 +11009,9 @@ function costruisciVistaPortaleClienteEsterna(token, password) {
     // riguardano versamenti verso l'Erario, concettualmente la stessa area per un accesso limitato.
     ritenute: puoVedere('scadenze') ? ritenute : [],
     documenti: puoVedere('documenti') ? documenti : [],
+    richiesteDocumenti: puoVedere('documenti') ? (STATE.richiesteDocumenti || []).filter(r => r.clienteId === cliente.id && statoRichiestaDocumenti(r) !== 'Completa').map(r => ({
+      id: r.id, titolo: r.titolo, scadenza: r.scadenza || null,
+      voci: (r.voci || []).map(v => ({ id: v.id, nome: v.nome, stato: v.stato, fileNome: v.stato !== 'Da caricare' ? (v.fileNome || null) : null })) })) : [],
     andamento: puoVedere('andamento') ? andamento : null,
   };
 }
@@ -10951,6 +11076,25 @@ function aggiungiRispostaComunicazione(id, testo, autore, fileInfo) {
   else { c.vistaStudio = true; c.vistaPortale = false; }
   salvaStato();
   return c;
+}
+
+/* Il cliente carica dal portale il file di UNA voce di una richiesta documenti (task #208). Token,
+   richiesta e voce vengono ricontrollati qui: niente id fidati dall'esterno. Il file è già su disco
+   (server.js); si segna la voce 'Caricato' e si avvisa lo studio con una comunicazione in arrivo. */
+function caricaDocumentoRichiestaPortaleEsterno(token, richiestaId, voceId, fileInfo) {
+  if (!token || typeof token !== 'string') return null;
+  const trovato = trovaAccessoPortale(token);
+  if (!trovato || !accessoPortalePuoVedere(trovato.accesso, 'documenti')) return null;
+  const r = (STATE.richiesteDocumenti || []).find(x => x.id === richiestaId && x.clienteId === trovato.cliente.id);
+  const v = r && (r.voci || []).find(x => x.id === voceId);
+  if (!v || !fileInfo || !fileInfo.percorso || v.stato === 'Ricevuto') return null;
+  v.stato = 'Caricato'; v.filePercorso = fileInfo.percorso; v.fileNome = fileInfo.nomeFile; v.caricatoIl = oggiISO();
+  STATE.comunicazioni.push({ id: uid('com'), clienteId: trovato.cliente.id, data: oggiISO(), direzione: 'cliente', categoria: 'Documento consegnato',
+    oggetto: 'Documento caricato: ' + v.nome, corpo: 'Il cliente ha caricato "' + v.nome + '" per la richiesta "' + r.titolo + '". Verificalo in Raccolta documenti.',
+    stato: 'Inviata', visibilePortale: false, vistaPortale: true, vistaStudio: false, scadenzaRif: null, risposte: [],
+    filePercorso: fileInfo.percorso, fileNome: fileInfo.nomeFile, fileDimensione: fileInfo.dimensione });
+  salvaStato();
+  return { richiesta: r.id, voce: v.id };
 }
 
 /* -------------------- AREA CLIENTE INTERATTIVA (task #88) --------------------
@@ -14679,6 +14823,27 @@ function onClickDelegato(e) {
     case 'nuovo-incasso': modalIncasso(null); break;
     case 'modifica-incasso': modalIncasso(id); break;
     case 'incasso-registra-apri': modalRegistraIncasso(id); break;
+    case 'nuova-richiesta-doc': modalRichiestaDocumenti(); break;
+    case 'salva-richiesta-doc': {
+      try { aggiungiRichiestaDocumenti({ clienteId: h('raccCliente').value, titolo: h('raccTitolo').value, scadenza: h('raccScadenza').value, voci: h('raccVoci').value.split('\n') }); }
+      catch (err) { toast(err.message, true); return; }
+      chiudiModal(); render(); toast('Richiesta creata: il cliente la trova nel portale.');
+      break;
+    }
+    case 'voce-richiesta-stato': { try { impostaStatoVoceRichiesta(id, el.dataset.voce, el.dataset.stato); } catch (err) { toast(err.message, true); return; } render(); break; }
+    case 'elimina-richiesta-doc': if (confermaAzione('Eliminare questa richiesta di documenti?')) { eliminaRichiestaDocumenti(id); render(); toast('Richiesta eliminata.'); } break;
+    case 'sollecita-richiesta-doc': {
+      const r = richiestaDocumentiById(id); if (!r) return;
+      if (!confermaAzione('Inviare il promemoria dei documenti mancanti a ' + nomeCliente(r.clienteId) + ' tramite portale?')) return;
+      sollecitaRichiestaDocumenti(id); render(); toast('Sollecito inviato tramite portale.');
+      break;
+    }
+    case 'sollecita-tutte-richieste-doc': {
+      const lista = richiesteDaSollecitare(); if (!lista.length) return;
+      if (!confermaAzione('Inviare ' + lista.length + ' promemoria tramite portale?')) return;
+      lista.forEach(r => sollecitaRichiestaDocumenti(r.id)); render(); toast(lista.length + ' solleciti inviati.');
+      break;
+    }
     case 'salva-incasso': {
       const dati = { clienteId: h('incCliente').value, descrizione: h('incDescrizione').value.trim(), numero: h('incNumero').value.trim(), importo: Number(h('incImporto').value), dataEmissione: h('incEmissione').value, dataScadenza: h('incScadenza').value, note: h('incNote').value.trim() };
       if (!dati.clienteId || !(dati.importo > 0)) { toast('Scegli il cliente e indica un importo maggiore di zero.'); return; }
@@ -16270,6 +16435,14 @@ function onChangeDelegato(e) {
       break;
     }
     case 'toggle-mcp-conferma': STATE.meta.mcpChiediConferma = !!el.checked; salvaStato(); toast(el.checked ? 'Ogni azione di Claude richiederà la tua conferma.' : 'Le azioni di Claude vengono eseguite senza conferma (restano nel registro).'); break;
+    case 'racc-filtro-cliente': RACC_FILTRO.cliente = el.value; render(); break;
+    case 'racc-filtro-stato': RACC_FILTRO.stato = el.value; render(); break;
+    case 'racc-da-procedura': {
+      const p = (STATE.procedureInterne || []).find(x => x.id === el.value); if (!p) break;
+      const t = document.getElementById('raccVoci'); if (t) t.value = (p.checklistDocumenti || []).join('\n');
+      const ti = document.getElementById('raccTitolo'); if (ti && !ti.value) ti.value = p.nome;
+      break;
+    }
     case 'inc-filtro-cliente': INC_FILTRO.cliente = el.value; resetPagina('incassi'); render(); break;
     case 'inc-filtro-stato': INC_FILTRO.stato = el.value; resetPagina('incassi'); render(); break;
     case 'import-cli-mappa': if (IMPORT_CLI) { IMPORT_CLI.mappa[el.dataset.chiave] = Number(el.value); renderWizardImportClienti(); } break;
@@ -16831,6 +17004,7 @@ function esportaVistaMCP() {
     })),
     moduli: MODULI.map(m => ({ id: m.id, nome: m.label, attivo: moduloAttivo(m.id) })),
     team: { responsabili: STATE.meta.responsabili || [], consulenti: STATE.meta.consulenti || [], ruoli: STATE.meta.ruoli || {} },
+    richiesteDocumenti: (STATE.richiesteDocumenti || []).map(r => ({ id: r.id, clienteId: r.clienteId, cliente: nomeCliente(r.clienteId), titolo: r.titolo, scadenza: r.scadenza, stato: statoRichiestaDocumenti(r), solleciti: (r.solleciti || []).length, voci: (r.voci || []).map(v => ({ id: v.id, nome: v.nome, stato: v.stato })) })),
     incassi: (STATE.incassi || []).map(i => ({ id: i.id, clienteId: i.clienteId, cliente: nomeCliente(i.clienteId), descrizione: i.descrizione, numero: i.numero, importo: i.importo, incassato: i.importoIncassato || 0, residuo: residuoIncasso(i), dataEmissione: i.dataEmissione, dataScadenza: i.dataScadenza, stato: statoIncasso(i), solleciti: (i.solleciti || []).length })),
     appuntamenti: (STATE.appuntamenti || []).map(a => ({
       id: a.id, clienteId: a.clienteId || null, cliente: a.clienteId ? nomeCliente(a.clienteId) : null, data: a.data, ora: a.ora || '',
@@ -17283,6 +17457,7 @@ window.rigeneraAccessoSecondarioPortale = rigeneraAccessoSecondarioPortale;
 window.eliminaAccessoSecondarioPortale = eliminaAccessoSecondarioPortale;
 window.trovaAccessoPortale = trovaAccessoPortale;
 window.accessoPortalePuoVedere = accessoPortalePuoVedere;
+window.caricaDocumentoRichiestaPortaleEsterno = caricaDocumentoRichiestaPortaleEsterno;
 /* Area cliente interattiva (task #88): stessa logica di sopra, ma in scrittura. */
 window.aggiungiMessaggioPortaleClienteEsterno = aggiungiMessaggioPortaleClienteEsterno;
 window.aggiungiRispostaPortaleClienteEsterno = aggiungiRispostaPortaleClienteEsterno;

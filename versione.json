@@ -1,22 +1,22 @@
 {
-  "versione": "1.2.0",
-  "note": "Nuovo modulo Incassi: compensi da incassare, scadenze, pagamenti parziali, solleciti via portale con conferma; strumenti MCP incassi.",
+  "versione": "1.3.0",
+  "note": "Raccolta documenti guidata: checklist per cliente, caricamento dal portale, approvazione e solleciti",
   "richiedeNpmInstall": false,
   "file": [
     {
       "nome": "gestionale.htm",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale.htm",
-      "sha256": "7a22b5855d93b32d2b4af0e74bcf898fd659e1a3ea157f1038a2631a796b847d"
+      "sha256": "fb04452d87e66e4de0e154741eb047569fd88533faa0b2c92a7d377d7f143df9"
     },
     {
       "nome": "server.js",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/server.js",
-      "sha256": "5fdb0c7fbb0b261c501a2f1534b20b479739b1aac71e7f545be59a6ef495d6d1"
+      "sha256": "9441486648d9de6fcb7597d769497be8e2e6c07782f8c4dd4b9074401f2f3498"
     },
     {
       "nome": "portale-cliente.htm",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/portale-cliente.htm",
-      "sha256": "a60a1e1a5b7f34aa3de565de193bcc428688ba3ac9f9385dceaaa49f119f567d"
+      "sha256": "070f1d1833cbcd5b7e17f5062ffe58605c98891418a37c384239136960050656"
     },
     {
       "nome": "portale-sw.js",
