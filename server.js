@@ -208,9 +208,14 @@ function avviaNgrok(porta) {
 
     let comandoLanciatore, argomentiLanciatore;
     if (process.platform === 'win32') {
-      const comandoNgrok = 'ngrok http ' + String(porta) + ' --log="' + fileLogNgrok + '"';
+      // Bug del giro precedente (log di ngrok VUOTO = ngrok non è mai partito): passando
+      // 'start', '""', '/B' e il comando come argomenti separati, Node ci mette le virgolette
+      // sue (e raddoppia quelle del titolo vuoto), quindi "start" riceveva una stringa unica tipo
+      // "ngrok http 8421 --log=..." e cercava un programma con quel nome. Si passa invece UNA
+      // riga di comando già pronta con windowsVerbatimArguments (Node non la tocca); /s /c
+      // toglie le virgolette esterne che la avvolgono.
       comandoLanciatore = 'cmd.exe';
-      argomentiLanciatore = ['/d', '/s', '/c', 'start', '""', '/B', comandoNgrok];
+      argomentiLanciatore = ['/d', '/s', '/c', '"start "" /B ngrok http ' + String(porta) + ' --log="' + fileLogNgrok + '""'];
     } else {
       comandoLanciatore = 'ngrok';
       argomentiLanciatore = ['http', String(porta), '--log=' + fileLogNgrok];
@@ -219,7 +224,8 @@ function avviaNgrok(porta) {
     let risolto = false;
     let figlio;
     try {
-      figlio = spawn(comandoLanciatore, argomentiLanciatore, { cwd: CARTELLA, detached: true, stdio: 'ignore', windowsHide: true });
+      figlio = spawn(comandoLanciatore, argomentiLanciatore, { cwd: CARTELLA, detached: true, stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: process.platform === 'win32' });
+      scriviLog('avviaNgrok: ' + comandoLanciatore + ' ' + argomentiLanciatore.join(' '));
     } catch (err) {
       resolve({ ok: false, errore: 'Impossibile avviare ngrok: ' + err.message });
       return;
