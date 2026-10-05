@@ -1,17 +1,17 @@
 {
-  "versione": "1.1.2",
-  "note": "Copia esterna dei backup e recupero documenti mancanti.",
+  "versione": "1.1.3",
+  "note": "MCP esteso (antiriciclaggio, bilanci, ricorrenti, moduli, team), registro azioni di Claude con conferma opzionale, fix doppia esecuzione comandi con più browser.",
   "richiedeNpmInstall": false,
   "file": [
     {
       "nome": "gestionale.htm",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale.htm",
-      "sha256": "455b4a7d9042429c72c19be7e3433b27046aae9acb2f0cb192f402a1d2843d2d"
+      "sha256": "8d62f4f9d801e29e3ba41d03a3687b7f13be2786631ee91e348b4e34dbd8357a"
     },
     {
       "nome": "server.js",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/server.js",
-      "sha256": "29020afa7410a82bf1b3c3f70a9ab28a4cc3e0434eaebb034916b893c3d7f043"
+      "sha256": "fa9c92899e2172925bb208bf9ea44e659b67b763172fe6cdb7280e6f45cd3d1a"
     },
     {
       "nome": "portale-cliente.htm",

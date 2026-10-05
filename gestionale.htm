@@ -2577,6 +2577,27 @@ const AZIONI_MCP = {
     if (attivitaScelte.length && !valoriCustomFinale.dettaglioAttivita) valoriCustomFinale.dettaglioAttivita = testoElencoAttivita(attivitaScelte);
     return creaPreventivoDaModello({ clienteId: p.clienteId, modelloId: p.modelloId, oggetto: p.oggetto, importo: importoFinale, dataEmissione: p.dataEmissione, validoFino: p.validoFino, stato: p.stato, note: p.note, valoriCustom: valoriCustomFinale, attivitaScelte });
   },
+  // Comunicazioni ricorrenti, antiriciclaggio, bilanci, moduli (audit copertura MCP, seconda parte)
+  creaComunicazioneRicorrente: (p) => { if (!p.oggetto) throw new Error('Serve l\'oggetto.'); aggiungiComunicazioneRicorrente({ oggetto: p.oggetto, corpo: p.corpo || '', categoria: p.categoria || 'Altro', destinatari: p.destinatari || { modo: 'tutti', clienteIds: [] }, frequenza: p.frequenza || 'Mensile', giorno: Number(p.giorno) || 1, mese: Number(p.mese) || 1, attiva: p.attiva !== false }); return { creata: true }; },
+  modificaComunicazioneRicorrente: (p) => { if (!(STATE.comunicazioniRicorrenti || []).find(x => x.id === p.id)) throw new Error('Comunicazione ricorrente non trovata: ' + p.id); aggiornaComunicazioneRicorrente(p.id, p.patch || {}); return { aggiornata: true }; },
+  eliminaComunicazioneRicorrente: (p) => { if (!(STATE.comunicazioniRicorrenti || []).find(x => x.id === p.id)) throw new Error('Comunicazione ricorrente non trovata: ' + p.id); eliminaComunicazioneRicorrente(p.id); return { eliminata: true }; },
+  aggiornaAntiriciclaggio: (p) => {
+    if (!clienteById(p.clienteId)) throw new Error('Cliente non trovato: ' + p.clienteId);
+    const patch = p.patch || {};
+    ['profiloRischio', 'dataAdeguataVerifica', 'scadenzaRevisione'].forEach(k => { if (k in patch) aggiornaCampoAntiriciclaggio(p.clienteId, k, patch[k]); });
+    Object.keys(patch.checklist || {}).forEach(k => aggiornaChecklistAntiriciclaggio(p.clienteId, k, !!patch.checklist[k]));
+    return { aggiornato: true };
+  },
+  salvaBilancio: (p) => { if (!clienteById(p.clienteId)) throw new Error('Cliente non trovato: ' + p.clienteId); if (!p.periodo || !p.voci || typeof p.voci !== 'object') throw new Error('Servono periodo (es. "2025") e voci.'); salvaBilancioAnno(p.clienteId, String(p.periodo), p.voci); return { salvato: true }; },
+  impostaModulo: (p) => {
+    const m = MODULI.find(x => x.id === p.modulo);
+    if (!m) throw new Error('Modulo sconosciuto: ' + p.modulo + ' (validi: ' + MODULI.map(x => x.id).join(', ') + ')');
+    if (!Array.isArray(STATE.meta.moduliDisattivati)) STATE.meta.moduliDisattivati = [];
+    const arr = STATE.meta.moduliDisattivati, i = arr.indexOf(p.modulo);
+    if (p.attivo && i !== -1) arr.splice(i, 1); else if (!p.attivo && i === -1) arr.push(p.modulo);
+    salvaStato();
+    return { modulo: p.modulo, attivo: !!p.attivo };
+  },
   // Appuntamenti, procedure interne e catalogo attività (audit copertura MCP)
   creaAppuntamento: (p) => { if (!p.data) throw new Error('Serve la data (YYYY-MM-DD).'); const a = aggiungiAppuntamento(p); return { creato: true, id: a.id }; },
   modificaAppuntamento: (p) => { if (!trovaAppuntamento(p.id)) throw new Error('Appuntamento non trovato: ' + p.id); aggiornaAppuntamento(p.id, p.patch || {}); return { aggiornato: true }; },
@@ -2589,19 +2610,69 @@ const AZIONI_MCP = {
   eliminaPreventivo: (p) => { if (!STATE.preventivi.find(x => x.id === p.id)) throw new Error('Preventivo/mandato non trovato: ' + p.id); eliminaPreventivo(p.id); return { eliminato: true }; },
 };
 
+/* Registro delle azioni di Claude (task #210): ogni comando MCP ricevuto - eseguito, rifiutato o
+   fallito - viene registrato (ultimi 300) e consultabile da Impostazioni > Avanzate. In modalità
+   "chiedi conferma" (STATE.meta.mcpChiediConferma) ogni azione richiede un OK esplicito. */
+const ETICHETTE_AZIONE_MCP = { creaCliente: 'Crea cliente', modificaCliente: 'Modifica cliente', eliminaCliente: 'Elimina cliente', creaTask: 'Crea task', modificaTask: 'Modifica task', eliminaTask: 'Elimina task', creaComunicazione: 'Crea comunicazione', modificaComunicazione: 'Modifica comunicazione', eliminaComunicazione: 'Elimina comunicazione' };
+function etichettaAzioneMCP(azione) {
+  if (ETICHETTE_AZIONE_MCP[azione]) return ETICHETTE_AZIONE_MCP[azione];
+  const t = String(azione || '').replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+function sintesiParametriMCP(parametri) {
+  let t = '';
+  try { t = JSON.stringify(parametri || {}); } catch (e) { t = String(parametri); }
+  return t.length > 400 ? t.slice(0, 400) + '…' : t;
+}
+function registraAzioneMCP(comando, esito, errore) {
+  if (!Array.isArray(STATE.auditMcp)) STATE.auditMcp = [];
+  STATE.auditMcp.push({ id: uid('aud'), data: new Date().toISOString(), operatore: operatoreCorrente() || null, azione: comando.azione, parametri: sintesiParametriMCP(comando.parametri), esito, errore: errore || null });
+  if (STATE.auditMcp.length > 300) STATE.auditMcp = STATE.auditMcp.slice(-300);
+  salvaStato();
+}
+let CODA_APPROVAZIONI_MCP = Promise.resolve();
+function chiediApprovazioneMCP(comando) {
+  // una alla volta, in ordine di arrivo
+  const attesa = CODA_APPROVAZIONI_MCP.then(() => new Promise((risolvi) => {
+    const div = document.createElement('div');
+    div.className = 'conferma-chiusura-overlay';
+    div.innerHTML = `<div class="conferma-chiusura-box" style="max-width:520px;text-align:left;">
+      <div class="conferma-chiusura-testo"><b>🤖 Claude vuole eseguire un'azione</b><br>${escapeHtml(etichettaAzioneMCP(comando.azione))}</div>
+      <pre style="white-space:pre-wrap;word-break:break-word;font-size:12px;background:#F3F5FA;border-radius:8px;padding:8px 10px;max-height:200px;overflow:auto;margin:10px 0;">${escapeHtml(sintesiParametriMCP(comando.parametri))}</pre>
+      <div class="conferma-chiusura-azioni"><button class="btn" data-mcp="no">Rifiuta</button><button class="btn primary" data-mcp="si">Approva</button></div>
+    </div>`;
+    div.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-mcp]');
+      if (!b) return;
+      div.remove();
+      risolvi(b.dataset.mcp === 'si');
+    });
+    document.body.appendChild(div);
+  }));
+  CODA_APPROVAZIONI_MCP = attesa.catch(() => {});
+  return attesa;
+}
 async function eseguiComandoMCP(comando) {
-  let ok = true, risultato = null, errore = null;
+  let ok = true, risultato = null, errore = null, rifiutato = false;
   try {
     const fn = comando && AZIONI_MCP[comando.azione];
     if (!fn) throw new Error('Azione MCP sconosciuta: ' + (comando && comando.azione));
+    if (STATE.meta && STATE.meta.mcpChiediConferma && !(await chiediApprovazioneMCP(comando))) {
+      rifiutato = true;
+      throw new Error('Azione rifiutata dall\'utente in Prisma.');
+    }
     risultato = fn(comando.parametri || {});
     render();
-    toast('🤖 Claude ha eseguito: ' + comando.azione);
+    toast('🤖 Claude ha eseguito: ' + etichettaAzioneMCP(comando.azione));
+    registraAzioneMCP(comando, 'eseguita', null);
   } catch (err) {
     ok = false;
     errore = (err && err.message) ? err.message : String(err);
-    console.error('Comando MCP fallito', comando, err);
-    toast('⚠️ Comando da Claude fallito (' + (comando && comando.azione) + '): ' + errore, true);
+    if (!rifiutato) {
+      console.error('Comando MCP fallito', comando, err);
+      toast('⚠️ Comando da Claude fallito (' + (comando && comando.azione) + '): ' + errore, true);
+    }
+    if (comando && comando.azione) registraAzioneMCP(comando, rifiutato ? 'rifiutata' : 'fallita', errore);
   }
   if (comando && comando.id) {
     fetch('/api/comando-risultato', {
@@ -13687,6 +13758,19 @@ function renderImpostazioniAvanzate() {
   </div>
 
   <div class="card">
+    <div class="section-title">Azioni di Claude (registro e conferma)</div>
+    <div class="helptext" style="margin-bottom:10px;">Tutto ciò che Claude fa in Prisma tramite MCP viene registrato qui. Se attivi la conferma, ogni azione di Claude compare in una finestra e parte solo dopo il tuo OK.</div>
+    <label style="display:flex;align-items:center;gap:8px;font-weight:400;margin-bottom:12px;"><input type="checkbox" data-action="toggle-mcp-conferma" ${STATE.meta.mcpChiediConferma ? 'checked' : ''}> Chiedi la mia conferma prima di ogni azione di Claude</label>
+    ${(STATE.auditMcp || []).length ? `<table class="compact"><thead><tr><th>Quando</th><th>Azione</th><th>Esito</th><th>Dettagli</th></tr></thead><tbody>
+      ${(STATE.auditMcp || []).slice(-40).reverse().map(a => `<tr>
+        <td style="white-space:nowrap;">${fmtDataOra(a.data)}</td>
+        <td>${escapeHtml(etichettaAzioneMCP(a.azione))}</td>
+        <td>${a.esito === 'eseguita' ? '<span class="badge attivo">Eseguita</span>' : (a.esito === 'rifiutata' ? '<span class="badge">Rifiutata</span>' : '<span class="badge stato-errore">Fallita</span>')}</td>
+        <td class="helptext" style="max-width:380px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(a.parametri || '')}">${escapeHtml(a.errore || a.parametri || '')}</td>
+      </tr>`).join('')}</tbody></table>` : '<div class="helptext">Nessuna azione registrata finora.</div>'}
+  </div>
+
+  <div class="card">
     <div class="section-title">Dati di esempio / reset</div>
     <div class="helptext" style="margin-bottom:12px;">Solo per provare l'app: carica clienti di esempio con un anno fiscale simulato, oppure svuota tutto.</div>
     <div style="display:flex;gap:10px;">
@@ -15838,6 +15922,7 @@ function onChangeDelegato(e) {
       render();
       break;
     }
+    case 'toggle-mcp-conferma': STATE.meta.mcpChiediConferma = !!el.checked; salvaStato(); toast(el.checked ? 'Ogni azione di Claude richiederà la tua conferma.' : 'Le azioni di Claude vengono eseguite senza conferma (restano nel registro).'); break;
     case 'dash-resp': DASH_RESP = el.value; render(); break;
     case 'cambia-ruolo-responsabile': {
       const resp = el.dataset.resp;
@@ -16379,6 +16464,23 @@ function esportaVistaMCP() {
     preventivi: preventiviOut,
     modelliDocumento: modelliDocumentoOut,
     catalogoAttivitaStudio: catalogoAttivitaOut,
+    comunicazioniRicorrenti: (STATE.comunicazioniRicorrenti || []).map(t => ({
+      id: t.id, oggetto: t.oggetto, corpo: t.corpo, categoria: t.categoria, frequenza: t.frequenza, giorno: t.giorno, mese: t.mese,
+      attiva: !!t.attiva, destinatari: t.destinatari || { modo: 'tutti', clienteIds: [] },
+    })),
+    antiriciclaggio: clientiOut.map(c => {
+      const f = STATE.antiriciclaggio[c.id];
+      if (!f) return { clienteId: c.id, cliente: nomeCliente(c.id), fascicolo: false };
+      return { clienteId: c.id, cliente: nomeCliente(c.id), fascicolo: true, profiloRischio: f.profiloRischio || 'Non valutato',
+        dataAdeguataVerifica: f.dataAdeguataVerifica || null, scadenzaRevisione: f.scadenzaRevisione || null,
+        completamentoPercentuale: percentualeAntiriciclaggio(f), checklist: f.checklist || {}, noteStorico: (f.storico || []).length };
+    }),
+    bilanci: Object.keys(STATE.bilanci || {}).map(cid => ({
+      clienteId: cid, cliente: nomeCliente(cid),
+      periodi: anniBilancioCliente(cid).map(per => ({ periodo: per, voci: STATE.bilanci[cid][per], indici: calcolaDerivatiBilancio(STATE.bilanci[cid][per]) })),
+    })),
+    moduli: MODULI.map(m => ({ id: m.id, nome: m.label, attivo: moduloAttivo(m.id) })),
+    team: { responsabili: STATE.meta.responsabili || [], consulenti: STATE.meta.consulenti || [], ruoli: STATE.meta.ruoli || {} },
     appuntamenti: (STATE.appuntamenti || []).map(a => ({
       id: a.id, clienteId: a.clienteId || null, cliente: a.clienteId ? nomeCliente(a.clienteId) : null, data: a.data, ora: a.ora || '',
       durataMinuti: a.durataMinuti, oggetto: a.oggetto, note: a.note || '', stato: a.stato, consulente: a.consulente || null,

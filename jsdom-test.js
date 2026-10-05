@@ -5142,6 +5142,61 @@ async function main() {
     corpoErrore = JSON.parse(richiesteFetch[0].opts.body);
     assert(corpoErrore.ok === false && /non trovato/i.test(corpoErrore.errore || ''), 'eseguiComandoMCP: un id inesistente deve riportare ok:false con errore leggibile, non lanciare');
     console.log('=== eseguiComandoMCP: errori (azione sconosciuta, id inesistente) gestiti senza lanciare, riportati come ok:false OK');
+    // Audit copertura MCP: appuntamenti, procedure, ricorrenti, antiriciclaggio, bilanci, moduli
+    {
+      const cid = window.getSTATE().clienti[0].id;
+      const st = () => window.getSTATE();
+      await window.eseguiComandoMCP({ id: 'cmdA1', azione: 'creaAppuntamento', parametri: { data: '2026-12-01', ora: '10:00', oggetto: 'Appuntamento via MCP', clienteId: cid } });
+      const app = st().appuntamenti.find(a => a.oggetto === 'Appuntamento via MCP');
+      assert(app, 'creaAppuntamento via MCP non ha creato l\'appuntamento');
+      await window.eseguiComandoMCP({ id: 'cmdA2', azione: 'modificaAppuntamento', parametri: { id: app.id, patch: { procedureId: '__nessuna__' } } });
+      assert(st().appuntamenti.find(a => a.id === app.id).procedureId === '__nessuna__', 'modificaAppuntamento via MCP non ha applicato il patch');
+      await window.eseguiComandoMCP({ id: 'cmdA3', azione: 'eliminaAppuntamento', parametri: { id: app.id } });
+      assert(!st().appuntamenti.find(a => a.id === app.id), 'eliminaAppuntamento via MCP non ha eliminato');
+      await window.eseguiComandoMCP({ id: 'cmdP1', azione: 'creaProcedura', parametri: { nome: 'Procedura MCP', contenuto: '1. prova' } });
+      const proc = st().procedureInterne.find(x => x.nome === 'Procedura MCP');
+      assert(proc, 'creaProcedura via MCP fallita');
+      await window.eseguiComandoMCP({ id: 'cmdP2', azione: 'eliminaProcedura', parametri: { id: proc.id } });
+      assert(!st().procedureInterne.find(x => x.id === proc.id), 'eliminaProcedura via MCP fallita');
+      const nRic = (st().comunicazioniRicorrenti || []).length;
+      await window.eseguiComandoMCP({ id: 'cmdR1', azione: 'creaComunicazioneRicorrente', parametri: { oggetto: 'Ricorrente MCP', frequenza: 'Mensile', giorno: 5 } });
+      assert(st().comunicazioniRicorrenti.length === nRic + 1, 'creaComunicazioneRicorrente via MCP fallita');
+      const ric = st().comunicazioniRicorrenti.find(x => x.oggetto === 'Ricorrente MCP');
+      await window.eseguiComandoMCP({ id: 'cmdR2', azione: 'modificaComunicazioneRicorrente', parametri: { id: ric.id, patch: { attiva: false } } });
+      assert(st().comunicazioniRicorrenti.find(x => x.id === ric.id).attiva === false, 'modificaComunicazioneRicorrente via MCP fallita');
+      await window.eseguiComandoMCP({ id: 'cmdR3', azione: 'eliminaComunicazioneRicorrente', parametri: { id: ric.id } });
+      await window.eseguiComandoMCP({ id: 'cmdAML', azione: 'aggiornaAntiriciclaggio', parametri: { clienteId: cid, patch: { profiloRischio: 'Alto', checklist: { titolareEffettivo: true } } } });
+      assert(st().antiriciclaggio[cid].profiloRischio === 'Alto' && st().antiriciclaggio[cid].checklist.titolareEffettivo === true, 'aggiornaAntiriciclaggio via MCP fallita');
+      await window.eseguiComandoMCP({ id: 'cmdB', azione: 'salvaBilancio', parametri: { clienteId: cid, periodo: '2031', voci: { ricavi: 1000, costiEsterni: 400 } } });
+      assert(st().bilanci[cid]['2031'].ricavi === 1000, 'salvaBilancio via MCP fallita');
+      await window.eseguiComandoMCP({ id: 'cmdM', azione: 'impostaModulo', parametri: { modulo: 'strumenti', attivo: false } });
+      assert(st().meta.moduliDisattivati.includes('strumenti'), 'impostaModulo(false) via MCP fallita');
+      await window.eseguiComandoMCP({ id: 'cmdM2', azione: 'impostaModulo', parametri: { modulo: 'strumenti', attivo: true } });
+      assert(!st().meta.moduliDisattivati.includes('strumenti'), 'impostaModulo(true) via MCP fallita');
+      const v = window.esportaVistaMCP();
+      ['appuntamenti', 'procedureInterne', 'documenti', 'ritenute', 'comunicazioniRicorrenti', 'antiriciclaggio', 'bilanci', 'moduli', 'team'].forEach(k => assert(Array.isArray(v[k]) || (k === 'team' && v[k]), 'la vista MCP non contiene "' + k + '"'));
+      assert(!JSON.stringify(v.team).toLowerCase().includes('password'), 'la vista MCP del team non deve contenere password');
+
+      // Task #210: registro azioni + modalità "chiedi conferma"
+      assert((st().auditMcp || []).length >= 10 && st().auditMcp.some(a => a.azione === 'creaAppuntamento' && a.esito === 'eseguita'), 'il registro delle azioni MCP non contiene le azioni eseguite');
+      st().meta.mcpChiediConferma = true;
+      const nClientiPrimaConf = st().clienti.length;
+      const pRif = window.eseguiComandoMCP({ id: 'cmdC1', azione: 'creaCliente', parametri: { ragioneSociale: 'Cliente da rifiutare SRL', tipo: 'societa_capitali' } });
+      await wait(20);
+      assert(q('[data-mcp="si"]') && q('[data-mcp="no"]'), 'in modalità conferma deve comparire la finestra Approva/Rifiuta');
+      click(q('[data-mcp="no"]'));
+      await pRif;
+      assert(st().clienti.length === nClientiPrimaConf, 'un\'azione rifiutata non deve essere eseguita');
+      assert(st().auditMcp[st().auditMcp.length - 1].esito === 'rifiutata', 'il rifiuto non è registrato nel registro azioni');
+      const pOk = window.eseguiComandoMCP({ id: 'cmdC2', azione: 'creaCliente', parametri: { ragioneSociale: 'Cliente approvato SRL', tipo: 'societa_capitali' } });
+      await wait(20);
+      click(q('[data-mcp="si"]'));
+      await pOk;
+      assert(st().clienti.length === nClientiPrimaConf + 1, 'un\'azione approvata deve essere eseguita');
+      st().meta.mcpChiediConferma = false;
+      console.log('=== MCP esteso: appuntamenti, procedure, ricorrenti, antiriciclaggio, bilanci, moduli + vista esportata OK');
+    }
+
 
     // Task team: stesso giro, verifica che passi dalle funzioni reali aggiungiTaskTeam/eliminaTaskTeam
     richiesteFetch.length = 0;

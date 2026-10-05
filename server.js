@@ -413,7 +413,7 @@ scriviLog('Avvio di Prisma...');
 const URL_MANIFESTO_AGGIORNAMENTI = 'https://raw.githubusercontent.com/IdleSouls/Prisma/main/versione.json';
 // Cambiala qui a ogni nuova versione pubblicata (deve combaciare con quella scritta nel
 // "versione.json" caricato su GitHub, altrimenti il confronto non ha senso).
-const VERSIONE_LOCALE = '1.1.2';
+const VERSIONE_LOCALE = '1.1.3';
 // Solo questi file possono essere sovrascritti da un aggiornamento - mai un nome libero/a piacere
 // del manifesto, per non correre il rischio (anche solo teorico, es. account GitHub compromesso)
 // di far scrivere un file arbitrario altrove sul PC del cliente.
@@ -759,7 +759,7 @@ let clientiSSE = [];
 // server in questo momento) risponde subito con un errore chiaro, senza inventare nulla.
 let comandiInAttesa = new Map(); // id -> { res, timer }
 let prossimoComandoId = 1;
-const TIMEOUT_COMANDO_MS = 20000;
+const TIMEOUT_COMANDO_MS = 90000; // lascia il tempo di approvare l'azione dal gestionale (modalità "chiedi conferma")
 
 function risolviComando(id, esito) {
   const voce = comandiInAttesa.get(id);
@@ -1354,10 +1354,13 @@ function notificaClientiSSE(origine) {
 // postazioni aperte contemporaneamente) e comunque innocuo per operazioni idempotenti come
 // creare un cliente - non lo gestiamo in modo speciale per ora.
 function notificaComandoSSE(comando) {
+  // UN SOLO browser esegue il comando (il collegato da più tempo che risponde): prima andava a TUTTI
+  // i browser collegati, quindi con due postazioni aperte ogni azione di Claude (es. "crea cliente")
+  // veniva eseguita due volte (audit del 05/10/2026).
   const payload = 'data: ' + JSON.stringify({ tipo: 'comandoMcp', comando }) + '\n\n';
-  clientiSSE.forEach((res) => {
-    try { res.write(payload); } catch (err) { /* client ormai disconnesso, ignorato */ }
-  });
+  for (const res of clientiSSE) {
+    try { res.write(payload); return; } catch (err) { /* client ormai disconnesso: si prova il successivo */ }
+  }
 }
 
 // Avvisa tutti i browser collegati che il server sta per riavviarsi (pulsante "Riavvia server" in

@@ -716,5 +716,86 @@ export function creaServer(filePath, baseUrl) {
     async (campi) => testoEsitoScrittura(await inviaComando(url, 'creaAttivitaCatalogo', campi))
   );
 
+  // ---------- COMUNICAZIONI RICORRENTI / ANTIRICICLAGGIO / BILANCI / MODULI / TEAM ----------
+  server.registerTool(
+    'comunicazioni_ricorrenti',
+    { title: 'Comunicazioni ricorrenti', description: 'Elenco delle comunicazioni automatiche ricorrenti (frequenza, giorno, destinatari, attiva).', inputSchema: {} },
+    async () => testoJson(caricaVista(filePath).vista.comunicazioniRicorrenti || [])
+  );
+  server.registerTool(
+    'crea_comunicazione_ricorrente',
+    {
+      title: 'Crea comunicazione ricorrente',
+      description: 'Crea una comunicazione ricorrente verso i clienti (frequenza Mensile/Trimestrale/Annuale...). destinatari: {"modo":"tutti","clienteIds":[]} oppure {"modo":"selezionati","clienteIds":[...]}.',
+      inputSchema: { oggetto: z.string().min(1), corpo: z.string().optional(), categoria: z.string().optional(), frequenza: z.string().optional(), giorno: z.number().optional(), mese: z.number().optional(), attiva: z.boolean().optional(), destinatari: z.record(z.unknown()).optional() },
+    },
+    async (campi) => testoEsitoScrittura(await inviaComando(url, 'creaComunicazioneRicorrente', campi))
+  );
+  server.registerTool(
+    'modifica_comunicazione_ricorrente',
+    { title: 'Modifica comunicazione ricorrente', description: 'Aggiorna solo i campi indicati (es. attiva:false per sospenderla).', inputSchema: { id: z.string(), patch: z.record(z.unknown()).describe(DESCR_PATCH_GENERICO) } },
+    async ({ id, patch }) => testoEsitoScrittura(await inviaComando(url, 'modificaComunicazioneRicorrente', { id, patch }))
+  );
+  server.registerTool(
+    'elimina_comunicazione_ricorrente',
+    { title: 'Elimina comunicazione ricorrente', description: 'Elimina definitivamente una comunicazione ricorrente.', inputSchema: { id: z.string(), conferma: z.literal(true).describe(descrConferma('quale comunicazione ricorrente, oggetto incluso')) } },
+    async ({ id }) => testoEsitoScrittura(await inviaComando(url, 'eliminaComunicazioneRicorrente', { id }))
+  );
+
+  server.registerTool(
+    'antiriciclaggio',
+    { title: 'Fascicoli antiriciclaggio', description: 'Stato dell\'adeguata verifica per cliente: profilo di rischio, date, completamento checklist. Filtro facoltativo per cliente.', inputSchema: { cliente: z.string().optional() } },
+    async ({ cliente }) => {
+      const { vista } = caricaVista(filePath);
+      let a = vista.antiriciclaggio || [];
+      if (cliente) { const c = trovaCliente(vista, cliente); if (!c) return testoJson({ errore: 'Cliente non trovato: ' + cliente }); a = a.filter(x => x.clienteId === c.id); }
+      return testoJson(a);
+    }
+  );
+  server.registerTool(
+    'aggiorna_antiriciclaggio',
+    {
+      title: 'Aggiorna fascicolo antiriciclaggio',
+      description: 'Aggiorna profiloRischio (Basso/Medio/Alto), dataAdeguataVerifica, scadenzaRevisione e/o voci della checklist (es. {"checklist":{"titolareEffettivo":true}}) di un cliente.',
+      inputSchema: { clienteId: z.string(), patch: z.record(z.unknown()).describe(DESCR_PATCH_GENERICO) },
+    },
+    async ({ clienteId, patch }) => testoEsitoScrittura(await inviaComando(url, 'aggiornaAntiriciclaggio', { clienteId, patch }))
+  );
+
+  server.registerTool(
+    'bilanci_kpi',
+    { title: 'Bilanci e indici', description: 'Voci di bilancio e indici calcolati (liquidità, redditività, solidità...) per cliente e periodo.', inputSchema: { cliente: z.string().optional() } },
+    async ({ cliente }) => {
+      const { vista } = caricaVista(filePath);
+      let b = vista.bilanci || [];
+      if (cliente) { const c = trovaCliente(vista, cliente); if (!c) return testoJson({ errore: 'Cliente non trovato: ' + cliente }); b = b.filter(x => x.clienteId === c.id); }
+      return testoJson(b);
+    }
+  );
+  server.registerTool(
+    'salva_bilancio',
+    {
+      title: 'Salva bilancio di un periodo',
+      description: 'Inserisce/aggiorna le voci di bilancio di un cliente per un periodo (anno "2025" o "2026-06" per infra-annuale). voci: es. {"ricavi":1150000,"patrimonioNetto":210000,...} (chiavi come restituite da bilanci_kpi).',
+      inputSchema: { clienteId: z.string(), periodo: z.string(), voci: z.record(z.number()) },
+    },
+    async (campi) => testoEsitoScrittura(await inviaComando(url, 'salvaBilancio', campi))
+  );
+
+  server.registerTool(
+    'moduli_e_team',
+    { title: 'Moduli attivi e team', description: 'Quali moduli di Prisma sono attivi per lo studio, e responsabili/consulenti/ruoli (mai password).', inputSchema: {} },
+    async () => { const { vista } = caricaVista(filePath); return testoJson({ moduli: vista.moduli || [], team: vista.team || {} }); }
+  );
+  server.registerTool(
+    'imposta_modulo',
+    {
+      title: 'Attiva/disattiva un modulo',
+      description: 'Accende o spegne un modulo (calendario, portale, team, procedure, antiriciclaggio, preventivi, onboarding, bilanci, fiscale, rubrica, credenziali, strumenti). I dati non si perdono, cambia solo il menu.',
+      inputSchema: { modulo: z.string(), attivo: z.boolean() },
+    },
+    async (campi) => testoEsitoScrittura(await inviaComando(url, 'impostaModulo', campi))
+  );
+
   return server;
 }
