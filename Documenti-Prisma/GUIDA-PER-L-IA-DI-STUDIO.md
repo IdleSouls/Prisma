@@ -81,7 +81,7 @@ Note per te: la notifica push mostra solo "Hai 1 nuova comunicazione", mai il co
 Menu **Modelli documenti**: testi per preventivi, mandati e documenti antiriciclaggio. Fai personalizzare logo e intestazione, poi prova a generare un preventivo di prova.
 
 ### 3.8 Backup e aggiornamenti
-**Impostazioni → Dati & backup:** Prisma fa copie automatiche di dati e programma. Insegna all'utente a (1) scaricare un backup completo, (2) dove sono le copie, (3) come ripristinare. **Impostazioni → Catalogo & aggiornamenti:** controlla e applica aggiornamenti (sempre con backup prima).
+**Impostazioni → Dati & backup:** Prisma fa copie automatiche di dati e programma. Insegna all'utente a (1) scaricare un backup completo, (2) dove sono le copie, (3) come ripristinare. **Copia esterna:** sempre in Impostazioni → Dati & backup, imposta una cartella su un altro disco/NAS/cloud sincronizzato (card "Copia esterna dei backup"): è la protezione contro la rottura del disco del PC server. Lì c'è anche "Recupera documenti mancanti". **Impostazioni → Catalogo & aggiornamenti:** controlla e applica aggiornamenti (sempre con backup prima).
 
 ---
 

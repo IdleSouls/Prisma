@@ -12548,6 +12548,37 @@ function ripristinaBackupPiattaforma(timestamp) {
     })
     .catch(() => toast('⚠️ Impossibile contattare il server locale per il ripristino.', true));
 }
+let BACKUP_ESTERNO = null; // {cartella, ultimo} dal server
+function caricaBackupEsterno() {
+  if (!HTTP_SYNC_ATTIVO || BACKUP_ESTERNO !== null) return;
+  BACKUP_ESTERNO = { cartella: '', ultimo: null, caricamento: true };
+  fetch('/api/backup/esterno').then(r => r.json()).then(d => { BACKUP_ESTERNO = d; })
+    .catch(() => { BACKUP_ESTERNO = { cartella: '', ultimo: null }; })
+    .finally(() => { if (VIEW === 'impostazioni') render(); });
+}
+function cardBackupEsterno() {
+  if (!HTTP_SYNC_ATTIVO) return '';
+  caricaBackupEsterno();
+  const b = BACKUP_ESTERNO || { cartella: '', ultimo: null };
+  const u = b.ultimo;
+  const stato = !b.cartella ? '<span class="helptext">Non impostata: i backup stanno solo sul disco di questo PC.</span>'
+    : (u ? (u.ok ? `<span style="color:var(--verde,#1c8c4e);">✓ Ultima copia: ${fmtDataOra(u.data)}</span>` : `<span style="color:var(--rosso);">⚠ Ultima copia non riuscita: ${escapeHtml(u.errore || '')}</span>`)
+      : '<span class="helptext">Cartella impostata: la prima copia parte al prossimo backup (8:00/12:00/16:00 o riavvio) oppure con "Copia ora".</span>');
+  return `<div class="card">
+    <div class="section-title">Copia esterna dei backup</div>
+    <div class="helptext" style="margin-bottom:10px;">Se il disco di questo PC si rompe, perdi dati <b>e</b> backup insieme. Indica una cartella su un altro disco, un NAS o una cartella sincronizzata (OneDrive, Google Drive...): a ogni backup Prisma ci copia i dati, i documenti dei clienti e la configurazione.</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+      <input type="text" id="backupEsternoCartella" value="${escapeHtml(b.cartella || '')}" placeholder="es. D:\\Backup\\Prisma  oppure  \\\\NAS\\studio\\prisma" style="flex:1;min-width:260px;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">
+      <button class="btn primary" data-action="backup-esterno-salva">Salva e copia</button>
+      ${b.cartella ? '<button class="btn" data-action="backup-esterno-ora">Copia ora</button>' : ''}
+    </div>
+    <div style="margin-top:8px;font-size:13px;">${stato}</div>
+    <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px;">
+      <div class="helptext" style="margin-bottom:8px;">Hai cancellato dei documenti dei clienti per sbaglio? Recupera quelli mancanti dallo specchio di backup (i file esistenti non vengono toccati).</div>
+      <button class="btn small" data-action="ripristina-documenti-mancanti">Recupera documenti mancanti</button>
+    </div>
+  </div>`;
+}
 function cardBackupPiattaforma() {
   if (!HTTP_SYNC_ATTIVO) return ''; // stessa card di sopra già spiega il perché quando manca il server locale, non serve ripeterlo due volte
   caricaElencoBackupPiattaforma();
@@ -13628,6 +13659,7 @@ function renderImpostazioniDati() {
   </div>
 
   ${cardBackupAutomatici()}
+  ${cardBackupEsterno()}
   ${cardBackupPiattaforma()}`;
 }
 
@@ -15604,6 +15636,26 @@ function onClickDelegato(e) {
     }
 
     case 'ripristina-backup-server': ripristinaBackupServer(el.dataset.file); break;
+    case 'backup-esterno-salva':
+    case 'backup-esterno-ora': {
+      const cartella = (h('backupEsternoCartella') || {}).value;
+      const salva = action === 'backup-esterno-salva';
+      fetch(salva ? '/api/backup/esterno' : '/api/backup/esterno-ora', salva ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cartella: (cartella || '').trim() }) } : { method: 'POST' })
+        .then(r => r.json())
+        .then(d => {
+          BACKUP_ESTERNO = null; render();
+          if (d.ok) toast(salva && !(cartella || '').trim() ? 'Copia esterna disattivata.' : 'Copia esterna eseguita.');
+          else toast('⚠ ' + (d.errore || 'Copia non riuscita.'), true);
+        })
+        .catch(() => toast('Non sono riuscito a contattare il server.', true));
+      break;
+    }
+    case 'ripristina-documenti-mancanti':
+      if (!confermaAzione('Recuperare i documenti dei clienti mancanti dallo specchio di backup? I file già presenti non vengono toccati.')) return;
+      fetch('/api/backup/ripristina-documenti', { method: 'POST' }).then(r => r.json())
+        .then(d => toast(d.ok ? (d.ripristinati ? d.ripristinati + ' documenti recuperati.' : 'Nessun documento mancante: è tutto a posto.') : '⚠ ' + (d.errore || 'Ripristino non riuscito.'), !d.ok))
+        .catch(() => toast('Non sono riuscito a contattare il server.', true));
+      break;
     case 'ripristina-backup-piattaforma': ripristinaBackupPiattaforma(el.dataset.timestamp); break;
     case 'esporta-mcp': esportaMCP(); break;
     case 'verifica-aggiornamenti': verificaAggiornamenti(); break;

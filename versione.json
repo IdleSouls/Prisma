@@ -1,17 +1,17 @@
 {
-  "versione": "1.1.1",
-  "note": "Editor documenti visuale (foglio A4, barra strumenti, campi a chip), stampa/Word con carta intestata, fix scroll chat.",
+  "versione": "1.1.2",
+  "note": "Copia esterna dei backup e recupero documenti mancanti.",
   "richiedeNpmInstall": false,
   "file": [
     {
       "nome": "gestionale.htm",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale.htm",
-      "sha256": "14eec9880df42d20912b4bc10eec3a4d6cea36a0e0cfb91ed0e8904d3e69e567"
+      "sha256": "455b4a7d9042429c72c19be7e3433b27046aae9acb2f0cb192f402a1d2843d2d"
     },
     {
       "nome": "server.js",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/server.js",
-      "sha256": "32002a054c8e9942e2e8cf07dfd3bba4392a5d32aa990ed4369d8304b7596f77"
+      "sha256": "29020afa7410a82bf1b3c3f70a9ab28a4cc3e0434eaebb034916b893c3d7f043"
     },
     {
       "nome": "portale-cliente.htm",

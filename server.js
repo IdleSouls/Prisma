@@ -413,7 +413,7 @@ scriviLog('Avvio di Prisma...');
 const URL_MANIFESTO_AGGIORNAMENTI = 'https://raw.githubusercontent.com/IdleSouls/Prisma/main/versione.json';
 // Cambiala qui a ogni nuova versione pubblicata (deve combaciare con quella scritta nel
 // "versione.json" caricato su GitHub, altrimenti il confronto non ha senso).
-const VERSIONE_LOCALE = '1.1.1';
+const VERSIONE_LOCALE = '1.1.2';
 // Solo questi file possono essere sovrascritti da un aggiornamento - mai un nome libero/a piacere
 // del manifesto, per non correre il rischio (anche solo teorico, es. account GitHub compromesso)
 // di far scrivere un file arbitrario altrove sul PC del cliente.
@@ -1226,7 +1226,7 @@ function eseguiBackupPiattaforma(motivo, suffisso) {
 // configurazione: finora il backup copriva solo dati-studio.json e il codice. Qui è uno "specchio
 // cumulativo": si copia solo ciò che manca o è cambiato e NON si cancella mai nulla, così anche un
 // documento eliminato per sbaglio dall'app resta recuperabile da backup/documenti-clienti/.
-const FILE_CONFIG_BACKUP = ['accesso-esterno.json', 'push-abbonamenti.json', 'responsabili-password.json', 'license.json', 'package.json'];
+const FILE_CONFIG_BACKUP = ['accesso-esterno.json', 'push-abbonamenti.json', 'responsabili-password.json', 'license.json', 'package.json', 'backup-esterno.json'];
 function specchiaCartella(origine, destinazione) {
   if (!fs.existsSync(origine)) return 0;
   let copiati = 0;
@@ -1257,6 +1257,47 @@ function eseguiBackupDocumentiEConfig() {
   }
 }
 
+
+// Copia ESTERNA dei backup (task #228): tutto il resto del backup sta sullo stesso disco di Prisma,
+// quindi un guasto al disco porterebbe via dati e copie insieme. Se lo studio indica una cartella
+// su un altro disco / NAS / cartella sincronizzata (OneDrive, Google Drive...) a ogni giro di backup
+// si copia lì: dati correnti + una copia al giorno (30 giorni), documenti dei clienti (specchio,
+// senza mai cancellare) e file di configurazione. La cartella si imposta da Impostazioni > Dati.
+const FILE_BACKUP_ESTERNO = path.join(CARTELLA, 'backup-esterno.json');
+let ULTIMO_BACKUP_ESTERNO = null; // {data, ok, errore, documenti}
+function leggiConfigBackupEsterno() {
+  try { return JSON.parse(fs.readFileSync(FILE_BACKUP_ESTERNO, 'utf8')) || {}; } catch (e) { return {}; }
+}
+function eseguiBackupEsterno() {
+  const cfg = leggiConfigBackupEsterno();
+  if (!cfg.cartella) return null;
+  try {
+    const dest = cfg.cartella;
+    fs.mkdirSync(dest, { recursive: true });
+    if (fs.existsSync(FILE_DATI)) {
+      const contenuto = fs.readFileSync(FILE_DATI);
+      fs.writeFileSync(path.join(dest, 'dati-studio.json'), contenuto);
+      const giornaliero = path.join(dest, 'dati-studio_' + formattaDataOraFileBackup(new Date()).slice(0, 10) + '.json');
+      fs.writeFileSync(giornaliero, contenuto);
+      const soglia = Date.now() - GIORNI_DA_CONSERVARE_BACKUP * 24 * 60 * 60 * 1000;
+      fs.readdirSync(dest).filter((f) => /^dati-studio_\d{4}-\d{2}-\d{2}\.json$/.test(f)).forEach((f) => {
+        try { if (fs.statSync(path.join(dest, f)).mtimeMs < soglia) fs.unlinkSync(path.join(dest, f)); } catch (e) { /* ignora */ }
+      });
+    }
+    const nDoc = specchiaCartella(path.join(CARTELLA, 'documenti-clienti'), path.join(dest, 'documenti-clienti'));
+    const cfgDir = path.join(dest, 'config');
+    fs.mkdirSync(cfgDir, { recursive: true });
+    for (const f of FILE_CONFIG_BACKUP.concat(FILE_PIATTAFORMA_BACKUP)) {
+      const o = path.join(CARTELLA, f);
+      if (fs.existsSync(o)) fs.copyFileSync(o, path.join(cfgDir, f));
+    }
+    ULTIMO_BACKUP_ESTERNO = { data: new Date().toISOString(), ok: true, errore: null, documenti: nDoc };
+  } catch (err) {
+    console.error('[gestionale] Backup esterno non riuscito:', err.message);
+    ULTIMO_BACKUP_ESTERNO = { data: new Date().toISOString(), ok: false, errore: err.message, documenti: 0 };
+  }
+  return ULTIMO_BACKUP_ESTERNO;
+}
 // motivo: solo per il log in console, non cambia il comportamento. Non crea un doppione se il
 // contenuto è identico all'ultimo backup salvato (es. giornata senza nessuna modifica) - evita di
 // riempire la cartella di copie inutili tenendo comunque uno storico reale quando qualcosa cambia.
@@ -1278,6 +1319,7 @@ function eseguiBackup(motivo) {
     }
     eseguiBackupPiattaforma(motivo, suffisso);
     eseguiBackupDocumentiEConfig();
+    eseguiBackupEsterno();
     pulisciBackupVecchi();
   } catch (err) {
     console.error('[gestionale] Errore creando il backup:', err.message);
@@ -1943,6 +1985,67 @@ function gestisciRichiesta(req, res) {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify({ ok: true, annullato: cEraUnRiavvioInCorso }));
     });
+    return;
+  }
+
+  // Copia esterna dei backup + recupero documenti dallo specchio interno (task #228)
+  if (url === '/api/backup/esterno' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ cartella: leggiConfigBackupEsterno().cartella || '', ultimo: ULTIMO_BACKUP_ESTERNO }));
+    return;
+  }
+  if (url === '/api/backup/esterno' && req.method === 'POST') {
+    leggiCorpoRichiesta(req, (corpo) => {
+      try {
+        const dati = JSON.parse(corpo);
+        const cartella = String(dati.cartella || '').trim();
+        if (cartella && !path.isAbsolute(cartella)) throw new Error('Indica un percorso completo (es. D:\\Backup\\Prisma oppure \\\\NAS\\studio\\prisma).');
+        if (cartella) {
+          fs.mkdirSync(cartella, { recursive: true });
+          const prova = path.join(cartella, '.prisma-prova');
+          fs.writeFileSync(prova, 'ok'); fs.unlinkSync(prova); // verifica che si possa scrivere davvero
+        }
+        fs.writeFileSync(FILE_BACKUP_ESTERNO, JSON.stringify({ cartella }, null, 2));
+        const esito = cartella ? eseguiBackupEsterno() : null;
+        if (!cartella) ULTIMO_BACKUP_ESTERNO = null;
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: !esito || esito.ok, cartella, ultimo: esito, errore: esito && !esito.ok ? esito.errore : null }));
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, errore: 'Cartella non utilizzabile: ' + err.message }));
+      }
+    });
+    return;
+  }
+  if (url === '/api/backup/esterno-ora' && req.method === 'POST') {
+    const esito = eseguiBackupEsterno();
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ ok: !!(esito && esito.ok), ultimo: esito, errore: esito ? esito.errore : 'Nessuna cartella esterna impostata.' }));
+    return;
+  }
+  // Ripristina i documenti clienti MANCANTI dallo specchio backup/documenti-clienti (mai sovrascrive
+  // file esistenti: serve a recuperare ciò che è stato cancellato per sbaglio).
+  if (url === '/api/backup/ripristina-documenti' && req.method === 'POST') {
+    try {
+      const src = path.join(CARTELLA_BACKUP, 'documenti-clienti');
+      let n = 0;
+      const ripristina = (o, d) => {
+        if (!fs.existsSync(o)) return;
+        fs.mkdirSync(d, { recursive: true });
+        for (const v of fs.readdirSync(o, { withFileTypes: true })) {
+          const oo = path.join(o, v.name), dd = path.join(d, v.name);
+          if (v.isDirectory()) ripristina(oo, dd);
+          else if (v.isFile() && !fs.existsSync(dd)) { fs.copyFileSync(oo, dd); n++; }
+        }
+      };
+      ripristina(src, CARTELLA_DOCUMENTI);
+      scriviLog('Ripristino documenti mancanti dallo specchio di backup: ' + n + ' file.');
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ ok: true, ripristinati: n }));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ ok: false, errore: err.message }));
+    }
     return;
   }
 
