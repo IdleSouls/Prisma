@@ -1718,7 +1718,7 @@ function catalogoAttivitaStudioDefault() {
 }
 
 let STATE = null;
-let VIEW = 'dashboard';
+let VIEW = 'oggi'; // task #213: si parte dalla home guidata "Oggi"; 'dashboard' resta il ripiego dei blocchi di permesso/modulo
 let VIEW_PARAMS = {};
 
 /* Porta un oggetto stato "grezzo" (da localStorage o dal documento condiviso, vedi SYNC CONDIVISO
@@ -4091,6 +4091,7 @@ function accessoPortalePuoVedere(accesso, sezione) {
 /* -------------------- 4) RENDER — shell + nav -------------------- */
 const NAV = [
   { group: 'Panoramica', items: [
+    { id: 'oggi', label: 'Oggi', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M18.7 5.3l-1.6 1.6M6.9 17.1l-1.6 1.6"/></svg>' },
     { id: 'dashboard', label: 'Dashboard', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>' },
     { id: 'azioni', label: 'Azioni', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/></svg>' },
     { id: 'calendario', label: 'Calendario', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="8" y1="2.5" x2="8" y2="6.5"/><line x1="16" y1="2.5" x2="16" y2="6.5"/></svg>' },
@@ -4132,6 +4133,7 @@ const NAV = [
   ]},
 ];
 const PAGE_TITLES = {
+  oggi: ['Oggi', 'Quello che richiede la tua attenzione adesso'],
   dashboard: ['Dashboard', 'Panoramica scadenze dello studio'],
   calendario: ['Calendario', 'Vista mensile di tutte le scadenze'],
   clienti: ['Clienti', 'Anagrafica e flag fiscali'],
@@ -4307,6 +4309,7 @@ function render() {
   document.getElementById('pageSub').textContent = sub;
   const content = document.getElementById('content');
   switch (VIEW) {
+    case 'oggi': content.innerHTML = renderOggi(); break;
     case 'dashboard': content.innerHTML = renderDashboard(); break;
     case 'calendario': content.innerHTML = renderCalendario(); break;
     case 'clienti': content.innerHTML = renderClienti(); break;
@@ -4422,6 +4425,81 @@ function renderDashboard() {
   </div>`;
 
   return filtroHtml + kpi + sezioneScaduti + sezioneInScadenza + sezioneAnnuali + sezioneOnboarding;
+}
+
+/* -------------------- RENDER: OGGI (task #213) --------------------
+   Matteo: "Scadero ti sbatte in faccia tutte le funzioni e non ci si capisce nulla" - Prisma deve
+   guidare. Questa è la schermata di partenza: solo quello che serve a QUESTA persona adesso
+   (scadenze sue scadute o entro 7 giorni, task suoi, messaggi da leggere, chat), con un bottone
+   per ogni cosa, e un invito a configurare se è un'installazione ancora vuota. Il menu completo
+   resta a sinistra ma è secondario. Rispetta moduli attivi e permessi tramite operatorePuoVedere:
+   un blocco legato a una sezione che l'utente non può vedere semplicemente non compare. */
+function renderOggi() {
+  const me = OPERATORE || null;
+  const oggi = oggiISO();
+  const saluto = (() => { const h = new Date().getHours(); return h < 13 ? 'Buongiorno' : (h < 18 ? 'Buon pomeriggio' : 'Buonasera'); })();
+  const dataEstesa = new Date().toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const intest = `<div style="margin-bottom:16px;">
+    <div style="font-size:22px;font-weight:800;">${saluto}${me ? ', ' + escapeHtml(me) : ''}</div>
+    <div class="helptext" style="text-transform:capitalize;">${escapeHtml(dataEstesa)}</div>
+  </div>`;
+
+  if (STATE.clienti.length === 0) {
+    return intest + `<div class="card"><div class="empty">
+      <div class="big">Iniziamo da qui</div>
+      Prisma è ancora vuoto. Aggiungi il primo cliente per vedere qui le scadenze e le cose da fare.<br><br>
+      <button class="btn primary" data-action="nuovo-cliente">+ Aggiungi cliente</button>
+      ${operatorePuoVedere('impostazioni') ? ' <button class="btn" data-action="nav" data-nav="impostazioni">Scegli i moduli da usare</button>' : ''}
+    </div></div>`;
+  }
+
+  const { tutteScadenze } = derivati();
+  const mie = me ? tutteScadenze.filter(s => s.responsabile === me) : tutteScadenze;
+  const { scaduti, inScadenza } = classificaScadenze(mie, oggi);
+  const entro7 = inScadenza.filter(s => giorniTra(oggi, s.data) <= 7);
+  const urgenti = scaduti.slice().sort((a, b) => a.data.localeCompare(b.data)).concat(entro7.slice().sort((a, b) => a.data.localeCompare(b.data)));
+
+  const taskMiei = (STATE.taskTeam || []).filter(t => t.stato !== 'Fatto' && (!me || t.assegnatoA === me))
+    .sort((a, b) => (a.scadenza || '9999').localeCompare(b.scadenza || '9999'));
+  const comDaLeggere = (moduloAttivo('portale') && operatorePuoVedere('comunicazioni')) ? comunicazioniDaLeggereConteggio() : 0;
+  const chatNL = (moduloAttivo('team') && operatorePuoVedere('chat')) ? chatTotaleNonLetti() : 0;
+
+  const tile = (n, etichetta, azione, cls) => `<div class="kpi ${cls}" style="cursor:pointer;" ${azione}><div class="n">${n}</div><div class="l">${etichetta}</div></div>`;
+  const tiles = [
+    tile(scaduti.length, 'SCADUTE', 'data-action="goto-scadenze" data-filtro="scaduti"', 'scaduti'),
+    tile(entro7.length, 'ENTRO 7 GIORNI', 'data-action="goto-scadenze" data-filtro="inscadenza"', 'inscadenza'),
+    operatorePuoVedere('taskteam') ? tile(taskMiei.length, me ? 'I TUOI TASK' : 'TASK APERTI', 'data-action="nav" data-nav="taskteam"', 'futuri') : '',
+    operatorePuoVedere('comunicazioni') && moduloAttivo('portale') ? tile(comDaLeggere, 'MESSAGGI DA LEGGERE', 'data-action="nav" data-nav="comunicazioni"', 'completati') : '',
+  ].join('');
+
+  const rigaScadenza = (s) => {
+    const d = deltaLabel(s.data);
+    return `<div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--border);cursor:pointer;" data-action="apri-dettaglio-scadenza" data-id="${s.id}" title="Apri il riepilogo della scadenza">
+      <span class="pill-delta ${d.cls}" style="min-width:74px;text-align:center;">${d.txt}</span>
+      <span style="flex:1;font-size:13px;"><strong>${escapeHtml(nomeCliente(s.clienteId))}</strong> — ${escapeHtml(s.nome)}</span>
+      <span class="helptext">${fmtDataBreve(s.data)}</span>
+    </div>`;
+  };
+  const sezUrgenti = `<div class="card">
+    <div class="section-title">Da fare per primo <span class="cnt">${urgenti.length}</span></div>
+    ${urgenti.length ? urgenti.slice(0, 7).map(rigaScadenza).join('') + (urgenti.length > 7 ? `<div style="margin-top:10px;"><button class="btn small" data-action="goto-scadenze" data-filtro="inscadenza">Vedi tutte le ${urgenti.length} →</button></div>` : '')
+      : '<div class="empty">Niente di scaduto o in arrivo nei prossimi 7 giorni' + (me ? ' a tuo nome' : '') + '. 🎉</div>'}
+  </div>`;
+
+  const sezTask = (operatorePuoVedere('taskteam') && taskMiei.length) ? `<div class="card">
+    <div class="section-title">${me ? 'I tuoi task' : 'Task aperti'} <span class="cnt">${taskMiei.length}</span></div>
+    ${taskMiei.slice(0, 5).map(t => `<div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--border);cursor:pointer;" data-action="apri-dettaglio-task-team" data-id="${t.id}">
+      <span style="flex:1;font-size:13px;">${escapeHtml(t.titolo)}</span>
+      ${t.scadenza ? `<span class="helptext">${taskInRitardo(t) ? '⚠️ ' : ''}${fmtDataBreve(t.scadenza)}</span>` : ''}
+    </div>`).join('')}
+    ${taskMiei.length > 5 ? '<div style="margin-top:10px;"><button class="btn small" data-action="nav" data-nav="taskteam">Vedi tutti →</button></div>' : ''}
+  </div>` : '';
+
+  const chatRiga = chatNL ? `<div class="card" style="cursor:pointer;" data-action="nav" data-nav="chat"><strong>💬 ${chatNL}</strong> ${chatNL === 1 ? 'messaggio non letto' : 'messaggi non letti'} in chat <span class="badge" style="float:right;">Apri →</span></div>` : '';
+
+  const altro = operatorePuoVedere('dashboard') ? `<div style="margin-top:6px;"><button class="btn small" data-action="nav" data-nav="dashboard">Vedi la dashboard completa →</button></div>` : '';
+
+  return intest + `<div class="kpi-grid">${tiles}</div>` + sezUrgenti + sezTask + chatRiga + altro;
 }
 
 /* -------------------- PAGINAZIONE LISTE --------------------

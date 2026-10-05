@@ -3992,6 +3992,25 @@ async function main() {
     console.log('=== #214: moduli attivabili (default tutto attivo, spegni/riaccendi, blocco accesso diretto) OK');
   }
 
+  // ---- #213: home "Oggi" ----
+  {
+    const st = window.getSTATE();
+    window.setView('oggi');
+    await wait(20);
+    assert(window.getVIEW() === 'oggi', '#213: la vista "oggi" deve essere raggiungibile');
+    assert(q('#content').innerHTML.includes('Da fare per primo'), '#213: la home Oggi deve mostrare il blocco "Da fare per primo"');
+    assert(qa('.navitem').some(el => el.dataset.nav === 'oggi'), '#213: la voce "Oggi" deve comparire nel menu');
+    // modulo team spento: nessun riferimento a chat/task nella home
+    st.meta.moduliDisattivati = ['team'];
+    window.render();
+    assert(!q('#content').innerHTML.includes('data-nav="chat"') && !q('#content').innerHTML.includes('data-nav="taskteam"'), '#213: con il modulo team spento la home non deve proporre chat né task');
+    st.meta.moduliDisattivati = [];
+    window.render();
+    window.setView('dashboard');
+    await wait(20);
+    console.log('=== #213: home Oggi (blocchi, menu, rispetto dei moduli spenti) OK');
+  }
+
   click(q('[data-nav="schedacliente"]'));
   await wait(20);
   click(q(`[data-action="schcli-apri-task"][data-cliente="${clienteScheda.id}"]`));
