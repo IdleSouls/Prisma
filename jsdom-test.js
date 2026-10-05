@@ -3468,10 +3468,27 @@ async function main() {
     const pdom = new JSDOM(fs.readFileSync(path.join(__dirname, 'portale-cliente.htm'), 'utf8'), { runScripts: 'dangerously', url: 'http://localhost/portale/x', pretendToBeVisual: true, virtualConsole: new (require('jsdom').VirtualConsole)() });
     const pw = pdom.window;
     pw.eval('var __v = ' + JSON.stringify(JSON.parse(JSON.stringify(vistaAndamento))));
-    const out = pw.eval('VISTA = __v; TAB = "andamento"; renderAndamento()');
-    assert(out.includes('Come sta andando l\'azienda') && out.includes('Liquidità') && out.includes('Solidità'), 'il portale non disegna cruscotto e sezioni dell\'Andamento');
-    assert((out.match(/<svg/g) || []).length >= 10, 'il portale dovrebbe disegnare gauge/donut/area/waterfall/radar (SVG), trovati ' + (out.match(/<svg/g) || []).length);
-    assert(!out.includes('undefined') && !out.includes('NaN'), 'l\'Andamento del portale mostra undefined/NaN');
+    // Nuova navigazione a pulsanti: cruscotto sempre in cima, poi UNA vista alla volta
+    // (sintesi, 4 aree, tutti gli indici, confronto). Si scorrono tutte e si contano gli SVG.
+    const vistePortale = ['sintesi', 'Liquidità', 'Redditività', 'Solidità', 'Efficienza', 'indici', 'confronto'];
+    let totSvg = 0;
+    pw.eval('VISTA = __v; TAB = "andamento";');
+    for (const v of vistePortale) {
+      const out = pw.eval('AND_VISTA = ' + JSON.stringify(v) + '; renderAndamento()');
+      assert(out.includes('Come sta andando l\'azienda'), `Andamento portale (${v}): il cruscotto con l'indicatore generale deve stare sempre in cima`);
+      assert(out.includes('and-nav') && out.includes('Tutti gli indici') && out.includes('Confronto'), `Andamento portale (${v}): mancano i pulsanti di navigazione`);
+      assert(!out.includes('undefined') && !out.includes('NaN'), `l'Andamento del portale (${v}) mostra undefined/NaN`);
+      totSvg += (out.match(/<svg/g) || []).length;
+      if (['Liquidità', 'Redditività', 'Solidità', 'Efficienza'].includes(v)) {
+        assert(out.includes('Come migliorarlo') && out.includes('Come si calcola') && out.includes('Come leggerlo'), `Andamento portale (${v}): la guida agli indici (significato/formula/soglie/come migliorarlo) deve essere sempre visibile`);
+      }
+      if (v === 'indici') assert(out.includes('Come migliorarlo'), 'Andamento portale: "Tutti gli indici" deve riportare la guida di ogni indice');
+      if (v === 'confronto') assert(out.includes('Situazione comparata') && out.includes('conf-riga'), 'Andamento portale: la vista Confronto deve mostrare la tabella comparata');
+    }
+    assert(totSvg >= 10, 'il portale dovrebbe disegnare gauge/donut/area/waterfall/radar (SVG) nelle varie viste, trovati ' + totSvg);
+    assert(dettAnd.comparato && dettAnd.comparato.periodi.length >= 2 && dettAnd.comparato.indici.length > 0, 'andamento.dettaglio.comparato deve avere almeno 2 periodi e degli indici');
+    const outS = pw.eval('AND_VISTA = "sintesi"; renderAndamento()');
+    assert(outS.includes('data-action="andamento-vista"'), 'Andamento portale: i pulsanti devono usare data-action="andamento-vista"');
     pdom.window.close();
   }
   console.log('=== #178: payload reale del portale esterno (andamento) ora completo - patrimonio netto, ROI/ROS/margine, liquidità/indebitamento, giorni incasso, variazioni, semafori e ripartizione costi OK');

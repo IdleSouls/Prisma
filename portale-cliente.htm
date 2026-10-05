@@ -64,8 +64,14 @@ input::file-selector-button{font-family:inherit;font-size:inherit;}
 /* ---------- hero ---------- */
 #hero{background:linear-gradient(135deg,var(--blu-scuro) 0%,#0B1226 100%);color:#fff;padding:22px 18px 26px 18px;position:relative;}
 #hero .eyebrow{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;opacity:.7;font-weight:700;margin-bottom:8px;}
-#hero .riga{display:flex;align-items:center;gap:14px;}
-.btn-notifiche{position:absolute;top:18px;right:16px;width:38px;height:38px;border-radius:12px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);color:#fff;font-size:16px;display:flex;align-items:center;justify-content:center;padding:0;}
+/* I pulsanti (installa/notifiche) stanno in alto a destra: la riga col nome riserva loro lo spazio
+   a destra, così non lo coprono mai - nemmeno con un nome società lungo su telefono. */
+#hero .riga{display:flex;align-items:center;gap:14px;padding-right:92px;}
+#hero .riga > div:last-child{min-width:0;}
+#hero h1{overflow-wrap:anywhere;}
+.hero-azioni{position:absolute;top:14px;right:14px;display:flex;gap:8px;}
+.hero-azioni:not(:has(button:not([hidden]))){display:none;}
+.btn-notifiche{width:38px;height:38px;border-radius:12px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);color:#fff;font-size:16px;display:flex;align-items:center;justify-content:center;padding:0;}
 .btn-notifiche.attivo{background:rgba(79,124,255,.35);border-color:var(--blu-accent);}
 #hero .iniziali{width:46px;height:46px;border-radius:13px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.24);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;flex:none;}
 #hero h1{font-size:19px;margin:0;font-weight:800;letter-spacing:-.01em;}
@@ -163,6 +169,64 @@ details summary{cursor:pointer;font-size:10.5px;font-weight:700;color:var(--text
 .bars .col .b.neg{background:var(--rosso);}
 .bars .col .lab{font-size:9px;color:var(--text-mut);margin-top:5px;text-align:center;}
 
+/* Rete di sicurezza per telefoni stretti (Matteo: "testi che si sovrappongono e dati che escono
+   dallo schermo"): testi lunghi (nomi, importi, oggetti, allegati) vanno a capo invece di sbordare,
+   i box flex/grid possono restringersi (min-width:0) e nessun grafico/immagine supera la colonna. */
+html,body{max-width:100%;overflow-x:hidden;}
+.panel,.item,.kv,.indice-card,.kpi-card,.ritenuta-riga{min-width:0;overflow-wrap:anywhere;}
+.item .t,.item .s,.ritenuta-riga .t,.ritenuta-riga .s,.kv .v{overflow-wrap:anywhere;}
+.panel svg,.panel img,.cruscotto svg{max-width:100%;height:auto;}
+.stat .n{overflow-wrap:anywhere;}
+@media (max-width:380px){
+  #hero{padding:18px 14px 22px 14px;}
+  #hero .riga{padding-right:84px;gap:10px;}
+  #hero h1{font-size:17px;}
+  #corpo{padding:12px;}
+  .panel{padding:14px 12px;}
+  .kv-grid{grid-template-columns:1fr;}
+  .kpi-cards{gap:6px;}
+}
+/* Andamento: pulsanti di navigazione (scorrono in orizzontale, restano agganciati in alto sotto la
+   hero), tessere delle 4 aree, guida agli indici, tabella comparata (griglia, mai sbordante). */
+.and-nav{display:flex;gap:7px;overflow-x:auto;padding:12px 2px 6px 2px;margin-top:4px;position:sticky;top:0;z-index:5;background:var(--bg);scrollbar-width:none;-webkit-overflow-scrolling:touch;}
+.and-nav::-webkit-scrollbar{display:none;}
+.and-chip{flex:none;border:1px solid var(--border);background:#fff;color:var(--text-mut);border-radius:20px;padding:8px 14px;font-size:12.5px;font-weight:700;white-space:nowrap;}
+.and-chip.attivo{background:var(--blu-mid);border-color:var(--blu-mid);color:#fff;}
+.and-tessere{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.and-tessera{display:flex;align-items:center;gap:8px;border:1px solid var(--border);background:var(--bg);border-radius:12px;padding:11px 12px;text-align:left;}
+.and-tessera .em{font-size:16px;}
+.and-tessera .nm{flex:1;min-width:0;font-size:12.5px;font-weight:700;color:var(--text);}
+.and-tessera .pt{font-size:15px;font-weight:800;}
+.indice-guida{border:1px solid var(--border);border-left:3px solid var(--border);border-radius:11px;padding:12px 13px;margin-top:10px;}
+.ig-top{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.ig-nome{font-size:13px;font-weight:800;min-width:0;overflow-wrap:anywhere;}
+.ig-val{font-size:21px;font-weight:800;margin:3px 0 8px 0;}
+.ig-blocco{font-size:12px;line-height:1.55;color:var(--text);margin-top:8px;}
+.ig-k{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--text-mut);margin-bottom:2px;}
+.conf-riga{display:grid;align-items:center;gap:6px;padding:8px 0;border-top:1px solid var(--border);font-size:12px;}
+.conf-head{border-top:none;font-size:10px;font-weight:800;text-transform:uppercase;color:var(--text-mut);text-align:right;}
+.conf-nome{font-weight:600;min-width:0;overflow-wrap:anywhere;}
+.conf-cella{text-align:right;font-weight:700;white-space:nowrap;}
+.conf-cella.nd{color:var(--text-mut);font-weight:400;}
+.conf-dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:4px;vertical-align:middle;}
+.conf-fr{font-size:10px;margin-left:3px;}
+.conf-gruppo{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--blu-mid);margin:16px 0 2px 0;}
+/* Simulatore ravvedimento - form (Matteo: "il simulatore è brutto"): selettore a segmenti, campi con
+   etichetta sopra e stesso stile per input/select/date, tutto a larghezza piena e senza sforare lo
+   schermo (min-width:0 + appearance neutra sulle date, che su iPhone altrimenti sbordano). */
+.rav-intro{font-size:12.5px;line-height:1.5;color:var(--text-mut);margin:-2px 0 12px 0;}
+.rav-segmenti{display:flex;background:var(--bg);border-radius:11px;padding:3px;gap:3px;margin-bottom:14px;}
+.rav-seg{flex:1;border:none;background:transparent;padding:9px 6px;border-radius:9px;font-size:12.5px;font-weight:700;color:var(--text-mut);}
+.rav-seg.attivo{background:#fff;color:var(--blu-mid);box-shadow:var(--shadow-sm);}
+.rav-form{display:flex;flex-direction:column;gap:10px;}
+.rav-campo{min-width:0;}
+.rav-campo label{display:block;font-size:11px;font-weight:700;color:var(--text-mut);margin-bottom:4px;text-transform:uppercase;letter-spacing:.03em;}
+.rav-campo input,.rav-campo select{display:block;width:100%;min-width:0;max-width:100%;font-size:14px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:#fff;color:var(--text);-webkit-appearance:none;appearance:none;min-height:42px;}
+.rav-campo select{background-image:linear-gradient(45deg,transparent 50%,var(--text-mut) 50%),linear-gradient(135deg,var(--text-mut) 50%,transparent 50%);background-position:calc(100% - 17px) 18px,calc(100% - 12px) 18px;background-size:5px 5px,5px 5px;background-repeat:no-repeat;padding-right:32px;text-overflow:ellipsis;}
+.rav-campo input:focus,.rav-campo select:focus{outline:none;border-color:var(--blu-accent);}
+.rav-riga-2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+@media (max-width:420px){.rav-riga-2{grid-template-columns:1fr;}}
+.rav-calcola{width:100%;margin-top:14px;padding:12px;font-size:14px;}
 /* Risultato del simulatore di ravvedimento (Matteo: "è bruttino" - prima era un'unica riga generica
    con sfondo giallo piatto, stesso trattamento di un item di lista qualsiasi, senza dare risalto al
    numero che conta davvero: il totale da versare). Ora una vera mini-card: un "hero" col totale in
@@ -241,10 +305,18 @@ details summary{cursor:pointer;font-size:10.5px;font-weight:700;color:var(--text
 .item.com-item:first-child{margin-top:0;}
 .item.com-item:hover{background:var(--bg);}
 .item.com-item.non-letta{border-left-color:var(--rosso);}
-.com-titolo{cursor:pointer;user-select:none;}
-.com-freccia{display:inline-block;font-size:10px;color:var(--text-mut);transition:transform .15s;width:10px;}
+/* Tutta la testata (titolo, badge, data, anteprima) è l'area cliccabile: Matteo, "si dovrebbe poter
+   cliccare ovunque sulla comunicazione". Il dettaglio aperto resta FUORI dall'area cliccabile, così
+   scrivere una risposta o toccare un allegato non chiude la card. */
+.com-testata{display:flex;align-items:flex-start;gap:10px;cursor:pointer;user-select:none;-webkit-tap-highlight-color:transparent;margin:-11px -13px;padding:11px 13px;border-radius:10px;}
+.com-testata-corpo{flex:1;min-width:0;}
+.com-titolo{overflow-wrap:anywhere;}
+.com-badges{display:flex;flex-wrap:wrap;gap:5px;margin-top:4px;}
+.com-badges:empty{display:none;}
+.com-dettaglio{margin-top:14px;}
+.com-freccia{display:inline-block;font-size:12px;color:var(--text-mut);transition:transform .15s;width:12px;margin-top:2px;flex:none;}
 .item.aperto .com-freccia{transform:rotate(90deg);}
-.com-dettaglio{overflow:hidden;}
+.com-dettaglio{overflow:hidden;cursor:default;}
 /* Anteprima dell'ultimo messaggio, visibile anche a card chiusa (vedi cardComunicazione). */
 .com-anteprima{font-size:12px;color:var(--text-mut);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .aut-inline{font-weight:700;}
@@ -310,7 +382,10 @@ details summary{cursor:pointer;font-size:10.5px;font-weight:700;color:var(--text
 <div id="appRoot" hidden>
   <div id="tabbarWrap">
     <div id="hero">
-      <button id="btnNotifiche" class="btn-notifiche" hidden aria-label="Notifiche">🔕</button>
+      <div class="hero-azioni">
+        <button id="btnInstalla" class="btn-notifiche" hidden aria-label="Installa l'app" title="Aggiungi il portale alla schermata Home">⤓</button>
+        <button id="btnNotifiche" class="btn-notifiche" hidden aria-label="Notifiche">🔕</button>
+      </div>
       <div class="eyebrow" id="eyebrowStudio">Il tuo spazio</div>
       <div class="riga">
         <div class="iniziali" id="iniziali">?</div>
@@ -382,6 +457,61 @@ function aggiornaBottoneNotifiche(attivo) {
   btn.textContent = attivo ? '🔔' : '🔕';
   btn.title = attivo ? 'Notifiche attive su questo dispositivo - tocca per disattivarle' : 'Attiva le notifiche su questo dispositivo';
   btn.classList.toggle('attivo', !!attivo);
+}
+// ---------- Installazione come app (richiesta Matteo: "manca un pulsante per scaricare la pagina nella
+// propria home") ----------
+// Chrome/Edge/Android emettono 'beforeinstallprompt': lo si conserva e lo si lancia al click. Safari
+// su iPhone/iPad non lo supporta mai (si installa solo da Condividi > Aggiungi a Home): lì il
+// pulsante mostra le istruzioni. Se il portale è già aperto come app installata, il pulsante non c'è.
+let PROMPT_INSTALLAZIONE = null;
+// L'evento può scattare PRIMA che il cliente abbia fatto l'accesso (schermata password): va catturato
+// subito, a livello di pagina, non dentro inizializzaInstallazionePwa che parte solo dopo.
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); PROMPT_INSTALLAZIONE = e; });
+function giaInstallata() {
+  try { return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true; } catch (e) { return false; }
+}
+function eIosSafari() {
+  const ua = navigator.userAgent || '';
+  const ios = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  return ios;
+}
+function mostraIstruzioniInstallazione() {
+  const vecchio = document.getElementById('ovInstalla');
+  if (vecchio) vecchio.remove();
+  const ios = eIosSafari();
+  const passi = ios
+    ? '<li>Tocca il tasto <strong>Condividi</strong> (il quadrato con la freccia) in basso nel browser.</li><li>Scorri e scegli <strong>Aggiungi alla schermata Home</strong>.</li><li>Conferma con <strong>Aggiungi</strong>: troverai l\'icona del portale tra le tue app.</li>'
+    : '<li>Apri il menu del browser (i tre puntini in alto a destra).</li><li>Scegli <strong>Installa app</strong> oppure <strong>Aggiungi alla schermata Home</strong>.</li><li>Conferma: l\'icona del portale comparirà tra le tue app.</li>';
+  const ov = document.createElement('div');
+  ov.id = 'ovInstalla';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(10,18,38,.55);z-index:80;display:flex;align-items:flex-end;justify-content:center;padding:16px;';
+  ov.innerHTML = '<div style="background:#fff;border-radius:16px;max-width:420px;width:100%;padding:20px;box-shadow:var(--shadow-md);">'
+    + '<div style="font-size:16px;font-weight:800;margin-bottom:6px;color:var(--blu-scuro);">Aggiungi il portale alla Home</div>'
+    + '<div style="font-size:12.5px;color:var(--text-mut);margin-bottom:10px;">Così lo apri con un tocco, come una vera app, senza cercare il link.</div>'
+    + '<ol style="margin:0 0 14px 18px;padding:0;font-size:13px;line-height:1.7;">' + passi + '</ol>'
+    + '<button class="btn-invia" style="width:100%;margin-top:0;" id="chiudiOvInstalla">Ho capito</button></div>';
+  ov.addEventListener('click', (e) => { if (e.target === ov || e.target.id === 'chiudiOvInstalla') ov.remove(); });
+  document.body.appendChild(ov);
+}
+function inizializzaInstallazionePwa() {
+  const btn = document.getElementById('btnInstalla');
+  if (!btn) return;
+  if (giaInstallata()) { btn.hidden = true; return; }
+  btn.onclick = async () => {
+    if (PROMPT_INSTALLAZIONE) {
+      const p = PROMPT_INSTALLAZIONE;
+      PROMPT_INSTALLAZIONE = null;
+      try { p.prompt(); await p.userChoice; } catch (e) { /* scelta annullata o non disponibile */ }
+      btn.hidden = !eIosSafari() && !PROMPT_INSTALLAZIONE; // se installata, 'appinstalled' lo nasconde comunque
+      return;
+    }
+    mostraIstruzioniInstallazione();
+  };
+  // iPhone/iPad: nessun evento, si mostra sempre (se non già installata). Altrove, solo quando il
+  // browser dice che l'installazione è possibile.
+  if (eIosSafari() || PROMPT_INSTALLAZIONE) btn.hidden = false;
+  window.addEventListener('beforeinstallprompt', () => { btn.hidden = false; }); // eventuale evento arrivato dopo l'accesso
+  window.addEventListener('appinstalled', () => { PROMPT_INSTALLAZIONE = null; btn.hidden = true; });
 }
 async function inizializzaNotifichePush() {
   if (!PUSH_SUPPORTATO) return; // niente bottone se il browser non supporta le push (es. iOS Safari fuori da "app installata"): nessun errore mostrato, solo la funzione non compare
@@ -627,10 +757,12 @@ async function avvia() {
   renderHero();
   renderTabbar();
   renderCorpo();
+  if (COM_DA_APRIRE) { const idDaAprire = COM_DA_APRIRE; COM_DA_APRIRE = null; apriComunicazioneDaNotifica(idDaAprire); }
   aggiornaBannerCoda();
   svuotaCoda(); // riprova subito eventuali invii rimasti in coda da una visita precedente
   iniziaPolling();
   inizializzaNotifichePush();
+  inizializzaInstallazionePwa();
 }
 
 // ---------- scrittura dal portale (task #88): messaggi nuovi e risposte ai thread ----------
@@ -795,10 +927,32 @@ function iniziaPolling() {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', (evento) => {
       if (evento.data && evento.data.tipo === 'prisma-nuova-comunicazione') { ricaricaVista(); svuotaCoda(); }
+      // Click su una notifica con la scheda già aperta: ricarica i dati e apre quella comunicazione.
+      if (evento.data && evento.data.tipo === 'prisma-apri-comunicazione' && evento.data.id) {
+        Promise.resolve(ricaricaVista()).catch(() => {}).then(() => apriComunicazioneDaNotifica(evento.data.id));
+      }
     });
   }
 }
 
+// Apertura diretta di una comunicazione (click su una notifica push: l'URL porta "?com=<id>", oppure
+// un messaggio dal service worker se la scheda era già aperta). Va al tab Comunicazioni, apre il
+// riquadro (che la segna anche come letta, come un click normale) e la porta in vista. Se la
+// comunicazione non c'è più (archiviata/eliminata) resta semplicemente sul tab, senza errori.
+let COM_DA_APRIRE = (function () { try { return new URLSearchParams(location.search).get('com') || null; } catch (e) { return null; } })();
+function apriComunicazioneDaNotifica(id) {
+  if (!id || !VISTA) return;
+  TAB = 'comunicazioni';
+  renderTabbar();
+  renderCorpo();
+  const testata = document.querySelector('.com-testata[data-id="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
+  if (testata) {
+    const dettaglio = document.getElementById('dettaglio_' + id);
+    if (dettaglio && dettaglio.hidden) testata.click();
+    testata.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
+  try { history.replaceState(null, '', location.pathname); } catch (e) { /* non è essenziale */ }
+}
 function renderHero() {
   const a = VISTA.azienda;
   const iniziali = (a.ragioneSociale || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('') || '?';
@@ -948,29 +1102,29 @@ function panelRavvedimento() {
   }).join('');
   return `<div class="panel">
     ${panelHeader(ICONE.scadenze, 'var(--giallo-bg)', 'var(--giallo)', 'Simulatore ravvedimento', null)}
-    <div class="empty" style="padding-bottom:8px;">Hai saltato una scadenza? Calcola in anticipo quanto costa regolarizzarla (sanzione ridotta + interessi), prima di versare. È solo un calcolo indicativo: per il versamento vero aspetta le istruzioni dello studio, o scrivici da "Comunicazioni".</div>
-    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
-      <button type="button" class="${modalitaIniziale==='f24'?'btn-invia':'btn-secondario'}" id="ravBtnF24" style="margin-top:0;" data-action="rav-modalita" data-modalita="f24">Da un F24 esistente</button>
-      <button type="button" class="${modalitaIniziale==='libero'?'btn-invia':'btn-secondario'}" id="ravBtnLibero" style="margin-top:0;" data-action="rav-modalita" data-modalita="libero">Importo libero</button>
+    <div class="rav-intro">Hai saltato una scadenza? Scopri quanto costa regolarizzarla (sanzione ridotta + interessi) <strong>prima</strong> di versare. È un calcolo indicativo: per il versamento vero aspetta le istruzioni dello studio.</div>
+    <div class="rav-segmenti" role="tablist">
+      <button type="button" class="rav-seg${modalitaIniziale==='f24'?' attivo':''}" id="ravBtnF24" data-action="rav-modalita" data-modalita="f24">Da un F24</button>
+      <button type="button" class="rav-seg${modalitaIniziale==='libero'?' attivo':''}" id="ravBtnLibero" data-action="rav-modalita" data-modalita="libero">Importo libero</button>
     </div>
-    <div id="ravFormF24" style="${modalitaIniziale==='f24'?'':'display:none;'}">
+    <div id="ravFormF24" class="rav-form" style="${modalitaIniziale==='f24'?'':'display:none;'}">
       ${eleggibili.length ? `
-      <div class="field"><label style="font-size:12px;color:var(--text-mut);">F24</label>
-        <select id="ravF24Select" style="width:100%;">${opzioniF24}</select>
+      <div class="rav-campo"><label for="ravF24Select">F24 da regolarizzare</label>
+        <select id="ravF24Select">${opzioniF24}</select>
       </div>
-      <div class="field" style="margin-top:6px;"><label style="font-size:12px;color:var(--text-mut);">Data di versamento desiderata</label>
+      <div class="rav-campo"><label for="ravF24Versamento">Quando pensi di versare</label>
         <input type="date" id="ravF24Versamento" value="${oggi}" min="${oggi}">
-      </div>` : `<div class="helptext">Nessun F24 in attesa a cui agganciare il calcolo — usa "Importo libero".</div>`}
+      </div>` : `<div class="empty">Nessun F24 in attesa a cui agganciare il calcolo: usa "Importo libero".</div>`}
     </div>
-    <div id="ravFormLibero" style="${modalitaIniziale==='libero'?'':'display:none;'}">
-      <div class="field"><label style="font-size:12px;color:var(--text-mut);">Importo (€)</label><input type="number" step="0.01" id="ravLiberoImporto" placeholder="0.00"></div>
-      <div class="field" style="margin-top:6px;"><label style="font-size:12px;color:var(--text-mut);">Data di scadenza originaria</label><input type="date" id="ravLiberoScadenza"></div>
-      <div class="field" style="margin-top:6px;"><label style="font-size:12px;color:var(--text-mut);">Data di versamento desiderata</label><input type="date" id="ravLiberoVersamento" value="${oggi}"></div>
+    <div id="ravFormLibero" class="rav-form" style="${modalitaIniziale==='libero'?'':'display:none;'}">
+      <div class="rav-campo"><label for="ravLiberoImporto">Importo dovuto (€)</label><input type="number" inputmode="decimal" step="0.01" id="ravLiberoImporto" placeholder="0,00"></div>
+      <div class="rav-riga-2">
+        <div class="rav-campo"><label for="ravLiberoScadenza">Scadenza originaria</label><input type="date" id="ravLiberoScadenza"></div>
+        <div class="rav-campo"><label for="ravLiberoVersamento">Versamento previsto</label><input type="date" id="ravLiberoVersamento" value="${oggi}"></div>
+      </div>
     </div>
-    <div class="rig-data" style="margin-top:8px;">
-      <button class="btn-invia" style="margin-top:0;" data-action="rav-calcola">Calcola</button>
-    </div>
-    <div id="ravRisultatoPortale" style="margin-top:10px;"></div>
+    <button class="btn-invia rav-calcola" data-action="rav-calcola">Calcola il costo</button>
+    <div id="ravRisultatoPortale" style="margin-top:12px;"></div>
   </div>`;
 }
 
@@ -1090,9 +1244,15 @@ function cardComunicazione(c) {
   // titolo: con tante comunicazioni tutte sempre aperte diventava illeggibile. Il click è anche il
   // momento in cui la comunicazione viene segnata come vista (vedi 'apri-comunicazione' più sotto).
   return `<div class="item com-item${c.nuova ? ' non-letta' : ''}" data-com-id="${escapeHtml(c.id)}">
-    <div class="t com-titolo" data-action="apri-comunicazione" data-id="${escapeHtml(c.id)}"><span class="com-freccia">▸</span> ${escapeHtml(c.oggetto)}${c.nuova ? ' <span class="badge nuova">Nuova</span>' : ''}${c.richiestaChiusa ? ' <span class="badge chiusa">Chiusa</span>' : ''}${nRisposte ? ` <span class="badge info">${nRisposte} risp.</span>` : ''}${c.richiedeConferma ? (c.confermaLetturaData ? ' <span class="badge chiusa">✓ Visto</span>' : ' <span class="badge nuova">Conferma richiesta</span>') : ''}</div>
-    <div class="s">${fmtData(c.data)}${c.oraCreazione ? ' ' + fmtOraSemplice(c.oraCreazione) : ''} · <span class="badge info">${escapeHtml(c.categoria)}</span></div>
-    ${anteprima}
+    <div class="com-testata" data-action="apri-comunicazione" data-id="${escapeHtml(c.id)}">
+      <span class="com-freccia">▸</span>
+      <div class="com-testata-corpo">
+        <div class="t com-titolo">${escapeHtml(c.oggetto)}</div>
+        <div class="com-badges">${c.nuova ? '<span class="badge nuova">Nuova</span>' : ''}${c.richiestaChiusa ? '<span class="badge chiusa">Chiusa</span>' : ''}${nRisposte ? `<span class="badge info">${nRisposte} risp.</span>` : ''}${c.richiedeConferma ? (c.confermaLetturaData ? '<span class="badge chiusa">✓ Visto</span>' : '<span class="badge nuova">Conferma richiesta</span>') : ''}</div>
+        <div class="s">${fmtData(c.data)}${c.oraCreazione ? ' ' + fmtOraSemplice(c.oraCreazione) : ''} · <span class="badge info">${escapeHtml(c.categoria)}</span></div>
+        ${anteprima}
+      </div>
+    </div>
     <div class="com-dettaglio" id="dettaglio_${escapeHtml(c.id)}" hidden>
       ${rif}
       ${thread}
@@ -1600,13 +1760,13 @@ function renderSezioneAndamento(s, dt) {
   } else if (s.nome === 'Efficienza') {
     grafici = `<div class="grafici-2"><div><div class="gt">Giorni medi di incasso crediti nel tempo</div>${graficoAreaSvg(puntiGrafico(dt.serieDso), fmtGiorni, fmtGiorni, 'var(--giallo)')}</div></div>`;
   }
-  const cards = s.indici.filter(i => i.valore !== null).map(renderIndiceCard).join('');
+  const cards = s.indici.filter(i => i.valore !== null).map(renderIndiceGuida).join('');
   return `<div class="panel">
     <div class="sez-hdr"><span class="em">${s.icona}</span>${escapeHtml(s.nome)}<span class="pt">${punteggio === null || punteggio === undefined ? 'n/d' : Math.round(punteggio) + '/100'}</span></div>
     <div class="sez-intro">${escapeHtml(s.intro)}</div>
     ${gauge ? `<div class="gauge-riga">${gauge}</div>` : ''}
     ${grafici}
-    ${cards ? `<div class="indici-grid">${cards}</div>` : ''}
+    ${cards ? `<div class="gt" style="margin-top:16px;">Gli indici di quest'area, spiegati</div>${cards}` : ''}
   </div>`;
 }
 function renderAndamento() {
@@ -1639,14 +1799,130 @@ function renderAndamento() {
   if (!dt) {
     return `<div class="panel">${panelHeader(ICONE.andamento, 'var(--verde-bg)', 'var(--verde)', 'Andamento')}${kpi}${sezione('Andamento ricavi', d.serieRicavi)}${sezione('Andamento utile netto', d.serieUtile)}${sezione('Andamento patrimonio netto', d.seriePatrimonioNetto)}${sezione('Andamento costi', d.serieCosti)}${ripartizione}</div>`;
   }
-  return `<div class="panel">${panelHeader(ICONE.andamento, 'var(--verde-bg)', 'var(--verde)', 'Andamento')}${kpi}</div>
-    ${renderCruscottoAndamento(dt, d)}
-    ${dt.sezioni.map(s => `<div style="margin-top:12px;">${renderSezioneAndamento(s, dt)}</div>`).join('')}
-    <div class="panel" style="margin-top:12px;">${panelHeader(ICONE.andamento, 'var(--verde-bg)', 'var(--verde)', 'Patrimonio e costi')}
-      ${sezione('Andamento patrimonio netto', d.seriePatrimonioNetto)}
-      ${sezione('Andamento costi', d.serieCosti)}
-      ${ripartizione}
-    </div>`;
+  // Navigazione a pulsanti (Matteo: "prima di tutto l'indicatore di andamento, poi dei pulsanti per
+  // ogni sezione, uno per l'andamento generale con tutti gli indici e uno per la situazione
+  // comparata"): il cruscotto con il punteggio complessivo resta SEMPRE in cima; sotto, una riga di
+  // pulsanti sceglie cosa mostrare - una sola cosa alla volta, invece di una pagina lunghissima.
+  if (!AND_VISTE.some(x => x.v === AND_VISTA)) AND_VISTA = 'sintesi';
+  let contenuto;
+  if (AND_VISTA === 'sintesi') {
+    const tessere = dt.sezioni.map(s => {
+      const p = dt.punteggi[s.nome];
+      const col = p === null || p === undefined ? 'var(--text-mut)' : (p >= 70 ? 'var(--verde)' : (p >= 45 ? 'var(--giallo)' : 'var(--rosso)'));
+      return `<button class="and-tessera" data-action="andamento-vista" data-v="${escapeHtml(s.nome)}"><span class="em">${s.icona}</span><span class="nm">${escapeHtml(s.nome)}</span><span class="pt" style="color:${col};">${p === null || p === undefined ? 'n/d' : Math.round(p)}</span></button>`;
+    }).join('');
+    contenuto = `<div class="panel" style="margin-top:12px;"><div class="gt" style="margin:0 0 8px;">Le quattro aree: tocca per approfondire</div><div class="and-tessere">${tessere}</div></div>
+      <div class="panel" style="margin-top:12px;">${panelHeader(ICONE.andamento, 'var(--verde-bg)', 'var(--verde)', 'Numeri chiave')}${kpi}</div>
+      <div class="panel" style="margin-top:12px;">${panelHeader(ICONE.andamento, 'var(--verde-bg)', 'var(--verde)', 'Patrimonio e costi')}
+        ${sezione('Andamento patrimonio netto', d.seriePatrimonioNetto)}
+        ${sezione('Andamento costi', d.serieCosti)}
+        ${ripartizione}
+      </div>`;
+  } else if (AND_VISTA === 'indici') {
+    contenuto = renderTuttiGliIndici(dt);
+  } else if (AND_VISTA === 'confronto') {
+    contenuto = renderConfrontoAndamento(dt);
+  } else {
+    const s = dt.sezioni.find(x => x.nome === AND_VISTA);
+    contenuto = s ? `<div style="margin-top:12px;">${renderSezioneAndamento(s, dt)}</div>` : '';
+  }
+  return renderCruscottoAndamento(dt, d) + renderAndamentoNav() + contenuto;
+}
+
+// ---------- Andamento: navigazione, guida agli indici, confronto ----------
+let AND_VISTA = 'sintesi';
+const AND_VISTE = [
+  { v: 'sintesi', l: 'Sintesi' },
+  { v: 'Liquidità', l: '💧 Liquidità' },
+  { v: 'Redditività', l: '📈 Redditività' },
+  { v: 'Solidità', l: '🛡️ Solidità' },
+  { v: 'Efficienza', l: '⚙️ Efficienza' },
+  { v: 'indici', l: 'Tutti gli indici' },
+  { v: 'confronto', l: 'Confronto' },
+];
+function renderAndamentoNav() {
+  return `<div class="and-nav" role="tablist">${AND_VISTE.map(x => `<button class="and-chip${x.v === AND_VISTA ? ' attivo' : ''}" data-action="andamento-vista" data-v="${escapeHtml(x.v)}">${escapeHtml(x.l)}</button>`).join('')}</div>`;
+}
+// Formule "da manuale" mostrate nella guida: il portale non le calcola, le spiega soltanto (i valori
+// arrivano già calcolati dallo studio). Un indice senza voce qui mostra la guida senza la formula.
+const FORMULE_INDICI = {
+  roe: 'Utile netto ÷ Patrimonio netto',
+  roi: 'Risultato operativo (EBIT) ÷ Totale attivo',
+  ros: 'Risultato operativo (EBIT) ÷ Ricavi',
+  ebitdaMargin: 'EBITDA ÷ Ricavi',
+  indiceIndebitamento: 'Debiti totali ÷ Patrimonio netto',
+  gradoCapitalizzazione: 'Patrimonio netto ÷ Totale attivo',
+  currentRatio: 'Attivo circolante ÷ Debiti a breve termine',
+  quickRatio: '(Attivo circolante − Rimanenze) ÷ Debiti a breve termine',
+  pfnEbitda: 'Posizione finanziaria netta ÷ EBITDA',
+  incidenzaPersonale: 'Costo del personale ÷ Ricavi',
+  giorniIncassoCrediti: '(Crediti verso clienti ÷ Ricavi) × 365',
+  dscr: 'Flusso di cassa operativo ÷ Rata dei debiti finanziari',
+};
+function fmtSoglia(ind, v) { return fmtIndicePortale({ formato: ind.formato, valore: v }); }
+function testoSoglie(ind) {
+  if (ind.sogliaVerde === undefined || ind.sogliaGiallo === undefined) return '';
+  return ind.direzione === 'max'
+    ? `Nella norma da ${fmtSoglia(ind, ind.sogliaVerde)} in su · da monitorare tra ${fmtSoglia(ind, ind.sogliaGiallo)} e ${fmtSoglia(ind, ind.sogliaVerde)} · attenzione sotto ${fmtSoglia(ind, ind.sogliaGiallo)}.`
+    : `Nella norma fino a ${fmtSoglia(ind, ind.sogliaVerde)} · da monitorare tra ${fmtSoglia(ind, ind.sogliaVerde)} e ${fmtSoglia(ind, ind.sogliaGiallo)} · attenzione oltre ${fmtSoglia(ind, ind.sogliaGiallo)}.`;
+}
+// Scheda indice con la guida SEMPRE visibile (non più dietro "Cosa significa"): cosa misura, come si
+// calcola, come leggerlo, e - sempre, anche se il semaforo è verde - come migliorarlo in teoria.
+function renderIndiceGuida(ind) {
+  const info = ind.semaforo ? SEM_PORTALE[ind.semaforo] : null;
+  const formula = FORMULE_INDICI[ind.chiave];
+  const soglie = testoSoglie(ind);
+  return `<div class="indice-guida" style="border-left-color:${info ? info.colore : 'var(--border)'};">
+    <div class="ig-top"><div class="ig-nome">${escapeHtml(ind.nome)}</div>${info ? `<span class="badge" style="background:${info.sfondo};color:${info.colore};font-size:9.5px;">${escapeHtml(info.etichetta)}</span>` : ''}</div>
+    <div class="ig-val">${escapeHtml(fmtIndicePortale(ind))}</div>
+    <div class="ig-blocco"><div class="ig-k">Cosa significa</div>${escapeHtml(ind.spiegazione)}</div>
+    ${formula ? `<div class="ig-blocco"><div class="ig-k">Come si calcola</div>${escapeHtml(formula)}</div>` : ''}
+    ${soglie ? `<div class="ig-blocco"><div class="ig-k">Come leggerlo</div>${escapeHtml(soglie)}</div>` : ''}
+    <div class="ig-blocco"><div class="ig-k">Come migliorarlo</div>${escapeHtml(ind.consiglio)}</div>
+  </div>`;
+}
+function renderTuttiGliIndici(dt) {
+  const intro = `<div class="panel" style="margin-top:12px;"><div class="sez-intro" style="margin:0;">Tutti gli indici dell'azienda, raggruppati per area, con il loro significato, come si calcolano e cosa fare per migliorarli. I valori sono un punto di partenza per parlarne con lo studio: le soglie sono generiche, non settoriali.</div></div>`;
+  const gruppi = dt.sezioni.map(s => {
+    const lista = s.indici.filter(i => i.valore !== null);
+    if (!lista.length) return '';
+    return `<div class="panel" style="margin-top:12px;"><div class="sez-hdr"><span class="em">${s.icona}</span>${escapeHtml(s.nome)}</div>${lista.map(renderIndiceGuida).join('')}</div>`;
+  }).join('');
+  return intro + gruppi;
+}
+function renderConfrontoAndamento(dt) {
+  const c = dt.comparato;
+  if (!c || !c.periodi || c.periodi.length < 2) {
+    return `<div class="panel" style="margin-top:12px;"><div class="empty">Per il confronto servono almeno due periodi di bilancio. Non appena lo studio carica il prossimo, trovi qui l'evoluzione di ogni indice.</div></div>`;
+  }
+  const n = c.periodi.length;
+  const grid = `grid-template-columns:minmax(0,1.5fr) repeat(${n},minmax(0,1fr));`;
+  const intestazione = `<div class="conf-riga conf-head" style="${grid}"><div></div>${c.periodi.map(p => `<div>${escapeHtml(p)}</div>`).join('')}</div>`;
+  const freccia = (ind) => {
+    const v = ind.valori.filter(x => x !== null);
+    if (v.length < 2) return '';
+    const delta = v[v.length - 1] - v[v.length - 2];
+    if (Math.abs(delta) < 1e-9) return '<span class="conf-fr" style="color:var(--text-mut);">=</span>';
+    const meglio = ind.direzione === 'max' ? delta > 0 : delta < 0;
+    return `<span class="conf-fr" style="color:${meglio ? 'var(--verde)' : 'var(--rosso)'};">${delta > 0 ? '▲' : '▼'}</span>`;
+  };
+  const cella = (valori, semafori, i, ind) => {
+    const v = valori[i];
+    if (v === null) return '<div class="conf-cella nd">n/d</div>';
+    const info = semafori && semafori[i] ? SEM_PORTALE[semafori[i]] : null;
+    return `<div class="conf-cella">${info ? `<span class="conf-dot" style="background:${info.colore};"></span>` : ''}${escapeHtml(fmtIndicePortale({ formato: ind.formato, valore: v }))}</div>`;
+  };
+  const punteggi = `<div class="conf-gruppo">Punteggio delle quattro aree (0-100)</div>` + c.punteggi.map(p => `<div class="conf-riga" style="${grid}"><div class="conf-nome">${escapeHtml(p.nome)}</div>${p.valori.map(v => `<div class="conf-cella">${v === null ? 'n/d' : Math.round(v)}</div>`).join('')}</div>`).join('');
+  const perArea = ['Liquidità', 'Redditività', 'Solidità', 'Efficienza'].map(area => {
+    const lista = c.indici.filter(i => i.categoria === area);
+    if (!lista.length) return '';
+    return `<div class="conf-gruppo">${escapeHtml(area)}</div>` + lista.map(ind => `<div class="conf-riga" style="${grid}"><div class="conf-nome">${escapeHtml(ind.nome)} ${freccia(ind)}</div>${ind.valori.map((_, i) => cella(ind.valori, ind.semafori, i, ind)).join('')}</div>`).join('');
+  }).join('');
+  return `<div class="panel" style="margin-top:12px;">
+    <div class="sez-hdr"><span class="em">⚖️</span>Situazione comparata</div>
+    <div class="sez-intro">Gli stessi indici sugli ultimi periodi di bilancio. Il pallino è il semaforo di quel periodo; la freccia dice se l'ultimo periodo è migliorato (verde) o peggiorato (rosso) rispetto al precedente.</div>
+    ${intestazione}${punteggi}${perArea}
+  </div>`;
 }
 
 function renderCorpo() {
@@ -1824,6 +2100,14 @@ function gestisciClicCorpo(e) {
     return;
   }
 
+  if (azione === 'andamento-vista') { // (vedi anche apriComunicazioneDaNotifica più sopra per l'apertura da notifica)
+    AND_VISTA = el.dataset.v || 'sintesi';
+    renderCorpo();
+    const nav = document.querySelector('.and-nav');
+    if (nav) nav.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    return;
+  }
+
   if (azione === 'rav-modalita') {
     // Puro toggle di visibilità fra le due forme (mai un re-render): entrambe restano nel DOM così
     // non si perde quello che il cliente ha già digitato nell'altra, se torna indietro a cambiarla.
@@ -1834,8 +2118,8 @@ function gestisciClicCorpo(e) {
     const btnLibero = document.getElementById('ravBtnLibero');
     if (formF24) formF24.style.display = modalita === 'f24' ? '' : 'none';
     if (formLibero) formLibero.style.display = modalita === 'libero' ? '' : 'none';
-    if (btnF24) btnF24.className = modalita === 'f24' ? 'btn-invia' : 'btn-secondario';
-    if (btnLibero) btnLibero.className = modalita === 'libero' ? 'btn-invia' : 'btn-secondario';
+    if (btnF24) btnF24.className = 'rav-seg' + (modalita === 'f24' ? ' attivo' : '');
+    if (btnLibero) btnLibero.className = 'rav-seg' + (modalita === 'libero' ? ' attivo' : '');
     return;
   }
 

@@ -65,9 +65,10 @@ self.addEventListener('push', (evento) => {
     Promise.all([
       self.registration.showNotification(dati.titolo, {
         body: dati.corpo,
-        icon: undefined, // usa l'icona di sistema/del manifest, niente da caricare qui
+        icon: '/portale-icona-192.png', // logo Prisma al posto dell'icona generica del browser
         data: { url: dati.url || './' },
         tag: 'prisma-portale', // una notifica sostituisce la precedente invece di accumularsi se il cliente non le apre
+        renotify: true,
       }),
       // Task #183 (Matteo: "le notifiche per le nuove comunicazioni nel portale cliente non
       // funzionano bene"): se il portale è già aperto in una scheda, Chrome spesso non mostra
@@ -88,10 +89,19 @@ self.addEventListener('push', (evento) => {
 self.addEventListener('notificationclick', (evento) => {
   evento.notification.close();
   const destinazione = (evento.notification.data && evento.notification.data.url) || './';
+  // L'URL può avere "?com=<id>" (la comunicazione da aprire): per riconoscere una scheda già aperta
+  // sullo stesso portale si confronta solo il percorso, poi la si fa aprire quella comunicazione con un
+  // messaggio; se non c'è nessuna scheda si apre una finestra sull'URL completo, che la apre da sola.
+  const percorso = destinazione.split('?')[0];
+  const mCom = /[?&]com=([^&]+)/.exec(destinazione);
+  const idCom = mCom ? decodeURIComponent(mCom[1]) : null;
   evento.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((elenco) => {
       for (const client of elenco) {
-        if (client.url.indexOf(destinazione) !== -1 && 'focus' in client) return client.focus();
+        if (client.url.split('?')[0].indexOf(percorso) !== -1 && 'focus' in client) {
+          if (idCom) client.postMessage({ tipo: 'prisma-apri-comunicazione', id: idCom });
+          return client.focus();
+        }
       }
       if (self.clients.openWindow) return self.clients.openWindow(destinazione);
     })

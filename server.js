@@ -1056,10 +1056,13 @@ function inviaPushNuoveComunicazioni(precedente, nuovo) {
     const vecchiIds = new Set(((precedente && precedente.comunicazioni) || []).map((c) => c.id));
     const nuove = ((nuovo && nuovo.comunicazioni) || []).filter((c) => !vecchiIds.has(c.id) && c.direzione !== 'cliente' && c.visibilePortale !== false && c.clienteId);
     nuove.forEach((com) => {
+      // Privacy (Matteo: "l'oggetto spesso contiene dati sensibili"): la notifica compare sulla
+      // schermata di blocco, quindi NON porta mai oggetto né testo della comunicazione - solo un avviso
+      // generico. L'id viaggia nell'URL (non è visibile) per aprire direttamente quella comunicazione.
       inviaPushAlCliente(com.clienteId, (ab) => ({
-        titolo: com.oggetto || 'Nuova comunicazione dallo studio',
-        corpo: (com.corpo || '').slice(0, 140),
-        url: '/portale/' + ab.token,
+        titolo: 'Prisma',
+        corpo: 'Hai 1 nuova comunicazione',
+        url: '/portale/' + ab.token + '?com=' + encodeURIComponent(com.id),
       }));
     });
   } catch (err) {

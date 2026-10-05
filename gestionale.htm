@@ -10116,9 +10116,28 @@ function costruisciVistaPortaleClienteEsterna(token, password) {
         const pGen = validi.length ? validi.reduce((a, b) => a + b, 0) / validi.length : null;
         const trend = dPrec ? [['Ricavi', dB.ricavi, dPrec.ricavi], ['EBITDA', dB.ebitda, dPrec.ebitda], ['Utile netto', dB.utileNetto, dPrec.utileNetto]]
           .map(([nome, a, p]) => ({ nome, delta: variazione(a, p) })).filter(t => t.delta !== null) : [];
+        // Vista "Situazione comparata" del portale: ogni indice del catalogo sugli ultimi (max 3)
+        // periodi disponibili, con il semaforo di ciascuno, più il punteggio delle 4 aree per periodo.
+        // Ogni periodo è calcolato col SUO periodo precedente (come per l'ultimo, vedi dB) così CFO/DSCR
+        // restano coerenti; un indice mai calcolabile in nessun periodo non compare.
+        const annoComp = anniBilancioPortale.slice(-3);
+        const derPer = annoComp.map(a => {
+          const i = anniBilancioPortale.indexOf(a);
+          return calcolaDerivatiBilancioConPrecedente(bil[a], i > 0 ? bil[anniBilancioPortale[i - 1]] : null);
+        });
+        const comparato = {
+          periodi: annoComp.map(a => etichettaBreveBilancio(a)),
+          punteggi: ['Liquidità', 'Redditività', 'Solidità', 'Efficienza'].map(cat => ({ nome: cat, valori: derPer.map(dd => num(punteggioCategoria(cat, dd))) })),
+          indici: CATALOGO_INDICI_BILANCIO.map(def => ({
+            chiave: def.chiave, nome: def.nome, categoria: def.categoria, formato: def.formato, direzione: def.direzione,
+            valori: derPer.map(dd => num(dd[def.chiave])),
+            semafori: derPer.map(dd => semaforoIndice(def, dd[def.chiave])),
+          })).filter(ind => ind.valori.some(v => v !== null)),
+        };
         return {
           punteggioGenerale: pGen, etichettaPunteggio: etichettaPunteggio(pGen),
           punteggi: { 'Liquidità': pLiq, 'Redditività': pRed, 'Solidità': pSol, 'Efficienza': pEff },
+          comparato,
           trend,
           sezioni: [
             { nome: 'Liquidità', icona: '💧', intro: 'La capacità di far fronte agli impegni a breve termine con quello che l\'azienda ha già in cassa o può incassare rapidamente.', gauge: ['currentRatio', 'quickRatio'], indici: indiciDi('Liquidità') },
