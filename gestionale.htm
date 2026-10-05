@@ -10528,19 +10528,6 @@ function cardAccessoPortaleReale(cliente) {
    anagrafici già in STATE, es. codice fiscale) — è un secondo fattore leggero ABBINATO al link
    segreto, non pensata per reggere da sola un attacco mirato. */
 let PORTALE_PASSWORD_DRAFT = {}; // clienteId -> valore digitato, non ancora salvato
-function cardPasswordPortaleCliente(cliente) {
-  const valore = Object.prototype.hasOwnProperty.call(PORTALE_PASSWORD_DRAFT, cliente.id) ? PORTALE_PASSWORD_DRAFT[cliente.id] : (cliente.portalePassword || '');
-  const attiva = !!cliente.portalePassword;
-  return `<div style="border-top:1px solid var(--border);padding-top:12px;">
-    <div style="font-weight:600;font-size:13px;margin-bottom:4px;">Password del portale</div>
-    <div class="helptext" style="margin-bottom:8px;">${attiva ? 'Il cliente deve inserire questa password (oltre ad aprire il link) per vedere i propri dati.' : 'Senza una password qui, il link da solo basta ad aprire il portale (come oggi). Impostane una per chiedere anche una password al cliente.'}</div>
-    <div style="display:flex;gap:8px;max-width:360px;">
-      <input type="text" id="portPassword_${cliente.id}" value="${escapeHtml(valore)}" placeholder="es. una parola facile da dettare al telefono" data-action="portale-password-campo" data-id="${cliente.id}" style="flex:1;font-size:12.5px;padding:7px 9px;border:1px solid var(--border);border-radius:8px;">
-      <button class="btn small" data-action="portale-password-salva" data-id="${cliente.id}">Salva</button>
-      ${attiva ? `<button class="btn small ghost" data-action="portale-password-rimuovi" data-id="${cliente.id}">Rimuovi</button>` : ''}
-    </div>
-  </div>`;
-}
 
 /* Accessi secondari al portale (richiesta Matteo: dare all'amministrazione un accesso limitato a
    sole comunicazioni/scadenze-F24/documenti, senza l'andamento economico riservato al legale
@@ -12165,81 +12152,80 @@ function cardAccessoEsterno() {
     return `<div class="card"><div class="section-title">Accesso esterno (ngrok)</div><div class="helptext">⚠️ Non è stato possibile leggere lo stato dell'accesso esterno dal server locale.</div></div>`;
   }
   const info = ACCESSO_ESTERNO_CACHE;
-  // Task #199 (Matteo: "ngrok per i clienti non funziona più" / "anche per i collaboratori non
-  // va"): clienti e collaboratori condividevano prima due porte e due tunnel ngrok separati - sul
-  // piano ngrok gratuito (un solo dominio pubblico per account) finivano SEMPRE in conflitto tra
-  // loro. Ora è UNA porta sola (vedi server.js, PORTA_ESTERNA): un solo tunnel ngrok, un solo
-  // interruttore di avvio automatico, un solo pulsante "Avvia ngrok". La distinzione tra "chiunque"
-  // (portale cliente, link personali) e "solo i collaboratori di fiducia" (accesso completo) resta
-  // la stessa di prima, ma per PERCORSO sullo stesso indirizzo, non più per porta diversa.
+  // Layout (rifatto su richiesta di Matteo, "è un casino"): UNA card, tre blocchi numerati con la
+  // stessa struttura (titolo + una riga di spiegazione + controlli): 1) tunnel ngrok, 2) accesso
+  // collaboratori, 3) area riservata dei clienti. Clienti e collaboratori condividono una sola
+  // porta/un solo tunnel (task #199): si distinguono per percorso (/portale/<codice> = cliente).
   const draft = ACCESSO_ESTERNO_DRAFT.team;
   const credenzialiPronte = !!(draft.utente.trim() && draft.password.trim());
   const porta = info.porta;
+  const titoloBlocco = (n, t, badges) => `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:4px;">
+      <div style="font-size:14px;font-weight:700;">${n}. ${t}</div><div style="display:flex;gap:6px;flex-wrap:wrap;">${badges || ''}</div></div>`;
+  const blocco = 'padding:18px 0;border-top:1px solid var(--border);';
   return `<div class="card">
     <div class="section-title">Accesso esterno (ngrok)</div>
-    <div class="helptext" style="margin-bottom:16px;">La porta qui sotto è già aperta sul PC dello studio — quello che manca è solo il "megafono" verso internet: scarica <a href="https://ngrok.com/download" target="_blank" rel="noopener">ngrok</a> una volta (e configuralo con il tuo authtoken, richiesto dalla versione gratuita: <code>ngrok config add-authtoken &lt;il-tuo-token&gt;</code>). Con l'avvio automatico attivo Prisma lancia da solo ngrok ad ogni avvio del server, senza bisogno di premere nulla; il pulsante 🚀 "Avvia ngrok" resta comunque per avviarlo al volo (es. dopo averlo chiuso a mano, o se l'avvio automatico è disattivato). Un solo tunnel ngrok basta per entrambi: i clienti usano il loro link personale (/portale/&lt;codice&gt;), i collaboratori aprono l'indirizzo base qui sotto e inseriscono le credenziali che imposti più sotto. Nota per chi ha un account ngrok gratuito: il piano free assegna un unico dominio pubblico fisso, quindi è possibile UN SOLO tunnel alla volta - prima serviva un tunnel per porta (e andavano in conflitto), ora basta questo.</div>
-    <div style="border:1px solid var(--border);border-radius:10px;padding:14px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
-        <div style="font-size:12px;font-weight:700;color:var(--text-mut);text-transform:uppercase;letter-spacing:.03em;">Porta ${porta}</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;"><span class="badge ok">🟢 Porta locale sempre attiva</span>${badgeTunnelNgrok(porta)}</div>
+    <div class="helptext" style="margin-bottom:14px;">Rende Prisma raggiungibile da internet tramite ngrok: i collaboratori aprono l'indirizzo base ed entrano con utente e password, i clienti usano il proprio link personale. Serve ngrok installato e configurato una volta con il tuo authtoken (<code>ngrok config add-authtoken &lt;token&gt;</code>); con il piano gratuito c'è un solo tunnel, ed è sufficiente.</div>
+
+    <div style="${blocco}border-top:none;padding-top:4px;">
+      ${titoloBlocco(1, 'Tunnel ngrok', `<span class="badge ok">🟢 Porta ${porta} attiva su questo PC</span>${badgeTunnelNgrok(porta)}`)}
+      <div class="helptext" style="margin-bottom:10px;">Per essere raggiungibile da fuori serve il tunnel acceso. Con l'avvio automatico parte da solo con Prisma e gira in background, senza finestre.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+        <button class="btn small primary" data-action="avvia-ngrok" data-porta="${porta}">🚀 Avvia ngrok</button>
+        <button class="btn small" data-action="copia-link-rete" data-porta="${porta}">🖧 Copia indirizzo rete locale</button>
+        <button class="btn small" data-action="copia-link-ngrok" data-porta="${porta}">🌐 Copia indirizzo ngrok</button>
       </div>
-      <div class="helptext" style="margin-bottom:12px;">Il portale cliente (link personali /portale/&lt;codice&gt;, mai i dati completi dello studio) è sempre raggiungibile qui, senza bisogno di attivare nulla: ogni cliente ha il proprio link e, se gliel'hai impostata, la propria password (vedi "Area riservata clienti" qui sotto). "Porta locale sempre attiva" riguarda solo questo PC: per essere raggiungibile da internet serve comunque un tunnel ngrok attivo (vedi badge a destra).</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
-        <button class="btn small" data-action="avvia-ngrok" data-porta="${porta}">🚀 Avvia ngrok</button>
-        <button class="btn small" data-action="copia-link-rete" data-porta="${porta}">🖧 Copia link rete locale</button>
-        <button class="btn small" data-action="copia-link-ngrok" data-porta="${porta}">🌐 Copia link ngrok</button>
-      </div>
-      <label style="display:flex;align-items:center;gap:7px;font-size:12.5px;cursor:pointer;margin-bottom:16px;">
+      <label style="display:flex;align-items:center;gap:7px;font-size:12.5px;cursor:pointer;">
         <input type="checkbox" data-action="ngrok-autoavvio-toggle" ${info.ngrokAutoavvio !== false ? 'checked' : ''}>
         Avvia ngrok automaticamente a ogni avvio di Prisma
       </label>
-      <div style="border-top:1px solid var(--border);padding-top:14px;">
-        <div style="font-size:12px;font-weight:700;color:var(--text-mut);text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px;">Accesso collaboratori (gestionale completo)</div>
-        <div class="helptext" style="margin-bottom:10px;">Espone il gestionale completo, come se si fosse in studio: usala solo con collaboratori di fiducia e una password robusta. Con utente e password impostati qui sotto, chi apre l'indirizzo base (senza un codice /portale/...) e li inserisce vede l'app intera; senza, l'indirizzo base resta comunque protetto da login, nessuno può entrare.</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">${info.team.attivo ? '<span class="badge ok">🟢 Accesso collaboratori attivo</span>' : '<span class="badge">⚪ Accesso collaboratori non impostato</span>'}</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
-          ${info.team.attivo
-            ? `<button class="btn danger" data-action="disattiva-accesso-esterno" data-tipo="team">⏻ Disattiva accesso collaboratori</button>`
-            : `<button class="btn primary" data-action="salva-accesso-esterno" data-tipo="team" ${credenzialiPronte ? '' : 'disabled title="Imposta prima utente e password qui sotto"'}>⏻ Attiva accesso collaboratori</button>`}
-        </div>
-        ${!credenzialiPronte && !info.team.attivo ? `<div class="helptext" style="margin:0 0 10px;color:var(--arancio,#c0790c);">⚠️ Imposta utente e password qui sotto: il pulsante "Attiva accesso collaboratori" si accende appena sono entrambi compilati.</div>` : ''}
-        <details ${info.team.attivo ? '' : 'open'}>
-          <summary style="cursor:pointer;font-size:12px;font-weight:600;color:var(--text-mut);margin-bottom:8px;">Utente e password di accesso</summary>
-          <div class="grid2" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;max-width:480px;margin-top:8px;">
-            <div class="field"><label>Utente</label><input type="text" id="accEst_team_utente" value="${escapeHtml(draft.utente)}" placeholder="es. studio" data-action="accesso-esterno-campo" data-tipo="team" data-campo="utente"></div>
-            <div class="field"><label>Password</label><input type="text" id="accEst_team_password" value="${escapeHtml(draft.password)}" placeholder="scegli una password" data-action="accesso-esterno-campo" data-tipo="team" data-campo="password"></div>
-          </div>
-          <div class="helptext" style="margin-top:6px;">Cambiare qui utente/password e premere di nuovo "Attiva accesso collaboratori" le aggiorna, senza dover disattivare nulla prima.</div>
-        </details>
+    </div>
+
+    <div style="${blocco}">
+      ${titoloBlocco(2, 'Accesso collaboratori (gestionale completo)', info.team.attivo ? '<span class="badge ok">🟢 Accesso collaboratori attivo</span>' : '<span class="badge">⚪ Accesso collaboratori non impostato</span>')}
+      <div class="helptext" style="margin-bottom:10px;">Espone l'intero gestionale come in studio: usalo solo con persone di fiducia e una password robusta. Senza utente e password l'indirizzo base resta protetto e nessuno entra.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;max-width:480px;margin-bottom:10px;">
+        <div class="field"><label>Utente</label><input type="text" id="accEst_team_utente" value="${escapeHtml(draft.utente)}" placeholder="es. studio" data-action="accesso-esterno-campo" data-tipo="team" data-campo="utente"></div>
+        <div class="field"><label>Password</label><input type="text" id="accEst_team_password" value="${escapeHtml(draft.password)}" placeholder="scegli una password" data-action="accesso-esterno-campo" data-tipo="team" data-campo="password"></div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <button class="btn primary" data-action="salva-accesso-esterno" data-tipo="team" ${credenzialiPronte ? '' : 'disabled title="Compila utente e password"'}>${info.team.attivo ? 'Aggiorna credenziali' : 'Attiva accesso collaboratori'}</button>
+        ${info.team.attivo ? `<button class="btn danger" data-action="disattiva-accesso-esterno" data-tipo="team">Disattiva</button>` : ''}
       </div>
     </div>
-    ${sezioneAreaRiservataCliente()}
+
+    ${sezioneAreaRiservataCliente(blocco, titoloBlocco)}
   </div>`;
 }
 
-/* Richiesta di Matteo: sotto l'accesso esterno, un menù a tendina con tutti i clienti; scelto un
-   cliente, "Copia link" (rete locale o ngrok) copia il link della SUA area riservata, e sotto si
-   gestisce la password di accesso (tolta dal tab Portale cliente). Se il cliente non ha ancora un
-   accesso attivo, copiando il link lo si attiva al volo. Nota: il portale non ha un "nome utente"
-   - il link personale con token identifica già il cliente - quindi si gestisce solo la password. */
+/* Blocco 3: scegli un cliente, copia il link della sua area riservata (rete locale o ngrok; se non
+   ha ancora un accesso lo si attiva copiando) e gestisci la sua password. Il portale non ha un
+   "nome utente": il link personale identifica già il cliente, la password è il secondo controllo. */
 let ACC_CLIENTE_SEL = null;
-function sezioneAreaRiservataCliente() {
+function sezioneAreaRiservataCliente(blocco, titoloBlocco) {
   const attivi = STATE.clienti.filter(c => c.stato !== 'cessato').sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale));
   if (!attivi.length) return '';
   if (!ACC_CLIENTE_SEL || !attivi.find(c => c.id === ACC_CLIENTE_SEL)) ACC_CLIENTE_SEL = attivi[0].id;
   const c = clienteById(ACC_CLIENTE_SEL);
-  return `<div id="sezioneAreaRiservataCliente" style="border:1px solid var(--border);border-radius:10px;padding:14px;margin-top:16px;">
-    <div style="font-size:12px;font-weight:700;color:var(--text-mut);text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px;">Area riservata clienti</div>
-    <div class="helptext" style="margin-bottom:10px;">Scegli un cliente e copia il link personale della sua area riservata (da mandargli). Se non ha ancora un accesso, viene attivato copiando il link.</div>
+  const valore = Object.prototype.hasOwnProperty.call(PORTALE_PASSWORD_DRAFT, c.id) ? PORTALE_PASSWORD_DRAFT[c.id] : (c.portalePassword || '');
+  const pwdAttiva = !!c.portalePassword;
+  return `<div id="sezioneAreaRiservataCliente" style="${blocco}">
+    ${titoloBlocco(3, 'Area riservata dei clienti', c.portaleToken ? '<span class="badge ok">🟢 Accesso attivo</span>' : '<span class="badge">⚪ Accesso non attivo</span>')}
+    <div class="helptext" style="margin-bottom:10px;">Scegli il cliente, copia il suo link personale e mandaglielo. Se non ha ancora un accesso, copiando il link viene attivato.</div>
     <div class="field" style="max-width:420px;margin-bottom:10px;"><label>Cliente</label>
       <select data-action="acc-cliente-seleziona">${attivi.map(x => `<option value="${x.id}" ${x.id === ACC_CLIENTE_SEL ? 'selected' : ''}>${escapeHtml(x.ragioneSociale)}</option>`).join('')}</select>
     </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
       <button class="btn small" data-action="copia-link-cliente" data-id="${c.id}" data-modo="rete">🖧 Copia link rete locale</button>
       <button class="btn small" data-action="copia-link-cliente" data-id="${c.id}" data-modo="ngrok">🌐 Copia link ngrok</button>
-      ${c.portaleToken ? `<span class="badge ok">Accesso attivo</span>` : `<span class="badge">Accesso non ancora attivo</span>`}
     </div>
-    <div style="margin-top:12px;">${cardPasswordPortaleCliente(c)}</div>
+    <div class="field" style="max-width:420px;"><label>Password del cliente ${pwdAttiva ? '(attiva)' : '(facoltativa)'}</label>
+      <div style="display:flex;gap:8px;">
+        <input type="text" id="portPassword_${c.id}" value="${escapeHtml(valore)}" placeholder="es. una parola facile da dettare al telefono" data-action="portale-password-campo" data-id="${c.id}" style="flex:1;">
+        <button class="btn small" data-action="portale-password-salva" data-id="${c.id}">Salva</button>
+        ${pwdAttiva ? `<button class="btn small ghost" data-action="portale-password-rimuovi" data-id="${c.id}">Rimuovi</button>` : ''}
+      </div>
+    </div>
+    <div class="helptext" style="margin-top:6px;">${pwdAttiva ? 'Il cliente deve inserire questa password oltre ad aprire il link.' : 'Senza password basta il link per entrare.'}</div>
   </div>`;
 }
 function copiaLinkClientePortale(id, modo) {
