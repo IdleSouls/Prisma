@@ -10403,12 +10403,50 @@ function contenutoDesktopPortale(cliente) {
 /* Task #111: tabella "Accesso di tutti i clienti" in cima alla pagina, per
    attivare/copiare/rigenerare/disattivare il link di QUALSIASI cliente con un click, senza doverlo
    prima selezionare nel menu qui sotto. */
+/* Base dei link da dare ai clienti. Bug segnalato da Matteo ("non c'è un modo per reperire il
+   link"): i link usavano location.origin, cioè l'indirizzo con cui lo studio apre Prisma
+   (http://localhost:8420), che fuori da questo PC non porta da nessuna parte. La base giusta è il
+   dominio pubblico del tunnel ngrok (porta esterna 8421); se ngrok non è attivo si ripiega
+   sull'IP di rete locale (valido solo in studio) e lo si dice chiaramente. */
+let PORTALE_BASE_CACHE = null; // { url, tipo: 'ngrok' | 'rete' | 'locale' }
+let PORTALE_BASE_CARICAMENTO = false;
+let PORTALE_BASE_TS = 0;
+function caricaBasePortale() {
+  if (!HTTP_SYNC_ATTIVO || typeof fetch !== 'function' || PORTALE_BASE_CARICAMENTO || (Date.now() - PORTALE_BASE_TS) < 15000) return;
+  PORTALE_BASE_CARICAMENTO = true;
+  Promise.all([
+    fetch('/api/accesso-esterno').then(r => r.json()).catch(() => null),
+    fetch('/api/ngrok-tunnels').then(r => r.json()).catch(() => null),
+    fetch('/api/indirizzi-rete').then(r => r.json()).catch(() => null),
+  ]).then(([acc, tun, rete]) => {
+    const porta = acc && acc.ok ? acc.porta : 8421;
+    const t = tun && tun.ok ? (tun.tunnel || []).find(x => x.porta === porta && /^https:/.test(x.publicUrl || '')) : null;
+    let nuova;
+    if (t) nuova = { url: t.publicUrl.replace(/\/+$/, ''), tipo: 'ngrok' };
+    else if (rete && rete.ok && (rete.indirizzi || []).length) {
+      nuova = { url: 'http://' + rete.indirizzi[0] + ':' + porta, tipo: 'rete' };
+    } else nuova = { url: location.origin, tipo: 'locale' };
+    const cambiato = !PORTALE_BASE_CACHE || PORTALE_BASE_CACHE.url !== nuova.url;
+    PORTALE_BASE_CACHE = nuova;
+    PORTALE_BASE_TS = Date.now();
+    if (cambiato && VIEW === 'portale') render();
+  }).finally(() => { PORTALE_BASE_CARICAMENTO = false; });
+}
+function linkPortale(token) {
+  return (PORTALE_BASE_CACHE ? PORTALE_BASE_CACHE.url : location.origin) + '/portale/' + token;
+}
+function avvisoBasePortale() {
+  caricaBasePortale();
+  const b = PORTALE_BASE_CACHE;
+  if (!b || b.tipo === 'ngrok') return '';
+  return `<div class="helptext" style="margin-bottom:14px;color:var(--warn,#b45309);">I link qui sotto usano ${b.tipo === 'rete' ? 'l\'indirizzo di rete locale: funzionano solo da PC collegati alla rete dello studio' : 'l\'indirizzo di questo PC: funzionano solo qui'}. Per link utilizzabili dai clienti da internet avvia ngrok (Impostazioni → Accesso esterno): i link si aggiorneranno da soli.</div>`;
+}
 function tabellaAccessoPortaleClienti(attivi) {
   if (!HTTP_SYNC_ATTIVO) {
     return `<div class="helptext" style="margin-bottom:14px;">Per attivare un link vero (raggiungibile da fuori dal gestionale) serve il server locale acceso — vedi Impostazioni → Server e sincronizzazione. Nel frattempo l'anteprima qui sotto funziona comunque.</div>`;
   }
   const righe = attivi.map(c => {
-    const link = c.portaleToken ? (location.origin + '/portale/' + c.portaleToken) : '';
+    const link = c.portaleToken ? linkPortale(c.portaleToken) : '';
     const azioni = c.portaleToken
       ? `<button class="btn small" data-action="portale-copia-link" data-link="${escapeHtml(link)}">Copia link</button>
          <button class="btn small" data-action="portale-rigenera-link" data-id="${c.id}" title="Genera un nuovo link: quello vecchio smette subito di funzionare">Rigenera</button>
@@ -10435,7 +10473,7 @@ function renderPortaleCliente() {
   if (!PORTAL_CLIENTE || !attivi.find(c=>c.id===PORTAL_CLIENTE)) PORTAL_CLIENTE = attivi[0].id;
   const cliente = clienteById(PORTAL_CLIENTE);
 
-  const tabellaAccesso = tabellaAccessoPortaleClienti(attivi);
+  const tabellaAccesso = avvisoBasePortale() + tabellaAccessoPortaleClienti(attivi);
 
   const banner = `<div class="portal-banner"><span class="tag-anteprima">Anteprima</span> Per dare a un cliente un accesso VERO (un link che apre solo i suoi dati, utilizzabile da computer o telefono) usa la tabella qui sopra, o scegli il cliente qui sotto per il suo link e — se vuoi vedere esattamente cosa vedrebbe lui — l'anteprima a schermo intero.</div>`;
 
@@ -10462,7 +10500,7 @@ function cardAccessoPortaleReale(cliente) {
       <div class="helptext">Per attivare un link vero per ${escapeHtml(cliente.ragioneSociale)} serve il server locale acceso (vedi Impostazioni → Server e sincronizzazione): è lui a servire il portale ai clienti esterni, senza mai esporgli i dati degli altri clienti. Con il gestionale aperto come semplice file, questa funzione resta disattivata.</div>
     </div>`;
   }
-  const link = cliente.portaleToken ? (location.origin + '/portale/' + cliente.portaleToken) : '';
+  const link = cliente.portaleToken ? linkPortale(cliente.portaleToken) : '';
   const stato = cliente.portaleToken
     ? `<div class="helptext" style="margin-bottom:12px;">Accesso attivo${cliente.portaleAttivatoIl ? ' dal ' + fmtData(cliente.portaleAttivatoIl) : ''}. ${escapeHtml(cliente.ragioneSociale)} può aprire questo link da computer o telefono e vede SOLO i propri dati (comunicazioni, scadenze, documenti, andamento) — in sola lettura per ora.</div>
       <div style="display:flex;gap:8px;margin-bottom:10px;">
@@ -10514,7 +10552,7 @@ function cardAccessiSecondariPortale(cliente) {
   if (!HTTP_SYNC_ATTIVO) return '';
   const accessi = cliente.accessiSecondari || [];
   const righe = accessi.map(a => {
-    const link = location.origin + '/portale/' + a.token;
+    const link = linkPortale(a.token);
     const valorePwd = Object.prototype.hasOwnProperty.call(PORTALE_PASSWORD_DRAFT_SEC, a.id) ? PORTALE_PASSWORD_DRAFT_SEC[a.id] : (a.password || '');
     const pwdAttiva = !!a.password;
     const sezioniHtml = SEZIONI_PORTALE_LIMITABILI.map(s => `<label class="checkline" style="white-space:nowrap;font-size:12px;">
@@ -16051,7 +16089,8 @@ window.resetConversioneStatoTest = () => { CONVERSIONE_STATO_CACHE = null; };
 // Stessa ragione, per lo strumento Unisci/Dividi PDF (task #204): azzera sia la cache di
 // disponibilità sia lo stato delle due card, così un test può ripartire da zero tra uno scenario e
 // l'altro senza riavviare l'intera pagina.
-window.resetPdfStatoTest = () => {
+window.resetPortaleBaseTest = () => { PORTALE_BASE_CACHE = null; PORTALE_BASE_TS = 0; PORTALE_BASE_CARICAMENTO = false; };
+window.resetPdfStatoTest =() => {
   PDF_STATO_CACHE = null;
   PDFU_FILE = []; PDFU_RISULTATO = null; PDFU_ERRORE = null; PDFU_IN_CORSO = false;
   PDFD_FILE = null; PDFD_NUMPAGINE = null; PDFD_DA = 1; PDFD_A = 1; PDFD_RISULTATO = null; PDFD_ERRORE = null; PDFD_IN_CORSO = false;

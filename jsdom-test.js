@@ -2480,6 +2480,30 @@ async function main() {
     assert(btnCopia && btnCopia.dataset.link === campoLink.value, 'il pulsante "Copia link" non ha il link corretto in dataset.link');
     console.log('=== Accesso portale reale: attivazione genera un token valido e mostra link/copia/rigenera/disattiva OK');
 
+    // Link per i clienti: con ngrok attivo la base è il dominio pubblico, non localhost; senza
+    // ngrok si ripiega sull'IP di rete con un avviso.
+    window.resetPortaleBaseTest();
+    window.fetch = (url) => {
+      if (url === '/api/accesso-esterno') return Promise.resolve({ json: async () => ({ ok: true, porta: 8421 }) });
+      if (url === '/api/ngrok-tunnels') return Promise.resolve({ json: async () => ({ ok: true, tunnel: [{ publicUrl: 'https://xyz.ngrok-free.dev', porta: 8421 }] }) });
+      if (url === '/api/indirizzi-rete') return Promise.resolve({ json: async () => ({ ok: true, indirizzi: ['192.168.1.50'] }) });
+      return Promise.reject(new Error('inatteso ' + url));
+    };
+    window.render(); await wait(50);
+    assert(q('#cardAccessoPortaleReale input[readonly]').value === 'https://xyz.ngrok-free.dev/portale/' + tokenIniziale, 'il link del portale deve usare il dominio pubblico ngrok');
+    window.resetPortaleBaseTest();
+    window.fetch = (url) => {
+      if (url === '/api/ngrok-tunnels') return Promise.resolve({ json: async () => ({ ok: true, tunnel: [] }) });
+      if (url === '/api/indirizzi-rete') return Promise.resolve({ json: async () => ({ ok: true, indirizzi: ['192.168.1.50'] }) });
+      return Promise.resolve({ json: async () => ({ ok: true, porta: 8421 }) });
+    };
+    window.render(); await wait(50);
+    assert(q('#cardAccessoPortaleReale input[readonly]').value === 'http://192.168.1.50:8421/portale/' + tokenIniziale, 'senza ngrok il link ripiega sull\'IP di rete');
+    assert(window.document.body.textContent.includes('avvia ngrok'), 'senza ngrok deve comparire l\'avviso');
+    delete window.fetch; window.resetPortaleBaseTest();
+    window.render(); await wait(20);
+    console.log('=== Accesso portale reale: i link usano il dominio pubblico ngrok, con ripiego su IP di rete + avviso OK');
+
     // rigenera: nuovo token, diverso dal precedente (il vecchio link smette di funzionare)
     click(q('#cardAccessoPortaleReale [data-action="portale-rigenera-link"]'));
     await wait(20);
