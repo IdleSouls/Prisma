@@ -1,17 +1,17 @@
 {
-  "versione": "1.1.4",
-  "note": "Import clienti guidato: riconosce le colonne degli export di altri gestionali, anteprima e conferma.",
+  "versione": "1.2.0",
+  "note": "Nuovo modulo Incassi: compensi da incassare, scadenze, pagamenti parziali, solleciti via portale con conferma; strumenti MCP incassi.",
   "richiedeNpmInstall": false,
   "file": [
     {
       "nome": "gestionale.htm",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale.htm",
-      "sha256": "7e771ee77e077669ae6515095e495e231821ba1b9b8d4d82d8f30a137b42a50f"
+      "sha256": "7a22b5855d93b32d2b4af0e74bcf898fd659e1a3ea157f1038a2631a796b847d"
     },
     {
       "nome": "server.js",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/server.js",
-      "sha256": "114231241ae03588b5290e1394d71a7e19f622dfccbc6412e7159d19e1d08f6f"
+      "sha256": "5fdb0c7fbb0b261c501a2f1534b20b479739b1aac71e7f545be59a6ef495d6d1"
     },
     {
       "nome": "portale-cliente.htm",

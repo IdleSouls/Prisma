@@ -797,5 +797,38 @@ export function creaServer(filePath, baseUrl) {
     async (campi) => testoEsitoScrittura(await inviaComando(url, 'impostaModulo', campi))
   );
 
+  // ---------- INCASSI ----------
+  server.registerTool(
+    'elenco_incassi',
+    { title: 'Incassi dello studio', description: 'Compensi/fatture da incassare dai clienti (importo, incassato, residuo, scadenza, stato Da incassare/Scaduto/Incassato, solleciti inviati). Filtri facoltativi: cliente, stato.', inputSchema: { cliente: z.string().optional(), stato: z.enum(['Da incassare', 'Scaduto', 'Incassato']).optional() } },
+    async ({ cliente, stato }) => {
+      const { vista } = caricaVista(filePath);
+      let r = vista.incassi || [];
+      if (cliente) { const c = trovaCliente(vista, cliente); if (!c) return testoJson({ errore: 'Cliente non trovato: ' + cliente }); r = r.filter(x => x.clienteId === c.id); }
+      if (stato) r = r.filter(x => x.stato === stato);
+      return testoJson(r);
+    }
+  );
+  server.registerTool(
+    'crea_incasso',
+    { title: 'Registra un incasso da ricevere', description: 'Registra un compenso/fattura che il cliente deve pagare allo studio.', inputSchema: { clienteId: z.string(), importo: z.number().positive(), descrizione: z.string().optional(), numero: z.string().optional(), dataEmissione: z.string().optional(), dataScadenza: z.string().optional().describe('YYYY-MM-DD'), note: z.string().optional() } },
+    async (campi) => testoEsitoScrittura(await inviaComando(url, 'creaIncasso', campi))
+  );
+  server.registerTool(
+    'registra_incasso',
+    { title: 'Registra un pagamento ricevuto', description: 'Registra un pagamento (anche parziale) su un incasso: se copre il residuo l\'incasso risulta Incassato.', inputSchema: { id: z.string(), importo: z.number().positive(), data: z.string().optional().describe('YYYY-MM-DD, default oggi') } },
+    async (campi) => testoEsitoScrittura(await inviaComando(url, 'registraIncasso', campi))
+  );
+  server.registerTool(
+    'modifica_incasso',
+    { title: 'Modifica incasso', description: 'Aggiorna solo i campi indicati (importo, scadenza, descrizione, note...).', inputSchema: { id: z.string(), patch: z.record(z.unknown()).describe(DESCR_PATCH_GENERICO) } },
+    async ({ id, patch }) => testoEsitoScrittura(await inviaComando(url, 'modificaIncasso', { id, patch }))
+  );
+  server.registerTool(
+    'elimina_incasso',
+    { title: 'Elimina incasso', description: 'Elimina definitivamente un incasso.', inputSchema: { id: z.string(), conferma: z.literal(true).describe(descrConferma('quale incasso, cliente e importo')) } },
+    async ({ id }) => testoEsitoScrittura(await inviaComando(url, 'eliminaIncasso', { id }))
+  );
+
   return server;
 }

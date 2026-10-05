@@ -1830,6 +1830,60 @@ async function main() {
     console.log('=== Task #223: motore documenti (marcatura, retrocompatibilità, carta intestata, export senza marcatura) OK');
   }
 
+  // ---------- Task #207: Incassi dello studio + solleciti ----------
+  {
+    const st = () => window.getSTATE();
+    const cid = st().clienti[0].id;
+    click(q('[data-nav="incassi"]'));
+    await wait(20);
+    assert(q('[data-action="nuovo-incasso"]'), 'la vista Incassi non mostra "+ Nuovo incasso"');
+    click(q('[data-action="nuovo-incasso"]'));
+    await wait(20);
+    setVal(q('#incCliente'), cid);
+    setVal(q('#incDescrizione'), 'Tenuta contabilità test');
+    setVal(q('#incImporto'), '500');
+    setVal(q('#incEmissione'), '2026-01-10');
+    setVal(q('#incScadenza'), '2026-01-31');
+    click(q('[data-action="salva-incasso"]'));
+    await wait(20);
+    const inc = st().incassi.find(i => i.descrizione === 'Tenuta contabilità test');
+    assert(inc && inc.importo === 500, 'incasso non salvato');
+    assert(window.statoIncasso(inc) === 'Scaduto', 'un incasso con scadenza passata deve risultare Scaduto');
+    assert(window.incassiDaSollecitare().some(i => i.id === inc.id), 'l\'incasso scaduto mai sollecitato deve comparire tra quelli da sollecitare');
+    assert(q('[data-action="sollecita-tutti-incassi"]'), 'manca il banner "Sollecita tutti"');
+    const nComPrima = st().comunicazioni.length;
+    click(q('[data-action="sollecita-tutti-incassi"]'));
+    await wait(20);
+    assert(st().comunicazioni.length === nComPrima + 1, 'il sollecito non ha creato la comunicazione nel portale');
+    const comSoll = st().comunicazioni[st().comunicazioni.length - 1];
+    assert(comSoll.visibilePortale === true && comSoll.clienteId === cid && comSoll.corpo.includes('500'), 'comunicazione di sollecito non corretta');
+    assert(st().incassi.find(i => i.id === inc.id).solleciti.length === 1, 'il sollecito non è registrato sull\'incasso');
+    assert(!window.incassiDaSollecitare().some(i => i.id === inc.id), 'dopo il sollecito non va risollecitato prima di 15 giorni');
+    // pagamento parziale, poi saldo
+    click(q(`[data-action="incasso-registra-apri"][data-id="${inc.id}"]`));
+    await wait(20);
+    setVal(q('#incPagImporto'), '200');
+    click(q('[data-action="incasso-registra"]'));
+    await wait(20);
+    assert(window.residuoIncasso(st().incassi.find(i => i.id === inc.id)) === 300 && window.statoIncasso(st().incassi.find(i => i.id === inc.id)) === 'Scaduto', 'pagamento parziale non gestito (residuo 300, ancora scaduto)');
+    window.registraPagamentoIncasso(inc.id, 300);
+    assert(window.statoIncasso(st().incassi.find(i => i.id === inc.id)) === 'Incassato', 'saldo completo deve dare Incassato');
+    // MCP
+    const fetchPrima = window.fetch; window.fetch = () => Promise.resolve({ ok: true, json: () => ({}) });
+    await window.eseguiComandoMCP({ id: 'cmdI1', azione: 'creaIncasso', parametri: { clienteId: cid, importo: 120, descrizione: 'Via MCP', dataScadenza: '2026-12-31' } });
+    window.fetch = fetchPrima;
+    assert(st().incassi.some(i => i.descrizione === 'Via MCP'), 'creaIncasso via MCP fallita');
+    assert(window.esportaVistaMCP().incassi.some(i => i.descrizione === 'Via MCP' && i.stato === 'Da incassare'), 'la vista MCP non espone gli incassi');
+    // cascata eliminazione cliente + pulizia
+    const s2 = st();
+    s2.incassi = s2.incassi.filter(i => i.descrizione !== 'Via MCP' && i.id !== inc.id);
+    s2.comunicazioni = s2.comunicazioni.filter(c => c.id !== comSoll.id);
+    window.setSTATE(s2);
+    click(q('[data-nav="dashboard"]'));
+    await wait(20);
+    console.log('=== Incassi (task #207): registrazione, scaduto, banner solleciti, sollecito via portale (una volta ogni 15 gg), pagamento parziale/saldo, MCP OK');
+  }
+
   // ---------- 8d-quinquies) Modelli documenti: pagina di gestione CRUD (task #124) ----------
   click(q('[data-nav="modelli"]'));
   await wait(20);

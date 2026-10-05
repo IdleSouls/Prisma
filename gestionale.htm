@@ -1717,6 +1717,7 @@ function statoIniziale() {
     /* Appuntamenti con clienti creati dal calendario (task #140): eventi puntuali, distinti dalle
        scadenze fiscali/adempimenti che restano generate dal motore scadenze esistente. */
     appuntamenti: [],
+    incassi: [],
     /* Procedure interne dello studio (task #146): raccolta di SOP/indicazioni operative per lo staff
        ("come si apre una nuova attività X", quali documenti servono ecc.), strutturate come i Modelli
        documenti (categoria/nome/contenuto) più una checklist di documenti necessari. Usate anche dal
@@ -2598,6 +2599,10 @@ const AZIONI_MCP = {
     salvaStato();
     return { modulo: p.modulo, attivo: !!p.attivo };
   },
+  creaIncasso: (p) => { if (!clienteById(p.clienteId)) throw new Error('Cliente non trovato: ' + p.clienteId); if (!(Number(p.importo) > 0)) throw new Error('Importo non valido.'); const i = aggiungiIncasso(p); return { creato: true, id: i.id }; },
+  modificaIncasso: (p) => { if (!(STATE.incassi || []).find(x => x.id === p.id)) throw new Error('Incasso non trovato: ' + p.id); aggiornaIncasso(p.id, p.patch || {}); return { aggiornato: true }; },
+  registraIncasso: (p) => { const i = registraPagamentoIncasso(p.id, p.importo, p.data); return { stato: statoIncasso(i), residuo: residuoIncasso(i) }; },
+  eliminaIncasso: (p) => { if (!(STATE.incassi || []).find(x => x.id === p.id)) throw new Error('Incasso non trovato: ' + p.id); eliminaIncasso(p.id); return { eliminato: true }; },
   // Appuntamenti, procedure interne e catalogo attività (audit copertura MCP)
   creaAppuntamento: (p) => { if (!p.data) throw new Error('Serve la data (YYYY-MM-DD).'); const a = aggiungiAppuntamento(p); return { creato: true, id: a.id }; },
   modificaAppuntamento: (p) => { if (!trovaAppuntamento(p.id)) throw new Error('Appuntamento non trovato: ' + p.id); aggiornaAppuntamento(p.id, p.patch || {}); return { aggiornato: true }; },
@@ -4073,6 +4078,7 @@ function eliminaCliente(id) {
   STATE.ritenuteRighe = STATE.ritenuteRighe.filter(r => r.clienteId !== id);
   STATE.taskTeam = STATE.taskTeam.filter(t => t.clienteId !== id);
   STATE.preventivi = STATE.preventivi.filter(p => p.clienteId !== id);
+  STATE.incassi = (STATE.incassi || []).filter(i => i.clienteId !== id);
 
   // Entità tenute in oggetti indicizzati per clienteId: basta togliere la chiave.
   delete STATE.onboarding[id];
@@ -4234,6 +4240,7 @@ const NAV = [
     { id: 'comunicazioni', label: 'Comunicazioni', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="M3 6.5l9 6.5 9-6.5"/></svg>' },
     { id: 'documenti', label: 'Documenti', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6.5a1.5 1.5 0 0 1 1.5-1.5h4.5l2 2.5h8.5a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18z"/></svg>' },
     { id: 'preventivi', label: 'Preventivi e mandati', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5h8l5 5v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-18a1 1 0 0 1 1-1z"/><path d="M14 2.5v5h5"/><path d="M8 12.5l2.5 2.5 5.5-6"/></svg>' },
+    { id: 'incassi', label: 'Incassi', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9v.01M18 15v.01"/></svg>' },
     { id: 'portale', label: 'Portale cliente', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2"/><line x1="3" y1="8.5" x2="21" y2="8.5"/><circle cx="6" cy="6.5" r=".6" fill="currentColor" stroke="none"/><circle cx="8.2" cy="6.5" r=".6" fill="currentColor" stroke="none"/></svg>' },
   ]},
   { group: 'Analisi cliente', items: [
@@ -4270,6 +4277,7 @@ const PAGE_TITLES = {
   bilanci: ['Bilanci & KPI', 'Carica situazioni economico-patrimoniali e ottieni indicatori e grafici automatici'],
   contabilita: ['Contabilità', 'Import periodico da Excel/CSV: nessuna doppia registrazione, nessuna data indovinata'],
   modelli: ['Modelli documenti', 'Testi precompilati per preventivi, mandati e documenti antiriciclaggio: i segnaposto {{così}} si trasformano in campi da compilare'],
+  incassi: ['Incassi', 'Compensi da incassare, scadenze di pagamento e solleciti ai clienti'],
   procedure: ['Procedure interne', 'Indicazioni operative per lo staff, passo per passo, con la checklist dei documenti necessari'],
   strumenti: ['Strumenti', 'Convertitore file Word ↔ PDF ↔ PDF/A (serve LibreOffice installato sul PC del server locale)'],
   credenziali: ['Password', 'Credenziali e accessi dello studio e dei clienti — Entratel, Telemaco, home banking, software, ecc.'],
@@ -4313,6 +4321,7 @@ const MODULI = [
   { id: 'procedure', label: 'Procedure interne', desc: 'Istruzioni operative passo per passo per lo staff.', tabs: ['procedure'] },
   { id: 'antiriciclaggio', label: 'Antiriciclaggio', desc: 'Adeguata verifica, profilo di rischio e storico verifiche.', tabs: ['antiriciclaggio'] },
   { id: 'preventivi', label: 'Preventivi e mandati', desc: 'Preventivi, mandati e lettere di incarico da modelli.', tabs: ['preventivi'] },
+  { id: 'incassi', label: 'Incassi e solleciti', desc: 'Compensi da incassare, scadenze di pagamento e solleciti ai clienti.', tabs: ['incassi'] },
   { id: 'onboarding', label: 'Onboarding clienti', desc: 'Checklist di attivazione per un nuovo cliente.', tabs: ['onboarding'] },
   { id: 'bilanci', label: 'Bilanci e KPI', desc: 'Situazioni economico-patrimoniali, indici e grafici.', tabs: ['bilanci'] },
   { id: 'fiscale', label: 'Ritenute e F24', desc: 'Registro ritenute d\'acconto e registro F24.', tabs: ['ritenute', 'f24'] },
@@ -4452,6 +4461,7 @@ function render() {
     case 'preventivi': content.innerHTML = renderPreventivi(); break;
     case 'modelli': content.innerHTML = renderModelliDocumento(); break;
     case 'procedure': content.innerHTML = renderProcedureInterne(); break;
+    case 'incassi': content.innerHTML = renderIncassi(); break;
     case 'strumenti': content.innerHTML = renderStrumenti(); break;
     case 'credenziali': content.innerHTML = renderCredenziali(); break;
     case 'portale': content.innerHTML = renderPortaleCliente(); break;
@@ -7391,6 +7401,179 @@ function modalProceduraInterna(id) {
   document.getElementById('modalRoot').innerHTML = html;
 }
 
+/* ============================================================================================
+   INCASSI DELLO STUDIO (task #207): fatture/compensi che i clienti devono allo studio, scadenze di
+   pagamento, incassi (anche parziali) e solleciti. I solleciti non partono mai da soli: Prisma
+   prepara l'elenco di chi è scaduto da oltre 15 giorni dall'ultimo sollecito e li invia (come
+   comunicazione visibile nel portale del cliente, con notifica) solo dopo conferma.
+   ============================================================================================ */
+const GIORNI_TRA_SOLLECITI_INCASSI = 15;
+let INC_FILTRO = { cliente: 'Tutti', stato: 'Da incassare' };
+function residuoIncasso(i) { return Math.max(0, (Number(i.importo) || 0) - (Number(i.importoIncassato) || 0)); }
+function statoIncasso(i) {
+  if (residuoIncasso(i) < 0.005) return 'Incassato';
+  if (i.dataScadenza && i.dataScadenza < oggiISO()) return 'Scaduto';
+  return 'Da incassare';
+}
+function aggiungiGiorniISO(iso, n) {
+  const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function aggiungiIncasso(d) {
+  const i = Object.assign({
+    id: uid('inc'), clienteId: null, descrizione: '', numero: '', importo: 0, dataEmissione: oggiISO(), dataScadenza: '',
+    importoIncassato: 0, dataIncasso: null, note: '', solleciti: [], creatoIl: oggiISO(),
+  }, d);
+  i.importo = Number(i.importo) || 0;
+  i.importoIncassato = Number(i.importoIncassato) || 0;
+  if (!Array.isArray(i.solleciti)) i.solleciti = [];
+  if (!STATE.incassi) STATE.incassi = [];
+  STATE.incassi.push(i);
+  salvaStato();
+  return i;
+}
+function aggiornaIncasso(id, patch) {
+  const i = (STATE.incassi || []).find(x => x.id === id);
+  if (!i) return null;
+  Object.assign(i, patch);
+  if ('importo' in patch) i.importo = Number(i.importo) || 0;
+  salvaStato();
+  return i;
+}
+function eliminaIncasso(id) { STATE.incassi = (STATE.incassi || []).filter(x => x.id !== id); salvaStato(); }
+function registraPagamentoIncasso(id, importo, data) {
+  const i = (STATE.incassi || []).find(x => x.id === id);
+  if (!i) throw new Error('Incasso non trovato: ' + id);
+  const v = Number(importo);
+  if (!(v > 0)) throw new Error('Importo non valido.');
+  i.importoIncassato = Math.round(((Number(i.importoIncassato) || 0) + v) * 100) / 100;
+  i.dataIncasso = data || oggiISO();
+  salvaStato();
+  return i;
+}
+function incassiDaSollecitare() {
+  const oggi = oggiISO();
+  return (STATE.incassi || []).filter(i => {
+    if (statoIncasso(i) !== 'Scaduto') return false;
+    const ultimo = (i.solleciti || []).map(x => x.data).sort().pop();
+    return !ultimo || giorniTra(ultimo, oggi) >= GIORNI_TRA_SOLLECITI_INCASSI;
+  });
+}
+function sollecitaIncasso(id) {
+  const i = (STATE.incassi || []).find(x => x.id === id);
+  if (!i || !i.clienteId) return false;
+  const oggi = oggiISO();
+  const ritardo = i.dataScadenza ? giorniTra(i.dataScadenza, oggi) : 0;
+  const corpo = `Gentile cliente, risulta ancora da saldare ${i.numero ? 'il documento n. ' + i.numero : 'il compenso'}${i.descrizione ? ' (' + i.descrizione + ')' : ''} per ${fmtNum2(residuoIncasso(i))} euro${i.dataScadenza ? ', scaduto il ' + fmtData(i.dataScadenza) : ''}${ritardo > 0 ? ' (' + ritardo + ' giorni fa)' : ''}. Se ha già provveduto al pagamento, può ignorare questo messaggio; in caso contrario La preghiamo di regolarizzare appena possibile. Grazie, ${STATE.meta.studioNome || 'lo Studio'}.`;
+  const com = { id: uid('com'), clienteId: i.clienteId, data: oggi, categoria: 'Amministrativa', stato: 'Inviata', oggetto: 'Promemoria di pagamento', corpo, note: '', visibilePortale: true, creataIl: new Date().toISOString() };
+  STATE.comunicazioni.push(com);
+  i.solleciti.push({ data: oggi, comunicazioneId: com.id });
+  salvaStato();
+  return true;
+}
+function renderIncassi() {
+  if (STATE.clienti.length === 0) return `<div class="card"><div class="empty"><div class="big">Aggiungi prima un cliente</div>Gli incassi sono sempre legati a un cliente.</div></div>`;
+  const tutti = STATE.incassi || [];
+  const oggi = oggiISO();
+  const daIncassare = tutti.filter(i => statoIncasso(i) !== 'Incassato');
+  const totDa = daIncassare.reduce((s, i) => s + residuoIncasso(i), 0);
+  const scaduti = tutti.filter(i => statoIncasso(i) === 'Scaduto');
+  const totScaduto = scaduti.reduce((s, i) => s + residuoIncasso(i), 0);
+  const mese = oggi.slice(0, 7);
+  const incassatoMese = tutti.filter(i => i.dataIncasso && i.dataIncasso.slice(0, 7) === mese).reduce((s, i) => s + (Number(i.importoIncassato) || 0), 0);
+  const daSoll = incassiDaSollecitare();
+  const kpi = `<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);">
+    <div class="kpi inscadenza"><div class="n">${fmtEuro(totDa)}</div><div class="l">DA INCASSARE</div></div>
+    <div class="kpi scaduti"><div class="n">${fmtEuro(totScaduto)}</div><div class="l">DI CUI SCADUTO (${scaduti.length})</div></div>
+    <div class="kpi completati"><div class="n">${fmtEuro(incassatoMese)}</div><div class="l">INCASSATO QUESTO MESE</div></div>
+    <div class="kpi futuri"><div class="n">${daSoll.length}</div><div class="l">DA SOLLECITARE</div></div>
+  </div>`;
+  const banner = daSoll.length ? `<div class="card" style="background:var(--rosa-bg);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+    <div><b>${daSoll.length} incass${daSoll.length === 1 ? 'o scaduto' : 'i scaduti'} da sollecitare</b><div class="helptext">Il promemoria arriva al cliente come comunicazione nel portale (con notifica). Non parte nulla senza la tua conferma.</div></div>
+    <button class="btn primary" data-action="sollecita-tutti-incassi">Sollecita ${daSoll.length === 1 ? 'questo cliente' : 'tutti (' + daSoll.length + ')'}</button>
+  </div>` : '';
+  const toolbar = `<div class="toolbar">
+    <div class="field"><label>Cliente</label><select data-action="inc-filtro-cliente">
+      <option value="Tutti">Tutti</option>
+      ${STATE.clienti.slice().sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale)).map(c => `<option value="${c.id}" ${INC_FILTRO.cliente === c.id ? 'selected' : ''}>${escapeHtml(c.ragioneSociale)}</option>`).join('')}
+    </select></div>
+    <div class="field"><label>Stato</label><select data-action="inc-filtro-stato">
+      ${['Da incassare', 'Scaduti', 'Incassati', 'Tutti'].map(x => `<option ${INC_FILTRO.stato === x ? 'selected' : ''}>${x}</option>`).join('')}
+    </select></div>
+    <div class="field" style="margin-left:auto;"><label>&nbsp;</label><button class="btn primary" data-action="nuovo-incasso">+ Nuovo incasso</button></div>
+  </div>`;
+  let lista = tutti.slice();
+  if (INC_FILTRO.cliente !== 'Tutti') lista = lista.filter(i => i.clienteId === INC_FILTRO.cliente);
+  if (INC_FILTRO.stato === 'Da incassare') lista = lista.filter(i => statoIncasso(i) !== 'Incassato');
+  else if (INC_FILTRO.stato === 'Scaduti') lista = lista.filter(i => statoIncasso(i) === 'Scaduto');
+  else if (INC_FILTRO.stato === 'Incassati') lista = lista.filter(i => statoIncasso(i) === 'Incassato');
+  lista.sort((a, b) => (a.dataScadenza || '9999').localeCompare(b.dataScadenza || '9999'));
+  if (tutti.length === 0) return kpi + toolbar + `<div class="card"><div class="empty"><div class="big">Nessun incasso registrato</div>Registra i compensi da incassare (anche da un preventivo accettato) e Prisma ti dirà chi è in ritardo.</div></div>`;
+  if (lista.length === 0) return kpi + banner + toolbar + `<div class="card"><div class="empty">Nessun incasso corrisponde ai filtri.</div></div>`;
+  const pag = paginaLista('incassi', lista);
+  const righe = pag.pagina.map(i => {
+    const st = statoIncasso(i);
+    const badge = st === 'Incassato' ? '<span class="badge attivo">Incassato</span>' : (st === 'Scaduto' ? '<span class="badge stato-errore">Scaduto</span>' : '<span class="badge info">Da incassare</span>');
+    const delta = i.dataScadenza && st !== 'Incassato' ? deltaLabel(i.dataScadenza).txt : '';
+    const ult = (i.solleciti || []).map(x => x.data).sort().pop();
+    return `<tr>
+      <td>${escapeHtml(nomeCliente(i.clienteId))}</td>
+      <td>${escapeHtml(i.descrizione || '')}${i.numero ? ` <span class="helptext">n. ${escapeHtml(i.numero)}</span>` : ''}</td>
+      <td style="text-align:right;white-space:nowrap;">${fmtEuro(i.importo)}${(i.importoIncassato || 0) > 0 && st !== 'Incassato' ? `<div class="helptext">residuo ${fmtEuro(residuoIncasso(i))}</div>` : ''}</td>
+      <td style="white-space:nowrap;">${i.dataScadenza ? fmtData(i.dataScadenza) : '—'}${delta ? `<div class="helptext">${escapeHtml(delta)}</div>` : ''}</td>
+      <td>${badge}</td>
+      <td class="helptext" style="white-space:nowrap;">${(i.solleciti || []).length ? (i.solleciti.length + ' · ult. ' + fmtDataBreve(ult)) : '—'}</td>
+      <td style="white-space:nowrap;">
+        ${st !== 'Incassato' ? `<button class="btn small primary" data-action="incasso-registra-apri" data-id="${i.id}">Incassa</button> <button class="btn small" data-action="sollecita-incasso" data-id="${i.id}" ${st !== 'Scaduto' ? 'disabled title="Si può sollecitare solo dopo la scadenza"' : ''}>Sollecita</button>` : ''}
+        <button class="btn small" data-action="modifica-incasso" data-id="${i.id}">Modifica</button>
+        <button class="btn small danger" data-action="elimina-incasso" data-id="${i.id}">Elimina</button>
+      </td>
+    </tr>`;
+  }).join('');
+  return kpi + banner + toolbar + `<div class="card" style="padding:0;overflow-x:auto;">
+    <table class="compact"><thead><tr><th>Cliente</th><th>Descrizione</th><th style="text-align:right;">Importo</th><th>Scadenza</th><th>Stato</th><th>Solleciti</th><th></th></tr></thead>
+    <tbody>${righe}</tbody></table></div>` + controlliPaginazione(pag);
+}
+function modalIncasso(id, preset) {
+  const editing = id ? (STATE.incassi || []).find(x => x.id === id) : null;
+  if (id && !editing) { toast('Incasso non trovato.'); return; }
+  const v = editing || Object.assign({ clienteId: STATE.clienti[0] ? STATE.clienti[0].id : '', descrizione: '', numero: '', importo: '', dataEmissione: oggiISO(), dataScadenza: aggiungiGiorniISO(oggiISO(), 30), note: '' }, preset || {});
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
+    <div class="modal" style="max-width:560px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div><h2>${editing ? 'Modifica incasso' : 'Nuovo incasso'}</h2><div class="modal-sub">Un compenso o una fattura che il cliente deve pagare allo studio.</div></div>
+        <button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button>
+      </div>
+      <form id="formIncasso" onsubmit="return false;"><div class="grid2">
+        <div class="field full" style="grid-column:1/-1;"><label>Cliente *</label><select id="incCliente">${STATE.clienti.slice().sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale)).map(c => `<option value="${c.id}" ${v.clienteId === c.id ? 'selected' : ''}>${escapeHtml(c.ragioneSociale)}</option>`).join('')}</select></div>
+        <div class="field full" style="grid-column:1/-1;"><label>Descrizione</label><input id="incDescrizione" value="${escapeHtml(v.descrizione || '')}" placeholder="es. Tenuta contabilità ottobre"></div>
+        <div class="field"><label>N. fattura (facoltativo)</label><input id="incNumero" value="${escapeHtml(v.numero || '')}"></div>
+        <div class="field"><label>Importo (€) *</label><input id="incImporto" type="number" step="0.01" min="0" value="${v.importo !== '' && v.importo != null ? v.importo : ''}"></div>
+        <div class="field"><label>Data emissione</label><input id="incEmissione" type="date" value="${escapeHtml(v.dataEmissione || '')}"></div>
+        <div class="field"><label>Scadenza pagamento</label><input id="incScadenza" type="date" value="${escapeHtml(v.dataScadenza || '')}"></div>
+        <div class="field full" style="grid-column:1/-1;"><label>Note interne</label><input id="incNote" value="${escapeHtml(v.note || '')}"></div>
+      </div></form>
+      <div class="modal-actions"><button class="btn" data-action="chiudi-modal">Annulla</button><button class="btn primary" data-action="salva-incasso" data-id="${editing ? editing.id : ''}">${editing ? 'Salva' : 'Registra'}</button></div>
+    </div></div>`;
+}
+function modalRegistraIncasso(id) {
+  const i = (STATE.incassi || []).find(x => x.id === id);
+  if (!i) return;
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
+    <div class="modal" style="max-width:420px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div><h2>Registra incasso</h2><div class="modal-sub">${escapeHtml(nomeCliente(i.clienteId))} · residuo ${fmtEuro(residuoIncasso(i))}</div></div>
+        <button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button>
+      </div>
+      <div class="grid2" style="margin-top:10px;">
+        <div class="field"><label>Importo incassato (€)</label><input id="incPagImporto" type="number" step="0.01" min="0" value="${residuoIncasso(i)}"></div>
+        <div class="field"><label>Data</label><input id="incPagData" type="date" value="${oggiISO()}"></div>
+      </div>
+      <div class="helptext">Se è meno del residuo, resta da incassare la differenza (pagamento parziale).</div>
+      <div class="modal-actions"><button class="btn" data-action="chiudi-modal">Annulla</button><button class="btn primary" data-action="incasso-registra" data-id="${i.id}">Conferma incasso</button></div>
+    </div></div>`;
+}
+
 /* -------------------- RENDER: PREVENTIVI E MANDATI (task #121, rifatto su modelli #125) --------------------
    Documento generato da un modello (vedi motore modelli sopra): entità in array e legata al
    cliente via clienteId diretto, esattamente come documenti/comunicazioni/F24/taskTeam —
@@ -7761,6 +7944,7 @@ function modalDettaglioPreventivo(id) {
         <button class="btn small primary" data-action="preventivo-salva-testo" data-id="${p.id}">💾 Salva testo</button>
         ${modelloEsiste ? `<button class="btn small" data-action="preventivo-rigenera" data-id="${p.id}">↻ Rigenera dal modello</button>` : ''}
         <button class="btn small" data-action="preventivo-stampa" data-id="${p.id}">🖨️ Stampa</button>
+        ${(p.importo != null && moduloAttivo('incassi')) ? `<button class="btn small" data-action="preventivo-crea-incasso" data-id="${p.id}">💶 Crea incasso</button>` : ''}
         <button class="btn small" data-action="preventivo-esporta-rtf" data-id="${p.id}">📄 Esporta Word (.rtf)</button>
         <button class="btn small" data-action="preventivo-esporta" data-id="${p.id}">⬇️ Esporta (.txt)</button>
         <button class="btn small" data-action="modifica-preventivo" data-id="${p.id}">✎ Modifica campi</button>
@@ -14492,6 +14676,44 @@ function onClickDelegato(e) {
   switch (action) {
     case 'nav-toggle-gruppo': toggleNavGruppo(el.dataset.gruppo); renderNav(); break;
     case 'import-cli-conferma': confermaWizardImportClienti(); break;
+    case 'nuovo-incasso': modalIncasso(null); break;
+    case 'modifica-incasso': modalIncasso(id); break;
+    case 'incasso-registra-apri': modalRegistraIncasso(id); break;
+    case 'salva-incasso': {
+      const dati = { clienteId: h('incCliente').value, descrizione: h('incDescrizione').value.trim(), numero: h('incNumero').value.trim(), importo: Number(h('incImporto').value), dataEmissione: h('incEmissione').value, dataScadenza: h('incScadenza').value, note: h('incNote').value.trim() };
+      if (!dati.clienteId || !(dati.importo > 0)) { toast('Scegli il cliente e indica un importo maggiore di zero.'); return; }
+      if (id) aggiornaIncasso(id, dati); else aggiungiIncasso(dati);
+      chiudiModal(); render(); toast(id ? 'Incasso aggiornato.' : 'Incasso registrato.');
+      break;
+    }
+    case 'incasso-registra': {
+      try { registraPagamentoIncasso(id, Number(h('incPagImporto').value), h('incPagData').value || oggiISO()); }
+      catch (err) { toast(err.message, true); return; }
+      chiudiModal(); render(); toast('Incasso registrato.');
+      break;
+    }
+    case 'elimina-incasso': if (confermaAzione('Eliminare questo incasso?')) { eliminaIncasso(id); render(); toast('Incasso eliminato.'); } break;
+    case 'sollecita-incasso': {
+      const i = (STATE.incassi || []).find(x => x.id === id);
+      if (!i) return;
+      if (!confermaAzione('Inviare il promemoria di pagamento a ' + nomeCliente(i.clienteId) + '? Lo vedrà nel portale (con notifica).')) return;
+      sollecitaIncasso(id); render(); toast('Sollecito inviato tramite portale.');
+      break;
+    }
+    case 'sollecita-tutti-incassi': {
+      const lista = incassiDaSollecitare();
+      if (!lista.length) return;
+      if (!confermaAzione('Inviare ' + lista.length + ' promemoria di pagamento tramite portale ai clienti con incassi scaduti?')) return;
+      lista.forEach(i => sollecitaIncasso(i.id));
+      render(); toast(lista.length + ' solleciti inviati tramite portale.');
+      break;
+    }
+    case 'preventivo-crea-incasso': {
+      const pv = STATE.preventivi.find(x => x.id === id);
+      if (!pv) return;
+      modalIncasso(null, { clienteId: pv.clienteId, descrizione: pv.oggetto || pv.categoria, importo: pv.importo != null ? pv.importo : '' });
+      break;
+    }
     case 'orario-apri-picker': {
       const campo = document.getElementById(el.dataset.target);
       const picker = el.parentElement && el.parentElement.querySelector('.orario-picker-nascosto');
@@ -16048,6 +16270,8 @@ function onChangeDelegato(e) {
       break;
     }
     case 'toggle-mcp-conferma': STATE.meta.mcpChiediConferma = !!el.checked; salvaStato(); toast(el.checked ? 'Ogni azione di Claude richiederà la tua conferma.' : 'Le azioni di Claude vengono eseguite senza conferma (restano nel registro).'); break;
+    case 'inc-filtro-cliente': INC_FILTRO.cliente = el.value; resetPagina('incassi'); render(); break;
+    case 'inc-filtro-stato': INC_FILTRO.stato = el.value; resetPagina('incassi'); render(); break;
     case 'import-cli-mappa': if (IMPORT_CLI) { IMPORT_CLI.mappa[el.dataset.chiave] = Number(el.value); renderWizardImportClienti(); } break;
     case 'dash-resp': DASH_RESP = el.value; render(); break;
     case 'cambia-ruolo-responsabile': {
@@ -16607,6 +16831,7 @@ function esportaVistaMCP() {
     })),
     moduli: MODULI.map(m => ({ id: m.id, nome: m.label, attivo: moduloAttivo(m.id) })),
     team: { responsabili: STATE.meta.responsabili || [], consulenti: STATE.meta.consulenti || [], ruoli: STATE.meta.ruoli || {} },
+    incassi: (STATE.incassi || []).map(i => ({ id: i.id, clienteId: i.clienteId, cliente: nomeCliente(i.clienteId), descrizione: i.descrizione, numero: i.numero, importo: i.importo, incassato: i.importoIncassato || 0, residuo: residuoIncasso(i), dataEmissione: i.dataEmissione, dataScadenza: i.dataScadenza, stato: statoIncasso(i), solleciti: (i.solleciti || []).length })),
     appuntamenti: (STATE.appuntamenti || []).map(a => ({
       id: a.id, clienteId: a.clienteId || null, cliente: a.clienteId ? nomeCliente(a.clienteId) : null, data: a.data, ora: a.ora || '',
       durataMinuti: a.durataMinuti, oggetto: a.oggetto, note: a.note || '', stato: a.stato, consulente: a.consulente || null,
