@@ -2230,13 +2230,24 @@ function gestisciRichiesta(req, res) {
       background_color: '#F3F5F9',
       theme_color: '#132A4C',
       lang: 'it',
+      // Icone VERE a 192 e 512 px (cartella logo/, servite da /portale-icona-<n>.png): Chrome
+      // rifiuta di proporre "Installa app" se l'icona dichiarata 192/512 è in realtà più piccola.
       icons: [
-        { src: 'data:image/png;base64,' + iconaBase64, sizes: '192x192', type: 'image/png' },
-        { src: 'data:image/png;base64,' + iconaBase64, sizes: '512x512', type: 'image/png' },
+        { src: '/portale-icona-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+        { src: '/portale-icona-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
       ],
     };
     res.writeHead(200, { 'Content-Type': 'application/manifest+json; charset=utf-8' });
     res.end(JSON.stringify(manifest));
+    return;
+  }
+  const mIcona = /^\/portale-icona-(180|192|512)\.png$/.exec(url);
+  if (mIcona && req.method === 'GET') {
+    fs.readFile(path.join(CARTELLA, 'logo', 'portale-icona-' + mIcona[1] + '.png'), (err, contenuto) => {
+      if (err) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('Icona non trovata.'); return; }
+      res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' });
+      res.end(contenuto);
+    });
     return;
   }
   if (url === '/portale-sw.js' && req.method === 'GET') {
@@ -2721,7 +2732,7 @@ function creaServerEsterno() {
       return;
     }
     const url = req.url.split('?')[0];
-    const percorsoPortale = url.indexOf('/portale/') === 0 || url.indexOf('/api/portale-') === 0 || url === '/portale-manifest.json' || url === '/portale-sw.js' || url === '/portale-push-chiave';
+    const percorsoPortale = url.indexOf('/portale/') === 0 || url.indexOf('/api/portale-') === 0 || url === '/portale-manifest.json' || url === '/portale-sw.js' || url === '/portale-push-chiave' || /^\/portale-icona-(180|192|512)\.png$/.test(url);
     if (percorsoPortale) {
       gestisciRichiesta(req, res); // portale cliente: sempre aperto, nessun login condiviso
       return;

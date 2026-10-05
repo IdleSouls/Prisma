@@ -5,6 +5,7 @@
   "description": "Server locale del gestionale Prisma (Studio Quadra). jsdom serve solo per il portale cliente esterno - vedi i commenti in cima a server.js.",
   "dependencies": {
     "jsdom": "^24.0.0",
-    "pdf-lib": "^1.17.1"
+    "pdf-lib": "^1.17.1",
+    "web-push": "^3.6.7"
   }
 }

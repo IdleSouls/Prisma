@@ -3962,6 +3962,36 @@ async function main() {
   assert(window.statoAggiornamentoContabile(clienteContabDemo.id).length === 5, '#176: i dati contabili (import demo) devono restare leggibili/intatti anche a sezione sospesa, nessuna cancellazione legata al toggle');
   console.log('=== #176: sezione Contabilità sospesa (default) - nascosta da menu, scheda cliente e accesso diretto, dati intatti OK');
 
+  // ---- #214: moduli attivabili ----
+  {
+    const st = window.getSTATE();
+    delete st.meta.moduliDisattivati; // salvataggio "vecchio" senza il campo: tutto attivo
+    window.render();
+    assert(window.operatorePuoVedere('chat') && window.operatorePuoVedere('bilanci') && window.operatorePuoVedere('f24'), '#214: senza meta.moduliDisattivati tutti i moduli devono risultare attivi (retrocompatibilità)');
+    window.setView('impostazioni');
+    await wait(20);
+    click(q('[data-action="imp-sezione"][data-sezione="moduli"]'));
+    await wait(20);
+    assert(qa('[data-action="toggle-modulo"]').length >= 10, '#214: Impostazioni > Moduli deve elencare i moduli');
+    const cbBilanci = q('[data-action="toggle-modulo"][data-modulo="bilanci"]');
+    cbBilanci.checked = false;
+    cbBilanci.dispatchEvent(new window.Event('change', { bubbles: true }));
+    await wait(20);
+    assert(Array.isArray(st.meta.moduliDisattivati) && st.meta.moduliDisattivati.includes('bilanci'), '#214: spegnere un modulo deve salvarlo in meta.moduliDisattivati');
+    assert(!window.operatorePuoVedere('bilanci'), '#214: un modulo spento non deve essere visibile');
+    assert(!qa('.navitem').some(el => el.dataset.nav === 'bilanci'), '#214: la voce di menu di un modulo spento non deve comparire');
+    assert(window.operatorePuoVedere('clienti') && window.operatorePuoVedere('impostazioni'), '#214: i tab fissi restano sempre visibili');
+    // modulo a due tab: spegnere "fiscale" nasconde ritenute e F24
+    st.meta.moduliDisattivati.push('fiscale');
+    assert(!window.operatorePuoVedere('ritenute') && !window.operatorePuoVedere('f24'), '#214: un modulo con più tab nasconde tutti i suoi tab');
+    window.setView('bilanci');
+    assert(window.getVIEW() === 'dashboard', '#214: aprire direttamente un tab di modulo spento deve reindirizzare alla dashboard');
+    st.meta.moduliDisattivati = [];
+    window.render();
+    assert(window.operatorePuoVedere('bilanci') && window.operatorePuoVedere('f24'), '#214: riaccendere i moduli li rende di nuovo visibili');
+    console.log('=== #214: moduli attivabili (default tutto attivo, spegni/riaccendi, blocco accesso diretto) OK');
+  }
+
   click(q('[data-nav="schedacliente"]'));
   await wait(20);
   click(q(`[data-action="schcli-apri-task"][data-cliente="${clienteScheda.id}"]`));
