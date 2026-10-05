@@ -6945,9 +6945,11 @@ function renderProcedureInterne() {
 
 /* Vista di sola lettura, pensata per essere aperta velocemente dal consulente prima di un appuntamento
    (vedi task #147): procedura passo-passo + checklist documenti, senza dover passare da "Modifica". */
-function modalDettaglioProcedura(id) {
+function modalDettaglioProcedura(id, ritorno) {
   const p = STATE.procedureInterne.find(x => x.id === id);
   if (!p) { toast('Procedura non trovata.'); return; }
+  // ritorno = {app:id} o {task:id}: se la procedura è aperta da un appuntamento/task, mostra "← Indietro"
+  const btnIndietro = ritorno ? `<button class="btn" data-action="procedura-indietro" ${ritorno.app?`data-app="${ritorno.app}"`:`data-task="${ritorno.task}"`}>← Indietro</button>` : '';
   const checklist = (p.checklistDocumenti || []);
   const html = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
     <div class="modal" style="max-width:700px;">
@@ -6959,6 +6961,7 @@ function modalDettaglioProcedura(id) {
       ${checklist.length ? `<div class="section-title" style="margin-top:16px;">Documenti necessari</div>
         <ul style="margin:6px 0 0 18px;padding:0;">${checklist.map(d => `<li>${escapeHtml(d)}</li>`).join('')}</ul>` : ''}
       <div class="modal-actions">
+        ${btnIndietro}
         <button class="btn" data-action="chiudi-modal">Chiudi</button>
         <button class="btn primary" data-action="modifica-procedura" data-id="${p.id}">Modifica</button>
       </div>
@@ -11469,6 +11472,7 @@ function segnaAppuntamentoVisto(id) {
    lasciamolo come un campo libero nella gestione dell'evento-appuntamento"): l'abbinamento
    automatico per motivo non è più l'unica fonte di verità, solo un punto di partenza comodo.
    Nessun suggerimento per gli appuntamenti creati direttamente dal consulente (motivo assente). */
+const PROC_NESSUNA = '__nessuna__'; // marcatore: "nessuna procedura" scelto a mano (vince sul suggerimento automatico)
 function proceduraSuggeritaPerAppuntamento(a) {
   if (!a || !a.motivo) return null;
   return (STATE.procedureInterne || []).find(p => p.attivo && (p.motiviAppuntamento || []).includes(a.motivo)) || null;
@@ -11480,6 +11484,7 @@ function proceduraSuggeritaPerAppuntamento(a) {
    prenotati prima di questo task e per chi non ha ancora toccato il campo. */
 function proceduraCollegataAppuntamento(a) {
   if (!a) return null;
+  if (a.procedureId === PROC_NESSUNA) return null; // scelta esplicita: attività mai trattata, nessuna procedura
   if (a.procedureId) return procedureById(a.procedureId) || null;
   return proceduraSuggeritaPerAppuntamento(a);
 }
@@ -11672,16 +11677,16 @@ function apriModalAppuntamento(id) {
   // automatico per motivo solo se non è già stato scelto nulla manualmente (vedi
   // proceduraCollegataAppuntamento), ma liberamente cambiabile con qualunque procedura attiva.
   const procedureAttiveOrdinate = (STATE.procedureInterne || []).filter(p => p.attivo).sort((x, y) => x.nome.localeCompare(y.nome));
-  const procedureIdSelezionata = a.procedureId || (proceduraSuggeritaPerAppuntamento(a) || {}).id || '';
+  const procedureIdSelezionata = a.procedureId === PROC_NESSUNA ? '' : (a.procedureId || (proceduraSuggeritaPerAppuntamento(a) || {}).id || '');
   const bloccoProcedura = `
     <div class="field full" style="grid-column:1/-1;">
       <label>Procedura collegata <span style="font-weight:400;color:var(--text-mut);">(facoltativa, cambiabile in qualsiasi momento)</span></label>
       <div style="display:flex;gap:8px;align-items:center;">
         <select style="flex:1;" data-action="app-cambia-procedura" data-id="${a.id}">
-          <option value="">— Nessuna —</option>
+          <option value="${PROC_NESSUNA}" ${!procedureIdSelezionata?'selected':''}>— Nessuna (attività mai trattata) —</option>
           ${procedureAttiveOrdinate.map(p => `<option value="${p.id}" ${procedureIdSelezionata===p.id?'selected':''}>${escapeHtml(p.categoria)} · ${escapeHtml(p.nome)}</option>`).join('')}
         </select>
-        ${procedureIdSelezionata ? `<button type="button" class="btn small" data-action="apri-procedura" data-id="${procedureIdSelezionata}">Apri</button>` : ''}
+        ${procedureIdSelezionata ? `<button type="button" class="btn small" data-action="apri-procedura" data-id="${procedureIdSelezionata}" data-app="${a.id}">Apri</button>` : ''}
       </div>
     </div>`;
   // Task #160: decisione del consulente (non della segreteria) su un eventuale bisogno di
@@ -13173,8 +13178,41 @@ const IMP_SEZIONI = [
   { id: 'team', label: 'Team & accessi' },
   { id: 'dati', label: 'Dati & backup' },
   { id: 'catalogo', label: 'Catalogo & aggiornamenti' },
+  { id: 'guide', label: 'Guide' },
   { id: 'avanzate', label: 'Avanzate' },
 ];
+const GUIDE_STUDIO = [
+  { id: 'guida-ia-di-studio', titolo: "Guida per l'IA di studio", descrizione: "Allegala alla tua IA (Claude o altra) e scrivile «Aiutami a installare e configurare Prisma»: contiene installazione, moduli, utenti, portale clienti e collegamento MCP." },
+];
+function renderImpostazioniGuide() {
+  return `<div class="card">
+    <div class="section-title">Guide</div>
+    <div class="helptext" style="margin-bottom:12px;">Documenti di supporto: leggili qui o scaricali per allegarli alla tua IA.</div>
+    ${GUIDE_STUDIO.map(g => `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 0;border-top:1px solid var(--border);">
+      <div style="flex:1;min-width:220px;"><strong>${escapeHtml(g.titolo)}</strong><div class="helptext">${escapeHtml(g.descrizione)}</div></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn small" data-action="guida-leggi" data-id="${g.id}">Leggi</button>
+        <a class="btn small primary" href="/guide/${g.id}.md?scarica=1" download>⤓ Scarica</a>
+      </div>
+    </div>`).join('')}
+  </div>`;
+}
+async function apriGuida(id) {
+  const g = GUIDE_STUDIO.find(x => x.id === id);
+  if (!g) return;
+  let testo = '';
+  try { const r = await fetch('/guide/' + id + '.md'); testo = r.ok ? await r.text() : 'Guida non disponibile.'; } catch (e) { testo = 'Guida non disponibile.'; }
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
+    <div class="modal" style="max-width:820px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div><h2>${escapeHtml(g.titolo)}</h2></div>
+        <button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button>
+      </div>
+      <pre style="white-space:pre-wrap;word-wrap:break-word;font-family:inherit;font-size:13px;line-height:1.55;max-height:65vh;overflow:auto;margin-top:10px;">${escapeHtml(testo)}</pre>
+      <div class="modal-actions"><a class="btn" href="/guide/${g.id}.md?scarica=1" download>⤓ Scarica</a><button class="btn primary" data-action="chiudi-modal">Chiudi</button></div>
+    </div>
+  </div>`;
+}
 
 function impTabBarHtml() {
   return `<div class="imp-tabbar" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;border-bottom:1px solid var(--border);padding-bottom:10px;">
@@ -13397,6 +13435,7 @@ function renderImpostazioni() {
     case 'team': contenuto = renderImpostazioniTeam(); break;
     case 'dati': contenuto = renderImpostazioniDati(); break;
     case 'catalogo': contenuto = renderImpostazioniCatalogo(); break;
+    case 'guide': contenuto = renderImpostazioniGuide(); break;
     case 'avanzate': contenuto = renderImpostazioniAvanzate(); break;
     case 'studio':
     default: contenuto = renderImpostazioniStudio(); break;
@@ -14497,7 +14536,13 @@ function onClickDelegato(e) {
     }
 
     case 'nuova-procedura': modalProceduraInterna(null); break;
-    case 'apri-procedura': modalDettaglioProcedura(id); break;
+    case 'apri-procedura': modalDettaglioProcedura(id, el.dataset.app ? { app: el.dataset.app } : null); break;
+    case 'guida-leggi': apriGuida(id); break;
+    case 'procedura-indietro':
+      if (el.dataset.app) apriModalAppuntamento(el.dataset.app);
+      else if (el.dataset.task) modalTaskTeam(el.dataset.task);
+      else chiudiModal();
+      break;
     case 'modifica-procedura': modalProceduraInterna(id); break;
     case 'duplica-procedura': duplicaProceduraInterna(id); render(); toast('Procedura duplicata.'); break;
     case 'elimina-procedura':
@@ -14695,7 +14740,7 @@ function onClickDelegato(e) {
       const sel = h('tProcedura');
       const pid = sel ? sel.value : '';
       if (!pid) { toast('Seleziona prima una procedura.', true); return; }
-      modalDettaglioProcedura(pid);
+      modalDettaglioProcedura(pid, id ? { task: id } : null);
       break;
     }
     case 'task-aggiungi-nota': {
@@ -15592,7 +15637,7 @@ function onChangeDelegato(e) {
     // Task #185: collegamento a procedura come campo libero, sempre modificabile dal consulente -
     // si ri-apre il modale (non solo render()) così il pulsante "Apri" compare/sparisce subito
     // insieme alla select, senza dover chiudere e riaprire a mano.
-    case 'app-cambia-procedura': aggiornaAppuntamento(id, { procedureId: el.value || null }); apriModalAppuntamento(id); break;
+    case 'app-cambia-procedura': aggiornaAppuntamento(id, { procedureId: el.value || PROC_NESSUNA }); apriModalAppuntamento(id); break;
     case 'app-cambia-note': aggiornaAppuntamento(id, { note: el.value }); break;
     case 'nuovo-evento-scad-frequenza': aggiornaVisibilitaMeseScadenzaRicorrente(); break;
     case 'prenota-cambia-consulente': PRENOTA_CONSULENTE = el.value; renderFormPrenotaAppuntamento(); break;

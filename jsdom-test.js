@@ -2046,6 +2046,19 @@ async function main() {
   assert(q('[data-action="stampa-riepilogo-appuntamento"]'), 'manca il pulsante per il riepilogo stampabile dell\'appuntamento prenotato dalla segreteria');
   assert(window.getSTATE().appuntamenti.find(a => a.id === appPrenotato.id).notificaVista === true, 'aprire il dettaglio dell\'appuntamento dovrebbe segnarlo come visto (notificaVista=true)');
   assert(window.appuntamentiNonVistiConteggio() === 0, 'dopo aver aperto l\'appuntamento la notifica non dovrebbe più essere conteggiata');
+  // Bug "nessuna procedura": la scelta esplicita deve restare (niente ritorno al suggerimento) + back dalla procedura
+  click(btnProcCollegata);
+  await wait(20);
+  assert(q('[data-action="procedura-indietro"]'), 'aprendo la procedura da un appuntamento deve esserci il pulsante "Indietro"');
+  click(q('[data-action="procedura-indietro"]'));
+  await wait(20);
+  assert(q('.modal').textContent.includes('Prenotato dalla segreteria'), '"Indietro" deve riportare al dettaglio appuntamento');
+  const selProc = q('[data-action="app-cambia-procedura"]');
+  selProc.value = '__nessuna__';
+  fire(selProc, 'change');
+  await wait(20);
+  assert(!q('[data-action="apri-procedura"]'), 'scegliendo "Nessuna" non deve ricomparire il suggerimento/pulsante Apri');
+  assert(window.proceduraCollegataAppuntamento(window.getSTATE().appuntamenti.find(a => a.id === appPrenotato.id)) === null, 'con "Nessuna" la procedura collegata deve essere null');
   click(q('[data-action="chiudi-modal"]'));
   await wait(20);
   assert(!q('[data-nav="calendario"] .nav-badge'), 'il pallino di notifica sulla voce Calendario dovrebbe sparire dopo aver visto l\'appuntamento');

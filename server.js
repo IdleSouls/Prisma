@@ -2253,6 +2253,23 @@ function gestisciRichiesta(req, res) {
     });
     return;
   }
+  // Guide consultabili/scaricabili da Impostazioni → Guide (solo lista bianca, mai percorsi liberi).
+  // Non è in percorsoPortale: sulla porta esterna dei clienti questa rotta resta bloccata.
+  const mGuida = /^\/guide\/([a-z0-9-]+)\.md(\?.*)?$/.exec(url);
+  if (mGuida && req.method === 'GET') {
+    const GUIDE_FILE = { 'guida-ia-di-studio': 'GUIDA-PER-L-IA-DI-STUDIO.md' };
+    const nomeFile = GUIDE_FILE[mGuida[1]];
+    if (!nomeFile) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('Guida non trovata.'); return; }
+    fs.readFile(path.join(CARTELLA, 'Documenti-Prisma', nomeFile), (err, contenuto) => {
+      if (err) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('Guida non trovata.'); return; }
+      const scarica = /[?&]scarica=1/.test(url);
+      const intest = { 'Content-Type': 'text/markdown; charset=utf-8', 'Cache-Control': 'no-cache' };
+      if (scarica) intest['Content-Disposition'] = 'attachment; filename="' + nomeFile + '"';
+      res.writeHead(200, intest);
+      res.end(contenuto);
+    });
+    return;
+  }
   if (url === '/portale-sw.js' && req.method === 'GET') {
     fs.readFile(FILE_PORTALE_SW, (err, contenuto) => {
       if (err) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('Service worker non trovato.'); return; }
