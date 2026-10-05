@@ -214,8 +214,15 @@ function avviaNgrok(porta) {
       // "ngrok http 8421 --log=..." e cercava un programma con quel nome. Si passa invece UNA
       // riga di comando già pronta con windowsVerbatimArguments (Node non la tocca); /s /c
       // toglie le virgolette esterne che la avvolgono.
-      comandoLanciatore = 'cmd.exe';
-      argomentiLanciatore = ['/d', '/s', '/c', '"start "" /B ngrok http ' + String(porta) + ' --log="' + fileLogNgrok + '""'];
+      // Bug segnalato da Matteo ("ho chiuso la console e il link non funziona più"): con "start /B"
+      // ngrok girava dentro una finestra di console visibile, e chiuderla uccideva il tunnel. Ora
+      // si lancia via PowerShell "Start-Process -WindowStyle Hidden": ngrok parte in una console
+      // NASCOSTA, quindi non c'è nessuna finestra da chiudere per sbaglio. Lo script passa in
+      // -EncodedCommand (base64 UTF-16LE) per evitare ogni problema di virgolette; il percorso del
+      // log viaggia in una variabile d'ambiente (può contenere spazi).
+      const script = "Start-Process -WindowStyle Hidden -FilePath 'cmd.exe' -ArgumentList '/d /c ngrok http " + String(porta) + " --log=\"%PRISMA_NGROK_LOG%\"'";
+      comandoLanciatore = 'powershell.exe';
+      argomentiLanciatore = ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')];
     } else {
       comandoLanciatore = 'ngrok';
       argomentiLanciatore = ['http', String(porta), '--log=' + fileLogNgrok];
@@ -224,7 +231,7 @@ function avviaNgrok(porta) {
     let risolto = false;
     let figlio;
     try {
-      figlio = spawn(comandoLanciatore, argomentiLanciatore, { cwd: CARTELLA, detached: true, stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: process.platform === 'win32' });
+      figlio = spawn(comandoLanciatore, argomentiLanciatore, { cwd: CARTELLA, detached: true, stdio: 'ignore', windowsHide: true, env: Object.assign({}, process.env, { PRISMA_NGROK_LOG: fileLogNgrok }) });
       scriviLog('avviaNgrok: ' + comandoLanciatore + ' ' + argomentiLanciatore.join(' '));
     } catch (err) {
       resolve({ ok: false, errore: 'Impossibile avviare ngrok: ' + err.message });
@@ -247,7 +254,7 @@ function avviaNgrok(porta) {
     // comparire sulla sua API locale - stesso schema di tentativi già usato lato client su
     // /api/ngrok-tunnels, solo fatto anche qui lato server per poter dare un errore vero.
     let tentativi = 0;
-    const MAX_TENTATIVI = 10;
+    const MAX_TENTATIVI = 16; // PowerShell impiega ~1s in più ad avviarsi
     const controllaTunnelAttivo = () => {
       if (risolto) return;
       tentativi++;
