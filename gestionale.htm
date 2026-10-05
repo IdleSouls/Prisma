@@ -12164,15 +12164,13 @@ function cardAccessoEsterno() {
   const blocco = 'padding:18px 0;border-top:1px solid var(--border);';
   return `<div class="card">
     <div class="section-title">Accesso esterno (ngrok)</div>
-    <div class="helptext" style="margin-bottom:14px;">Rende Prisma raggiungibile da internet tramite ngrok: i collaboratori aprono l'indirizzo base ed entrano con utente e password, i clienti usano il proprio link personale. Serve ngrok installato e configurato una volta con il tuo authtoken (<code>ngrok config add-authtoken &lt;token&gt;</code>); con il piano gratuito c'è un solo tunnel, ed è sufficiente.</div>
+    <div class="helptext" style="margin-bottom:14px;">Per aprire Prisma da fuori studio servono due cose: un <b>tunnel ngrok</b> acceso (blocco 1: è solo il collegamento a internet, da solo non dà accesso a nessuno) e poi chi può entrare: i <b>collaboratori</b> con utente e password (blocco 2, gestionale completo) e i <b>clienti</b> con il proprio link personale (blocco 3, solo i loro dati).</div>
 
     <div style="${blocco}border-top:none;padding-top:4px;">
-      ${titoloBlocco(1, 'Tunnel ngrok', `<span class="badge ok">🟢 Porta ${porta} attiva su questo PC</span>${badgeTunnelNgrok(porta)}`)}
-      <div class="helptext" style="margin-bottom:10px;">Per essere raggiungibile da fuori serve il tunnel acceso. Con l'avvio automatico parte da solo con Prisma e gira in background, senza finestre.</div>
+      ${titoloBlocco(1, 'Collegamento a internet (tunnel ngrok)', `${badgeTunnelNgrok(porta)}`)}
+      <div class="helptext" style="margin-bottom:10px;">Serve ngrok installato e configurato una volta con il tuo authtoken (<code>ngrok config add-authtoken &lt;token&gt;</code>). Parte in background, senza finestre. Con il piano gratuito c'è un solo tunnel, ed è sufficiente per tutti.</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
         <button class="btn small primary" data-action="avvia-ngrok" data-porta="${porta}">🚀 Avvia ngrok</button>
-        <button class="btn small" data-action="copia-link-rete" data-porta="${porta}">🖧 Copia indirizzo rete locale</button>
-        <button class="btn small" data-action="copia-link-ngrok" data-porta="${porta}">🌐 Copia indirizzo ngrok</button>
       </div>
       <label style="display:flex;align-items:center;gap:7px;font-size:12.5px;cursor:pointer;">
         <input type="checkbox" data-action="ngrok-autoavvio-toggle" ${info.ngrokAutoavvio !== false ? 'checked' : ''}>
@@ -12181,8 +12179,12 @@ function cardAccessoEsterno() {
     </div>
 
     <div style="${blocco}">
-      ${titoloBlocco(2, 'Accesso collaboratori (gestionale completo)', info.team.attivo ? '<span class="badge ok">🟢 Accesso collaboratori attivo</span>' : '<span class="badge">⚪ Accesso collaboratori non impostato</span>')}
-      <div class="helptext" style="margin-bottom:10px;">Espone l'intero gestionale come in studio: usalo solo con persone di fiducia e una password robusta. Senza utente e password l'indirizzo base resta protetto e nessuno entra.</div>
+      ${titoloBlocco(2, 'Collaboratori dello studio (gestionale completo)', info.team.attivo ? '<span class="badge ok">🟢 Accesso attivo</span>' : '<span class="badge">⚪ Accesso non impostato</span>')}
+      <div class="helptext" style="margin-bottom:10px;">I collaboratori aprono l'<b>indirizzo base</b> e inseriscono utente e password: vedono l'intero gestionale come in studio. Usalo solo con persone di fiducia e una password robusta. Senza utente e password nessuno entra.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+        <button class="btn small" data-action="copia-link-ngrok" data-porta="${porta}">🌐 Copia indirizzo (internet, via ngrok)</button>
+        <button class="btn small" data-action="copia-link-rete" data-porta="${porta}">🖧 Copia indirizzo (rete dello studio)</button>
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;max-width:480px;margin-bottom:10px;">
         <div class="field"><label>Utente</label><input type="text" id="accEst_team_utente" value="${escapeHtml(draft.utente)}" placeholder="es. studio" data-action="accesso-esterno-campo" data-tipo="team" data-campo="utente"></div>
         <div class="field"><label>Password</label><input type="text" id="accEst_team_password" value="${escapeHtml(draft.password)}" placeholder="scegli una password" data-action="accesso-esterno-campo" data-tipo="team" data-campo="password"></div>
@@ -12209,7 +12211,7 @@ function sezioneAreaRiservataCliente(blocco, titoloBlocco) {
   const valore = Object.prototype.hasOwnProperty.call(PORTALE_PASSWORD_DRAFT, c.id) ? PORTALE_PASSWORD_DRAFT[c.id] : (c.portalePassword || '');
   const pwdAttiva = !!c.portalePassword;
   return `<div id="sezioneAreaRiservataCliente" style="${blocco}">
-    ${titoloBlocco(3, 'Area riservata dei clienti', c.portaleToken ? '<span class="badge ok">🟢 Accesso attivo</span>' : '<span class="badge">⚪ Accesso non attivo</span>')}
+    ${titoloBlocco(3, 'Clienti (area riservata personale)', c.portaleToken ? '<span class="badge ok">🟢 Accesso attivo</span>' : '<span class="badge">⚪ Accesso non attivo</span>')}
     <div class="helptext" style="margin-bottom:10px;">Scegli il cliente, copia il suo link personale e mandaglielo. Se non ha ancora un accesso, copiando il link viene attivato.</div>
     <div class="field" style="max-width:420px;margin-bottom:10px;"><label>Cliente</label>
       <select data-action="acc-cliente-seleziona">${attivi.map(x => `<option value="${x.id}" ${x.id === ACC_CLIENTE_SEL ? 'selected' : ''}>${escapeHtml(x.ragioneSociale)}</option>`).join('')}</select>

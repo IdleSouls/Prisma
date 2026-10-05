@@ -165,11 +165,7 @@ function interrogaNgrokLocale() {
 }
 function avviaNgrok(porta) {
   return new Promise((resolve) => {
-    const esistente = processiNgrok.get(porta);
-    if (esistente && !esistente.terminato) {
-      resolve({ ok: true, giaAttivo: true, pid: esistente.pid });
-      return;
-    }
+    const lancia = () => {
     // Bug trovato ANCORA dopo tre giri di fix precedenti (shell:true per l'ENOENT, la risoluzione
     // "exit" non risolveva mai la promise, poi la cattura di stdout+stderr con 'close' al posto di
     // 'exit'): Matteo continuava a vedere lo stesso messaggio generico ("si è chiuso subito dopo
@@ -206,23 +202,23 @@ function avviaNgrok(porta) {
     const fileLogNgrok = path.join(CARTELLA_LOG, 'ngrok-' + porta + '.log');
     try { fs.mkdirSync(CARTELLA_LOG, { recursive: true }); fs.writeFileSync(fileLogNgrok, '', 'utf8'); } catch (err) { /* best-effort: se non si riesce a pulirlo si legge comunque quel che c'è */ }
 
+    // Terzo tentativo (Matteo: "la console non si è aperta e i link non funzionano"): il lancio via
+    // PowerShell falliva in silenzio (nessun log di ngrok, nessun errore). Si usa ora lo STESSO
+    // meccanismo già collaudato dal launcher "Avvia Prisma (senza finestra nera).vbs": un piccolo
+    // script VBS lanciato con wscript che fa WScript.Shell.Run(..., 0 = finestra nascosta). Così
+    // ngrok gira in una console nascosta (nessuna finestra da chiudere per sbaglio) e
+    // l'eventuale errore di cmd/ngrok finisce in logs/ngrok-<porta>.err, letto se il tunnel non parte.
+    const fileErrNgrok = path.join(CARTELLA_LOG, 'ngrok-' + porta + '.err');
+    const fileVbsNgrok = path.join(CARTELLA_LOG, 'ngrok-avvio.vbs');
+    try { fs.writeFileSync(fileErrNgrok, '', 'utf8'); } catch (err) { /* best-effort */ }
     let comandoLanciatore, argomentiLanciatore;
     if (process.platform === 'win32') {
-      // Bug del giro precedente (log di ngrok VUOTO = ngrok non è mai partito): passando
-      // 'start', '""', '/B' e il comando come argomenti separati, Node ci mette le virgolette
-      // sue (e raddoppia quelle del titolo vuoto), quindi "start" riceveva una stringa unica tipo
-      // "ngrok http 8421 --log=..." e cercava un programma con quel nome. Si passa invece UNA
-      // riga di comando già pronta con windowsVerbatimArguments (Node non la tocca); /s /c
-      // toglie le virgolette esterne che la avvolgono.
-      // Bug segnalato da Matteo ("ho chiuso la console e il link non funziona più"): con "start /B"
-      // ngrok girava dentro una finestra di console visibile, e chiuderla uccideva il tunnel. Ora
-      // si lancia via PowerShell "Start-Process -WindowStyle Hidden": ngrok parte in una console
-      // NASCOSTA, quindi non c'è nessuna finestra da chiudere per sbaglio. Lo script passa in
-      // -EncodedCommand (base64 UTF-16LE) per evitare ogni problema di virgolette; il percorso del
-      // log viaggia in una variabile d'ambiente (può contenere spazi).
-      const script = "Start-Process -WindowStyle Hidden -FilePath 'cmd.exe' -ArgumentList '/d /c ngrok http " + String(porta) + " --log=\"%PRISMA_NGROK_LOG%\"'";
-      comandoLanciatore = 'powershell.exe';
-      argomentiLanciatore = ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')];
+      const q = (p) => '""' + p + '""'; // virgolette raddoppiate: sintassi VBS dentro una stringa
+      const riga = 'cmd /d /c ngrok http ' + String(porta) + ' --log=' + q(fileLogNgrok) + ' > ' + q(fileErrNgrok) + ' 2>&1';
+      try { fs.writeFileSync(fileVbsNgrok, 'CreateObject("WScript.Shell").Run "' + riga + '", 0, False\r\n', 'latin1'); }
+      catch (err) { resolve({ ok: false, errore: 'Impossibile preparare l\'avvio di ngrok: ' + err.message }); return; }
+      comandoLanciatore = 'wscript.exe';
+      argomentiLanciatore = ['//B', '//Nologo', fileVbsNgrok];
     } else {
       comandoLanciatore = 'ngrok';
       argomentiLanciatore = ['http', String(porta), '--log=' + fileLogNgrok];
@@ -231,7 +227,7 @@ function avviaNgrok(porta) {
     let risolto = false;
     let figlio;
     try {
-      figlio = spawn(comandoLanciatore, argomentiLanciatore, { cwd: CARTELLA, detached: true, stdio: 'ignore', windowsHide: true, env: Object.assign({}, process.env, { PRISMA_NGROK_LOG: fileLogNgrok }) });
+      figlio = spawn(comandoLanciatore, argomentiLanciatore, { cwd: CARTELLA, detached: true, stdio: 'ignore', windowsHide: true });
       scriviLog('avviaNgrok: ' + comandoLanciatore + ' ' + argomentiLanciatore.join(' '));
     } catch (err) {
       resolve({ ok: false, errore: 'Impossibile avviare ngrok: ' + err.message });
@@ -278,13 +274,24 @@ function avviaNgrok(porta) {
       risolto = true;
       voce.terminato = true;
       let dettaglio = '';
-      try { dettaglio = fs.readFileSync(fileLogNgrok, 'utf8').trim(); } catch (err) { /* ignora: nessun log leggibile */ }
+      try { dettaglio = (fs.readFileSync(fileErrNgrok, 'utf8').trim() + '\n' + fs.readFileSync(fileLogNgrok, 'utf8').trim()).trim(); } catch (err) { /* ignora: nessun log leggibile */ }
       const messaggio = dettaglio
         ? 'ngrok non ha esposto il tunnel entro pochi secondi. Ultime righe del suo log: ' + dettaglio.split('\n').slice(-6).join(' / ')
         : 'ngrok non ha esposto il tunnel entro pochi secondi, e non ha scritto nulla nel suo log: controlla di avere configurato l\'authtoken con "ngrok config add-authtoken <token>" e che questa porta non sia già usata da un altro tunnel ngrok avviato a mano.';
       resolve({ ok: false, errore: messaggio });
     };
     setTimeout(controllaTunnelAttivo, 500);
+    };
+    // Già attivo davvero? Si chiede a ngrok stesso (non si fida di una nota interna: se l'utente
+    // ha chiuso ngrok, la nota sarebbe stantia e il pulsante direbbe "già avviato" a vuoto).
+    interrogaNgrokLocale().then((dati) => {
+      const attivo = (dati.tunnels || []).some((t) => {
+        const m = /:(\d+)\s*$/.exec(String((t.config && t.config.addr) || ''));
+        return m && Number(m[1]) === porta;
+      });
+      if (attivo) resolve({ ok: true, giaAttivo: true });
+      else lancia();
+    }).catch(() => lancia());
   });
 }
 const FILE_PAGINA = path.join(CARTELLA, 'gestionale.htm');

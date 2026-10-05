@@ -5824,9 +5824,9 @@ async function main() {
     assert(bottoniLinkNgrok.length === 1 && bottoniLinkNgrok[0].dataset.porta === '8421', `#199: deve restare un solo pulsante "Copia link ngrok" (porta unica 8421), trovati: ${bottoniLinkNgrok.map(b => b.dataset.porta).join(',')}`);
 
     // Badge: porta locale sempre attiva, tunnel ngrok reale attivo sulla porta 8421 (mock sopra).
-    assert(cardTxt.includes('attiva su questo PC'), '#199: manca il badge di porta locale attiva');
+    assert(cardTxt.includes('Collegamento a internet'), '#199: manca il blocco del tunnel');
     assert(cardTxt.includes('ngrok: raggiungibile da internet'), '#199: manca il badge di tunnel ngrok realmente attivo sulla porta unica (mockata come attiva)');
-    assert(cardTxt.includes('Accesso collaboratori attivo'), '#199: manca il badge di accesso collaboratori attivo (mock: credenziali impostate)');
+    assert(cardTxt.includes('Accesso attivo'), '#199: manca il badge di accesso collaboratori attivo (mock: credenziali impostate)');
     console.log('=== #199: card Accesso esterno - una sola porta/riga condivisa per clienti e collaboratori, pulsanti e badge coerenti OK');
 
     // Interruttore di avvio automatico: ora un booleano unico (mock: false), cliccandolo chiama
