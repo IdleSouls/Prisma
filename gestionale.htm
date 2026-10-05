@@ -126,6 +126,15 @@ input,select,textarea{font-family:inherit;font-size:14px;}
 .card{background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow-sm);}
 .card + .card{margin-top:16px;}
 .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px;align-items:start;}
+/* "Il mio lavoro": riepilogo a pillole (task #213) - volutamente diverso dai riquadri della Dashboard */
+.riepilogo-lavoro{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px 0;}
+.pill-lavoro{border:1px solid var(--border);background:var(--card-bg,#fff);border-radius:999px;padding:8px 14px;font-size:13px;cursor:pointer;color:var(--text,#161B26);}
+.pill-lavoro strong{font-weight:800;}
+.pill-lavoro:hover{background:var(--bg,#f3f5f9);}
+.pill-lavoro.rosso{border-color:var(--rosso,#d33);color:var(--rosso,#b3261e);}
+.pill-lavoro.giallo{border-color:var(--giallo,#c0790c);color:var(--giallo,#9c6500);}
+.pill-lavoro.blu{border-color:var(--blu-mid,#2e63c7);color:var(--blu-mid,#2e63c7);}
+.pill-lavoro.viola{border-color:#5b2d90;color:#5b2d90;}
 .kpi{border-radius:var(--radius);padding:16px 18px;box-shadow:var(--shadow-sm);position:relative;overflow:hidden;cursor:pointer;transition:transform .12s;}
 .kpi:hover{transform:translateY(-1px);}
 .kpi .n{font-size:29px;font-weight:800;line-height:1;}
@@ -1718,7 +1727,7 @@ function catalogoAttivitaStudioDefault() {
 }
 
 let STATE = null;
-let VIEW = 'oggi'; // task #213: si parte dalla home guidata "Oggi"; 'dashboard' resta il ripiego dei blocchi di permesso/modulo
+let VIEW = 'oggi'; // si parte da "Il mio lavoro" (task #213); 'dashboard' resta il ripiego dei blocchi di permesso/modulo
 let VIEW_PARAMS = {};
 
 /* Porta un oggetto stato "grezzo" (da localStorage o dal documento condiviso, vedi SYNC CONDIVISO
@@ -4091,7 +4100,7 @@ function accessoPortalePuoVedere(accesso, sezione) {
 /* -------------------- 4) RENDER — shell + nav -------------------- */
 const NAV = [
   { group: 'Panoramica', items: [
-    { id: 'oggi', label: 'Oggi', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M18.7 5.3l-1.6 1.6M6.9 17.1l-1.6 1.6"/></svg>' },
+    { id: 'oggi', label: 'Il mio lavoro', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3.5" width="16" height="17" rx="2.5"/><path d="M8 9l1.8 1.8L13 7.6"/><path d="M8 15h8"/></svg>' },
     { id: 'dashboard', label: 'Dashboard', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>' },
     { id: 'azioni', label: 'Azioni', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/></svg>' },
     { id: 'calendario', label: 'Calendario', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="8" y1="2.5" x2="8" y2="6.5"/><line x1="16" y1="2.5" x2="16" y2="6.5"/></svg>' },
@@ -4133,8 +4142,8 @@ const NAV = [
   ]},
 ];
 const PAGE_TITLES = {
-  oggi: ['Oggi', 'Quello che richiede la tua attenzione adesso'],
-  dashboard: ['Dashboard', 'Panoramica scadenze dello studio'],
+  oggi: ['Il mio lavoro', 'Le tue scadenze, i tuoi task e i messaggi da leggere: quello che tocca a te'],
+  dashboard: ['Dashboard', 'Il quadro di tutto lo studio: scadenze, adempimenti e onboarding di tutti'],
   calendario: ['Calendario', 'Vista mensile di tutte le scadenze'],
   clienti: ['Clienti', 'Anagrafica e flag fiscali'],
   azioni: ['Azioni', 'Cerca una funzione per parola chiave e vai dritto al punto giusto'],
@@ -4427,6 +4436,8 @@ function renderDashboard() {
   return filtroHtml + kpi + sezioneScaduti + sezioneInScadenza + sezioneAnnuali + sezioneOnboarding;
 }
 
+
+
 /* -------------------- RENDER: OGGI (task #213) --------------------
    Matteo: "Scadero ti sbatte in faccia tutte le funzioni e non ci si capisce nulla" - Prisma deve
    guidare. Questa è la schermata di partenza: solo quello che serve a QUESTA persona adesso
@@ -4434,6 +4445,45 @@ function renderDashboard() {
    per ogni cosa, e un invito a configurare se è un'installazione ancora vuota. Il menu completo
    resta a sinistra ma è secondario. Rispetta moduli attivi e permessi tramite operatorePuoVedere:
    un blocco legato a una sezione che l'utente non può vedere semplicemente non compare. */
+/* Task #215: checklist di avvio (primo setup guidato). Si vede in cima a "Oggi" finché non è tutta
+   completata o l'utente la nasconde (meta.setupNascosto). I passi si spuntano DA SOLI guardando i dati
+   (nome studio cambiato, primo cliente, prima comunicazione...) tranne "scegli i moduli", che è un
+   flag esplicito (meta.moduliConfermati) perché non c'è un dato che dica "ci ho pensato". Ogni passo
+   ha un bottone che porta dritto alla schermata giusta. I passi legati a un modulo spento non
+   compaiono: non si chiede di configurare ciò che lo studio ha deciso di non usare. */
+function passiSetupStudio() {
+  const m = STATE.meta || {};
+  const passi = [
+    { id: 'studio', testo: 'Dai un nome al tuo studio', fatto: !!(m.studioNome && m.studioNome !== 'Studio'), nav: 'impostazioni', imp: 'studio', cta: 'Apri Studio' },
+    { id: 'moduli', testo: 'Scegli i moduli che userete', fatto: !!m.moduliConfermati, nav: 'impostazioni', imp: 'moduli', cta: 'Scegli i moduli' },
+    { id: 'team', testo: 'Aggiungi i collaboratori e i loro permessi', fatto: (m.responsabili || []).length > 1 && !!m.teamConfermato, nav: 'impostazioni', imp: 'team', cta: 'Team e accessi', manuale: 'team' },
+    { id: 'clienti', testo: 'Aggiungi o importa i tuoi clienti', fatto: STATE.clienti.length > 0, nav: 'clienti', cta: 'Vai ai clienti' },
+  ];
+  if (moduloAttivo('portale')) passi.push({ id: 'portale', testo: 'Scrivi la prima comunicazione a un cliente', fatto: (STATE.comunicazioni || []).length > 0, nav: 'comunicazioni', cta: 'Vai alle comunicazioni' });
+  if (moduloAttivo('bilanci')) passi.push({ id: 'bilanci', testo: 'Carica il primo bilancio di un cliente', fatto: Object.keys(STATE.bilanci || {}).some(k => Object.keys(STATE.bilanci[k] || {}).length > 0), nav: 'bilanci', cta: 'Vai a Bilanci' });
+  return passi;
+}
+function renderChecklistSetup() {
+  const m = STATE.meta || {};
+  if (m.setupNascosto) return '';
+  const passi = passiSetupStudio();
+  const fatti = passi.filter(p => p.fatto).length;
+  if (fatti === passi.length) return '';
+  const pct = Math.round(fatti / passi.length * 100);
+  const righe = passi.map(p => `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--border);">
+      <span style="width:20px;height:20px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:12px;${p.fatto ? 'background:var(--verde,#1a8a4c);color:#fff;' : 'border:2px solid var(--border);'}">${p.fatto ? '✓' : ''}</span>
+      <span style="flex:1;font-size:13px;${p.fatto ? 'text-decoration:line-through;opacity:.6;' : 'font-weight:600;'}">${escapeHtml(p.testo)}</span>
+      ${p.fatto ? '' : `<button class="btn small${fatti === passi.indexOf(p) ? ' primary' : ''}" data-action="setup-vai" data-nav="${p.nav}" ${p.imp ? `data-imp="${p.imp}"` : ''} ${p.manuale ? `data-manuale="${p.manuale}"` : ''}>${escapeHtml(p.cta)}</button>`}
+    </div>`).join('');
+  return `<div class="card" style="border-left:4px solid var(--blu-mid,#2E63C7);margin-bottom:14px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+      <div><div style="font-weight:800;font-size:14px;">Metti a punto Prisma · ${fatti} di ${passi.length}</div><div class="helptext">Pochi passi per partire col piede giusto. Si spuntano da soli man mano.</div></div>
+      <button class="btn small" data-action="setup-nascondi" title="Nascondi questa guida (puoi sempre usare il menu)">Nascondi</button>
+    </div>
+    <div class="progress" style="margin:10px 0 4px;"><div style="width:${pct}%"></div></div>
+    ${righe}
+  </div>`;
+}
 function renderOggi() {
   const me = OPERATORE || null;
   const oggi = oggiISO();
@@ -4445,7 +4495,7 @@ function renderOggi() {
   </div>`;
 
   if (STATE.clienti.length === 0) {
-    return intest + `<div class="card"><div class="empty">
+    return intest + renderChecklistSetup() + `<div class="card"><div class="empty">
       <div class="big">Iniziamo da qui</div>
       Prisma è ancora vuoto. Aggiungi il primo cliente per vedere qui le scadenze e le cose da fare.<br><br>
       <button class="btn primary" data-action="nuovo-cliente">+ Aggiungi cliente</button>
@@ -4464,13 +4514,18 @@ function renderOggi() {
   const comDaLeggere = (moduloAttivo('portale') && operatorePuoVedere('comunicazioni')) ? comunicazioniDaLeggereConteggio() : 0;
   const chatNL = (moduloAttivo('team') && operatorePuoVedere('chat')) ? chatTotaleNonLetti() : 0;
 
-  const tile = (n, etichetta, azione, cls) => `<div class="kpi ${cls}" style="cursor:pointer;" ${azione}><div class="n">${n}</div><div class="l">${etichetta}</div></div>`;
-  const tiles = [
-    tile(scaduti.length, 'SCADUTE', 'data-action="goto-scadenze" data-filtro="scaduti"', 'scaduti'),
-    tile(entro7.length, 'ENTRO 7 GIORNI', 'data-action="goto-scadenze" data-filtro="inscadenza"', 'inscadenza'),
-    operatorePuoVedere('taskteam') ? tile(taskMiei.length, me ? 'I TUOI TASK' : 'TASK APERTI', 'data-action="nav" data-nav="taskteam"', 'futuri') : '',
-    operatorePuoVedere('comunicazioni') && moduloAttivo('portale') ? tile(comDaLeggere, 'MESSAGGI DA LEGGERE', 'data-action="nav" data-nav="comunicazioni"', 'completati') : '',
+  // Differenza voluta con la Dashboard (Matteo: "possono convivere ma vanno differenziate meglio"):
+  // la Dashboard è il quadro NUMERICO di tutto lo studio (griglia di contatori, tabelle, avanzamenti);
+  // "Il mio lavoro" è PERSONALE e a lista: una frase di riepilogo con pillole cliccabili, poi le cose da
+  // fare, una per riga. Nessun contatore a riquadri qui, per non somigliare alla Dashboard.
+  const pill = (n, singolare, plurale, azione, cls) => n ? `<button class="pill-lavoro ${cls}" ${azione}><strong>${n}</strong> ${n === 1 ? singolare : plurale}</button>` : '';
+  const pillole = [
+    pill(scaduti.length, 'scadenza in ritardo', 'scadenze in ritardo', 'data-action="goto-scadenze" data-filtro="scaduti"', 'rosso'),
+    pill(entro7.length, 'scadenza entro 7 giorni', 'scadenze entro 7 giorni', 'data-action="goto-scadenze" data-filtro="inscadenza"', 'giallo'),
+    operatorePuoVedere('taskteam') ? pill(taskMiei.length, me ? 'tuo task aperto' : 'task aperto', me ? 'tuoi task aperti' : 'task aperti', 'data-action="nav" data-nav="taskteam"', 'blu') : '',
+    (operatorePuoVedere('comunicazioni') && moduloAttivo('portale')) ? pill(comDaLeggere, 'messaggio da leggere', 'messaggi da leggere', 'data-action="nav" data-nav="comunicazioni"', 'viola') : '',
   ].join('');
+  const tiles = `<div class="riepilogo-lavoro">${pillole || '<span class="helptext">Per ora non hai niente di urgente: bel lavoro. 🎉</span>'}</div>`;
 
   const rigaScadenza = (s) => {
     const d = deltaLabel(s.data);
@@ -4497,9 +4552,9 @@ function renderOggi() {
 
   const chatRiga = chatNL ? `<div class="card" style="cursor:pointer;" data-action="nav" data-nav="chat"><strong>💬 ${chatNL}</strong> ${chatNL === 1 ? 'messaggio non letto' : 'messaggi non letti'} in chat <span class="badge" style="float:right;">Apri →</span></div>` : '';
 
-  const altro = operatorePuoVedere('dashboard') ? `<div style="margin-top:6px;"><button class="btn small" data-action="nav" data-nav="dashboard">Vedi la dashboard completa →</button></div>` : '';
+  const altro = operatorePuoVedere('dashboard') ? `<div style="margin-top:6px;"><button class="btn small" data-action="nav" data-nav="dashboard">Vai alla Dashboard dello studio →</button></div>` : '';
 
-  return intest + `<div class="kpi-grid">${tiles}</div>` + sezUrgenti + sezTask + chatRiga + altro;
+  return intest + renderChecklistSetup() + tiles + sezUrgenti + sezTask + chatRiga + altro;
 }
 
 /* -------------------- PAGINAZIONE LISTE --------------------
@@ -13230,6 +13285,7 @@ function renderImpostazioniModuli() {
     <div class="section-title">Moduli attivi nello studio</div>
     <div class="helptext" style="margin-bottom:6px;">Tieni accesi solo i moduli che usate davvero: quelli spenti spariscono dal menu e dalla home per tutti, così Prisma resta semplice. I dati già inseriti non si perdono: riaccendendo un modulo ritrovi tutto com'era. Dashboard, clienti, scadenze, adempimenti annuali, documenti e impostazioni sono sempre attivi.</div>
     ${righe}
+    <div style="margin-top:14px;"><button class="btn primary" data-action="conferma-moduli">${STATE.meta.moduliConfermati ? 'Ok, torna a Oggi' : 'Conferma la scelta'}</button></div>
   </div>`;
 }
 
@@ -14233,6 +14289,24 @@ function onClickDelegato(e) {
     case 'imp-sezione':
       IMP_SEZIONE = el.dataset.sezione;
       render();
+      break;
+    // Task #215: bottoni della checklist di avvio in "Oggi". "manuale" = passo senza un dato che lo
+    // dimostri (es. team): si considera fatto nel momento in cui l'utente ci va.
+    case 'setup-vai':
+      if (el.dataset.imp) IMP_SEZIONE = el.dataset.imp;
+      if (el.dataset.manuale === 'team') { STATE.meta.teamConfermato = true; salvaStato(); }
+      setView(el.dataset.nav);
+      break;
+    case 'setup-nascondi':
+      STATE.meta.setupNascosto = true;
+      salvaStato();
+      render();
+      break;
+    case 'conferma-moduli':
+      STATE.meta.moduliConfermati = true;
+      salvaStato();
+      toast('Moduli confermati.');
+      setView('oggi');
       break;
 
     case 'avvia-ngrok': avviaNgrokDaPrisma(Number(el.dataset.porta), el.textContent); break;

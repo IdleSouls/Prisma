@@ -4014,9 +4014,9 @@ async function main() {
     const st = window.getSTATE();
     window.setView('oggi');
     await wait(20);
-    assert(window.getVIEW() === 'oggi', '#213: la vista "oggi" deve essere raggiungibile');
+    assert(window.getVIEW() === 'oggi', '#213: la vista "oggi" (Il mio lavoro) deve essere raggiungibile');
     assert(q('#content').innerHTML.includes('Da fare per primo'), '#213: la home Oggi deve mostrare il blocco "Da fare per primo"');
-    assert(qa('.navitem').some(el => el.dataset.nav === 'oggi'), '#213: la voce "Oggi" deve comparire nel menu');
+    assert(qa('.navitem').some(el => el.dataset.nav === 'oggi' && el.textContent.includes('Il mio lavoro')) && qa('.navitem').some(el => el.dataset.nav === 'dashboard' && el.textContent.includes('Dashboard')), '#213: nel menu devono esserci "Il mio lavoro" e "Dashboard", distinti');
     // modulo team spento: nessun riferimento a chat/task nella home
     st.meta.moduliDisattivati = ['team'];
     window.render();
@@ -4026,6 +4026,29 @@ async function main() {
     window.setView('dashboard');
     await wait(20);
     console.log('=== #213: home Oggi (blocchi, menu, rispetto dei moduli spenti) OK');
+
+    // ---- #215: checklist di avvio ----
+    delete st.meta.setupNascosto; delete st.meta.moduliConfermati; delete st.meta.teamConfermato;
+    window.render();
+    window.setView('oggi');
+    await wait(20);
+    assert(q('#content').innerHTML.includes('Metti a punto Prisma'), '#215: la checklist di avvio deve comparire in Oggi finché ci sono passi da fare');
+    const passi = window.passiSetupStudio();
+    assert(passi.find(p => p.id === 'clienti').fatto === true, '#215: il passo "clienti" deve spuntarsi da solo con clienti presenti');
+    assert(passi.find(p => p.id === 'moduli').fatto === false, '#215: "moduli" non confermati => non fatto');
+    click(q('[data-action="setup-vai"][data-imp="moduli"]'));
+    await wait(20);
+    assert(window.getVIEW() === 'impostazioni' && q('[data-action="conferma-moduli"]'), '#215: il passo "moduli" deve portare a Impostazioni > Moduli con il bottone di conferma');
+    click(q('[data-action="conferma-moduli"]'));
+    await wait(20);
+    assert(st.meta.moduliConfermati === true && window.getVIEW() === 'oggi', '#215: confermare i moduli deve spuntare il passo e tornare a Oggi');
+    click(q('[data-action="setup-nascondi"]'));
+    await wait(20);
+    assert(!q('#content').innerHTML.includes('Metti a punto Prisma'), '#215: "Nascondi" deve togliere la checklist');
+    delete st.meta.setupNascosto;
+    window.setView('dashboard');
+    await wait(20);
+    console.log('=== #215: checklist di avvio (passi automatici, conferma moduli, nascondi) OK');
   }
 
   click(q('[data-nav="schedacliente"]'));
