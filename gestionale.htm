@@ -10125,6 +10125,20 @@ function aggiungiRispostaPortaleClienteEsterno(token, comunicazioneId, testo, fi
   return aggiungiRispostaComunicazione(comunicazioneId, testo, 'cliente', fileInfo);
 }
 
+/* Il cliente apre una comunicazione nel portale: la si segna come letta (vistaPortale=true), così il
+   tag "Nuova" sparisce e non ritorna al successivo aggiornamento (bug: il portale chiamava
+   /api/portale-segna-letta ma il server non aveva nessun endpoint, quindi la lettura non veniva
+   mai salvata). Stessa verifica di appartenenza delle risposte: solo thread del cliente del token. */
+function segnaLettaComunicazionePortaleEsterno(token, comunicazioneId) {
+  if (!token || !comunicazioneId) return null;
+  const trovato = trovaAccessoPortale(token);
+  if (!trovato || !accessoPortalePuoVedere(trovato.accesso, 'comunicazioni')) return null;
+  const c = STATE.comunicazioni.find(x => x.id === comunicazioneId && x.clienteId === trovato.cliente.id && x.visibilePortale !== false);
+  if (!c) return null;
+  if (!c.vistaPortale) { c.vistaPortale = true; salvaStato(); }
+  return c;
+}
+
 /* Terza scrittura possibile da un cliente esterno (richiesta Matteo, campagna 770): segnalare di
    aver pagato una fattura con ritenuta, dal pulsante "Ho pagato questa fattura" del portale. Stessa
    cautela delle altre due funzioni sopra: il token risolve SEMPRE il cliente, non ci si fida di un
@@ -16153,6 +16167,7 @@ window.accessoPortalePuoVedere = accessoPortalePuoVedere;
 /* Area cliente interattiva (task #88): stessa logica di sopra, ma in scrittura. */
 window.aggiungiMessaggioPortaleClienteEsterno = aggiungiMessaggioPortaleClienteEsterno;
 window.aggiungiRispostaPortaleClienteEsterno = aggiungiRispostaPortaleClienteEsterno;
+window.segnaLettaComunicazionePortaleEsterno = segnaLettaComunicazionePortaleEsterno;
 window.segnalaPagamentoRitenutaPortaleEsterno = segnalaPagamentoRitenutaPortaleEsterno;
 window.aggiungiRispostaComunicazione = aggiungiRispostaComunicazione;
 /* Stessa area cliente, ma simulata dentro l'anteprima del gestionale (task #107). */

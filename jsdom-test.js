@@ -2824,6 +2824,15 @@ async function main() {
       stato: 'Inviata', visibilePortale: false, vistaPortale: true, vistaStudio: true, risposte: [],
     });
     assert(window.aggiungiRispostaPortaleClienteEsterno(tokenX, 'com_test_solointerno_88', 'il cliente non dovrebbe poter rispondere qui') === null, 'non deve essere possibile rispondere a una comunicazione marcata "solo interno" anche se appartiene al cliente giusto');
+
+    // ---- segna come letta dal portale: solo il thread del cliente del token, persistente ----
+    const comDaLeggere = window.getSTATE().comunicazioni.find(c => c.id === msgGenerico.id);
+    comDaLeggere.vistaPortale = false;
+    assert(window.segnaLettaComunicazionePortaleEsterno(tokenX, 'com_test_solointerno_88') === null, 'segna-letta: un thread "solo interno" non deve essere raggiungibile dal cliente');
+    assert(window.segnaLettaComunicazionePortaleEsterno(tokenX, comAltrui.id) === null, 'segna-letta: il thread di un altro cliente non deve essere raggiungibile');
+    assert(window.segnaLettaComunicazionePortaleEsterno(tokenX, msgGenerico.id) && comDaLeggere.vistaPortale === true, 'segna-letta: la comunicazione deve risultare letta per il cliente');
+    console.log('=== Portale cliente: aprire una comunicazione la segna come letta in modo persistente (tag "Nuova" non ritorna), isolata per cliente OK');
+
     console.log('=== Area cliente: risposta rifiutata su una comunicazione "solo interno" anche se del cliente giusto OK');
 
     // ---- aggiungiRispostaComunicazione (lato studio) + flip dei flag vistaStudio/vistaPortale ----

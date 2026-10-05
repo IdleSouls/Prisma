@@ -683,6 +683,21 @@ function rispostaPortaleCliente(token, comunicazioneId, testo, fileInfo) {
     return { errore: 'Errore interno salvando la risposta.' };
   }
 }
+function segnaLettaPortaleCliente(token, comunicazioneId) {
+  const { win, errore } = motorePortale();
+  if (!win) return { errore };
+  try {
+    ricaricaDatiMotorePortale(win);
+    const c = win.segnaLettaComunicazionePortaleEsterno(token, comunicazioneId);
+    if (!c) return { esito: null };
+    scriviDati(win.getSTATE());
+    notificaClientiSSE(null);
+    return { esito: c };
+  } catch (err) {
+    console.error('[gestionale] Errore segnando come letta una comunicazione dal portale cliente:', err.message);
+    return { errore: 'Errore interno.' };
+  }
+}
 // Terza scrittura possibile da un cliente esterno (richiesta Matteo, campagna 770): "Ho pagato
 // questa fattura" sul pannello ritenute del portale. Stesso identico schema delle due funzioni sopra.
 function segnalazioneRitenutaPortaleCliente(token, ritenutaId, dataPagamento) {
@@ -2487,6 +2502,24 @@ function gestisciRichiesta(req, res) {
       }
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify({ ok: true }));
+    });
+    return;
+  }
+
+  if (url === '/api/portale-segna-letta' && req.method === 'POST') {
+    leggiCorpoRichiesta(req, (corpo) => {
+      let dati;
+      try { dati = JSON.parse(corpo); } catch (err) { dati = null; }
+      const token = (dati && typeof dati.token === 'string') ? dati.token.trim() : '';
+      const comunicazioneId = (dati && typeof dati.comunicazioneId === 'string') ? dati.comunicazioneId.trim() : '';
+      if (!token || !comunicazioneId) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, errore: 'Richiesta non valida.' }));
+        return;
+      }
+      const { esito, errore } = segnaLettaPortaleCliente(token, comunicazioneId);
+      res.writeHead(errore ? 503 : (esito ? 200 : 404), { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ ok: !!esito }));
     });
     return;
   }

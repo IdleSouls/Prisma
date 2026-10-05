@@ -1557,6 +1557,7 @@ function gestisciClicCorpo(e) {
       if (VISTA.numeri && VISTA.numeri.comunicazioniDaLeggere > 0) VISTA.numeri.comunicazioniDaLeggere--;
       const badge = el.querySelector('.badge.nuova');
       if (badge) badge.remove();
+      if (item) item.classList.remove('non-letta');
       renderTabbar();
       postJSON('/api/portale-segna-letta', { token: TOKEN, comunicazioneId: id }).catch(() => {});
     }
