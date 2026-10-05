@@ -5541,6 +5541,53 @@ function trovaColonnaImport(headerRow, intestazioneAttesa) {
   const target = norm(intestazioneAttesa);
   return (headerRow || []).findIndex(h => norm(h) === target);
 }
+/* Import guidato (task #211): oltre al nostro template si riconoscono le intestazioni più comuni
+   degli export di altri gestionali (Denominazione, P.IVA, Cod. fiscale, Comune, Prov...). */
+const SINONIMI_IMPORT_CLIENTI = {
+  ragioneSociale: ['denominazione', 'ragione sociale', 'nominativo', 'cognome nome', 'nome cognome', 'cliente', 'anagrafica', 'ditta', 'intestazione', 'nome'],
+  codiceFiscale: ['codice fiscale', 'cod fiscale', 'cod fisc', 'cf', 'c f'],
+  partitaIva: ['partita iva', 'p iva', 'piva', 'part iva', 'partita i v a'],
+  email: ['email', 'e mail', 'mail', 'posta elettronica'],
+  pec: ['pec', 'posta certificata', 'email pec'],
+  telefono: ['telefono', 'tel', 'cellulare', 'cell', 'recapito telefonico'],
+  indirizzo: ['indirizzo', 'via', 'sede legale', 'residenza', 'indirizzo sede'],
+  cap: ['cap', 'c a p'],
+  localita: ['localita', 'comune', 'citta', 'comune sede'],
+  provincia: ['provincia', 'prov', 'pr'],
+  settore: ['attivita', 'settore', 'descrizione attivita'],
+  ateco: ['ateco', 'codice ateco', 'codici ateco', 'cod ateco'],
+  note: ['note', 'annotazioni', 'osservazioni'],
+  tipo: ['tipo', 'tipologia', 'forma giuridica', 'natura giuridica', 'tipo soggetto'],
+  regimeFiscale: ['regime fiscale', 'regime', 'regime contabile'],
+  periodicitaIva: ['periodicita iva', 'liquidazione iva', 'periodicita'],
+  responsabileStudio: ['responsabile studio', 'responsabile', 'referente studio'],
+  contabilita: ['tenuta contabilita', 'contabilita'],
+  addebitoF24: ['addebito f24'],
+  previdenza: ['previdenza', 'gestione previdenziale'],
+};
+function normIntestazioneImport(s) {
+  return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+}
+/* Assegna a ogni campo Prisma la colonna del file più probabile (intestazione esatta del nostro
+   template, poi sinonimi): una colonna non viene usata per due campi. Ritorna {chiave: indice|-1}. */
+function mappaturaAutomaticaImportClienti(header) {
+  const usate = new Set();
+  const mappa = {};
+  const norm = (header || []).map(normIntestazioneImport);
+  COLONNE_IMPORT_CLIENTI.forEach(c => {
+    let idx = trovaColonnaImport(header, c.intestazione);
+    if (idx === -1 || usate.has(idx)) {
+      idx = -1;
+      for (const sin of (SINONIMI_IMPORT_CLIENTI[c.chiave] || [])) {
+        const i = norm.findIndex((h, k) => !usate.has(k) && h === sin);
+        if (i !== -1) { idx = i; break; }
+      }
+    }
+    if (idx !== -1) usate.add(idx);
+    mappa[c.chiave] = idx;
+  });
+  return mappa;
+}
 
 async function scaricaTemplateClienti() {
   const esempio = {
@@ -5676,26 +5723,17 @@ function clienteDaRigaImport(valori, numeroRigaFile) {
   return { cliente, warnings };
 }
 
-function elaboraImportClienti(righe) {
-  if (!righe || righe.length < 2) { alert('Il file non contiene righe da importare (serve almeno l\'intestazione più una riga di dati).'); return; }
-  const header = righe[0];
-  COLONNE_IMPORT_CLIENTI.forEach(c => { c.idx = trovaColonnaImport(header, c.intestazione); });
-  const colonnaRagioneSociale = COLONNE_IMPORT_CLIENTI.find(c => c.chiave === 'ragioneSociale');
-  if (!colonnaRagioneSociale || colonnaRagioneSociale.idx === -1) {
-    alert('Non trovo la colonna "Ragione sociale / Nome" nell\'intestazione: verifica di aver usato (o non aver rinominato le colonne del) il template scaricato dall\'app.');
-    return;
-  }
-
+/* Calcola cosa succederebbe importando (nessuna scrittura): usa COLONNE_IMPORT_CLIENTI[].idx già
+   impostati (da mappatura automatica o scelta nel wizard). */
+function pianificaImportClienti(righe) {
   const esistenti = new Set();
   STATE.clienti.forEach(c => {
     if (c.partitaIva) esistenti.add('piva:' + c.partitaIva.trim().toLowerCase());
     if (c.codiceFiscale) esistenti.add('cf:' + c.codiceFiscale.trim().toLowerCase());
   });
-
   const nuoviClienti = [];
   const tuttiWarning = [];
   let saltatiDuplicati = 0, saltatiVuoti = 0;
-
   for (let i = 1; i < righe.length; i++) {
     const valori = righe[i];
     if (!valori || valori.every(v => String(v || '').trim() === '')) continue; // riga completamente vuota
@@ -5709,6 +5747,20 @@ function elaboraImportClienti(righe) {
     if (chiaveCf) esistenti.add(chiaveCf);
     nuoviClienti.push(cliente);
   }
+  return { nuoviClienti, tuttiWarning, saltatiDuplicati, saltatiVuoti };
+}
+function applicaMappaturaImportClienti(mappa) {
+  COLONNE_IMPORT_CLIENTI.forEach(c => { c.idx = (mappa && mappa[c.chiave] != null) ? mappa[c.chiave] : -1; });
+}
+function elaboraImportClienti(righe) {
+  if (!righe || righe.length < 2) { alert('Il file non contiene righe da importare (serve almeno l\'intestazione più una riga di dati).'); return; }
+  applicaMappaturaImportClienti(mappaturaAutomaticaImportClienti(righe[0]));
+  const colonnaRagioneSociale = COLONNE_IMPORT_CLIENTI.find(c => c.chiave === 'ragioneSociale');
+  if (!colonnaRagioneSociale || colonnaRagioneSociale.idx === -1) {
+    alert('Non trovo la colonna "Ragione sociale / Nome" nell\'intestazione: verifica di aver usato (o non aver rinominato le colonne del) il template scaricato dall\'app.');
+    return;
+  }
+  const { nuoviClienti, tuttiWarning, saltatiDuplicati, saltatiVuoti } = pianificaImportClienti(righe);
 
   if (nuoviClienti.length === 0) {
     alert(`Nessun cliente importato.${saltatiDuplicati ? ` ${saltatiDuplicati} riga/e scartate perché già presenti (stessa P.IVA o CF).` : ''}${saltatiVuoti ? ` ${saltatiVuoti} riga/e senza ragione sociale.` : ''}`);
@@ -5725,8 +5777,80 @@ function elaboraImportClienti(righe) {
   toast(msg);
   if (tuttiWarning.length) {
     console.warn('Import clienti — avvisi:', tuttiWarning);
-    setTimeout(() => alert(`Import completato con ${tuttiWarning.length} avviso/i (valori non riconosciuti, sostituiti con un default — puoi correggerli con calma dalla scheda del cliente):\n\n` + tuttiWarning.slice(0, 20).join('\n') + (tuttiWarning.length > 20 ? `\n... e altri ${tuttiWarning.length - 20}.` : '')), 300);
+    setTimeout(() => alert(`Import completato con ${tuttiWarning.length} avviso/i (valori non riconosciuti, sostituiti con un default — puoi correggerli con calma dalla scheda del cliente):\n\n` + tuttiWarning.slice(0, 15).join('\n') + (tuttiWarning.length > 15 ? `\n… e altri ${tuttiWarning.length - 15}.` : '')), 300);
   }
+}
+
+/* -------- Wizard di import guidato (task #211) --------
+   File -> abbinamento colonne (riconosciute da sole, correggibili) -> anteprima con conteggi
+   (nuovi / già presenti / saltati) e primi clienti -> conferma. Nulla viene scritto prima del "Importa". */
+let IMPORT_CLI = null; // {nomeFile, righe, mappa}
+function apriWizardImportClienti(nomeFile, righe) {
+  if (!righe || righe.length < 2) { alert('Il file non contiene righe da importare (serve almeno l\'intestazione più una riga di dati).'); return; }
+  IMPORT_CLI = { nomeFile, righe, mappa: mappaturaAutomaticaImportClienti(righe[0]) };
+  renderWizardImportClienti();
+}
+function renderWizardImportClienti() {
+  if (!IMPORT_CLI) return;
+  const { righe, mappa, nomeFile } = IMPORT_CLI;
+  const header = righe[0];
+  applicaMappaturaImportClienti(mappa);
+  const haRagSoc = mappa.ragioneSociale != null && mappa.ragioneSociale >= 0;
+  const piano = haRagSoc ? pianificaImportClienti(righe) : null;
+  const esempio = (idx) => {
+    if (idx == null || idx < 0) return '';
+    const v = (righe.slice(1).find(r => r && String(r[idx] || '').trim() !== '') || [])[idx];
+    return v ? String(v).slice(0, 40) : '';
+  };
+  const campiPrincipali = ['ragioneSociale', 'codiceFiscale', 'partitaIva', 'tipo', 'email', 'pec', 'telefono', 'indirizzo', 'cap', 'localita', 'provincia', 'settore', 'regimeFiscale', 'periodicitaIva', 'note'];
+  const righeMappa = COLONNE_IMPORT_CLIENTI.filter(c => campiPrincipali.includes(c.chiave)).map(c => {
+    const idx = mappa[c.chiave];
+    return `<tr>
+      <td style="white-space:nowrap;"><b>${escapeHtml(c.intestazione)}</b>${c.chiave === 'ragioneSociale' ? ' <span style="color:var(--rosso);">*</span>' : ''}</td>
+      <td><select data-action="import-cli-mappa" data-chiave="${c.chiave}" style="width:100%;max-width:260px;">
+        <option value="-1">— non importare —</option>
+        ${header.map((h, i) => `<option value="${i}" ${idx === i ? 'selected' : ''}>${escapeHtml(String(h || '(colonna ' + (i + 1) + ')'))}</option>`).join('')}
+      </select></td>
+      <td class="helptext">${escapeHtml(esempio(idx))}</td>
+    </tr>`;
+  }).join('');
+  const anteprima = piano && piano.nuoviClienti.length ? `<table class="compact" style="margin-top:6px;"><thead><tr><th>Ragione sociale</th><th>P.IVA</th><th>Tipo</th><th>Località</th></tr></thead><tbody>
+    ${piano.nuoviClienti.slice(0, 5).map(c => `<tr><td>${escapeHtml(c.ragioneSociale)}</td><td>${escapeHtml(c.partitaIva || '—')}</td><td>${escapeHtml(labelTipoCliente(c.tipo))}</td><td>${escapeHtml(c.contatti.localita || '—')}</td></tr>`).join('')}
+  </tbody></table>` : '';
+  const riepilogo = !haRagSoc
+    ? '<div style="color:var(--rosso);font-size:13px;">Scegli la colonna della <b>Ragione sociale / Nome</b>: senza quella non si può importare.</div>'
+    : `<div style="font-size:13px;line-height:1.7;">
+        <b style="color:var(--verde,#1c8c4e);">${piano.nuoviClienti.length}</b> client${piano.nuoviClienti.length === 1 ? 'e' : 'i'} da importare
+        · <b>${piano.saltatiDuplicati}</b> già present${piano.saltatiDuplicati === 1 ? 'e' : 'i'} (stessa P.IVA o CF, saltat${piano.saltatiDuplicati === 1 ? 'o' : 'i'})
+        · <b>${piano.saltatiVuoti}</b> senza nome (saltat${piano.saltatiVuoti === 1 ? 'o' : 'i'})
+        ${piano.tuttiWarning.length ? `<div class="helptext">⚠ ${piano.tuttiWarning.length} valori non riconosciuti verranno sostituiti con un default (correggibili poi dalla scheda cliente).</div>` : ''}
+      </div>${anteprima}`;
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
+    <div class="modal" style="max-width:780px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div><h2>Importa clienti</h2><div class="modal-sub">${escapeHtml(nomeFile || '')} · ${righe.length - 1} righe. Ho abbinato le colonne da solo: controlla e correggi se serve.</div></div>
+        <button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button>
+      </div>
+      <div style="max-height:46vh;overflow:auto;margin-top:10px;"><table class="compact"><thead><tr><th>Dato in Prisma</th><th>Colonna del tuo file</th><th>Esempio</th></tr></thead><tbody>${righeMappa}</tbody></table></div>
+      <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px;">${riepilogo}</div>
+      <div class="modal-actions">
+        <button class="btn" data-action="chiudi-modal">Annulla</button>
+        <button class="btn primary" data-action="import-cli-conferma" ${piano && piano.nuoviClienti.length ? '' : 'disabled'}>Importa ${piano ? piano.nuoviClienti.length : 0} client${piano && piano.nuoviClienti.length === 1 ? 'e' : 'i'}</button>
+      </div>
+    </div>
+  </div>`;
+}
+function confermaWizardImportClienti() {
+  if (!IMPORT_CLI) return;
+  applicaMappaturaImportClienti(IMPORT_CLI.mappa);
+  const { nuoviClienti, saltatiDuplicati, tuttiWarning } = pianificaImportClienti(IMPORT_CLI.righe);
+  if (!nuoviClienti.length) { toast('Nessun cliente da importare.'); return; }
+  STATE.clienti.push(...nuoviClienti);
+  salvaStato();
+  IMPORT_CLI = null;
+  chiudiModal();
+  render();
+  toast(`Importati ${nuoviClienti.length} client${nuoviClienti.length === 1 ? 'e' : 'i'}${saltatiDuplicati ? ` (${saltatiDuplicati} già presenti, saltati)` : ''}.${tuttiWarning.length ? ' Alcuni valori sono stati sostituiti con un default.' : ''}`);
 }
 
 function importaClienti(inputEl) {
@@ -5736,7 +5860,7 @@ function importaClienti(inputEl) {
   if (nome.endsWith('.csv')) {
     const reader = new FileReader();
     reader.onload = () => {
-      try { elaboraImportClienti(parseCSV(reader.result)); }
+      try { apriWizardImportClienti(file.name, parseCSV(reader.result)); }
       catch (err) { alert('File CSV non valido: ' + err.message); }
     };
     reader.readAsText(file, 'UTF-8');
@@ -5748,7 +5872,7 @@ function importaClienti(inputEl) {
         const wb = XLSX.read(reader.result, { type: 'array' });
         const foglio = wb.Sheets[wb.SheetNames[0]];
         const righe = XLSX.utils.sheet_to_json(foglio, { header: 1, raw: false, defval: '' });
-        elaboraImportClienti(righe);
+        apriWizardImportClienti(file.name, righe);
       } catch (err) { alert('File Excel non valido: ' + err.message); }
     };
     reader.readAsArrayBuffer(file);
@@ -14367,6 +14491,7 @@ function onClickDelegato(e) {
 
   switch (action) {
     case 'nav-toggle-gruppo': toggleNavGruppo(el.dataset.gruppo); renderNav(); break;
+    case 'import-cli-conferma': confermaWizardImportClienti(); break;
     case 'orario-apri-picker': {
       const campo = document.getElementById(el.dataset.target);
       const picker = el.parentElement && el.parentElement.querySelector('.orario-picker-nascosto');
@@ -15923,6 +16048,7 @@ function onChangeDelegato(e) {
       break;
     }
     case 'toggle-mcp-conferma': STATE.meta.mcpChiediConferma = !!el.checked; salvaStato(); toast(el.checked ? 'Ogni azione di Claude richiederà la tua conferma.' : 'Le azioni di Claude vengono eseguite senza conferma (restano nel registro).'); break;
+    case 'import-cli-mappa': if (IMPORT_CLI) { IMPORT_CLI.mappa[el.dataset.chiave] = Number(el.value); renderWizardImportClienti(); } break;
     case 'dash-resp': DASH_RESP = el.value; render(); break;
     case 'cambia-ruolo-responsabile': {
       const resp = el.dataset.resp;
@@ -17113,6 +17239,8 @@ window.elaboraImportClienti = elaboraImportClienti;
 window.clienteDaRigaImport = clienteDaRigaImport;
 window.scaricaTemplateClienti = scaricaTemplateClienti;
 window.COLONNE_IMPORT_CLIENTI = COLONNE_IMPORT_CLIENTI;
+window.apriWizardImportClienti = apriWizardImportClienti;
+window.mappaturaAutomaticaImportClienti = mappaturaAutomaticaImportClienti;
 window.PREVIDENZE = PREVIDENZE;
 window.generaRtfDaTesto = generaRtfDaTesto;
 window.escapeRtf = escapeRtf;

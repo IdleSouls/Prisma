@@ -5057,6 +5057,42 @@ async function main() {
 
     console.log('=== Import clienti da Excel/CSV: pulsanti toolbar presenti, mappatura campi (incl. enum da etichetta, PEC, ATECO multipli, provincia maiuscola), valori non riconosciuti mai bloccanti (default + avviso), righe vuote/senza ragione sociale saltate senza eccezioni, nessun duplicato su reimport (P.IVA/CF) OK');
 
+    // Task #211: wizard guidato con export "di un altro gestionale" (intestazioni diverse dal nostro template)
+    {
+      const altro = [
+        ['Denominazione', 'P.IVA', 'Cod. Fiscale', 'Comune', 'Prov', 'E-mail', 'Colonna inutile'],
+        ['Wizard Alfa SRL', '88888888881', '88888888881', 'Padova', 'pd', 'alfa@test.it', 'x'],
+        ['Wizard Beta SNC', '88888888882', '', 'Verona', 'vr', 'beta@test.it', 'y'],
+        ['Wizard Alfa SRL doppione', '88888888881', '', '', '', '', ''],
+        ['', '88888888883', '', '', '', '', ''],
+      ];
+      const mapAuto = window.mappaturaAutomaticaImportClienti(altro[0]);
+      assert(mapAuto.ragioneSociale === 0 && mapAuto.partitaIva === 1 && mapAuto.codiceFiscale === 2 && mapAuto.localita === 3 && mapAuto.provincia === 4 && mapAuto.email === 5, 'la mappatura automatica non riconosce le intestazioni di un altro gestionale: ' + JSON.stringify(mapAuto));
+      const nPrima = window.getSTATE().clienti.length;
+      window.apriWizardImportClienti('export-altro.csv', altro);
+      await wait(20);
+      assert(q('[data-action="import-cli-conferma"]'), 'il wizard di import non mostra il pulsante di conferma');
+      assert(q('.modal').textContent.includes('Wizard Alfa SRL') && q('.modal').textContent.includes('Wizard Beta SNC'), 'l\'anteprima del wizard non mostra i clienti che verranno importati');
+      assert(q('[data-action="import-cli-conferma"]').textContent.includes('Importa 2'), 'il wizard dovrebbe proporre 2 clienti (1 doppione e 1 senza nome saltati): ' + q('[data-action="import-cli-conferma"]').textContent);
+      assert(window.getSTATE().clienti.length === nPrima, 'il wizard non deve scrivere nulla prima della conferma');
+      // l'utente toglie la colonna e-mail dalla mappatura: si aggiorna senza scrivere
+      const selEmail = q('[data-action="import-cli-mappa"][data-chiave="email"]');
+      selEmail.value = '-1';
+      fire(selEmail, 'change');
+      await wait(20);
+      click(q('[data-action="import-cli-conferma"]'));
+      await wait(20);
+      const importati = window.getSTATE().clienti.filter(c => c.ragioneSociale.startsWith('Wizard '));
+      assert(importati.length === 2, `attesi 2 clienti importati dal wizard, trovati ${importati.length}`);
+      const alfa = importati.find(c => c.ragioneSociale === 'Wizard Alfa SRL');
+      assert(alfa.partitaIva === '88888888881' && alfa.contatti.localita === 'Padova' && alfa.contatti.provincia === 'PD', 'campi non importati correttamente dal wizard');
+      assert(alfa.contatti.email === '', 'la colonna e-mail scartata nel wizard non doveva essere importata');
+      const st2 = window.getSTATE();
+      st2.clienti = st2.clienti.filter(c => !c.ragioneSociale.startsWith('Wizard '));
+      window.setSTATE(st2);
+      console.log('=== Import guidato (task #211): mappatura automatica da export di altri gestionali, anteprima, correzione colonne, conferma OK');
+    }
+
     // pulizia: rimuovi i clienti di test per non alterare i dati demo per i test successivi
     const st = window.getSTATE();
     st.clienti = st.clienti.filter(c => c.partitaIva !== '99999999991' && c.partitaIva !== '99999999992');
