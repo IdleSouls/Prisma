@@ -131,6 +131,30 @@ details summary{cursor:pointer;font-size:10.5px;font-weight:700;color:var(--text
 /* Matteo: "ai grafici manca qualcosa" - il valore ora è sempre visibile sopra la barra (.v), non
    solo al passaggio del mouse (vedi fmtEuroCompatto sopra). .track porta l'altezza fissa di cui .b
    ha bisogno per calcolare la sua altezza in %; .v e .lab restano fuori da quella percentuale. */
+
+.cruscotto{background:linear-gradient(135deg,var(--blu-scuro) 0%,#0B1226 100%);color:#fff;border-radius:var(--radius);padding:16px;margin-top:12px;}
+.cruscotto .tit{font-size:13px;font-weight:800;margin-bottom:2px;}
+.cruscotto .sub{font-size:11.5px;color:rgba(255,255,255,.7);line-height:1.45;}
+.cruscotto-grid{display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:center;margin-top:12px;}
+.punteggio-num{font-size:46px;font-weight:800;line-height:1;text-align:center;}
+.punteggio-label{font-size:11px;font-weight:700;text-align:center;margin-top:4px;opacity:.85;text-transform:uppercase;letter-spacing:.04em;}
+.trend-righe{grid-column:1 / -1;display:flex;gap:6px;flex-wrap:wrap;}
+.trend-chip{background:rgba(255,255,255,.12);border-radius:20px;padding:3px 10px;font-size:11.5px;font-weight:700;}
+.sez-hdr{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:800;margin-bottom:4px;}
+.sez-hdr .em{width:26px;height:26px;border-radius:8px;background:var(--blu-light);display:flex;align-items:center;justify-content:center;font-size:14px;}
+.sez-hdr .pt{margin-left:auto;font-size:11px;font-weight:800;border-radius:20px;padding:2px 9px;background:var(--bg);color:var(--text-mut);}
+.sez-intro{font-size:12px;color:var(--text-mut);line-height:1.5;margin-bottom:10px;}
+.gauge-riga{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;}
+.gauge-wrap{text-align:center;}
+.gauge-wrap .ng{font-size:11px;font-weight:700;color:var(--text-mut);margin-top:-6px;}
+.grafici-2{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin-top:14px;}
+.gt{font-size:10px;font-weight:700;color:var(--text-mut);text-transform:uppercase;margin-bottom:6px;letter-spacing:.02em;}
+.indici-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:14px;}
+.indice-card{border:1px solid var(--border);border-left:3px solid var(--border);border-radius:10px;padding:9px 11px;}
+.indice-card .in{font-size:10.5px;font-weight:700;color:var(--text-mut);text-transform:uppercase;letter-spacing:.02em;display:flex;justify-content:space-between;gap:6px;align-items:baseline;}
+.indice-card .iv{font-size:17px;font-weight:800;margin:3px 0;}
+.indice-card details summary{text-transform:none;letter-spacing:0;font-size:11px;color:var(--blu-mid);margin-top:2px;}
+.indice-card .sp{font-size:11.5px;color:var(--text-mut);line-height:1.5;margin-top:5px;}
 .bars{display:flex;align-items:flex-end;gap:6px;margin-top:10px;}
 .bars .col{flex:1;display:flex;flex-direction:column;align-items:center;min-width:0;}
 .bars .col .v{font-size:9.5px;font-weight:800;color:var(--text);margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;}
@@ -1264,6 +1288,327 @@ function kpiCard(valore, label, sottotesto, variazione, semaforo) {
 // leggibili a colpo d'occhio (ricavi, utile, patrimonio netto, ROE, liquidità, giorni medi di
 // incasso crediti e pagamento debiti, magazzino se presente) seguita dagli andamenti nel tempo e da
 // come si dividono i costi nell'ultimo periodo - vedi andamento in costruisciVistaPortaleClienteEsterna.
+
+/* ===== Grafici SVG (stessi del tab Bilanci&KPI dello studio) ===== */
+function fmtNum2(n) { return (n===null||n===undefined||isNaN(n)) ? 'n/d' : n.toLocaleString('it-IT',{maximumFractionDigits:2}); }
+function fmtGiorni(n) { return (n===null||n===undefined||isNaN(n)) ? 'n/d' : Math.round(n).toLocaleString('it-IT') + ' gg'; }
+function fmtEuroCompattoGrafico(n) {
+  if (n === null || n === undefined || isNaN(n)) return 'n/d';
+  const abs = Math.abs(n);
+  const segno = n < 0 ? '-' : '';
+  if (abs >= 1000000) return segno + (abs/1000000).toLocaleString('it-IT',{maximumFractionDigits:1}) + ' Mln';
+  if (abs >= 1000) return segno + Math.round(abs/1000).toLocaleString('it-IT') + 'k';
+  return segno + Math.round(abs).toLocaleString('it-IT');
+}
+
+function graficoBarreSvg(punti, formatoBarra, formatoTooltip) {
+  formatoBarra = formatoBarra || fmtEuroCompattoGrafico;
+  formatoTooltip = formatoTooltip || fmtEuro;
+  const w = 260, hTot = 118, stripLabel = 16, padTop = 6, padValLabel = 14;
+  const plotH = hTot - stripLabel - padTop;
+  const valori = punti.map(p => p.valore || 0);
+  const posMax = Math.max(0, ...valori);
+  const negMax = Math.max(0, ...valori.map(v => -v));
+  let posH, negH;
+  if (posMax > 0 && negMax > 0) {
+    posH = Math.max(30, plotH * posMax / (posMax + negMax));
+    negH = plotH - posH;
+    if (negH < 30) { negH = 30; posH = plotH - negH; }
+  } else if (posMax > 0) { posH = plotH; negH = 0; }
+  else { posH = 0; negH = plotH; }
+  const zeroY = padTop + posH;
+  const nBar = punti.length || 1;
+  const bw = w / nBar;
+  const barre = punti.map((p, i) => {
+    const val = p.valore || 0;
+    const x = i*bw + bw*0.18;
+    const larghezza = bw*0.64;
+    const xTesto = x + larghezza/2;
+    const colore = val >= 0 ? 'var(--blu-mid)' : 'var(--rosso)';
+    let bh, y, yValore;
+    if (val >= 0) {
+      const usabile = Math.max(0, posH - padValLabel);
+      bh = posMax > 0 ? Math.max(val === 0 ? 0 : 2, (val/posMax) * usabile) : 0;
+      y = zeroY - bh;
+      yValore = Math.max(padTop + 8, y - 4);
+    } else {
+      const usabile = Math.max(0, negH - padValLabel);
+      bh = negMax > 0 ? Math.max(2, (Math.abs(val)/negMax) * usabile) : 0;
+      y = zeroY;
+      yValore = zeroY + bh + 10;
+    }
+    const titolo = `${escapeHtml(String(p.label))}: ${escapeHtml(formatoTooltip(val))}`;
+    return `<g><title>${titolo}</title>
+      <rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${larghezza.toFixed(1)}" height="${bh.toFixed(1)}" style="fill:${colore}" rx="2"></rect>
+      <text x="${xTesto.toFixed(1)}" y="${yValore.toFixed(1)}" font-size="8.5" font-weight="700" text-anchor="middle" style="fill:${val>=0?'var(--blu-scuro,#1d4ed8)':'var(--rosso)'}">${escapeHtml(formatoBarra(val))}</text>
+      <text x="${xTesto.toFixed(1)}" y="${hTot-4}" font-size="9" text-anchor="middle" style="fill:var(--text-mut)">${escapeHtml(String(p.label))}</text>
+    </g>`;
+  }).join('');
+  return `<svg viewBox="0 0 ${w} ${hTot}" width="100%" height="${hTot}">
+    <line x1="0" y1="${zeroY.toFixed(1)}" x2="${w}" y2="${zeroY.toFixed(1)}" style="stroke:var(--border);stroke-width:1.5"></line>
+    ${barre}
+  </svg>`;
+}
+
+function graficoGaugeSvg(valore, def, opzioni) {
+  opzioni = opzioni || {};
+  const cx = 100, cy = 100, r = 78, spessore = 16;
+  const sogliaAlta = Math.max(def.sogliaVerde, def.sogliaGiallo);
+  const haValore = !(valore === null || valore === undefined || isNaN(valore));
+  const vAssoluto = haValore ? Math.abs(valore) : 0;
+  const scalaMax = opzioni.scalaMaxForzata || Math.max(sogliaAlta * 1.6, vAssoluto * 1.15, sogliaAlta + 0.0001);
+  const punto = (t) => {
+    const ang = Math.PI - t * Math.PI; // 180°(sinistra, min) → 0°(destra, max), sopra il semicerchio
+    return [cx + r * Math.cos(ang), cy - r * Math.sin(ang)];
+  };
+  const arco = (t0, t1) => {
+    const [x0, y0] = punto(t0), [x1, y1] = punto(t1);
+    return `M ${x0.toFixed(1)} ${y0.toFixed(1)} A ${r} ${r} 0 0 1 ${x1.toFixed(1)} ${y1.toFixed(1)}`;
+  };
+  const tVerde = Math.min(1, def.sogliaVerde / scalaMax);
+  const tGiallo = Math.min(1, def.sogliaGiallo / scalaMax);
+  const bande = def.direzione === 'max'
+    ? [{ t0: 0, t1: tGiallo, colore: 'var(--rosso)' }, { t0: tGiallo, t1: tVerde, colore: 'var(--giallo)' }, { t0: tVerde, t1: 1, colore: 'var(--verde)' }]
+    : [{ t0: 0, t1: tVerde, colore: 'var(--verde)' }, { t0: tVerde, t1: tGiallo, colore: 'var(--giallo)' }, { t0: tGiallo, t1: 1, colore: 'var(--rosso)' }];
+  const bandeSvg = bande.filter(b => b.t1 > b.t0).map(b =>
+    `<path d="${arco(b.t0, b.t1)}" fill="none" stroke="${b.colore}" stroke-width="${spessore}" opacity=".85"></path>`
+  ).join('');
+  const tValore = haValore ? Math.max(0, Math.min(1, valore / scalaMax)) : 0;
+  const angLancetta = Math.PI - tValore * Math.PI;
+  const lx = cx + (r - spessore/2 - 6) * Math.cos(angLancetta);
+  const ly = cy - (r - spessore/2 - 6) * Math.sin(angLancetta);
+  const testoValore = opzioni.testoValore !== undefined ? opzioni.testoValore : (haValore ? String(valore) : 'n/d');
+  const coloreValore = opzioni.coloreValore || 'var(--text)';
+  // viewBox esteso in basso (da "0 8 200 104" a "0 8 200 150") per dare al numero uno spazio VERO
+  // e misurato sotto l'arco, invece di "rubarlo" all'arco stesso con un margine negativo indovinato.
+  return `<svg viewBox="0 8 200 150" width="100%" height="106">
+    <path d="${arco(0,1)}" fill="none" stroke="var(--border)" stroke-width="${spessore}" opacity=".3"></path>
+    ${bandeSvg}
+    ${haValore ? `<line x1="${cx}" y1="${cy}" x2="${lx.toFixed(1)}" y2="${ly.toFixed(1)}" stroke="var(--blu-scuro)" stroke-width="3" stroke-linecap="round"></line><circle cx="${cx}" cy="${cy}" r="6" fill="var(--blu-scuro)"></circle>` : ''}
+    <text x="${cx}" y="140" text-anchor="middle" font-size="26" font-weight="800" style="fill:${coloreValore}">${escapeHtml(testoValore)}</text>
+  </svg>`;
+}
+
+function graficoDonutSvg(punti, formatoValore) {
+  formatoValore = formatoValore || fmtEuroCompattoGrafico;
+  const cx = 60, cy = 60, r = 46, spessore = 18;
+  const circ = 2 * Math.PI * r;
+  const validi = punti.filter(p => (p.valore||0) > 0);
+  const totale = validi.reduce((s,p) => s + p.valore, 0);
+  let acc = 0;
+  const segmenti = totale > 0 ? validi.map(p => {
+    const frac = p.valore / totale;
+    const len = frac * circ;
+    const offset = -acc;
+    acc += len;
+    return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${p.colore}" stroke-width="${spessore}" stroke-dasharray="${len.toFixed(1)} ${(circ-len).toFixed(1)}" stroke-dashoffset="${offset.toFixed(1)}"><title>${escapeHtml(String(p.label))}: ${escapeHtml(formatoValore(p.valore))} (${(frac*100).toFixed(0)}%)</title></circle>`;
+  }).join('') : `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--border)" stroke-width="${spessore}"></circle>`;
+  const legenda = validi.map(p => {
+    const pct = totale > 0 ? (p.valore/totale*100) : 0;
+    return `<div style="display:flex;align-items:center;gap:6px;font-size:11.5px;margin-bottom:4px;">
+      <span style="width:9px;height:9px;border-radius:3px;background:${p.colore};flex:none;"></span>
+      <span style="flex:1;color:var(--text-mut);">${escapeHtml(String(p.label))}</span>
+      <span style="font-weight:700;">${pct.toFixed(0)}%</span>
+    </div>`;
+  }).join('') || `<div class="helptext">Nessun dato disponibile per il periodo.</div>`;
+  return `<div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+    <svg viewBox="0 0 120 120" width="104" height="104" style="transform:rotate(-90deg);flex:none;">${segmenti}</svg>
+    <div style="flex:1;min-width:120px;">${legenda}</div>
+  </div>`;
+}
+
+function graficoAreaSvg(punti, formatoValore, formatoTooltip, coloreLinea) {
+  formatoValore = formatoValore || fmtEuroCompattoGrafico;
+  formatoTooltip = formatoTooltip || fmtEuro;
+  coloreLinea = coloreLinea || 'var(--blu-mid)';
+  const w = 260, hTot = 118, stripLabel = 16, padTop = 16, padBottom = 6;
+  const plotH = hTot - stripLabel - padTop - padBottom;
+  const valori = punti.map(p => (typeof p.valore === 'number' && !isNaN(p.valore)) ? p.valore : 0);
+  const vMin = Math.min(0, ...valori);
+  const vMax = Math.max(0, ...valori, vMin + 0.0001);
+  const n = punti.length || 1;
+  const stepX = n > 1 ? w/(n-1) : 0;
+  const yFor = (v) => padTop + plotH - ((v - vMin)/(vMax - vMin)) * plotH;
+  const pts = valori.map((v,i) => [n>1 ? i*stepX : w/2, yFor(v)]);
+  const linea = pts.map(([x,y],i) => `${i===0?'M':'L'} ${x.toFixed(1)} ${y.toFixed(1)}`).join(' ');
+  const yZero = yFor(vMin);
+  const area = `M ${pts[0][0].toFixed(1)} ${yZero.toFixed(1)} ` + pts.map(([x,y])=>`L ${x.toFixed(1)} ${y.toFixed(1)}`).join(' ') + ` L ${pts[pts.length-1][0].toFixed(1)} ${yZero.toFixed(1)} Z`;
+  const gid = 'areaGrad' + Math.random().toString(36).slice(2,9);
+  const pallini = pts.map(([x,y],i) => `<g><title>${escapeHtml(String(punti[i].label))}: ${escapeHtml(formatoTooltip(valori[i]))}</title><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="${coloreLinea}"></circle></g>`).join('');
+  const etichette = punti.map((p,i) => `<text x="${(n>1?i*stepX:w/2).toFixed(1)}" y="${hTot-4}" font-size="9" text-anchor="middle" style="fill:var(--text-mut)">${escapeHtml(String(p.label))}</text>`).join('');
+  const estremiIdx = Array.from(new Set([0, pts.length-1]));
+  const etichetteValore = estremiIdx.map(i => `<text x="${pts[i][0].toFixed(1)}" y="${Math.max(10,(pts[i][1]-8)).toFixed(1)}" font-size="8.5" font-weight="700" text-anchor="${i===0?'start':'end'}" style="fill:var(--blu-scuro)">${escapeHtml(formatoValore(valori[i]))}</text>`).join('');
+  return `<svg viewBox="0 0 ${w} ${hTot}" width="100%" height="${hTot}">
+    <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="${coloreLinea}" stop-opacity=".45"></stop>
+      <stop offset="100%" stop-color="${coloreLinea}" stop-opacity="0"></stop>
+    </linearGradient></defs>
+    <path d="${area}" fill="url(#${gid})"></path>
+    <path d="${linea}" fill="none" stroke="${coloreLinea}" stroke-width="2"></path>
+    ${pallini}${etichetteValore}${etichette}
+  </svg>`;
+}
+
+function graficoRadarSvg(assi) {
+  // Fix (Matteo, audit grafico: "cose che si sovrappongono e grafici non centrati"): con cx=110 in
+  // un viewBox largo solo 220, le etichette dei due assi orizzontali (testo ancorato a sinistra o a
+  // destra del punto, non centrato) uscivano dal viewBox ed erano tagliate dal clipping SVG - una
+  // parola come "Redditività" o "Efficienza" è più larga del margine che restava. Qui il viewBox è
+  // molto più largo (350 invece di 220) apposta per lasciare spazio vero a entrambi i lati.
+  const cx = 175, cy = 115, r = 55;
+  const n = assi.length || 1;
+  const angFor = (i) => -Math.PI/2 + i*(2*Math.PI/n);
+  const puntoAnello = (i, frac) => [cx + r*frac*Math.cos(angFor(i)), cy + r*frac*Math.sin(angFor(i))];
+  const anelli = [0.25,0.5,0.75,1].map(frac => {
+    const pts = assi.map((_,i) => puntoAnello(i,frac).map(v=>v.toFixed(1)).join(',')).join(' ');
+    return `<polygon points="${pts}" fill="none" stroke="rgba(255,255,255,.18)" stroke-width="1"></polygon>`;
+  }).join('');
+  const assiSvg = assi.map((_,i) => {
+    const [x,y] = puntoAnello(i,1);
+    return `<line x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,.18)" stroke-width="1"></line>`;
+  }).join('');
+  const puntiPunteggio = assi.map((a,i) => puntoAnello(i, (a.punteggio===null||a.punteggio===undefined) ? 0 : Math.max(0,Math.min(100,a.punteggio))/100));
+  const poligono = puntiPunteggio.map(p=>p.map(v=>v.toFixed(1)).join(',')).join(' ');
+  const gid = 'radarGrad' + Math.random().toString(36).slice(2,9);
+  const coloreDot = (p) => (p===null||p===undefined) ? 'rgba(255,255,255,.5)' : p>=70 ? '#7CF2A0' : p>=45 ? '#FFD479' : '#FF9B9B';
+  const puntiSvg = assi.map((a,i) => {
+    const [x,y] = puntiPunteggio[i];
+    return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5" fill="${coloreDot(a.punteggio)}"><title>${escapeHtml(a.nome)}: ${(a.punteggio===null||a.punteggio===undefined)?'n/d':Math.round(a.punteggio)+'/100'}</title></circle>`;
+  }).join('');
+  const etichette = assi.map((a,i) => {
+    const [x,y] = puntoAnello(i, 1.25);
+    const anchor = Math.abs(x-cx) < 4 ? 'middle' : (x > cx ? 'start' : 'end');
+    return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-size="11.5" font-weight="700" text-anchor="${anchor}" dominant-baseline="middle" style="fill:#fff;">${escapeHtml(a.nome)}</text>`;
+  }).join('');
+  return `<svg viewBox="0 0 350 220" width="100%" height="200" style="max-width:340px;">
+    <defs><radialGradient id="${gid}"><stop offset="0%" stop-color="#8ec8ff" stop-opacity=".6"></stop><stop offset="100%" stop-color="var(--blu-mid)" stop-opacity=".15"></stop></radialGradient></defs>
+    ${anelli}${assiSvg}
+    <polygon points="${poligono}" fill="url(#${gid})" stroke="#8ec8ff" stroke-width="2"></polygon>
+    ${puntiSvg}${etichette}
+  </svg>`;
+}
+
+function graficoWaterfallSvg(voci) {
+  const w = 460, hTot = 168, stripLabel = 34, padTop = 12;
+  const plotH = hTot - stripLabel - padTop;
+  let cursore = 0;
+  const segmenti = voci.map(v => {
+    const valore = v.valore || 0;
+    let y0, y1;
+    if (v.tipo === 'totale') { y0 = 0; y1 = valore; cursore = valore; }
+    else { y0 = cursore; y1 = cursore + valore; cursore = y1; }
+    return { label: v.label, valore, isTotale: v.tipo === 'totale', y0, y1 };
+  });
+  const tuttiY = segmenti.flatMap(s => [s.y0, s.y1]).concat([0]);
+  const vMin = Math.min(...tuttiY), vMax = Math.max(...tuttiY, vMin + 0.0001);
+  const scala = (val) => padTop + plotH - ((val - vMin)/((vMax - vMin) || 1)) * plotH;
+  const zeroY = scala(0);
+  const n = segmenti.length || 1;
+  const bw = w / n;
+  // etichetta su due righe se la voce ha più di una parola (es. "Costo del personale") - altrimenti
+  // il testo esce dalla larghezza stretta di ogni barra.
+  const etichettaDueRighe = (testo, xCentro, yBase) => {
+    const parole = String(testo).split(' ');
+    if (parole.length < 2) return `<text x="${xCentro}" y="${yBase.toFixed(1)}" font-size="7.8" text-anchor="middle" style="fill:var(--text-mut)">${escapeHtml(testo)}</text>`;
+    let riga1 = parole[0], i = 1;
+    const metaCirca = Math.ceil(testo.length/2) + 2;
+    while (i < parole.length && (riga1 + ' ' + parole[i]).length <= metaCirca) { riga1 += ' ' + parole[i]; i++; }
+    const riga2 = parole.slice(i).join(' ');
+    if (!riga2) return `<text x="${xCentro}" y="${yBase.toFixed(1)}" font-size="7.8" text-anchor="middle" style="fill:var(--text-mut)">${escapeHtml(testo)}</text>`;
+    return `<text x="${xCentro}" y="${yBase.toFixed(1)}" font-size="7.8" text-anchor="middle" style="fill:var(--text-mut)">${escapeHtml(riga1)}</text><text x="${xCentro}" y="${(yBase+8).toFixed(1)}" font-size="7.8" text-anchor="middle" style="fill:var(--text-mut)">${escapeHtml(riga2)}</text>`;
+  };
+  const barre = segmenti.map((s,i) => {
+    const x = i*bw + bw*0.12, larghezza = bw*0.76, xTesto = x + larghezza/2;
+    const yAlto = scala(Math.max(s.y0,s.y1)), yBasso = scala(Math.min(s.y0,s.y1));
+    const altezza = Math.max(1.5, yBasso - yAlto);
+    const colore = s.isTotale ? (s.valore>=0?'var(--blu-mid)':'var(--rosso)') : (s.valore>=0?'var(--verde)':'var(--rosso)');
+    const titolo = `${escapeHtml(s.label)}: ${escapeHtml(fmtEuro(s.valore))}`;
+    const connettore = i < segmenti.length-1 ? `<line x1="${(x+larghezza).toFixed(1)}" y1="${yAlto.toFixed(1)}" x2="${(x+larghezza+bw*0.12).toFixed(1)}" y2="${yAlto.toFixed(1)}" stroke="var(--border)" stroke-dasharray="2,2"></line>` : '';
+    return `<g><title>${titolo}</title>
+      <rect x="${x.toFixed(1)}" y="${yAlto.toFixed(1)}" width="${larghezza.toFixed(1)}" height="${altezza.toFixed(1)}" fill="${colore}" rx="2"></rect>
+      <text x="${xTesto.toFixed(1)}" y="${Math.max(9,yAlto-4).toFixed(1)}" font-size="8" font-weight="700" text-anchor="middle" style="fill:var(--text)">${escapeHtml(fmtEuroCompattoGrafico(s.valore))}</text>
+      ${etichettaDueRighe(s.label, xTesto, hTot-22)}
+      ${connettore}
+    </g>`;
+  }).join('');
+  return `<svg viewBox="0 0 ${w} ${hTot}" width="100%" height="${hTot}">
+    <line x1="0" y1="${zeroY.toFixed(1)}" x2="${w}" y2="${zeroY.toFixed(1)}" stroke="var(--border)" stroke-width="1.2"></line>
+    ${barre}
+  </svg>`;
+}
+
+
+const SEM_PORTALE = {
+  verde: { colore: 'var(--verde)', sfondo: 'var(--verde-bg)', etichetta: 'Nella norma' },
+  giallo: { colore: 'var(--giallo)', sfondo: 'var(--giallo-bg)', etichetta: 'Da monitorare' },
+  rosso: { colore: 'var(--rosso)', sfondo: 'var(--rosso-bg)', etichetta: 'Attenzione' },
+};
+function fmtIndicePortale(ind) {
+  if (ind.valore === null || ind.valore === undefined) return 'n/d';
+  return ind.formato === 'pct' ? fmtPct(ind.valore) : ind.formato === 'euro' ? fmtEuro(ind.valore) : ind.formato === 'giorni' ? fmtGiorni(ind.valore) : fmtNum2(ind.valore);
+}
+function puntiGrafico(serie) { return (serie || []).map(s => ({ label: s.etichetta, valore: s.valore })); }
+function renderCruscottoAndamento(dt, d) {
+  const radar = graficoRadarSvg(Object.keys(dt.punteggi).map(n => ({ nome: n, punteggio: dt.punteggi[n] })));
+  const trend = (dt.trend || []).map(t => `<span class="trend-chip">${escapeHtml(t.nome)} ${t.delta >= 0 ? '▲' : '▼'} ${(Math.abs(t.delta) * 100).toFixed(1)}%</span>`).join('');
+  return `<div class="cruscotto">
+    <div class="tit">Come sta andando l'azienda</div>
+    <div class="sub">Situazione al ${escapeHtml(d.etichettaUltimoPeriodo)}. Una lettura rapida dei semafori delle quattro aree qui sotto: un punto di partenza per parlarne con lo studio, non un rating bancario.</div>
+    <div class="cruscotto-grid">
+      <div><div class="punteggio-num">${dt.punteggioGenerale === null ? 'n/d' : Math.round(dt.punteggioGenerale)}</div><div class="punteggio-label">${escapeHtml(dt.etichettaPunteggio)}</div></div>
+      <div style="min-width:0;">${radar}</div>
+      ${trend ? `<div class="trend-righe">${trend}</div>` : ''}
+    </div>
+  </div>`;
+}
+function renderIndiceCard(ind) {
+  const info = ind.semaforo ? SEM_PORTALE[ind.semaforo] : null;
+  return `<div class="indice-card" style="border-left-color:${info ? info.colore : 'var(--border)'};">
+    <div class="in"><span>${escapeHtml(ind.nome)}</span>${info ? `<span class="badge" style="background:${info.sfondo};color:${info.colore};font-size:9.5px;">${escapeHtml(info.etichetta)}</span>` : ''}</div>
+    <div class="iv">${escapeHtml(fmtIndicePortale(ind))}</div>
+    <details><summary>Cosa significa</summary>
+      <div class="sp"><strong>Cosa misura:</strong> ${escapeHtml(ind.spiegazione)}</div>
+      <div class="sp">${ind.semaforo === 'verde' ? '✅ Valore nella norma: nessuna azione richiesta.' : '<strong>Come migliorarlo:</strong> ' + escapeHtml(ind.consiglio)}</div>
+    </details>
+  </div>`;
+}
+function renderSezioneAndamento(s, dt) {
+  const punteggio = dt.punteggi[s.nome];
+  const gauge = s.gauge.map(ch => s.indici.find(i => i.chiave === ch)).filter(i => i && i.valore !== null).map(ind => {
+    const info = ind.semaforo ? SEM_PORTALE[ind.semaforo] : null;
+    return `<div class="gauge-wrap">${graficoGaugeSvg(ind.valore, ind, { testoValore: fmtIndicePortale(ind), coloreValore: info ? info.colore : 'var(--text-mut)' })}<div class="ng">${escapeHtml(ind.nome)}</div></div>`;
+  }).join('');
+  let grafici = '';
+  if (s.nome === 'Liquidità') {
+    grafici = `<div class="grafici-2">
+      <div><div class="gt">Di cosa è fatto l'attivo circolante</div>${graficoDonutSvg(dt.donutCircolante)}</div>
+      <div><div class="gt">Liquidità disponibile nel tempo</div>${graficoAreaSvg(puntiGrafico(dt.serieLiquidita), fmtEuroCompattoGrafico, fmtEuro, 'var(--verde)')}</div>
+      <div><div class="gt">Current ratio nel tempo</div>${graficoBarreSvg(puntiGrafico(dt.serieCurrentRatio), fmtNum2, fmtNum2)}</div>
+    </div>`;
+  } else if (s.nome === 'Redditività') {
+    grafici = `<div class="gt" style="margin-top:14px;">Dai ricavi all'utile netto, passo per passo</div>${graficoWaterfallSvg(dt.waterfall)}
+    <div class="grafici-2">
+      <div><div class="gt">Ricavi</div>${graficoAreaSvg(puntiGrafico(dt.serieRicaviTrend), fmtEuroCompattoGrafico, fmtEuro, 'var(--blu-mid)')}</div>
+      <div><div class="gt">EBITDA</div>${graficoAreaSvg(puntiGrafico(dt.serieEbitda), fmtEuroCompattoGrafico, fmtEuro, 'var(--verde)')}</div>
+      <div><div class="gt">Utile netto</div>${graficoAreaSvg(puntiGrafico(dt.serieUtileTrend), fmtEuroCompattoGrafico, fmtEuro, '#06b6d4')}</div>
+    </div>`;
+  } else if (s.nome === 'Solidità') {
+    grafici = `<div class="grafici-2">
+      <div><div class="gt">Chi finanzia l'azienda</div>${graficoDonutSvg(dt.donutFonti)}</div>
+      <div><div class="gt">Posizione finanziaria netta nel tempo</div>${graficoAreaSvg(puntiGrafico(dt.seriePfn), fmtEuroCompattoGrafico, fmtEuro, 'var(--blu-scuro)')}</div>
+    </div>`;
+  } else if (s.nome === 'Efficienza') {
+    grafici = `<div class="grafici-2"><div><div class="gt">Giorni medi di incasso crediti nel tempo</div>${graficoAreaSvg(puntiGrafico(dt.serieDso), fmtGiorni, fmtGiorni, 'var(--giallo)')}</div></div>`;
+  }
+  const cards = s.indici.filter(i => i.valore !== null).map(renderIndiceCard).join('');
+  return `<div class="panel">
+    <div class="sez-hdr"><span class="em">${s.icona}</span>${escapeHtml(s.nome)}<span class="pt">${punteggio === null || punteggio === undefined ? 'n/d' : Math.round(punteggio) + '/100'}</span></div>
+    <div class="sez-intro">${escapeHtml(s.intro)}</div>
+    ${gauge ? `<div class="gauge-riga">${gauge}</div>` : ''}
+    ${grafici}
+    ${cards ? `<div class="indici-grid">${cards}</div>` : ''}
+  </div>`;
+}
 function renderAndamento() {
   if (!VISTA.andamento) {
     return `<div class="panel">${panelHeader(ICONE.andamento, 'var(--verde-bg)', 'var(--verde)', 'Andamento')}
@@ -1290,14 +1635,18 @@ function renderAndamento() {
   const ripartizione = (d.ripartizioneCosti && d.ripartizioneCosti.length)
     ? `<div style="font-size:10px;font-weight:700;color:var(--text-mut);text-transform:uppercase;margin:16px 0 6px;">Come si dividono i costi (${escapeHtml(d.etichettaUltimoPeriodo)})</div>${graficoTorta(d.ripartizioneCosti)}`
     : '';
-  return `<div class="panel">${panelHeader(ICONE.andamento, 'var(--verde-bg)', 'var(--verde)', 'Andamento')}
-    ${kpi}
-    ${sezione('Andamento ricavi', d.serieRicavi)}
-    ${sezione('Andamento utile netto', d.serieUtile)}
-    ${sezione('Andamento patrimonio netto', d.seriePatrimonioNetto)}
-    ${sezione('Andamento costi', d.serieCosti)}
-    ${ripartizione}
-  </div>`;
+  const dt = d.dettaglio;
+  if (!dt) {
+    return `<div class="panel">${panelHeader(ICONE.andamento, 'var(--verde-bg)', 'var(--verde)', 'Andamento')}${kpi}${sezione('Andamento ricavi', d.serieRicavi)}${sezione('Andamento utile netto', d.serieUtile)}${sezione('Andamento patrimonio netto', d.seriePatrimonioNetto)}${sezione('Andamento costi', d.serieCosti)}${ripartizione}</div>`;
+  }
+  return `<div class="panel">${panelHeader(ICONE.andamento, 'var(--verde-bg)', 'var(--verde)', 'Andamento')}${kpi}</div>
+    ${renderCruscottoAndamento(dt, d)}
+    ${dt.sezioni.map(s => `<div style="margin-top:12px;">${renderSezioneAndamento(s, dt)}</div>`).join('')}
+    <div class="panel" style="margin-top:12px;">${panelHeader(ICONE.andamento, 'var(--verde-bg)', 'var(--verde)', 'Patrimonio e costi')}
+      ${sezione('Andamento patrimonio netto', d.seriePatrimonioNetto)}
+      ${sezione('Andamento costi', d.serieCosti)}
+      ${ripartizione}
+    </div>`;
 }
 
 function renderCorpo() {

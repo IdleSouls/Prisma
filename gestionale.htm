@@ -9991,6 +9991,64 @@ function costruisciVistaPortaleClienteEsterna(token, password) {
       // Composizione dei costi dell'ultimo periodo per la torta (Matteo: "per la differenziazione
       // dei tipi di costi usa grafici a torta", vedi graficoTorta in portale-cliente.htm) - solo le
       // 5 macro-categorie che già raccogliamo, niente di inventato o stimato.
+      dettaglio: (function () {
+        const bil = STATE.bilanci[cliente.id];
+        const dp = (a) => calcolaDerivatiBilancio(bil[a]);
+        const serie = (f) => anniBilancioPortale.map(a => ({ etichetta: etichettaBreveBilancio(a), valore: f(a) }));
+        const num = (v) => (typeof v === 'number' && !isNaN(v)) ? v : null;
+        const indiciDi = (categoria) => CATALOGO_INDICI_BILANCIO.filter(i => i.categoria === categoria).map(def => ({
+          chiave: def.chiave, nome: def.nome, formato: def.formato, direzione: def.direzione,
+          sogliaVerde: def.sogliaVerde, sogliaGiallo: def.sogliaGiallo,
+          valore: num(dB[def.chiave]), semaforo: semaforoIndice(def, dB[def.chiave]),
+          spiegazione: def.spiegazione, consiglio: def.consiglio,
+        }));
+        const pLiq = punteggioCategoria('Liquidità', dB), pRed = punteggioCategoria('Redditività', dB);
+        const pSol = punteggioCategoria('Solidità', dB), pEff = punteggioCategoria('Efficienza', dB);
+        const validi = [pLiq, pRed, pSol, pEff].filter(p => p !== null);
+        const pGen = validi.length ? validi.reduce((a, b) => a + b, 0) / validi.length : null;
+        const trend = dPrec ? [['Ricavi', dB.ricavi, dPrec.ricavi], ['EBITDA', dB.ebitda, dPrec.ebitda], ['Utile netto', dB.utileNetto, dPrec.utileNetto]]
+          .map(([nome, a, p]) => ({ nome, delta: variazione(a, p) })).filter(t => t.delta !== null) : [];
+        return {
+          punteggioGenerale: pGen, etichettaPunteggio: etichettaPunteggio(pGen),
+          punteggi: { 'Liquidità': pLiq, 'Redditività': pRed, 'Solidità': pSol, 'Efficienza': pEff },
+          trend,
+          sezioni: [
+            { nome: 'Liquidità', icona: '💧', intro: 'La capacità di far fronte agli impegni a breve termine con quello che l\'azienda ha già in cassa o può incassare rapidamente.', gauge: ['currentRatio', 'quickRatio'], indici: indiciDi('Liquidità') },
+            { nome: 'Redditività', icona: '📈', intro: 'Quanto rende l\'attività: il margine che resta dopo i costi, e quanto frutta il capitale messo dai soci.', gauge: ['roe', 'ebitdaMargin'], indici: indiciDi('Redditività') },
+            { nome: 'Solidità', icona: '🛡️', intro: 'Quanto l\'azienda dipende dai debiti e quanto regge nel tempo il loro peso.', gauge: ['indiceIndebitamento', 'pfnEbitda', 'dscr'], indici: indiciDi('Solidità') },
+            { nome: 'Efficienza', icona: '⚙️', intro: 'Quanto bene l\'azienda "gira": il peso del personale sui ricavi e la velocità con cui trasforma le vendite in cassa.', gauge: ['incidenzaPersonale', 'giorniIncassoCrediti'], indici: indiciDi('Efficienza') },
+          ],
+          serieLiquidita: serie(a => bil[a].liquidita || 0),
+          serieCurrentRatio: serie(a => num(dp(a).currentRatio)),
+          serieRicaviTrend: serie(a => bil[a].ricavi || 0),
+          serieEbitda: serie(a => num(dp(a).ebitda) || 0),
+          serieUtileTrend: serie(a => num(dp(a).utileNetto) || 0),
+          seriePfn: serie(a => num(dp(a).pfn) || 0),
+          serieDso: serie(a => num(dp(a).giorniIncassoCrediti) || 0),
+          donutCircolante: [
+            { label: 'Rimanenze', valore: dB.rimanenze || 0, colore: '#06b6d4' },
+            { label: 'Crediti verso clienti', valore: dB.creditiClienti || 0, colore: 'var(--blu-mid)' },
+            { label: 'Liquidità', valore: dB.liquidita || 0, colore: 'var(--verde)' },
+            { label: 'Altre attività', valore: dB.altreAttivita || 0, colore: '#8b93a7' },
+          ],
+          donutFonti: [
+            { label: 'Patrimonio netto', valore: dB.patrimonioNetto || 0, colore: 'var(--verde)' },
+            { label: 'Debiti a lungo termine', valore: dB.debitiLungo || 0, colore: 'var(--blu-mid)' },
+            { label: 'Debiti a breve termine', valore: dB.debitiBreve || 0, colore: 'var(--giallo)' },
+            { label: 'Altre passività', valore: dB.altrePassivita || 0, colore: '#8b93a7' },
+          ],
+          waterfall: [
+            { label: 'Ricavi', valore: dB.ricavi, tipo: 'totale' },
+            { label: 'Costi esterni', valore: -(dB.costiEsterni || 0), tipo: 'delta' },
+            { label: 'Costo del personale', valore: -(dB.costoPersonale || 0), tipo: 'delta' },
+            { label: 'EBITDA', valore: dB.ebitda, tipo: 'totale' },
+            { label: 'Ammortamenti', valore: -(dB.ammortamenti || 0), tipo: 'delta' },
+            { label: 'Oneri finanziari', valore: -(dB.oneriFinanziari || 0), tipo: 'delta' },
+            { label: 'Imposte', valore: -(dB.imposte || 0), tipo: 'delta' },
+            { label: 'Utile netto', valore: dB.utileNetto, tipo: 'totale' },
+          ],
+        };
+      })(),
       ripartizioneCosti: [
         { etichetta: 'Costi esterni (materie prime, servizi...)', valore: dB.costiEsterni || 0 },
         { etichetta: 'Personale', valore: dB.costoPersonale || 0 },

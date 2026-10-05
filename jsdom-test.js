@@ -3458,6 +3458,22 @@ async function main() {
   assert(Array.isArray(and.serieCosti) && and.serieCosti.length === periodiBilCliente.length, 'andamento.serieCosti deve avere un punto per ogni periodo caricato');
   assert(Array.isArray(and.ripartizioneCosti) && and.ripartizioneCosti.length === 5, 'andamento.ripartizioneCosti deve avere le 5 macro-categorie di costo (esterni, personale, ammortamenti, oneri finanziari, imposte)');
   assert(and.ripartizioneCosti.every(r => typeof r.etichetta === 'string' && typeof r.valore === 'number'), 'ogni voce di ripartizioneCosti deve avere {etichetta, valore} - stessa forma attesa da graficoTorta() in portale-cliente.htm');
+  // Andamento "stile Bilanci&KPI": il payload porta cruscotto, 4 sezioni, serie e composizioni; e la
+  // pagina vera del portale (portale-cliente.htm, caricata a parte) le disegna con gauge/donut/area.
+  const dettAnd = and.dettaglio;
+  assert(dettAnd && dettAnd.sezioni.length === 4 && ['Liquidità','Redditività','Solidità','Efficienza'].every((n, i) => dettAnd.sezioni[i].nome === n), 'andamento.dettaglio deve avere le 4 sezioni Liquidità/Redditività/Solidità/Efficienza');
+  assert(dettAnd.seriePfn.length === periodiBilCliente.length && dettAnd.waterfall.length === 8 && dettAnd.donutFonti.length === 4, 'andamento.dettaglio: serie/waterfall/donut incompleti');
+  assert(dettAnd.sezioni.every(s => s.indici.length > 0 && s.indici.every(i => 'spiegazione' in i && 'sogliaVerde' in i)), 'ogni indice del dettaglio deve portare spiegazione e soglie');
+  {
+    const pdom = new JSDOM(fs.readFileSync(path.join(__dirname, 'portale-cliente.htm'), 'utf8'), { runScripts: 'dangerously', url: 'http://localhost/portale/x', pretendToBeVisual: true, virtualConsole: new (require('jsdom').VirtualConsole)() });
+    const pw = pdom.window;
+    pw.eval('var __v = ' + JSON.stringify(JSON.parse(JSON.stringify(vistaAndamento))));
+    const out = pw.eval('VISTA = __v; TAB = "andamento"; renderAndamento()');
+    assert(out.includes('Come sta andando l\'azienda') && out.includes('Liquidità') && out.includes('Solidità'), 'il portale non disegna cruscotto e sezioni dell\'Andamento');
+    assert((out.match(/<svg/g) || []).length >= 10, 'il portale dovrebbe disegnare gauge/donut/area/waterfall/radar (SVG), trovati ' + (out.match(/<svg/g) || []).length);
+    assert(!out.includes('undefined') && !out.includes('NaN'), 'l\'Andamento del portale mostra undefined/NaN');
+    pdom.window.close();
+  }
   console.log('=== #178: payload reale del portale esterno (andamento) ora completo - patrimonio netto, ROI/ROS/margine, liquidità/indebitamento, giorni incasso, variazioni, semafori e ripartizione costi OK');
 
   // ---------- 8h-ter) Bilanci: riclassifica automatica da stampa grezza (senza riclassifica manuale) ----------
