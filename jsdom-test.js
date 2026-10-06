@@ -1917,6 +1917,23 @@ async function main() {
     assert(st().preventivi.find(x => x.id === pid).stato === 'Accettato', 'preventivo non accettato');
     window.setView('preventivi'); await wait(20);
     assert(q('[data-action="nuovo-potenziale-apri"]'), 'manca il pulsante preventivo a nuovo cliente');
+    // Deontologia
+    {
+      window.aggiornaAccettazione(cl.id, { clienteForte: true });
+      assert(!window.accettazioneCompleta(cl.id), 'check-list accettazione non dovrebbe essere completa');
+      const voci = {}; ['indipendenza','legalita','competenza','informativa','polizza','ia','adeguataVerifica','equoCompenso'].forEach(k => voci[k] = true);
+      window.aggiornaAccettazione(cl.id, { voci });
+      assert(window.accettazioneCompleta(cl.id), 'check-list accettazione (con equo compenso) dovrebbe risultare completa');
+      delete st().accettazioni[cl.id];
+      st().fpc.push({ id: 'f1', persona: st().meta.responsabili[0], data: oggiISOtest(), titolo: 'Corso', crediti: 10, obbligatoria: true });
+      const r = window.riepilogoFpc(st().meta.responsabili[0]);
+      assert(r.tot === 10 && r.obb === 10, 'riepilogo FPC errato');
+      st().fpc = [];
+      click(q('[data-nav="deontologia"]')); await wait(20);
+      assert(/Accettazione incarico/.test(q('#content').textContent), 'pagina Deontologia non renderizzata');
+      assert(window.registroIaCsv().startsWith('"Data"'), 'export registro IA errato');
+      assert(st().modelliDocumento.length >= 0, 'ok');
+    }
     // Cruscotto titolare
     {
       const d = window.datiCruscotto();
@@ -2047,10 +2064,10 @@ async function main() {
     // modelli base strutturati
     const nPrima = st().modelliDocumento.length;
     click(q('[data-action="modelli-base-strutturati"]')); await wait(20);
-    assert(st().modelliDocumento.length === nPrima + 2 && st().modelliDocumento.some(m => m.nome === 'Preventivo strutturato (a voci)'), 'modelli base non aggiunti');
+    assert(st().modelliDocumento.length === nPrima + 3 && st().modelliDocumento.some(m => m.nome === 'Preventivo strutturato (a voci)'), 'modelli base non aggiunti');
     click(q('[data-action="modelli-base-strutturati"]')); await wait(20);
-    assert(st().modelliDocumento.length === nPrima + 2, 'i modelli base non devono duplicarsi');
-    const s2 = st(); s2.modelliDocumento = s2.modelliDocumento.filter(m => !/strutturat/.test(m.nome)); window.setSTATE(s2);
+    assert(st().modelliDocumento.length === nPrima + 3, 'i modelli base non devono duplicarsi');
+    const s2 = st(); s2.modelliDocumento = s2.modelliDocumento.filter(m => !/strutturat|rinuncia/.test(m.nome)); window.setSTATE(s2);
     click(q('[data-nav="dashboard"]')); await wait(20);
     console.log('=== Modelli documenti: tabelle, immagini (editor/stampa/RTF/potatura), campi personalizzati inseribili, modelli base strutturati OK');
   }

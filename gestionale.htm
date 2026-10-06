@@ -1777,6 +1777,10 @@ function statoIniziale() {
     attivitaFatturabili: [],
     /* Libri sociali dei clienti: quali libri, chi li detiene, ultima stampa e ultima pagina. */
     libriSociali: [],
+    /* Deontologia: check-list accettazione incarico per cliente, formazione continua, impegni di riservatezza. */
+    accettazioni: {},
+    fpc: [],
+    impegniRiservatezza: [],
     /* Procedure interne dello studio (task #146): raccolta di SOP/indicazioni operative per lo staff
        ("come si apre una nuova attività X", quali documenti servono ecc.), strutturate come i Modelli
        documenti (categoria/nome/contenuto) più una checklist di documenti necessari. Usate anche dal
@@ -4217,6 +4221,7 @@ function eliminaCliente(id) {
   STATE.incassi = (STATE.incassi || []).filter(i => i.clienteId !== id);
   STATE.attivitaFatturabili = (STATE.attivitaFatturabili || []).filter(a => a.clienteId !== id);
   STATE.libriSociali = (STATE.libriSociali || []).filter(l => l.clienteId !== id);
+  if (STATE.accettazioni) delete STATE.accettazioni[id];
 
   // Entità tenute in oggetti indicizzati per clienteId: basta togliere la chiave.
   delete STATE.onboarding[id];
@@ -4381,7 +4386,9 @@ const NAV = [
     { id: 'preventivi', label: 'Preventivi e mandati', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5h8l5 5v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-18a1 1 0 0 1 1-1z"/><path d="M14 2.5v5h5"/><path d="M8 12.5l2.5 2.5 5.5-6"/></svg>' },
     { id: 'incassi', label: 'Incassi', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9v.01M18 15v.01"/></svg>' },
     { id: 'fatturazione', label: 'Da fatturare', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h5"/></svg>' },
-    { id: 'libri', label: 'Libri sociali', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h12a3 3 0 0 1 3 3v13H7a3 3 0 0 1-3-3z"/><path d="M4 17a3 3 0 0 1 3-3h12"/></svg>' },
+    { id: 'deontologia', label: 'Deontologia', desc: 'Check-list accettazione incarico, registro uso IA, formazione continua, riservatezza.', tabs: ['deontologia'] },
+  { id: 'libri', label: 'Libri sociali', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h12a3 3 0 0 1 3 3v13H7a3 3 0 0 1-3-3z"/><path d="M4 17a3 3 0 0 1 3-3h12"/></svg>' },
+    { id: 'deontologia', label: 'Deontologia', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M5 7h14M5 7l-3 7a3.5 3.5 0 0 0 6 0zM19 7l-3 7a3.5 3.5 0 0 0 6 0z"/></svg>' },
     { id: 'portale', label: 'Portale cliente', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2"/><line x1="3" y1="8.5" x2="21" y2="8.5"/><circle cx="6" cy="6.5" r=".6" fill="currentColor" stroke="none"/><circle cx="8.2" cy="6.5" r=".6" fill="currentColor" stroke="none"/></svg>' },
   ]},
   { group: 'Analisi cliente', items: [
@@ -4420,6 +4427,7 @@ const PAGE_TITLES = {
   contabilita: ['Contabilità', 'Import periodico da Excel/CSV: nessuna doppia registrazione, nessuna data indovinata'],
   modelli: ['Modelli documenti', 'Testi precompilati per preventivi, mandati e documenti antiriciclaggio: i segnaposto {{così}} si trasformano in campi da compilare'],
   incassi: ['Incassi', 'Compensi da incassare, scadenze di pagamento e solleciti ai clienti'],
+  deontologia: ['Deontologia', 'Accettazione incarico, equo compenso, uso dell\'IA, formazione continua e riservatezza'],
   libri: ['Libri sociali', 'Quali libri ha ogni società, chi li detiene e quando sono stati stampati l\'ultima volta'],
   fatturazione: ['Da fatturare', 'Attività extra prestate ai clienti, da includere nella prossima fattura periodica'],
   procedure: ['Procedure interne', 'Indicazioni operative per lo staff, passo per passo, con la checklist dei documenti necessari'],
@@ -4611,6 +4619,7 @@ function render() {
     case 'incassi': content.innerHTML = renderIncassi(); break;
     case 'fatturazione': content.innerHTML = renderFatturazione(); break;
     case 'libri': content.innerHTML = renderLibriSociali(); break;
+    case 'deontologia': content.innerHTML = renderDeontologia(); break;
     case 'strumenti': content.innerHTML = renderStrumenti(); break;
     case 'credenziali': content.innerHTML = renderCredenziali(); break;
     case 'portale': content.innerHTML = renderPortaleCliente(); break;
@@ -7573,10 +7582,13 @@ Il Professionista opera con la diligenza richiesta dalla natura dell'attività (
 ## Art. 6 – Recesso
 Ciascuna parte può recedere con comunicazione scritta (PEC o raccomandata) e preavviso di 15 giorni. Resta dovuto il compenso per l'attività già svolta. Il Professionista può recedere con effetto immediato nei casi previsti dalla normativa antiriciclaggio.
 
-## Art. 7 – Trattamento dei dati personali
+## Art. 7 – Codice deontologico e strumenti di intelligenza artificiale
+Il Professionista opera nel rispetto del Codice deontologico dei dottori commercialisti e degli esperti contabili, che il Cliente può consultare e che disciplina i diritti e i doveri reciproci. Lo studio può avvalersi di strumenti di intelligenza artificiale come supporto ad attività di analisi, ricerca e organizzazione; le valutazioni, i pareri e le scelte professionali restano sempre di esclusiva responsabilità del Professionista.
+
+## Art. 8 – Trattamento dei dati personali
 I dati sono trattati esclusivamente per l'esecuzione dell'incarico e gli obblighi di legge, ai sensi del Reg. UE 2016/679. Titolare: {{studio.nome}} – {{studio.pec}}.
 
-## Art. 8 – Foro competente
+## Art. 9 – Foro competente
 Per ogni controversia è competente il Foro di {{studio.citta}}.
 
 | Il Professionista | Il Cliente |
@@ -7586,6 +7598,24 @@ Per ogni controversia è competente il Foro di {{studio.citta}}.
 | ______________________ | ______________________ |
 
 Luogo e data: ____________________`),
+    mk('Lettera di incarico', 'Lettera di rinuncia / cessazione dell\'incarico', `>> {{data.luogoOggi}}
+
+**Spett.le**
+**{{cliente.ragioneSociale}}**
+{{cliente.indirizzo}}
+
+**Oggetto:** {{oggetto}}
+
+Con la presente, in forma scritta e con congruo anticipo, Le comunichiamo che l'incarico professionale conferito a {{studio.nome}} cesserà con effetto dal ____________________.
+
+Fino a tale data lo studio proseguirà le attività in corso e porterà a termine gli adempimenti la cui scadenza cade entro la data di cessazione. Per gli adempimenti successivi, o che avete deciso di affidare al nuovo professionista, Le chiediamo di comunicarci il nominativo del collega subentrante, al quale metteremo a disposizione, previa Sua autorizzazione, la documentazione e le informazioni necessarie per il passaggio di consegne.
+
+Restano dovuti i compensi per l'attività già svolta.
+
+Cordiali saluti.
+
+**{{studio.nome}}**
+{{studio.pec}}`),
   ];
 }
 function aggiungiModelliBaseStrutturati() {
@@ -8264,6 +8294,134 @@ function renderCruscotto() {
       ${kpi(d.scadenze.scadute, 'IN RITARDO', 'scaduti')}${kpi(d.scadenze.inScadenza, 'ENTRO 30 GIORNI', 'inscadenza')}${kpi(d.scadenze.futuri, 'FUTURE', 'futuri')}${kpi(d.scadenze.completate, 'COMPLETATE')}
     </div>${rit.length ? '<div class="helptext" style="margin-top:6px;">Ritardi per responsabile: ' + rit.map(([r, n]) => escapeHtml(r) + ' ' + n).join(' · ') + '</div>' : ''}</div>`;
   return `<div class="helptext" style="margin-bottom:8px;">Anno di riferimento: ${d.anno} (cambialo dal selettore anno in alto).</div>` + sezClienti + sezPrev + sezFatt + sezAdm + sezScad;
+}
+
+/* -------------------- DEONTOLOGIA (Codice deontologico dei dottori commercialisti, ed. 2024 + modifiche 2025 sull'IA) --------------------
+   Supporto organizzativo, non consulenza: le voci sono promemoria dei doveri tipici (accettazione incarico,
+   equo compenso, riservatezza, formazione, uso dell'IA). Soglie e regole vanno SEMPRE verificate sulle fonti
+   ufficiali (CNDCEC, L. 49/2023 sull'equo compenso). */
+const VOCI_ACCETTAZIONE = [
+  { k: 'indipendenza', t: 'Verificata l\'assenza di conflitti di interesse e la propria indipendenza (anche solo apparente)' },
+  { k: 'legalita', t: 'Verificata la compatibilità dell\'incarico con la legge e l\'assenza di indizi di operazioni illecite' },
+  { k: 'competenza', t: 'Valutata la propria competenza e la complessità della prestazione (riflessa nel preventivo)' },
+  { k: 'informativa', t: 'Informato il cliente su diritti/doveri reciproci e sull\'esistenza del Codice deontologico' },
+  { k: 'polizza', t: 'Comunicati al cliente gli estremi della polizza RC professionale' },
+  { k: 'ia', t: 'Informato il cliente sull\'eventuale uso di strumenti di intelligenza artificiale a supporto' },
+  { k: 'adeguataVerifica', t: 'Avviata l\'adeguata verifica antiriciclaggio (vedi Antiriciclaggio)' },
+];
+const VOCE_EQUO_COMPENSO = { k: 'equoCompenso', t: 'Cliente "forte": verificata la conformità del compenso ai parametri (equo compenso)' };
+const FPC_CREDITI_TRIENNIO = 90, FPC_CREDITI_OBBLIGATORI = 9;
+function accettazioneCliente(id) {
+  if (!STATE.accettazioni) STATE.accettazioni = {};
+  if (!STATE.accettazioni[id]) STATE.accettazioni[id] = { voci: {}, clienteForte: false, note: '', data: null };
+  return STATE.accettazioni[id];
+}
+function aggiornaAccettazione(id, patch) {
+  const a = accettazioneCliente(id);
+  if (patch.voci) a.voci = Object.assign({}, a.voci, patch.voci);
+  ['clienteForte', 'note', 'data'].forEach(k => { if (k in patch) a[k] = patch[k]; });
+  salvaStato();
+  return a;
+}
+function accettazioneCompleta(id) {
+  const a = (STATE.accettazioni || {})[id];
+  if (!a) return false;
+  const voci = VOCI_ACCETTAZIONE.concat(a.clienteForte ? [VOCE_EQUO_COMPENSO] : []);
+  return voci.every(v => a.voci[v.k]);
+}
+function triennioFpc(dataISO) {
+  const y = Number(String(dataISO || oggiISO()).slice(0, 4));
+  const inizio = 2023 + Math.floor((y - 2023) / 3) * 3;
+  return { inizio, fine: inizio + 2 };
+}
+function riepilogoFpc(persona) {
+  const tr = triennioFpc(oggiISO());
+  const ev = (STATE.fpc || []).filter(e => e.persona === persona && Number(String(e.data).slice(0, 4)) >= tr.inizio && Number(String(e.data).slice(0, 4)) <= tr.fine);
+  const tot = ev.reduce((t, e) => t + (Number(e.crediti) || 0), 0);
+  const obb = ev.filter(e => e.obbligatoria).reduce((t, e) => t + (Number(e.crediti) || 0), 0);
+  return { tr, tot, obb, ev };
+}
+function registroIaCsv() {
+  const rig = [['Data', 'Operatore', 'Azione', 'Esito', 'Dettagli']].concat((STATE.auditMcp || []).map(a => [a.data, a.operatore || '', etichettaAzioneMCP(a.azione), a.esito, (a.errore || a.parametri || '').replace(/\s+/g, ' ')]));
+  return rig.map(r => r.map(c => '"' + String(c == null ? '' : c).replace(/"/g, '""') + '"').join(';')).join('\n');
+}
+let DEON_TAB = 'accettazione', DEON_CLIENTE = null;
+function renderDeontologia() {
+  const tabs = [['accettazione', 'Accettazione incarico'], ['ia', 'Registro uso IA'], ['fpc', 'Formazione continua'], ['riservatezza', 'Riservatezza'], ['testi', 'Testi standard']];
+  const nav = `<div class="toolbar" style="gap:6px;">${tabs.map(([k, l]) => `<button class="btn ${DEON_TAB === k ? 'primary' : ''}" data-action="deon-tab" data-tab="${k}">${l}</button>`).join('')}</div>`;
+  const avviso = `<div class="helptext" style="margin-bottom:10px;">Promemoria organizzativi basati sul Codice deontologico dei dottori commercialisti: non sostituiscono la lettura delle fonti ufficiali né il tuo giudizio professionale.</div>`;
+  let corpo = '';
+  if (DEON_TAB === 'accettazione') {
+    const clienti = STATE.clienti.filter(c => c.stato !== 'cessato').sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale));
+    if (!clienti.length) corpo = '<div class="card"><div class="empty">Aggiungi prima un cliente.</div></div>';
+    else {
+      if (!DEON_CLIENTE || !clienti.some(c => c.id === DEON_CLIENTE)) DEON_CLIENTE = clienti[0].id;
+      const a = accettazioneCliente(DEON_CLIENTE);
+      const voci = VOCI_ACCETTAZIONE.concat(a.clienteForte ? [VOCE_EQUO_COMPENSO] : []);
+      const fatte = voci.filter(v => a.voci[v.k]).length;
+      const aperti = clienti.filter(c => !accettazioneCompleta(c.id)).length;
+      corpo = `<div class="card"><div class="toolbar"><div class="field grow"><label>Cliente</label><select data-action="deon-acc-cliente">${clienti.map(c => `<option value="${c.id}" ${c.id === DEON_CLIENTE ? 'selected' : ''}>${escapeHtml(c.ragioneSociale)}${accettazioneCompleta(c.id) ? ' ✓' : ''}</option>`).join('')}</select></div>
+        <div class="helptext">${aperti} clienti con check-list incompleta</div></div>
+        <label class="checkline" style="display:block;margin:8px 0;"><input type="checkbox" data-action="deon-acc-forte" ${a.clienteForte ? 'checked' : ''}> Cliente "forte" (banca, assicurazione, impresa con oltre 50 dipendenti o oltre 10 mln di ricavi): applica l'equo compenso. <span class="helptext">Verifica la soglia sulla L. 49/2023.</span></label>
+        <div class="progress" style="margin:6px 0;"><div style="width:${Math.round(fatte / voci.length * 100)}%"></div></div>
+        ${voci.map(v => `<label class="checkline" style="display:block;padding:4px 0;"><input type="checkbox" data-action="deon-acc-toggle" data-k="${v.k}" ${a.voci[v.k] ? 'checked' : ''}> ${escapeHtml(v.t)}</label>`).join('')}
+        <div class="field" style="margin-top:8px;"><label>Note</label><input data-action="deon-acc-note" value="${escapeHtml(a.note || '')}" placeholder="es. esito della verifica sui conflitti"></div>
+        ${a.data ? `<div class="helptext">Check-list completata il ${fmtData(a.data)}</div>` : ''}</div>`;
+    }
+  } else if (DEON_TAB === 'ia') {
+    const reg = (STATE.auditMcp || []).slice().reverse();
+    corpo = `<div class="card"><div class="section-title">Registro uso IA <span class="cnt">${reg.length}</span></div>
+      <div class="helptext" style="margin-bottom:8px;">Tutto ciò che Claude fa in Prisma tramite MCP viene registrato (chi, quando, quale azione). Utile per documentare l'uso dell'IA come strumento di supporto e dimostrare che il giudizio resta al professionista.</div>
+      <button class="btn small" data-action="deon-ia-esporta">⬇ Esporta registro (CSV)</button>
+      ${reg.length ? `<table class="compact" style="margin-top:8px;"><thead><tr><th>Quando</th><th>Operatore</th><th>Azione</th><th>Esito</th></tr></thead><tbody>${reg.slice(0, 100).map(a => `<tr><td style="white-space:nowrap;">${fmtDataOra(a.data)}</td><td>${escapeHtml(a.operatore || '—')}</td><td>${escapeHtml(etichettaAzioneMCP(a.azione))}</td><td>${escapeHtml(a.esito)}</td></tr>`).join('')}</tbody></table>` : '<div class="helptext" style="margin-top:8px;">Nessuna azione registrata finora.</div>'}</div>`;
+  } else if (DEON_TAB === 'fpc') {
+    const tr = triennioFpc(oggiISO());
+    const persone = STATE.meta.responsabili || [];
+    corpo = `<div class="card"><div class="section-title">Formazione professionale continua — triennio ${tr.inizio}-${tr.fine}</div>
+      <div class="helptext" style="margin-bottom:8px;">Obiettivo ${FPC_CREDITI_TRIENNIO} crediti nel triennio, di cui almeno ${FPC_CREDITI_OBBLIGATORI} in materie obbligatorie (ordinamento, deontologia, organizzazione dello studio, antiriciclaggio, mediazione). <strong>Da verificare sul regolamento CNDCEC in vigore.</strong></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;">${persone.map(p => { const r = riepilogoFpc(p); return `<div style="border:1px solid var(--border);border-radius:8px;padding:10px;"><strong>${escapeHtml(p)}</strong><div class="helptext">${r.tot}/${FPC_CREDITI_TRIENNIO} crediti · ${r.obb}/${FPC_CREDITI_OBBLIGATORI} obbligatori</div><div class="progress"><div style="width:${Math.min(100, Math.round(r.tot / FPC_CREDITI_TRIENNIO * 100))}%"></div></div></div>`; }).join('')}</div>
+      <div style="margin:12px 0;"><button class="btn primary" data-action="deon-fpc-nuovo">+ Registra evento formativo</button></div>
+      ${(STATE.fpc || []).length ? `<table class="compact"><thead><tr><th>Data</th><th>Persona</th><th>Evento</th><th>Crediti</th><th>Materia obbl.</th><th></th></tr></thead><tbody>${(STATE.fpc || []).slice().sort((a, b) => b.data.localeCompare(a.data)).map(e => `<tr><td>${fmtData(e.data)}</td><td>${escapeHtml(e.persona)}</td><td>${escapeHtml(e.titolo)}</td><td>${e.crediti}</td><td>${e.obbligatoria ? 'Sì' : '—'}</td><td><button class="btn small danger" data-action="deon-fpc-elimina" data-id="${e.id}">Elimina</button></td></tr>`).join('')}</tbody></table>` : ''}</div>`;
+  } else if (DEON_TAB === 'riservatezza') {
+    const lista = (STATE.impegniRiservatezza || []).slice().sort((a, b) => (a.persona || '').localeCompare(b.persona || ''));
+    const oggi = oggiISO();
+    corpo = `<div class="card"><div class="section-title">Impegni di riservatezza e nomine privacy</div>
+      <div class="helptext" style="margin-bottom:8px;">Registro di chi ha firmato cosa (collaboratori, praticanti, fornitori): il professionista risponde della vigilanza su chi collabora con lo studio.</div>
+      <button class="btn primary" data-action="deon-riserv-nuovo">+ Registra impegno</button>
+      ${lista.length ? `<table class="compact" style="margin-top:8px;"><thead><tr><th>Persona</th><th>Documento</th><th>Firmato il</th><th>Scadenza</th><th></th></tr></thead><tbody>${lista.map(i => `<tr><td>${escapeHtml(i.persona)}</td><td>${escapeHtml(i.tipo)}</td><td>${i.data ? fmtData(i.data) : '—'}</td><td>${i.scadenza ? fmtData(i.scadenza) + (i.scadenza < oggi ? ' <span class="badge stato-errore">scaduto</span>' : '') : '—'}</td><td><button class="btn small danger" data-action="deon-riserv-elimina" data-id="${i.id}">Elimina</button></td></tr>`).join('')}</tbody></table>` : ''}
+      <div class="helptext" style="margin-top:8px;">Persone dello studio senza alcun impegno registrato: ${((STATE.meta.responsabili || []).filter(p => !lista.some(i => i.persona === p)).map(escapeHtml).join(', ')) || 'nessuna'}</div></div>`;
+  } else {
+    const clausolaIa = `Lo studio può avvalersi di strumenti di intelligenza artificiale come supporto ad attività di analisi, ricerca e organizzazione del lavoro. Le valutazioni, i pareri e le scelte professionali restano sempre di esclusiva responsabilità del Professionista, che verifica ogni risultato prodotto con tali strumenti.`;
+    const impRis = `Il sottoscritto si impegna a mantenere la più rigorosa riservatezza su tutte le informazioni apprese in occasione dell'attività svolta per lo studio, a non comunicarle a terzi e a trattare i dati personali solo nei limiti delle istruzioni ricevute, anche dopo la cessazione del rapporto.`;
+    corpo = `<div class="card"><div class="section-title">Testi standard</div>
+      <div class="helptext" style="margin-bottom:8px;">Testi pronti da copiare (la clausola IA e le informative sul Codice sono già nel modello "Lettera di incarico strutturata"; la lettera di rinuncia è tra i modelli base).</div>
+      <div class="field full"><label>Clausola sull'uso dell'IA</label><textarea rows="3" style="width:100%;" readonly>${escapeHtml(clausolaIa)}</textarea></div>
+      <div class="field full" style="margin-top:8px;"><label>Impegno di riservatezza per collaboratori</label><textarea rows="3" style="width:100%;" readonly>${escapeHtml(impRis)}</textarea></div></div>`;
+  }
+  return avviso + nav + corpo;
+}
+function modalFpc() {
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop"><div class="modal" style="max-width:480px;">
+    <div style="display:flex;justify-content:space-between;"><h2>Evento formativo</h2><button class="icon-x" data-action="chiudi-modal">✕</button></div>
+    <form onsubmit="return false;"><div class="grid2">
+      <div class="field"><label>Persona</label><select id="fpcPersona">${(STATE.meta.responsabili || []).map(p => `<option>${escapeHtml(p)}</option>`).join('')}</select></div>
+      <div class="field"><label>Data</label><input type="date" id="fpcData" value="${oggiISO()}"></div>
+      <div class="field full" style="grid-column:1/-1;"><label>Evento *</label><input id="fpcTitolo"></div>
+      <div class="field"><label>Crediti *</label><input type="number" min="0" step="0.5" id="fpcCrediti"></div>
+      <div class="field"><label>&nbsp;</label><label class="checkline"><input type="checkbox" id="fpcObb"> Materia obbligatoria</label></div>
+    </div></form>
+    <div class="modal-actions"><button class="btn" data-action="chiudi-modal">Annulla</button><button class="btn primary" data-action="deon-fpc-salva">Salva</button></div></div></div>`;
+}
+function modalRiservatezza() {
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop"><div class="modal" style="max-width:480px;">
+    <div style="display:flex;justify-content:space-between;"><h2>Impegno di riservatezza</h2><button class="icon-x" data-action="chiudi-modal">✕</button></div>
+    <form onsubmit="return false;"><div class="grid2">
+      <div class="field full" style="grid-column:1/-1;"><label>Persona *</label><input id="rsPersona" list="rsPers" placeholder="nome e cognome"><datalist id="rsPers">${(STATE.meta.responsabili || []).map(p => `<option value="${escapeHtml(p)}">`).join('')}</datalist></div>
+      <div class="field"><label>Documento</label><select id="rsTipo"><option>Impegno di riservatezza</option><option>Nomina incaricato al trattamento</option><option>Nomina responsabile esterno</option></select></div>
+      <div class="field"><label>Firmato il</label><input type="date" id="rsData" value="${oggiISO()}"></div>
+      <div class="field"><label>Scadenza (opzionale)</label><input type="date" id="rsScad"></div>
+    </div></form>
+    <div class="modal-actions"><button class="btn" data-action="chiudi-modal">Annulla</button><button class="btn primary" data-action="deon-riserv-salva">Salva</button></div></div></div>`;
 }
 
 /* -------------------- RENDER: PREVENTIVI E MANDATI (task #121, rifatto su modelli #125) --------------------
@@ -14860,6 +15018,7 @@ function modalCessazioneCliente(id) {
           <div class="helptext" style="margin-bottom:4px;">Spunta quelli che passano al nuovo commercialista; lasciati senza spunta li completa lo studio.</div>
           ${ann.map(a => `<label class="checkline" style="display:block;"><input type="checkbox" class="cess-ceduto" data-id="${a.id}" checked> ${escapeHtml(a.tipoNome)} <span class="helptext">(${a.percentuale}% fatto)</span></label>`).join('')}</div>` : '';
       })()}
+      <label class="checkline" style="display:block;margin-top:8px;"><input type="checkbox" id="cessRinuncia" checked> Crea un task per inviare la comunicazione scritta di cessazione/rinuncia (modello "Lettera di rinuncia" in Modelli documenti)</label>
       <div class="helptext" style="margin-top:8px;">Le scadenze periodiche fino alla data di cessazione restano in carico allo studio; dopo non genera più nulla e non compare negli elenchi di lavoro. Dati e documenti restano e puoi riattivarlo.</div>
       <div class="modal-actions"><button class="btn" data-action="chiudi-modal">Annulla</button><button class="btn danger" data-action="cessa-cliente-conferma" data-id="${c.id}">Cessa cliente</button></div>
     </div></div>`;
@@ -16182,6 +16341,24 @@ function onClickDelegato(e) {
       toast('Mandato generato dal preventivo accettato.');
       break;
     }
+    case 'deon-tab': DEON_TAB = el.dataset.tab; render(); break;
+    case 'deon-ia-esporta': salvaFileScaricabile('registro-uso-ia.csv', registroIaCsv()); break;
+    case 'deon-fpc-nuovo': modalFpc(); break;
+    case 'deon-fpc-salva': {
+      const titolo = h('fpcTitolo').value.trim(), crediti = Number(h('fpcCrediti').value);
+      if (!titolo || !(crediti >= 0) || h('fpcCrediti').value === '') { toast('Compila evento e crediti.'); return; }
+      STATE.fpc.push({ id: uid('fpc'), persona: h('fpcPersona').value, data: h('fpcData').value || oggiISO(), titolo, crediti, obbligatoria: h('fpcObb').checked });
+      salvaStato(); chiudiModal(); render(); break;
+    }
+    case 'deon-fpc-elimina': STATE.fpc = STATE.fpc.filter(x => x.id !== id); salvaStato(); render(); break;
+    case 'deon-riserv-nuovo': modalRiservatezza(); break;
+    case 'deon-riserv-salva': {
+      const persona = h('rsPersona').value.trim();
+      if (!persona) { toast('Indica la persona.'); return; }
+      STATE.impegniRiservatezza.push({ id: uid('rs'), persona, tipo: h('rsTipo').value, data: h('rsData').value || null, scadenza: h('rsScad').value || null });
+      salvaStato(); chiudiModal(); render(); break;
+    }
+    case 'deon-riserv-elimina': STATE.impegniRiservatezza = STATE.impegniRiservatezza.filter(x => x.id !== id); salvaStato(); render(); break;
     case 'libro-nuovo': modalLibroSociale(null); break;
     case 'libro-modifica': modalLibroSociale(id); break;
     case 'libro-elimina': if (confermaAzione('Eliminare questo libro dal registro?')) { eliminaLibroSociale(id); render(); } break;
@@ -16296,7 +16473,9 @@ function onClickDelegato(e) {
     case 'nuovo-task-team': modalTaskTeam(null, el.dataset.cliente || null); break;
 
     case 'cessa-cliente-apri': modalCessazioneCliente(id); break;
-    case 'cessa-cliente-conferma': { try { cessaCliente(id, { data: h('cessData').value, motivo: h('cessMotivo').value, nota: h('cessNota').value, ceduti: Array.from(document.querySelectorAll('.cess-ceduto:checked')).map(x => x.dataset.id) }); } catch (err) { toast(err.message, true); return; } chiudiModal(); render(); toast('Cliente cessato.'); break; }
+    case 'cessa-cliente-conferma': { const faiTask = !!(h('cessRinuncia') && h('cessRinuncia').checked); try { cessaCliente(id, { data: h('cessData').value, motivo: h('cessMotivo').value, nota: h('cessNota').value, ceduti: Array.from(document.querySelectorAll('.cess-ceduto:checked')).map(x => x.dataset.id) }); } catch (err) { toast(err.message, true); return; }
+      if (faiTask) { const cc = clienteById(id); aggiungiTaskTeam({ titolo: `Inviare comunicazione scritta di cessazione/rinuncia: ${cc.ragioneSociale}`, assegnatoA: cc.responsabileStudio || null, clienteId: id, scadenza: cc.dataCessazione, stato: STATI_TASK_TEAM[0], noteStorico: [{ id: uid('nota'), testo: 'La rinuncia/cessazione va comunicata per iscritto e in tempo utile. Usa il modello "Lettera di rinuncia / cessazione dell\'incarico".', autore: operatoreCorrente() || null, data: oggiISO() }], creatoIl: oggiISO() }); }
+      chiudiModal(); render(); toast('Cliente cessato.'); break; }
     case 'riattiva-cliente': if (confermaAzione('Riattivare questo cliente? Tornerà a generare le scadenze.')) { riattivaCliente(id); render(); toast('Cliente riattivato.'); } break;
     case 'contab-terzi-salva-fasi': {
       const k = el.dataset.chiave; const t = document.getElementById('ctFasi_' + k); if (!t) break;
@@ -17203,6 +17382,10 @@ function onChangeDelegato(e) {
       if (el.checked) set.delete(el.dataset.id); else set.add(el.dataset.id);
       cfg.periodiciEsclusi = Array.from(set); salvaConfigContabTerzi(cfg); break;
     }
+    case 'deon-acc-cliente': DEON_CLIENTE = el.value; render(); break;
+    case 'deon-acc-toggle': { aggiornaAccettazione(DEON_CLIENTE, { voci: { [el.dataset.k]: el.checked } }); if (accettazioneCompleta(DEON_CLIENTE)) aggiornaAccettazione(DEON_CLIENTE, { data: oggiISO() }); else aggiornaAccettazione(DEON_CLIENTE, { data: null }); render(); break; }
+    case 'deon-acc-forte': aggiornaAccettazione(DEON_CLIENTE, { clienteForte: el.checked, data: null }); render(); break;
+    case 'deon-acc-note': aggiornaAccettazione(DEON_CLIENTE, { note: el.value }); break;
     case 'libri-filtro-cliente': LIBRI_FILTRO.cliente = el.value; render(); break;
     case 'libri-filtro-tipo': LIBRI_FILTRO.tipo = el.value; render(); break;
     case 'libri-filtro-detentore': LIBRI_FILTRO.detentore = el.value; render(); break;
@@ -18228,6 +18411,7 @@ window.rigeneraAccessoSecondarioPortale = rigeneraAccessoSecondarioPortale;
 window.eliminaAccessoSecondarioPortale = eliminaAccessoSecondarioPortale;
 window.trovaAccessoPortale = trovaAccessoPortale;
 window.accessoPortalePuoVedere = accessoPortalePuoVedere;
+window.aggiornaAccettazione = aggiornaAccettazione; window.accettazioneCompleta = accettazioneCompleta; window.riepilogoFpc = riepilogoFpc; window.registroIaCsv = registroIaCsv;
 window.datiCruscotto = datiCruscotto; window.annualiCedutiCliente = annualiCedutiCliente;
 window.aggiungiLibroSociale = aggiungiLibroSociale; window.aggiornaLibroSociale = aggiornaLibroSociale;
 window.accettaPreventivo = accettaPreventivo; window.creaClientePotenziale = creaClientePotenziale; window.aggiungiAttivitaFatturabile = aggiungiAttivitaFatturabile; window.segnaAttivitaFatturate = segnaAttivitaFatturate; window.prossimaFatturazioneCliente = prossimaFatturazioneCliente; window.attivitaAperteCliente = attivitaAperteCliente;

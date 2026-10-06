@@ -1,17 +1,17 @@
 {
-  "versione": "1.10.0",
-  "note": "Cessazione a metà anno: data, scadenze fino alla cessazione in carico allo studio, adempimenti annuali ceduti al nuovo commercialista",
+  "versione": "1.11.0",
+  "note": "Suite deontologia: check-list accettazione incarico con equo compenso, registro uso IA, formazione continua, riservatezza, lettera di rinuncia, clausola IA nel modello di incarico",
   "richiedeNpmInstall": false,
   "file": [
     {
       "nome": "gestionale.htm",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale.htm",
-      "sha256": "1e654f6c365eed3a719843e15b81c3fcd9d79a25132712b418411889864ff80b"
+      "sha256": "3f12185068acc18c8865d5a1f47c9b9f5469f433d72e44d20d51b17eb515126c"
     },
     {
       "nome": "server.js",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/server.js",
-      "sha256": "9da193785701be33f3f6821ff3c64585ed0bad4fe0710fbb6f57845f8dbeaf24"
+      "sha256": "5368e754a48d1e16af36929fcaa218937f0b73f20d43806bd842521ed769804a"
     },
     {
       "nome": "portale-cliente.htm",
