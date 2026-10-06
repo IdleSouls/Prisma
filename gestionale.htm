@@ -1757,6 +1757,8 @@ function statoIniziale() {
        scadenze fiscali/adempimenti che restano generate dal motore scadenze esistente. */
     appuntamenti: [],
     incassi: [],
+    /* Attività extra da fatturare (pratiche prestate oltre il canone): le inserisce chi le svolge, la segreteria le vede e le include nella fattura periodica del cliente. */
+    attivitaFatturabili: [],
     /* Procedure interne dello studio (task #146): raccolta di SOP/indicazioni operative per lo staff
        ("come si apre una nuova attività X", quali documenti servono ecc.), strutturate come i Modelli
        documenti (categoria/nome/contenuto) più una checklist di documenti necessari. Usate anche dal
@@ -2638,6 +2640,9 @@ const AZIONI_MCP = {
     salvaStato();
     return { modulo: p.modulo, attivo: !!p.attivo };
   },
+  creaAttivitaFatturabile: (p) => { if (!clienteById(p.clienteId)) throw new Error('Cliente non trovato: ' + p.clienteId); if (!p.descrizione) throw new Error('descrizione obbligatoria.'); const a = aggiungiAttivitaFatturabile(p); return { creato: true, id: a.id }; },
+  segnaAttivitaFatturate: (p) => { const r = segnaAttivitaFatturate(p.ids || [], p); return { segnate: r.segnate }; },
+  accettaPreventivo: (p) => { if (!STATE.preventivi.find(x => x.id === p.id)) throw new Error('Preventivo non trovato: ' + p.id); const r = accettaPreventivo(p.id, p); return { accettato: true, clienteAttivato: !!(r && r.attivato) }; },
   creaIncasso: (p) => { if (!clienteById(p.clienteId)) throw new Error('Cliente non trovato: ' + p.clienteId); if (!(Number(p.importo) > 0)) throw new Error('Importo non valido.'); const i = aggiungiIncasso(p); return { creato: true, id: i.id }; },
   modificaIncasso: (p) => { if (!(STATE.incassi || []).find(x => x.id === p.id)) throw new Error('Incasso non trovato: ' + p.id); aggiornaIncasso(p.id, p.patch || {}); return { aggiornato: true }; },
   registraIncasso: (p) => { const i = registraPagamentoIncasso(p.id, p.importo, p.data); return { stato: statoIncasso(i), residuo: residuoIncasso(i) }; },
@@ -3805,6 +3810,53 @@ function eliminaPreventivo(id) {
   STATE.preventivi = STATE.preventivi.filter(x => x.id !== id);
   salvaStato();
 }
+
+/* Accettazione di un preventivo (flusso di Matteo: il preventivo nasce in Prisma, la segreteria lo
+   invia via mail, il cliente lo restituisce firmato via mail → si archivia in Documenti e si
+   registra l'accettazione). Se il cliente era "potenziale" diventa attivo, parte l'onboarding
+   (voce "mandato firmato" già spuntata) e si crea un task per l'avvio pratica. Gestione manuale:
+   nessun invio automatico di mail. */
+function accettaPreventivo(id, opz) {
+  opz = opz || {};
+  const p = STATE.preventivi.find(x => x.id === id);
+  if (!p) return null;
+  const data = opz.data || oggiISO();
+  const cliente = clienteById(p.clienteId);
+  let documentoId = null;
+  if (opz.file && opz.file.percorso) {
+    const doc = aggiungiDocumento({
+      clienteId: p.clienteId, categoria: 'Contratto', nome: `${p.categoria} firmato — ${p.oggetto || ''}`.trim(),
+      dataCaricamento: data, dataScadenza: null, filePercorso: opz.file.percorso, fileNome: opz.file.nomeFile, fileDimensione: opz.file.dimensione,
+    });
+    documentoId = doc.id;
+  }
+  aggiornaPreventivo(id, { stato: 'Accettato', dataAccettazione: data, documentoFirmatoId: documentoId || p.documentoFirmatoId || null, noteAccettazione: opz.nota || '' });
+  let attivato = false;
+  if (cliente && p.categoria === 'Preventivo') {
+    const continuativo = (p.attivitaScelte || []).some(a => a.richiedeMandato);
+    const patch = {};
+    if (cliente.stato === 'potenziale') { patch.stato = 'attivo'; patch.dataIngresso = data; attivato = true; }
+    if (attivato || !cliente.tipoRapporto) patch.tipoRapporto = continuativo ? 'Contratto continuativo' : 'Pratica una tantum';
+    if (attivato && continuativo && cliente.preventivoAnnuo == null && p.importo != null) patch.preventivoAnnuo = p.importo;
+    if (Object.keys(patch).length) aggiornaCliente(cliente.id, patch);
+    if (attivato) {
+      if (!STATE.onboarding[cliente.id]) STATE.onboarding[cliente.id] = nuovoOnboarding();
+      STATE.onboarding[cliente.id].mandato = true;
+      const d = new Date(); d.setDate(d.getDate() + 7);
+      aggiungiTaskTeam({
+        titolo: `Avvio cliente: ${cliente.ragioneSociale} (preventivo accettato)`, assegnatoA: cliente.responsabileStudio || null,
+        clienteId: cliente.id, scadenza: d.toISOString().slice(0, 10), stato: STATI_TASK_TEAM[0],
+        noteStorico: [{ id: uid('nota'), testo: 'Preventivo accettato: completare scheda anagrafica, documenti, antiriciclaggio e deleghe (vedi Onboarding).', autore: operatoreCorrente() || null, data: oggiISO() }],
+        creatoIl: oggiISO(),
+      });
+      salvaStato();
+    }
+  }
+  return { attivato, documentoId };
+}
+function creaClientePotenziale(dati) {
+  return aggiungiCliente(Object.assign({}, dati, { stato: 'potenziale' }));
+}
 /* Crea un preventivo/mandato risolvendo il testo dal modello — stessa logica usata dal form di
    creazione (case 'salva-preventivo' in onClickDelegato), estratta qui perché sia riusabile anche
    dal ponte comandi MCP (AZIONI_MCP.creaPreventivo, task #143): così un'IA esterna crea documenti
@@ -4126,6 +4178,7 @@ function eliminaCliente(id) {
   STATE.taskTeam = STATE.taskTeam.filter(t => t.clienteId !== id);
   STATE.preventivi = STATE.preventivi.filter(p => p.clienteId !== id);
   STATE.incassi = (STATE.incassi || []).filter(i => i.clienteId !== id);
+  STATE.attivitaFatturabili = (STATE.attivitaFatturabili || []).filter(a => a.clienteId !== id);
 
   // Entità tenute in oggetti indicizzati per clienteId: basta togliere la chiave.
   delete STATE.onboarding[id];
@@ -4288,6 +4341,7 @@ const NAV = [
     { id: 'documenti', label: 'Documenti', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6.5a1.5 1.5 0 0 1 1.5-1.5h4.5l2 2.5h8.5a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18z"/></svg>' },
     { id: 'preventivi', label: 'Preventivi e mandati', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5h8l5 5v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-18a1 1 0 0 1 1-1z"/><path d="M14 2.5v5h5"/><path d="M8 12.5l2.5 2.5 5.5-6"/></svg>' },
     { id: 'incassi', label: 'Incassi', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9v.01M18 15v.01"/></svg>' },
+    { id: 'fatturazione', label: 'Da fatturare', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h5"/></svg>' },
     { id: 'portale', label: 'Portale cliente', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2"/><line x1="3" y1="8.5" x2="21" y2="8.5"/><circle cx="6" cy="6.5" r=".6" fill="currentColor" stroke="none"/><circle cx="8.2" cy="6.5" r=".6" fill="currentColor" stroke="none"/></svg>' },
   ]},
   { group: 'Analisi cliente', items: [
@@ -4325,6 +4379,7 @@ const PAGE_TITLES = {
   contabilita: ['Contabilità', 'Import periodico da Excel/CSV: nessuna doppia registrazione, nessuna data indovinata'],
   modelli: ['Modelli documenti', 'Testi precompilati per preventivi, mandati e documenti antiriciclaggio: i segnaposto {{così}} si trasformano in campi da compilare'],
   incassi: ['Incassi', 'Compensi da incassare, scadenze di pagamento e solleciti ai clienti'],
+  fatturazione: ['Da fatturare', 'Attività extra prestate ai clienti, da includere nella prossima fattura periodica'],
   procedure: ['Procedure interne', 'Indicazioni operative per lo staff, passo per passo, con la checklist dei documenti necessari'],
   strumenti: ['Strumenti', 'Convertitore file Word ↔ PDF ↔ PDF/A (serve LibreOffice installato sul PC del server locale)'],
   credenziali: ['Password', 'Credenziali e accessi dello studio e dei clienti — Entratel, Telemaco, home banking, software, ecc.'],
@@ -4368,6 +4423,7 @@ const MODULI = [
   { id: 'procedure', label: 'Procedure interne', desc: 'Istruzioni operative passo per passo per lo staff.', tabs: ['procedure'] },
   { id: 'antiriciclaggio', label: 'Antiriciclaggio', desc: 'Adeguata verifica, profilo di rischio e storico verifiche.', tabs: ['antiriciclaggio'] },
   { id: 'preventivi', label: 'Preventivi e mandati', desc: 'Preventivi, mandati e lettere di incarico da modelli.', tabs: ['preventivi'] },
+  { id: 'fatturazione', label: 'Attività da fatturare', desc: 'Pratiche extra da fatturare e periodicità di fatturazione di ogni cliente.', tabs: ['fatturazione'] },
   { id: 'incassi', label: 'Incassi e solleciti', desc: 'Compensi da incassare, scadenze di pagamento e solleciti ai clienti.', tabs: ['incassi'] },
   { id: 'onboarding', label: 'Onboarding clienti', desc: 'Checklist di attivazione per un nuovo cliente.', tabs: ['onboarding'] },
   { id: 'bilanci', label: 'Bilanci e KPI', desc: 'Situazioni economico-patrimoniali, indici e grafici.', tabs: ['bilanci'] },
@@ -4509,6 +4565,7 @@ function render() {
     case 'modelli': content.innerHTML = renderModelliDocumento(); break;
     case 'procedure': content.innerHTML = renderProcedureInterne(); break;
     case 'incassi': content.innerHTML = renderIncassi(); break;
+    case 'fatturazione': content.innerHTML = renderFatturazione(); break;
     case 'strumenti': content.innerHTML = renderStrumenti(); break;
     case 'credenziali': content.innerHTML = renderCredenziali(); break;
     case 'portale': content.innerHTML = renderPortaleCliente(); break;
@@ -7840,6 +7897,145 @@ function modalRegistraIncasso(id) {
     </div></div>`;
 }
 
+/* -------------------- ATTIVITÀ DA FATTURARE (pratiche extra) --------------------
+   Chi svolge una pratica extra la registra qui (cliente, data, descrizione, importo se noto); la
+   segreteria, quando prepara la fattura periodica del cliente (mensile/trimestrale/annuale…, vedi
+   scheda cliente › Fatturazione), vede tutto ciò che è ancora aperto e lo include nella fattura,
+   poi lo segna "Fatturata" con numero e data. Prisma non emette fatture: tiene il promemoria. */
+const MESI_PERIODICITA_FATT = { 'Mensile': 1, 'Trimestrale': 3, 'Semestrale': 6, 'Annuale': 12 };
+function aggiungiAttivitaFatturabile(d) {
+  const a = Object.assign({ id: uid('fat'), clienteId: null, data: oggiISO(), descrizione: '', importo: null, stato: 'Da fatturare', fatturaNumero: '', fatturaData: null, operatore: operatoreCorrente() || null, creatoIl: oggiISO() }, d);
+  a.importo = (a.importo === '' || a.importo == null) ? null : Number(a.importo);
+  if (!STATE.attivitaFatturabili) STATE.attivitaFatturabili = [];
+  STATE.attivitaFatturabili.push(a);
+  salvaStato();
+  return a;
+}
+function aggiornaAttivitaFatturabile(id, patch) {
+  const a = (STATE.attivitaFatturabili || []).find(x => x.id === id);
+  if (!a) return null;
+  Object.assign(a, patch);
+  if ('importo' in patch) a.importo = (a.importo === '' || a.importo == null) ? null : Number(a.importo);
+  salvaStato();
+  return a;
+}
+function eliminaAttivitaFatturabile(id) { STATE.attivitaFatturabili = (STATE.attivitaFatturabili || []).filter(x => x.id !== id); salvaStato(); }
+function attivitaAperteCliente(clienteId) { return (STATE.attivitaFatturabili || []).filter(a => a.clienteId === clienteId && a.stato === 'Da fatturare'); }
+function prossimaFatturazioneCliente(c) {
+  const mesi = MESI_PERIODICITA_FATT[c.fatturazione];
+  if (!mesi) return null;
+  const base = c.ultimaFatturazione || c.dataIngresso;
+  if (!base) return null;
+  const [y, m, g] = base.split('-').map(Number);
+  const tot = (m - 1) + mesi;
+  const ny = y + Math.floor(tot / 12), nm = tot % 12;
+  const ultimo = new Date(Date.UTC(ny, nm + 1, 0)).getUTCDate();
+  return `${ny}-${String(nm + 1).padStart(2, '0')}-${String(Math.min(g, ultimo)).padStart(2, '0')}`;
+}
+/* Segna fatturate le attività indicate; se "periodica" aggiorna anche l'ultima fatturazione del cliente. */
+function segnaAttivitaFatturate(ids, opz) {
+  opz = opz || {};
+  const data = opz.data || oggiISO();
+  const sel = (STATE.attivitaFatturabili || []).filter(a => ids.includes(a.id) && a.stato === 'Da fatturare');
+  sel.forEach(a => { a.stato = 'Fatturata'; a.fatturaNumero = opz.numero || ''; a.fatturaData = data; });
+  const clienteId = opz.clienteId || (sel[0] && sel[0].clienteId);
+  if (opz.periodica && clienteId) { const c = clienteById(clienteId); if (c) c.ultimaFatturazione = data; }
+  let incasso = null;
+  const tot = sel.reduce((t, a) => t + (Number(a.importo) || 0), 0);
+  if (opz.creaIncasso && clienteId && (Number(opz.importoIncasso) || tot) > 0) {
+    incasso = aggiungiIncasso({ clienteId, descrizione: opz.descrizioneIncasso || 'Fattura periodica con attività extra', numero: opz.numero || '', importo: Number(opz.importoIncasso) || tot, dataEmissione: data, dataScadenza: aggiungiGiorniISO(data, 30) });
+  }
+  salvaStato();
+  return { segnate: sel.length, incasso };
+}
+let FATT_FILTRO = { cliente: 'Tutti', vista: 'aperte' };
+function renderFatturazione() {
+  const tutte = STATE.attivitaFatturabili || [];
+  const aperte = tutte.filter(a => a.stato === 'Da fatturare');
+  const oggi = oggiISO();
+  const totAperto = aperte.reduce((t, a) => t + (Number(a.importo) || 0), 0);
+  const attivi = STATE.clienti.filter(c => clienteAttivo(c));
+  const dovute = attivi.filter(c => { const p = prossimaFatturazioneCliente(c); return p && p <= oggi; });
+  const kpi = `<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);">
+    <div class="kpi inscadenza"><div class="n">${aperte.length}</div><div class="l">ATTIVITÀ DA FATTURARE</div></div>
+    <div class="kpi futuri"><div class="n">${fmtEuro(totAperto)}</div><div class="l">IMPORTO STIMATO APERTO</div></div>
+    <div class="kpi scaduti"><div class="n">${dovute.length}</div><div class="l">FATTURE PERIODICHE DOVUTE</div></div>
+    <div class="kpi completati"><div class="n">${tutte.length - aperte.length}</div><div class="l">GIÀ FATTURATE</div></div>
+  </div>`;
+  const toolbar = `<div class="toolbar">
+    <div class="field"><label>Cliente</label><select data-action="fatt-filtro-cliente"><option value="Tutti">Tutti</option>${attivi.slice().sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale)).map(c => `<option value="${c.id}" ${FATT_FILTRO.cliente === c.id ? 'selected' : ''}>${escapeHtml(c.ragioneSociale)}</option>`).join('')}</select></div>
+    <div class="field"><label>Vista</label><select data-action="fatt-filtro-vista"><option value="aperte" ${FATT_FILTRO.vista === 'aperte' ? 'selected' : ''}>Da fatturare</option><option value="storico" ${FATT_FILTRO.vista === 'storico' ? 'selected' : ''}>Già fatturate</option></select></div>
+    <div class="field" style="margin-left:auto;"><label>&nbsp;</label><button class="btn primary" data-action="fatt-nuova">+ Nuova attività</button></div>
+  </div>`;
+  if (STATE.clienti.length === 0) return `<div class="card"><div class="empty"><div class="big">Aggiungi prima un cliente</div></div></div>`;
+  if (FATT_FILTRO.vista === 'storico') {
+    let st = tutte.filter(a => a.stato === 'Fatturata');
+    if (FATT_FILTRO.cliente !== 'Tutti') st = st.filter(a => a.clienteId === FATT_FILTRO.cliente);
+    st.sort((a, b) => (b.fatturaData || '').localeCompare(a.fatturaData || ''));
+    if (!st.length) return kpi + toolbar + `<div class="card"><div class="empty">Nessuna attività fatturata.</div></div>`;
+    return kpi + toolbar + `<div class="card"><table class="tbl"><thead><tr><th>Fattura</th><th>Cliente</th><th>Attività</th><th>Importo</th></tr></thead><tbody>${st.map(a => `<tr><td style="white-space:nowrap;">${escapeHtml(a.fatturaNumero || '—')} · ${fmtData(a.fatturaData)}</td><td>${escapeHtml(nomeCliente(a.clienteId))}</td><td>${escapeHtml(a.descrizione)}</td><td>${a.importo != null ? fmtEuro(a.importo) : '—'}</td></tr>`).join('')}</tbody></table></div>`;
+  }
+  let clienti = attivi.filter(c => attivitaAperteCliente(c.id).length > 0 || dovute.includes(c));
+  if (FATT_FILTRO.cliente !== 'Tutti') clienti = clienti.filter(c => c.id === FATT_FILTRO.cliente);
+  clienti.sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale));
+  if (!clienti.length) return kpi + toolbar + `<div class="card"><div class="empty"><div class="big">Niente da fatturare</div>Registra le pratiche extra man mano che le svolgi: qui la segreteria le trova pronte per la fattura periodica.</div></div>`;
+  const schede = clienti.map(c => {
+    const ap = attivitaAperteCliente(c.id).sort((a, b) => (a.data || '').localeCompare(b.data || ''));
+    const pros = prossimaFatturazioneCliente(c);
+    const dovuta = pros && pros <= oggi;
+    const tot = ap.reduce((t, a) => t + (Number(a.importo) || 0), 0);
+    const righe = ap.map(a => `<tr><td style="width:28px;"><input type="checkbox" class="fatt-sel" data-cliente="${c.id}" data-id="${a.id}" checked></td><td style="white-space:nowrap;">${fmtData(a.data)}</td><td>${escapeHtml(a.descrizione)}${a.operatore ? ` <span class="helptext">· ${escapeHtml(a.operatore)}</span>` : ''}</td><td style="white-space:nowrap;">${a.importo != null ? fmtEuro(a.importo) : '—'}</td><td style="white-space:nowrap;"><button class="btn small danger" data-action="fatt-elimina" data-id="${a.id}">Elimina</button></td></tr>`).join('');
+    return `<div class="card" style="margin-bottom:12px;">
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+        <div style="font-weight:700;">${escapeHtml(c.ragioneSociale)}</div>
+        <span class="badge info">Fatturazione: ${escapeHtml(c.fatturazione || 'non impostata')}</span>
+        <span class="helptext">Ultima: ${c.ultimaFatturazione ? fmtData(c.ultimaFatturazione) : '—'} · Prossima: ${pros ? fmtData(pros) : (MESI_PERIODICITA_FATT[c.fatturazione] ? 'da definire' : '—')}</span>
+        ${dovuta ? '<span class="badge stato-errore">Fattura periodica dovuta</span>' : ''}
+        <div style="margin-left:auto;"><button class="btn small primary" data-action="fatt-segna-apri" data-cliente="${c.id}">Segna fatturate…</button></div>
+      </div>
+      ${ap.length ? `<table class="tbl" style="margin-top:8px;"><tbody>${righe}</tbody></table><div class="helptext" style="margin-top:4px;">Totale stimato extra: ${fmtEuro(tot)}</div>` : '<div class="helptext" style="margin-top:6px;">Nessuna attività extra aperta: solo fattura periodica.</div>'}
+    </div>`;
+  }).join('');
+  return kpi + toolbar + schede;
+}
+function modalAttivitaFatturabile() {
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
+    <div class="modal" style="max-width:520px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div><h2>Nuova attività da fatturare</h2><div class="modal-sub">Pratica extra prestata al cliente, da includere nella prossima fattura.</div></div>
+        <button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button>
+      </div>
+      <form id="formFatt" onsubmit="return false;"><div class="grid2">
+        <div class="field full" style="grid-column:1/-1;"><label>Cliente *</label><select id="fattCliente">${STATE.clienti.filter(c => clienteAttivo(c)).sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale)).map(c => `<option value="${c.id}" ${FATT_FILTRO.cliente === c.id ? 'selected' : ''}>${escapeHtml(c.ragioneSociale)}</option>`).join('')}</select></div>
+        <div class="field full" style="grid-column:1/-1;"><label>Descrizione *</label><input id="fattDescr" placeholder="es. Variazione dati camerali, pratica ravvedimento…"></div>
+        <div class="field"><label>Data prestazione</label><input type="date" id="fattData" value="${oggiISO()}"></div>
+        <div class="field"><label>Importo (€, se noto)</label><input type="number" step="0.01" min="0" id="fattImporto"></div>
+      </div></form>
+      <div class="modal-actions"><button class="btn" data-action="chiudi-modal">Annulla</button><button class="btn primary" data-action="fatt-salva">Salva</button></div>
+    </div></div>`;
+}
+function modalSegnaFatturate(clienteId, ids) {
+  const c = clienteById(clienteId);
+  if (!c) return;
+  const sel = (STATE.attivitaFatturabili || []).filter(a => ids.includes(a.id));
+  const tot = sel.reduce((t, a) => t + (Number(a.importo) || 0), 0);
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
+    <div class="modal" style="max-width:520px;" data-ids="${ids.join(',')}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div><h2>Segna fatturate</h2><div class="modal-sub">${escapeHtml(c.ragioneSociale)} · ${sel.length} attività${tot ? ' · ' + fmtEuro(tot) : ''}</div></div>
+        <button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button>
+      </div>
+      <form id="formSegnaFatt" onsubmit="return false;"><div class="grid2">
+        <div class="field"><label>N. fattura</label><input id="sfNumero"></div>
+        <div class="field"><label>Data fattura</label><input type="date" id="sfData" value="${oggiISO()}"></div>
+        <div class="field full" style="grid-column:1/-1;"><label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" id="sfPeriodica" checked> È la fattura periodica (${escapeHtml(c.fatturazione || 'periodicità non impostata')}): aggiorna "ultima fatturazione"</label></div>
+        ${moduloAttivo('incassi') ? `<div class="field full" style="grid-column:1/-1;"><label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" id="sfIncasso"> Crea l'incasso da riscuotere</label></div>
+        <div class="field"><label>Importo fattura (€)</label><input type="number" step="0.01" min="0" id="sfImporto" value="${tot || ''}"></div>` : ''}
+      </div></form>
+      <div class="modal-actions"><button class="btn" data-action="chiudi-modal">Annulla</button><button class="btn primary" data-action="fatt-segna-conferma" data-cliente="${c.id}">Conferma</button></div>
+    </div></div>`;
+}
+
 /* -------------------- RENDER: PREVENTIVI E MANDATI (task #121, rifatto su modelli #125) --------------------
    Documento generato da un modello (vedi motore modelli sopra): entità in array e legata al
    cliente via clienteId diretto, esattamente come documenti/comunicazioni/F24/taskTeam —
@@ -8023,7 +8219,7 @@ function renderPreventivi() {
       <option value="Tutti" ${PREV_FILTRO.stato==='Tutti'?'selected':''}>Tutti</option>
       ${STATI_PREVENTIVO.map(s=>`<option ${PREV_FILTRO.stato===s?'selected':''}>${s}</option>`).join('')}
     </select></div>
-    <div class="field" style="margin-left:auto;"><label>&nbsp;</label><button class="btn primary" data-action="nuovo-preventivo">+ Nuovo documento</button></div>
+    <div class="field" style="margin-left:auto;"><label>&nbsp;</label><button class="btn" data-action="nuovo-potenziale-apri">+ Preventivo a nuovo cliente</button> <button class="btn primary" data-action="nuovo-preventivo">+ Nuovo documento</button></div>
   </div>`;
 
   if (STATE.clienti.length === 0) {
@@ -8072,7 +8268,7 @@ function modalPreventivo(id, clienteIdCorrente, soloAml, modelloIdForzato, clien
   const editing = id ? STATE.preventivi.find(x => x.id === id) : null;
   if (id && !editing) { toast('Documento non trovato.'); return; }
   if (!editing && STATE.clienti.length === 0) { toast('Aggiungi prima almeno un cliente.'); return; }
-  const clientiAttivi = STATE.clienti.filter(c => clienteAttivo(c));
+  const clientiAttivi = STATE.clienti.filter(c => c.stato !== 'cessato');
   /* clienteBloccatoForzato è un flag esplicito (non dedotto dalla presenza di clienteIdCorrente):
      un documento aperto dal fascicolo di un cliente specifico resta bloccato su quel cliente anche
      dopo aver cambiato modello; un documento aperto "libero" resta libero anche dopo aver scelto un
@@ -8204,6 +8400,17 @@ function modalDettaglioPreventivo(id) {
     if (origine) blocCollegamento += `<div class="helptext" style="margin-top:8px;">↳ Generato dal preventivo accettato: <span style="cursor:pointer;text-decoration:underline;color:var(--blu-mid);" data-action="apri-preventivo" data-id="${origine.id}">${escapeHtml(origine.oggetto)}</span></div>`;
   }
 
+  let blocAccettazione = '';
+  if (p.categoria === 'Preventivo') {
+    const cl = clienteById(p.clienteId);
+    if (p.stato === 'Accettato') {
+      const docF = p.documentoFirmatoId ? STATE.documenti.find(d => d.id === p.documentoFirmatoId) : null;
+      blocAccettazione = `<div class="helptext" style="margin-top:8px;">✅ Accettato${p.dataAccettazione ? ' il ' + fmtData(p.dataAccettazione) : ''}${docF ? ' · firmato archiviato in Documenti: ' + escapeHtml(docF.nome) : ''}${p.noteAccettazione ? ' · ' + escapeHtml(p.noteAccettazione) : ''}</div>`;
+    } else if (p.stato !== 'Rifiutato') {
+      blocAccettazione = `<div style="margin-top:8px;"><button class="btn small primary" data-action="preventivo-accetta-apri" data-id="${p.id}">✅ Registra accettazione (firmato ricevuto)</button>${cl && cl.stato === 'potenziale' ? ' <span class="helptext">Cliente potenziale: diventerà attivo con onboarding.</span>' : ''}</div>`;
+    }
+  }
+
   const html = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
     <div class="modal" style="max-width:820px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;">
@@ -8215,6 +8422,7 @@ function modalDettaglioPreventivo(id) {
         <div class="field"><label>Importo</label><div style="padding-top:7px;font-size:13px;">${p.importo!=null?fmtEuro(p.importo):'—'}</div></div>
       </div>
       ${blocAttivita}
+      ${blocAccettazione}
       ${blocCollegamento}
       ${p.note ? `<div class="field full" style="margin-top:6px;"><label>Note interne</label><div class="helptext">${escapeHtml(p.note)}</div></div>` : ''}
       <div class="field full" style="margin-top:10px;">
@@ -8234,6 +8442,53 @@ function modalDettaglioPreventivo(id) {
     </div>
   </div>`;
   document.getElementById('modalRoot').innerHTML = html;
+}
+
+function modalAccettazionePreventivo(id) {
+  const p = STATE.preventivi.find(x => x.id === id);
+  if (!p) return;
+  const c = clienteById(p.clienteId);
+  const potenziale = c && c.stato === 'potenziale';
+  const sezioneFile = HTTP_SYNC_ATTIVO
+    ? `<div class="field full" style="grid-column:1/-1;"><label>Preventivo firmato ricevuto (PDF/immagine)</label><input type="file" id="accFile"><div class="helptext" style="margin-top:4px;">Viene archiviato in Documenti del cliente (categoria "Contratto").</div></div>`
+    : `<div class="field full" style="grid-column:1/-1;"><div class="helptext">Server locale non attivo: l'allegato non può essere archiviato, registra solo l'accettazione.</div></div>`;
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
+    <div class="modal" style="max-width:520px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div><h2>Registra accettazione</h2><div class="modal-sub">${escapeHtml(nomeCliente(p.clienteId))} — ${escapeHtml(p.oggetto || '')}</div></div>
+        <button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button>
+      </div>
+      <form id="formAccettazione" onsubmit="return false;"><div class="grid2">
+        <div class="field"><label>Data accettazione</label><input type="date" id="accData" value="${oggiISO()}"></div>
+        <div class="field"><label>Nota (opzionale)</label><input id="accNota" placeholder="es. firmato via mail"></div>
+        ${sezioneFile}
+      </div></form>
+      ${potenziale ? `<div class="helptext" style="margin-top:8px;">Il cliente "${escapeHtml(c.ragioneSociale)}" è potenziale: con l'accettazione diventa <b>attivo</b>, parte l'onboarding e viene creato un task di avvio.</div>` : ''}
+      <div class="modal-actions">
+        <button class="btn" data-action="chiudi-modal">Annulla</button>
+        <button class="btn primary" data-action="preventivo-accetta-conferma" data-id="${p.id}">Conferma accettazione</button>
+      </div>
+    </div></div>`;
+}
+function modalNuovoPotenziale() {
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
+    <div class="modal" style="max-width:480px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div><h2>Nuovo cliente potenziale</h2><div class="modal-sub">Per fare un preventivo a chi non è ancora cliente. Diventa cliente attivo all'accettazione.</div></div>
+        <button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button>
+      </div>
+      <form id="formPotenziale" onsubmit="return false;"><div class="grid2">
+        <div class="field full" style="grid-column:1/-1;"><label>Ragione sociale / nome *</label><input id="potNome"></div>
+        <div class="field"><label>Email</label><input id="potEmail" type="email"></div>
+        <div class="field"><label>Telefono</label><input id="potTel"></div>
+        <div class="field"><label>Partita IVA</label><input id="potPiva"></div>
+        <div class="field"><label>Codice fiscale</label><input id="potCf"></div>
+      </div></form>
+      <div class="modal-actions">
+        <button class="btn" data-action="chiudi-modal">Annulla</button>
+        <button class="btn primary" data-action="nuovo-potenziale-salva">Crea e prepara preventivo</button>
+      </div>
+    </div></div>`;
 }
 
 /* -------------------- RENDER: F24 -------------------- */
@@ -15677,6 +15932,56 @@ function onClickDelegato(e) {
       toast('Mandato generato dal preventivo accettato.');
       break;
     }
+    case 'fatt-nuova': modalAttivitaFatturabile(); break;
+    case 'fatt-salva': {
+      const clienteId = h('fattCliente').value, descrizione = h('fattDescr').value.trim();
+      if (!clienteId || !descrizione) { toast('Compila i campi obbligatori (*).'); return; }
+      aggiungiAttivitaFatturabile({ clienteId, descrizione, data: h('fattData').value || oggiISO(), importo: h('fattImporto').value });
+      chiudiModal(); render(); toast('Attività registrata.');
+      break;
+    }
+    case 'fatt-elimina': if (confermaAzione('Eliminare questa attività?')) { eliminaAttivitaFatturabile(id); render(); } break;
+    case 'fatt-segna-apri': {
+      const cid = el.dataset.cliente;
+      const ids = Array.from(document.querySelectorAll('.fatt-sel:checked')).filter(x => x.dataset.cliente === cid).map(x => x.dataset.id);
+      modalSegnaFatturate(cid, ids);
+      break;
+    }
+    case 'fatt-segna-conferma': {
+      const modalEl = document.querySelector('.modal');
+      const ids = (modalEl && modalEl.dataset.ids ? modalEl.dataset.ids.split(',') : []).filter(Boolean);
+      const periodica = !!(h('sfPeriodica') && h('sfPeriodica').checked);
+      if (!ids.length && !periodica) { toast('Nessuna attività selezionata.'); return; }
+      const r = segnaAttivitaFatturate(ids, { clienteId: el.dataset.cliente, numero: h('sfNumero').value.trim(), data: h('sfData').value || oggiISO(), periodica, creaIncasso: !!(h('sfIncasso') && h('sfIncasso').checked), importoIncasso: h('sfImporto') ? h('sfImporto').value : 0 });
+      chiudiModal(); render(); toast(`${r.segnate} attività segnate come fatturate${r.incasso ? ' · incasso creato' : ''}.`);
+      break;
+    }
+    case 'preventivo-accetta-apri': modalAccettazionePreventivo(id); break;
+    case 'preventivo-accetta-conferma': {
+      const p = STATE.preventivi.find(x => x.id === id);
+      if (!p) return;
+      const data = h('accData').value || oggiISO(), nota = h('accNota').value.trim();
+      const inputFile = h('accFile');
+      const file = (inputFile && inputFile.files && inputFile.files[0]) || null;
+      const fine = (esito) => {
+        const r = accettaPreventivo(id, { data, nota, file: esito });
+        chiudiModal(); render(); modalDettaglioPreventivo(id);
+        toast(r && r.attivato ? 'Preventivo accettato: cliente attivato, onboarding avviato.' : 'Accettazione registrata.');
+      };
+      if (file) {
+        uploadFileReale(file, p.clienteId, nomeCliente(p.clienteId)).then(fine).catch(err => { console.error('Upload firmato non riuscito:', err.message); fine(null); toast('Accettazione registrata, ma il file non è stato caricato: ' + err.message, true); });
+      } else fine(null);
+      break;
+    }
+    case 'nuovo-potenziale-apri': modalNuovoPotenziale(); break;
+    case 'nuovo-potenziale-salva': {
+      const nome = h('potNome').value.trim();
+      if (!nome) { toast('Inserisci il nome o la ragione sociale.'); return; }
+      const c = creaClientePotenziale({ ragioneSociale: nome, codiceFiscale: h('potCf').value.trim(), partitaIva: h('potPiva').value.trim(), contatti: { email: h('potEmail').value.trim(), emailAmministrazione: '', pec: '', telefono: h('potTel').value.trim(), indirizzo: '', cap: '', localita: '', provincia: '' } });
+      chiudiModal(); render();
+      modalPreventivo(null, c.id, false, null, true);
+      break;
+    }
     case 'preventivo-esporta-rtf': esportaPreventivoRtf(id); break;
     case 'preventivo-rigenera': {
       const p = STATE.preventivi.find(x => x.id === id);
@@ -16638,6 +16943,8 @@ function onChangeDelegato(e) {
       if (el.checked) set.delete(el.dataset.id); else set.add(el.dataset.id);
       cfg.periodiciEsclusi = Array.from(set); salvaConfigContabTerzi(cfg); break;
     }
+    case 'fatt-filtro-cliente': FATT_FILTRO.cliente = el.value; render(); break;
+    case 'fatt-filtro-vista': FATT_FILTRO.vista = el.value; render(); break;
     case 'inc-filtro-cliente': INC_FILTRO.cliente = el.value; resetPagina('incassi'); render(); break;
     case 'inc-filtro-stato': INC_FILTRO.stato = el.value; resetPagina('incassi'); render(); break;
     case 'import-cli-mappa': if (IMPORT_CLI) { IMPORT_CLI.mappa[el.dataset.chiave] = Number(el.value); renderWizardImportClienti(); } break;
@@ -16874,7 +17181,11 @@ function onChangeDelegato(e) {
     case 'prev-filtro-cliente': PREV_FILTRO.cliente = el.value; resetPagina('preventivi'); render(); break;
     case 'prev-filtro-categoria': PREV_FILTRO.categoria = el.value; resetPagina('preventivi'); render(); break;
     case 'prev-filtro-stato': PREV_FILTRO.stato = el.value; resetPagina('preventivi'); render(); break;
-    case 'prev-cambia-stato': aggiornaPreventivo(id, { stato: el.value }); render(); modalDettaglioPreventivo(id); break;
+    case 'prev-cambia-stato': {
+      const pp = STATE.preventivi.find(x => x.id === id);
+      if (pp && pp.categoria === 'Preventivo' && el.value === 'Accettato' && pp.stato !== 'Accettato') { modalAccettazionePreventivo(id); break; }
+      aggiornaPreventivo(id, { stato: el.value }); render(); modalDettaglioPreventivo(id); break;
+    }
     case 'docm-cambia-cliente': {
       const modalEl = document.querySelector('.modal');
       const soloAml = modalEl.dataset.contestoAml === '1';
@@ -17199,6 +17510,7 @@ function esportaVistaMCP() {
     })),
     moduli: MODULI.map(m => ({ id: m.id, nome: m.label, attivo: moduloAttivo(m.id) })),
     team: { responsabili: STATE.meta.responsabili || [], consulenti: STATE.meta.consulenti || [], ruoli: STATE.meta.ruoli || {} },
+    attivitaFatturabili: (STATE.attivitaFatturabili || []).map(a => ({ id: a.id, clienteId: a.clienteId, cliente: nomeCliente(a.clienteId), data: a.data, descrizione: a.descrizione, importo: a.importo, stato: a.stato, fatturaNumero: a.fatturaNumero, fatturaData: a.fatturaData })),
     incassi: (STATE.incassi || []).map(i => ({ id: i.id, clienteId: i.clienteId, cliente: nomeCliente(i.clienteId), descrizione: i.descrizione, numero: i.numero, importo: i.importo, incassato: i.importoIncassato || 0, residuo: residuoIncasso(i), dataEmissione: i.dataEmissione, dataScadenza: i.dataScadenza, stato: statoIncasso(i), solleciti: (i.solleciti || []).length })),
     appuntamenti: (STATE.appuntamenti || []).map(a => ({
       id: a.id, clienteId: a.clienteId || null, cliente: a.clienteId ? nomeCliente(a.clienteId) : null, data: a.data, ora: a.ora || '',
@@ -17651,6 +17963,7 @@ window.rigeneraAccessoSecondarioPortale = rigeneraAccessoSecondarioPortale;
 window.eliminaAccessoSecondarioPortale = eliminaAccessoSecondarioPortale;
 window.trovaAccessoPortale = trovaAccessoPortale;
 window.accessoPortalePuoVedere = accessoPortalePuoVedere;
+window.accettaPreventivo = accettaPreventivo; window.creaClientePotenziale = creaClientePotenziale; window.aggiungiAttivitaFatturabile = aggiungiAttivitaFatturabile; window.segnaAttivitaFatturate = segnaAttivitaFatturate; window.prossimaFatturazioneCliente = prossimaFatturazioneCliente; window.attivitaAperteCliente = attivitaAperteCliente;
 window.clienteAttivo = clienteAttivo; window.cessaCliente = cessaCliente; window.riattivaCliente = riattivaCliente; window.configContabTerzi = configContabTerzi;
 /* Area cliente interattiva (task #88): stessa logica di sopra, ma in scrittura. */
 window.aggiungiMessaggioPortaleClienteEsterno = aggiungiMessaggioPortaleClienteEsterno;

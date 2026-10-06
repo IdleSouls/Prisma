@@ -815,6 +815,32 @@ export function creaServer(filePath, baseUrl) {
     async (campi) => testoEsitoScrittura(await inviaComando(url, 'creaIncasso', campi))
   );
   server.registerTool(
+    'attivita_da_fatturare',
+    { title: 'Attività da fatturare', description: 'Pratiche extra prestate ai clienti da includere nella fattura periodica. Filtri facoltativi: cliente, stato (Da fatturare/Fatturata).', inputSchema: { cliente: z.string().optional(), stato: z.enum(['Da fatturare', 'Fatturata']).optional() } },
+    async ({ cliente, stato }) => {
+      const { vista } = caricaVista(filePath);
+      let r = vista.attivitaFatturabili || [];
+      if (cliente) { const c = trovaCliente(vista, cliente); if (!c) return testoJson({ errore: 'Cliente non trovato: ' + cliente }); r = r.filter(x => x.clienteId === c.id); }
+      if (stato) r = r.filter(x => x.stato === stato);
+      return testoJson(r);
+    }
+  );
+  server.registerTool(
+    'crea_attivita_fatturabile',
+    { title: 'Registra attività da fatturare', description: 'Registra una pratica extra prestata a un cliente, da includere nella prossima fattura.', inputSchema: { clienteId: z.string(), descrizione: z.string(), data: z.string().optional().describe('YYYY-MM-DD, default oggi'), importo: z.number().optional() } },
+    async (campi) => testoEsitoScrittura(await inviaComando(url, 'creaAttivitaFatturabile', campi))
+  );
+  server.registerTool(
+    'segna_attivita_fatturate',
+    { title: 'Segna attività come fatturate', description: 'Segna come fatturate le attività indicate, con numero e data fattura; con periodica=true aggiorna anche l\'ultima fatturazione del cliente.', inputSchema: { ids: z.array(z.string()), numero: z.string().optional(), data: z.string().optional().describe('YYYY-MM-DD'), clienteId: z.string().optional(), periodica: z.boolean().optional() } },
+    async (campi) => testoEsitoScrittura(await inviaComando(url, 'segnaAttivitaFatturate', campi))
+  );
+  server.registerTool(
+    'accetta_preventivo',
+    { title: 'Registra accettazione preventivo', description: 'Segna un preventivo come accettato. Se il cliente era potenziale diventa attivo, parte l\'onboarding e viene creato un task di avvio. (Il file firmato va archiviato dall\'interfaccia di Prisma.)', inputSchema: { id: z.string(), data: z.string().optional().describe('YYYY-MM-DD'), nota: z.string().optional() } },
+    async (campi) => testoEsitoScrittura(await inviaComando(url, 'accettaPreventivo', campi))
+  );
+  server.registerTool(
     'registra_incasso',
     { title: 'Registra un pagamento ricevuto', description: 'Registra un pagamento (anche parziale) su un incasso: se copre il residuo l\'incasso risulta Incassato.', inputSchema: { id: z.string(), importo: z.number().positive(), data: z.string().optional().describe('YYYY-MM-DD, default oggi') } },
     async (campi) => testoEsitoScrittura(await inviaComando(url, 'registraIncasso', campi))

@@ -1,17 +1,17 @@
 {
-  "versione": "1.6.0",
-  "note": "Clienti cessati/potenziali, contabilità tenuta da terzi (scadenze e fasi dedicate), fix perdita token portale su modifica cliente, chiave credenziali nel backup",
+  "versione": "1.7.0",
+  "note": "Attività da fatturare (pratiche extra, periodicità di fatturazione), flusso preventivo→accettazione→cliente attivo con onboarding, nuovi tool MCP",
   "richiedeNpmInstall": false,
   "file": [
     {
       "nome": "gestionale.htm",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale.htm",
-      "sha256": "c511c7007450ffae0605cb9fdb7bb5b16f0c6ebed8dca58bbc3efd636be63fc8"
+      "sha256": "6783c9a730bc63be7b3b09c178a64bad7e3b5f044f78941c2df5e7a152e4ef8f"
     },
     {
       "nome": "server.js",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/server.js",
-      "sha256": "3773e93c007fbeb0167cd6ff9e25cce3b5ae717a9dd8c2bfe3969733081fb9a8"
+      "sha256": "f7d7c92d63f4833abe3ebc63c1b9879a9807c217e95f0383670486cb2a7c638c"
     },
     {
       "nome": "portale-cliente.htm",

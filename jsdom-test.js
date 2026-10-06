@@ -37,6 +37,7 @@ function q(sel) { return window.document.querySelector(sel); }
 function qa(sel) { return Array.from(window.document.querySelectorAll(sel)); }
 function fire(el, type) { const ev = new window.Event(type, { bubbles: true }); el.dispatchEvent(ev); }
 function click(el) { assert(el, 'elemento da cliccare non trovato'); fire(el, 'click'); }
+function oggiISOtest() { return new Date().toISOString().slice(0, 10); }
 function setVal(el, val) { assert(el, 'elemento input non trovato'); el.value = val; fire(el, 'input'); fire(el, 'change'); }
 function setChecked(el, val) { assert(el, 'checkbox non trovato'); el.checked = val; fire(el, 'change'); }
 /* Ogni <form> dei modali contiene solo input/select ma i bottoni "Salva"/"Annulla" vivono FUORI
@@ -1767,6 +1768,8 @@ async function main() {
     assert(!q('[data-action="preventivo-genera-mandato"]'), 'il pulsante "Genera mandato" non dovrebbe comparire prima dell\'accettazione');
     setVal(q('[data-action="prev-cambia-stato"]'), 'Accettato');
     await wait(20);
+    click(q('[data-action="preventivo-accetta-conferma"]'));
+    await wait(40);
     assert(q(`[data-action="preventivo-genera-mandato"][data-id="${prevConAttivita.id}"]`), 'il pulsante "Genera mandato collegato" dovrebbe comparire ora che il preventivo è Accettato e richiede un mandato');
     click(q(`[data-action="preventivo-genera-mandato"][data-id="${prevConAttivita.id}"]`));
     await wait(20);
@@ -1876,6 +1879,46 @@ async function main() {
     window.clienteById(id).stato = 'attivo'; delete window.clienteById(id).portaleToken; delete window.clienteById(id).portalePassword;
     window.setView('dashboard'); await wait(20);
     console.log('=== Clienti: modifica senza perdere token portale, contabilità da terzi (scadenze/fasi), cessazione e riattivazione, potenziale OK');
+  }
+
+  // ---------- Task #231/#232: attività da fatturare, preventivo -> accettazione -> cliente ----------
+  {
+    const st = () => window.getSTATE();
+    const cl = st().clienti.find(c => c.stato === 'attivo');
+    cl.fatturazione = 'Trimestrale'; cl.ultimaFatturazione = '2026-01-01';
+    assert(window.prossimaFatturazioneCliente(cl) === '2026-04-01', 'prossima fatturazione trimestrale errata: ' + window.prossimaFatturazioneCliente(cl));
+    const a1 = window.aggiungiAttivitaFatturabile({ clienteId: cl.id, descrizione: 'Pratica extra A', importo: 100 });
+    const a2 = window.aggiungiAttivitaFatturabile({ clienteId: cl.id, descrizione: 'Pratica extra B' });
+    assert(window.attivitaAperteCliente(cl.id).length >= 2, 'attività aperte non registrate');
+    click(q('[data-nav="fatturazione"]')); await wait(20);
+    assert(q('[data-action="fatt-segna-apri"]'), 'la pagina Da fatturare non mostra le schede cliente');
+    click(q(`[data-action="fatt-segna-apri"][data-cliente="${cl.id}"]`)); await wait(20);
+    setVal(q('#sfNumero'), '2026/55');
+    click(q('[data-action="fatt-segna-conferma"]')); await wait(20);
+    const f1 = st().attivitaFatturabili.find(x => x.id === a1.id);
+    assert(f1.stato === 'Fatturata' && f1.fatturaNumero === '2026/55', 'attività non segnata fatturata');
+    assert(window.clienteById(cl.id).ultimaFatturazione === oggiISOtest(), 'ultima fatturazione non aggiornata');
+    assert(window.attivitaAperteCliente(cl.id).every(x => x.id !== a2.id), 'seconda attività non segnata');
+
+    // preventivo -> accettazione -> cliente potenziale diventa attivo con onboarding
+    const pot = window.creaClientePotenziale({ ragioneSociale: 'Nuovo Prospect Srl' });
+    assert(pot.stato === 'potenziale' && !window.clienteAttivo(pot), 'cliente potenziale errato');
+    const modello = st().modelliDocumento.find(m => m.attivo && m.categoria === 'Preventivo') || st().modelliDocumento[0];
+    const prev = window.creaPreventivoDaModello({ clienteId: pot.id, modelloId: modello.id, oggetto: 'Prev test', importo: 1200, dataEmissione: '2026-10-01', validoFino: null, stato: 'Inviato', note: '', valoriCustom: {}, attivitaScelte: [{ id: 'x', nome: 'Contabilità', prezzo: 1200, richiedeMandato: true }] });
+    const pid = prev && prev.id ? prev.id : st().preventivi[st().preventivi.length - 1].id;
+    const r = window.accettaPreventivo(pid, { data: '2026-10-06', nota: 'via mail' });
+    const potDopo = window.clienteById(pot.id);
+    assert(r.attivato && potDopo.stato === 'attivo' && potDopo.dataIngresso === '2026-10-06', 'cliente non attivato all\'accettazione');
+    assert(potDopo.tipoRapporto === 'Contratto continuativo', 'tipo rapporto non dedotto dal preventivo');
+    assert(st().onboarding[pot.id] && st().onboarding[pot.id].mandato === true, 'onboarding non avviato');
+    assert(st().taskTeam.some(t => t.clienteId === pot.id), 'task di avvio non creato');
+    assert(st().preventivi.find(x => x.id === pid).stato === 'Accettato', 'preventivo non accettato');
+    window.setView('preventivi'); await wait(20);
+    assert(q('[data-action="nuovo-potenziale-apri"]'), 'manca il pulsante preventivo a nuovo cliente');
+    st().clienti = st().clienti.filter(c => c.id !== pot.id); delete st().onboarding[pot.id];
+    st().taskTeam = st().taskTeam.filter(t => t.clienteId !== pot.id);
+    window.setView('dashboard'); await wait(20);
+    console.log('=== Da fatturare (extra + periodicità) e preventivo accettato -> cliente attivo + onboarding OK');
   }
 
   // ---------- Task #207: Incassi dello studio + solleciti ----------
