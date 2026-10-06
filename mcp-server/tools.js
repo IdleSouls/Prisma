@@ -815,6 +815,26 @@ export function creaServer(filePath, baseUrl) {
     async (campi) => testoEsitoScrittura(await inviaComando(url, 'creaIncasso', campi))
   );
   server.registerTool(
+    'libri_sociali',
+    { title: 'Libri sociali dei clienti', description: 'Libri sociali per cliente: tipo, chi li detiene (Studio/Cliente/Altro), ultima stampa, ultima pagina, vidimazione. Filtro facoltativo: cliente.', inputSchema: { cliente: z.string().optional() } },
+    async ({ cliente }) => {
+      const { vista } = caricaVista(filePath);
+      let r = vista.libriSociali || [];
+      if (cliente) { const c = trovaCliente(vista, cliente); if (!c) return testoJson({ errore: 'Cliente non trovato: ' + cliente }); r = r.filter(x => x.clienteId === c.id); }
+      return testoJson(r);
+    }
+  );
+  server.registerTool(
+    'crea_libro_sociale',
+    { title: 'Registra un libro sociale', description: 'Registra un libro sociale di un cliente.', inputSchema: { clienteId: z.string(), tipo: z.string().describe('es. Libro soci, Libro verbali assemblee, Libro verbali CdA…'), detenutoDa: z.enum(['Studio', 'Cliente', 'Altro']).optional(), detentoreNote: z.string().optional(), ultimaStampa: z.string().optional().describe('YYYY-MM-DD'), ultimaPagina: z.number().optional(), vidimazione: z.string().optional(), note: z.string().optional() } },
+    async (campi) => testoEsitoScrittura(await inviaComando(url, 'creaLibroSociale', campi))
+  );
+  server.registerTool(
+    'modifica_libro_sociale',
+    { title: 'Modifica libro sociale', description: 'Aggiorna solo i campi indicati (detentore, ultima stampa, ultima pagina, note...).', inputSchema: { id: z.string(), patch: z.record(z.unknown()).describe(DESCR_PATCH_GENERICO) } },
+    async ({ id, patch }) => testoEsitoScrittura(await inviaComando(url, 'modificaLibroSociale', { id, patch }))
+  );
+  server.registerTool(
     'attivita_da_fatturare',
     { title: 'Attività da fatturare', description: 'Pratiche extra prestate ai clienti da includere nella fattura periodica. Filtri facoltativi: cliente, stato (Da fatturare/Fatturata).', inputSchema: { cliente: z.string().optional(), stato: z.enum(['Da fatturare', 'Fatturata']).optional() } },
     async ({ cliente, stato }) => {

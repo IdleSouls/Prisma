@@ -1915,6 +1915,34 @@ async function main() {
     assert(st().preventivi.find(x => x.id === pid).stato === 'Accettato', 'preventivo non accettato');
     window.setView('preventivi'); await wait(20);
     assert(q('[data-action="nuovo-potenziale-apri"]'), 'manca il pulsante preventivo a nuovo cliente');
+    // Libri sociali
+    {
+      const l = window.aggiungiLibroSociale({ clienteId: cl.id, tipo: 'Libro soci', detenutoDa: 'Studio', ultimaStampa: '2025-01-10', ultimaPagina: '12' });
+      assert(l.ultimaPagina === 12, 'ultima pagina non numerica');
+      click(q('[data-nav="libri"]')); await wait(20);
+      assert(q('[data-action="libro-modifica"]') && q('[data-action="libro-nuovo"]'), 'la pagina Libri sociali non mostra i libri');
+      window.aggiornaLibroSociale(l.id, { detenutoDa: 'Cliente' });
+      assert(st().libriSociali.find(x => x.id === l.id).detenutoDa === 'Cliente', 'modifica libro non salvata');
+      st().libriSociali = st().libriSociali.filter(x => x.id !== l.id);
+    }
+    // SAL: fase pronta/in attesa e passaggio di consegne
+    {
+      const ann = window.derivati().annuali.find(a => a.sotto.length >= 2 && !a.completato && a.sotto.every(x => !x.completato));
+      assert(ann, 'serve un adempimento annuale con almeno 2 fasi');
+      const [rA, rB] = [st().meta.responsabili[0], st().meta.responsabili[1]];
+      const backup = JSON.parse(JSON.stringify(st().annualiOverrides[ann.id] || null));
+      const nTask = st().taskTeam.length;
+      window.aggiornaSottoAdempimento(ann.id, ann.sotto[0].nome, { responsabile: rA });
+      window.aggiornaSottoAdempimento(ann.id, ann.sotto[1].nome, { responsabile: rB });
+      let a2 = window.derivati().annuali.find(a => a.id === ann.id);
+      assert(a2.sotto[0].fase === 'pronta' && a2.sotto[1].fase === 'attesa' && a2.faseCorrente.responsabile === rA, 'fasi pronta/attesa errate');
+      window.aggiornaSottoAdempimento(ann.id, ann.sotto[0].nome, { completato: true });
+      a2 = window.derivati().annuali.find(a => a.id === ann.id);
+      assert(a2.sotto[1].fase === 'pronta' && a2.faseCorrente.responsabile === rB, 'la fase successiva deve diventare pronta');
+      assert(st().taskTeam.length === nTask + 1 && st().taskTeam[st().taskTeam.length - 1].assegnatoA === rB, 'task di passaggio non creato per il responsabile successivo');
+      st().taskTeam.pop();
+      if (backup) st().annualiOverrides[ann.id] = backup; else delete st().annualiOverrides[ann.id];
+    }
     st().clienti = st().clienti.filter(c => c.id !== pot.id); delete st().onboarding[pot.id];
     st().taskTeam = st().taskTeam.filter(t => t.clienteId !== pot.id);
     window.setView('dashboard'); await wait(20);

@@ -1353,6 +1353,11 @@ function generaAdempimentiAnnuali(clienti, anno, vecchie) {
         data: (sottoSalvati[nomeSotto] && sottoSalvati[nomeSotto].data) || null,
         responsabile: (sottoSalvati[nomeSotto] && sottoSalvati[nomeSotto].responsabile) || cliente.responsabileStudio || '',
       }));
+      /* SAL a fasi sequenziali: una fase è "pronta" quando tutte le precedenti sono completate, "in attesa"
+         finché ce n'è una precedente aperta. Serve a chi lavora a valle (es. predisposizione fascicolo di
+         bilancio) per sapere quando può partire, e a chi sta a monte per sapere chi aspetta. */
+      let primaAperta = -1;
+      sotto.forEach((x, i) => { if (!x.completato && primaAperta < 0) primaAperta = i; x.fase = x.completato ? 'completata' : (i === primaAperta ? 'pronta' : 'attesa'); });
       const nCompletati = sotto.filter(s => s.completato).length;
       const resolverDinamico = SCADENZA_DINAMICA_ANNUALE[def.chiave];
       const scadenzaDefault = def.scadenzaDefault ? dataScadenza(anno, def.scadenzaDefault.m, def.scadenzaDefault.g)
@@ -1362,6 +1367,7 @@ function generaAdempimentiAnnuali(clienti, anno, vecchie) {
         responsabile: (salvato && salvato.responsabile) || cliente.responsabileStudio || '',
         scadenza: (salvato && salvato.scadenza) || scadenzaDefault,
         sotto,
+        faseCorrente: primaAperta >= 0 ? { idx: primaAperta, nome: sotto[primaAperta].nome, responsabile: sotto[primaAperta].responsabile } : null,
         percentuale: sotto.length ? Math.round((nCompletati / sotto.length) * 100) : 0,
         completato: sotto.length > 0 && nCompletati === sotto.length,
       });
@@ -1759,6 +1765,8 @@ function statoIniziale() {
     incassi: [],
     /* Attività extra da fatturare (pratiche prestate oltre il canone): le inserisce chi le svolge, la segreteria le vede e le include nella fattura periodica del cliente. */
     attivitaFatturabili: [],
+    /* Libri sociali dei clienti: quali libri, chi li detiene, ultima stampa e ultima pagina. */
+    libriSociali: [],
     /* Procedure interne dello studio (task #146): raccolta di SOP/indicazioni operative per lo staff
        ("come si apre una nuova attività X", quali documenti servono ecc.), strutturate come i Modelli
        documenti (categoria/nome/contenuto) più una checklist di documenti necessari. Usate anche dal
@@ -2640,6 +2648,8 @@ const AZIONI_MCP = {
     salvaStato();
     return { modulo: p.modulo, attivo: !!p.attivo };
   },
+  creaLibroSociale: (p) => { if (!clienteById(p.clienteId)) throw new Error('Cliente non trovato: ' + p.clienteId); const l = aggiungiLibroSociale(p); return { creato: true, id: l.id }; },
+  modificaLibroSociale: (p) => { if (!(STATE.libriSociali || []).find(x => x.id === p.id)) throw new Error('Libro non trovato: ' + p.id); aggiornaLibroSociale(p.id, p.patch || {}); return { aggiornato: true }; },
   creaAttivitaFatturabile: (p) => { if (!clienteById(p.clienteId)) throw new Error('Cliente non trovato: ' + p.clienteId); if (!p.descrizione) throw new Error('descrizione obbligatoria.'); const a = aggiungiAttivitaFatturabile(p); return { creato: true, id: a.id }; },
   segnaAttivitaFatturate: (p) => { const r = segnaAttivitaFatturate(p.ids || [], p); return { segnate: r.segnate }; },
   accettaPreventivo: (p) => { if (!STATE.preventivi.find(x => x.id === p.id)) throw new Error('Preventivo non trovato: ' + p.id); const r = accettaPreventivo(p.id, p); return { accettato: true, clienteAttivato: !!(r && r.attivato) }; },
@@ -3336,6 +3346,23 @@ function aggiornaSottoAdempimento(annualeId, nomeSotto, patch) {
   if (patch.completato && !sotto[nomeSotto].data) sotto[nomeSotto].data = oggiISO();
   STATE.annualiOverrides[annualeId] = Object.assign({}, cur, { sotto });
   salvaStato();
+  if (patch.completato) notificaPassaggioFase(annualeId, nomeSotto);
+}
+/* Passaggio di consegne: completata una fase, se la fase successiva ha un responsabile DIVERSO gli
+   arriva un task "puoi iniziare" (con la notifica del Task team). Nessun task se resta la stessa persona. */
+function notificaPassaggioFase(annualeId, nomeSotto) {
+  const a = derivati().annuali.find(x => x.id === annualeId);
+  if (!a) return;
+  const i = a.sotto.findIndex(x => x.nome === nomeSotto);
+  const prossima = a.sotto[i + 1];
+  if (!prossima || prossima.completato || !prossima.responsabile || prossima.responsabile === a.sotto[i].responsabile) return;
+  if (a.sotto.slice(0, i + 1).some(x => !x.completato)) return;
+  aggiungiTaskTeam({
+    titolo: `Puoi iniziare: ${prossima.nome} — ${a.tipoNome} ${nomeCliente(a.clienteId)}`, assegnatoA: prossima.responsabile,
+    clienteId: a.clienteId, scadenza: a.scadenza || null, stato: STATI_TASK_TEAM[0],
+    noteStorico: [{ id: uid('nota'), testo: `${a.sotto[i].responsabile || 'Un collega'} ha completato "${nomeSotto}": la fase successiva è tua.`, autore: operatoreCorrente() || null, data: oggiISO() }],
+    creatoIl: oggiISO(),
+  });
 }
 function aggiornaAnnualeMeta(annualeId, patch) {
   const cur = STATE.annualiOverrides[annualeId] || {};
@@ -4179,6 +4206,7 @@ function eliminaCliente(id) {
   STATE.preventivi = STATE.preventivi.filter(p => p.clienteId !== id);
   STATE.incassi = (STATE.incassi || []).filter(i => i.clienteId !== id);
   STATE.attivitaFatturabili = (STATE.attivitaFatturabili || []).filter(a => a.clienteId !== id);
+  STATE.libriSociali = (STATE.libriSociali || []).filter(l => l.clienteId !== id);
 
   // Entità tenute in oggetti indicizzati per clienteId: basta togliere la chiave.
   delete STATE.onboarding[id];
@@ -4342,6 +4370,7 @@ const NAV = [
     { id: 'preventivi', label: 'Preventivi e mandati', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5h8l5 5v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-18a1 1 0 0 1 1-1z"/><path d="M14 2.5v5h5"/><path d="M8 12.5l2.5 2.5 5.5-6"/></svg>' },
     { id: 'incassi', label: 'Incassi', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9v.01M18 15v.01"/></svg>' },
     { id: 'fatturazione', label: 'Da fatturare', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h5"/></svg>' },
+    { id: 'libri', label: 'Libri sociali', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h12a3 3 0 0 1 3 3v13H7a3 3 0 0 1-3-3z"/><path d="M4 17a3 3 0 0 1 3-3h12"/></svg>' },
     { id: 'portale', label: 'Portale cliente', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2"/><line x1="3" y1="8.5" x2="21" y2="8.5"/><circle cx="6" cy="6.5" r=".6" fill="currentColor" stroke="none"/><circle cx="8.2" cy="6.5" r=".6" fill="currentColor" stroke="none"/></svg>' },
   ]},
   { group: 'Analisi cliente', items: [
@@ -4379,6 +4408,7 @@ const PAGE_TITLES = {
   contabilita: ['Contabilità', 'Import periodico da Excel/CSV: nessuna doppia registrazione, nessuna data indovinata'],
   modelli: ['Modelli documenti', 'Testi precompilati per preventivi, mandati e documenti antiriciclaggio: i segnaposto {{così}} si trasformano in campi da compilare'],
   incassi: ['Incassi', 'Compensi da incassare, scadenze di pagamento e solleciti ai clienti'],
+  libri: ['Libri sociali', 'Quali libri ha ogni società, chi li detiene e quando sono stati stampati l\'ultima volta'],
   fatturazione: ['Da fatturare', 'Attività extra prestate ai clienti, da includere nella prossima fattura periodica'],
   procedure: ['Procedure interne', 'Indicazioni operative per lo staff, passo per passo, con la checklist dei documenti necessari'],
   strumenti: ['Strumenti', 'Convertitore file Word ↔ PDF ↔ PDF/A (serve LibreOffice installato sul PC del server locale)'],
@@ -4423,6 +4453,7 @@ const MODULI = [
   { id: 'procedure', label: 'Procedure interne', desc: 'Istruzioni operative passo per passo per lo staff.', tabs: ['procedure'] },
   { id: 'antiriciclaggio', label: 'Antiriciclaggio', desc: 'Adeguata verifica, profilo di rischio e storico verifiche.', tabs: ['antiriciclaggio'] },
   { id: 'preventivi', label: 'Preventivi e mandati', desc: 'Preventivi, mandati e lettere di incarico da modelli.', tabs: ['preventivi'] },
+  { id: 'libri', label: 'Libri sociali', desc: 'Libri sociali dei clienti: detentore, ultima stampa e ultima pagina.', tabs: ['libri'] },
   { id: 'fatturazione', label: 'Attività da fatturare', desc: 'Pratiche extra da fatturare e periodicità di fatturazione di ogni cliente.', tabs: ['fatturazione'] },
   { id: 'incassi', label: 'Incassi e solleciti', desc: 'Compensi da incassare, scadenze di pagamento e solleciti ai clienti.', tabs: ['incassi'] },
   { id: 'onboarding', label: 'Onboarding clienti', desc: 'Checklist di attivazione per un nuovo cliente.', tabs: ['onboarding'] },
@@ -4566,6 +4597,7 @@ function render() {
     case 'procedure': content.innerHTML = renderProcedureInterne(); break;
     case 'incassi': content.innerHTML = renderIncassi(); break;
     case 'fatturazione': content.innerHTML = renderFatturazione(); break;
+    case 'libri': content.innerHTML = renderLibriSociali(); break;
     case 'strumenti': content.innerHTML = renderStrumenti(); break;
     case 'credenziali': content.innerHTML = renderCredenziali(); break;
     case 'portale': content.innerHTML = renderPortaleCliente(); break;
@@ -4785,11 +4817,24 @@ function renderOggi() {
     ${taskMiei.length > 5 ? '<div style="margin-top:10px;"><button class="btn small" data-action="nav" data-nav="taskteam">Vedi tutti →</button></div>' : ''}
   </div>` : '';
 
+  const annualiAperti = derivati().annuali.filter(a => !a.completato && a.faseCorrente);
+  const fasiPronte = me ? annualiAperti.filter(a => a.faseCorrente.responsabile === me) : [];
+  const fasiAttesa = me ? annualiAperti.filter(a => a.faseCorrente.responsabile && a.faseCorrente.responsabile !== me && a.sotto.some(x => !x.completato && x.responsabile === me)) : [];
+  const rigaFase = (a, attesa) => `<div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--border);cursor:pointer;" data-action="dash-apri-annuale" data-id="${a.id}">
+      <span class="badge ${attesa ? 'info' : 'stato-da-fare'}">${attesa ? '⏳ Attesa' : '▶ Pronta'}</span>
+      <span style="flex:1;font-size:13px;"><strong>${escapeHtml(nomeCliente(a.clienteId))}</strong> — ${escapeHtml(a.tipoNome)}: ${escapeHtml(a.faseCorrente.nome)}${attesa ? ` <span class="helptext">(${escapeHtml(a.faseCorrente.responsabile)})</span>` : ''}</span>
+      ${a.scadenza ? `<span class="helptext">${fmtDataBreve(a.scadenza)}</span>` : ''}
+    </div>`;
+  const sezFasi = (operatorePuoVedere('annuali') && (fasiPronte.length || fasiAttesa.length)) ? `<div class="card">
+    <div class="section-title">Adempimenti: fasi per te <span class="cnt">${fasiPronte.length}</span></div>
+    ${fasiPronte.slice(0, 8).map(a => rigaFase(a, false)).join('') || '<div class="helptext">Nessuna fase pronta per te al momento.</div>'}
+    ${fasiAttesa.length ? `<div class="helptext" style="margin:10px 0 2px;">In attesa di altri (${fasiAttesa.length})</div>` + fasiAttesa.slice(0, 6).map(a => rigaFase(a, true)).join('') : ''}
+  </div>` : '';
   const chatRiga = chatNL ? `<div class="card" style="cursor:pointer;" data-action="nav" data-nav="chat"><strong>💬 ${chatNL}</strong> ${chatNL === 1 ? 'messaggio non letto' : 'messaggi non letti'} in chat <span class="badge" style="float:right;">Apri →</span></div>` : '';
 
   const altro = operatorePuoVedere('dashboard') ? `<div style="margin-top:6px;"><button class="btn small" data-action="nav" data-nav="dashboard">Vai alla Dashboard dello studio →</button></div>` : '';
 
-  return intest + renderChecklistSetup() + tiles + sezUrgenti + sezTask + chatRiga + altro;
+  return intest + renderChecklistSetup() + tiles + sezUrgenti + sezFasi + sezTask + chatRiga + altro;
 }
 
 /* -------------------- PAGINAZIONE LISTE --------------------
@@ -6288,7 +6333,7 @@ function renderAnnuali() {
     const sottoHtml = a.sotto.map((s, idx) => `
       <div class="subtask-row ${s.completato?'done':''}">
         <input type="checkbox" data-action="ann-toggle-sotto" data-id="${a.id}" data-idx="${idx}" ${s.completato?'checked':''}>
-        <div class="name" style="flex:1;">${escapeHtml(s.nome)}</div>
+        <div class="name" style="flex:1;">${escapeHtml(s.nome)}${s.fase === 'pronta' ? ' <span class="badge stato-da-fare">▶ Pronta</span>' : (s.fase === 'attesa' ? ' <span class="badge info">⏳ In attesa</span>' : '')}</div>
         <input type="date" value="${s.data||''}" data-action="ann-data-sotto" data-id="${a.id}" data-idx="${idx}" style="border:1px solid var(--border);border-radius:5px;padding:3px 5px;font-size:11.5px;">
         <select data-action="ann-resp-sotto" data-id="${a.id}" data-idx="${idx}" style="border:1px solid var(--border);border-radius:5px;padding:3px 5px;font-size:11.5px;">
           <option value="">Resp.</option>
@@ -6299,7 +6344,7 @@ function renderAnnuali() {
       <div style="display:flex;align-items:center;gap:12px;cursor:pointer;" data-action="ann-toggle-expand" data-id="${a.id}">
         <div style="flex:1;">
           <div style="font-weight:700;font-size:13.5px;">${escapeHtml(a.tipoNome)} <span style="font-weight:400;color:var(--text-mut);">— ${escapeHtml(nomeCliente(a.clienteId))}</span></div>
-          <div class="helptext">${escapeHtml(a.responsabile||'—')} ${a.scadenza?(' · scad. '+fmtData(a.scadenza)):''}</div>
+          <div class="helptext">${escapeHtml(a.responsabile||'—')} ${a.scadenza?(' · scad. '+fmtData(a.scadenza)):''}${a.faseCorrente ? ' · fase attuale: ' + escapeHtml(a.faseCorrente.nome) + (a.faseCorrente.responsabile ? ' (' + escapeHtml(a.faseCorrente.responsabile) + ')' : '') : ''}</div>
         </div>
         <div style="width:140px;"><div class="progress"><div style="width:${a.percentuale}%"></div></div></div>
         <div style="width:40px;text-align:right;font-weight:700;">${a.percentuale}%</div>
@@ -8033,6 +8078,86 @@ function modalSegnaFatturate(clienteId, ids) {
         <div class="field"><label>Importo fattura (€)</label><input type="number" step="0.01" min="0" id="sfImporto" value="${tot || ''}"></div>` : ''}
       </div></form>
       <div class="modal-actions"><button class="btn" data-action="chiudi-modal">Annulla</button><button class="btn primary" data-action="fatt-segna-conferma" data-cliente="${c.id}">Conferma</button></div>
+    </div></div>`;
+}
+
+/* -------------------- LIBRI SOCIALI --------------------
+   Quali libri ha ogni cliente, chi li detiene (studio / cliente / altro), ultima stampa e ultima pagina
+   utilizzata, vidimazione. Solo promemoria organizzativo: la tenuta resta a norma di legge (art. 2421 ss. c.c.). */
+const TIPI_LIBRO_SOCIALE = ['Libro soci', 'Libro verbali assemblee', 'Libro decisioni dei soci', 'Libro verbali CdA', 'Libro decisioni degli amministratori', 'Libro verbali collegio sindacale', 'Libro obbligazioni', 'Libro adunanze (altro)'];
+const DETENTORI_LIBRO = ['Studio', 'Cliente', 'Altro'];
+function aggiungiLibroSociale(d) {
+  const l = Object.assign({ id: uid('lib'), clienteId: null, tipo: TIPI_LIBRO_SOCIALE[0], detenutoDa: 'Studio', detentoreNote: '', ultimaStampa: null, ultimaPagina: null, vidimazione: null, note: '', creatoIl: oggiISO() }, d);
+  l.ultimaPagina = (l.ultimaPagina === '' || l.ultimaPagina == null) ? null : Number(l.ultimaPagina);
+  if (!STATE.libriSociali) STATE.libriSociali = [];
+  STATE.libriSociali.push(l);
+  salvaStato();
+  return l;
+}
+function aggiornaLibroSociale(id, patch) {
+  const l = (STATE.libriSociali || []).find(x => x.id === id);
+  if (!l) return null;
+  Object.assign(l, patch);
+  if ('ultimaPagina' in patch) l.ultimaPagina = (l.ultimaPagina === '' || l.ultimaPagina == null) ? null : Number(l.ultimaPagina);
+  salvaStato();
+  return l;
+}
+function eliminaLibroSociale(id) { STATE.libriSociali = (STATE.libriSociali || []).filter(x => x.id !== id); salvaStato(); }
+let LIBRI_FILTRO = { cliente: 'Tutti', tipo: 'Tutti', detentore: 'Tutti' };
+function renderLibriSociali() {
+  const tutti = STATE.libriSociali || [];
+  const oggi = oggiISO();
+  const vecchi = tutti.filter(l => l.ultimaStampa && giorniTra(l.ultimaStampa, oggi) > 365).length;
+  const mancanti = STATE.clienti.filter(c => clienteAttivo(c) && /srl|spa|sapa|cooperativa|societ/i.test(String(c.tipo || '')) && !tutti.some(l => l.clienteId === c.id)).length;
+  const kpi = `<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);">
+    <div class="kpi completati"><div class="n">${tutti.length}</div><div class="l">LIBRI REGISTRATI</div></div>
+    <div class="kpi futuri"><div class="n">${tutti.filter(l => l.detenutoDa === 'Studio').length}</div><div class="l">DETENUTI DALLO STUDIO</div></div>
+    <div class="kpi inscadenza"><div class="n">${vecchi}</div><div class="l">ULTIMA STAMPA > 1 ANNO</div></div>
+    <div class="kpi scaduti"><div class="n">${mancanti}</div><div class="l">SOCIETÀ SENZA LIBRI</div></div>
+  </div>`;
+  let lista = tutti.slice();
+  if (LIBRI_FILTRO.cliente !== 'Tutti') lista = lista.filter(l => l.clienteId === LIBRI_FILTRO.cliente);
+  if (LIBRI_FILTRO.tipo !== 'Tutti') lista = lista.filter(l => l.tipo === LIBRI_FILTRO.tipo);
+  if (LIBRI_FILTRO.detentore !== 'Tutti') lista = lista.filter(l => l.detenutoDa === LIBRI_FILTRO.detentore);
+  lista.sort((a, b) => nomeCliente(a.clienteId).localeCompare(nomeCliente(b.clienteId)) || a.tipo.localeCompare(b.tipo));
+  const toolbar = `<div class="toolbar">
+    <div class="field"><label>Cliente</label><select data-action="libri-filtro-cliente"><option value="Tutti">Tutti</option>${STATE.clienti.slice().sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale)).map(c => `<option value="${c.id}" ${LIBRI_FILTRO.cliente === c.id ? 'selected' : ''}>${escapeHtml(c.ragioneSociale)}</option>`).join('')}</select></div>
+    <div class="field"><label>Libro</label><select data-action="libri-filtro-tipo"><option value="Tutti">Tutti</option>${TIPI_LIBRO_SOCIALE.map(t => `<option ${LIBRI_FILTRO.tipo === t ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+    <div class="field"><label>Detenuto da</label><select data-action="libri-filtro-detentore"><option value="Tutti">Tutti</option>${DETENTORI_LIBRO.map(t => `<option ${LIBRI_FILTRO.detentore === t ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+    <div class="field" style="margin-left:auto;"><label>&nbsp;</label><button class="btn primary" data-action="libro-nuovo">+ Aggiungi libro</button></div>
+  </div>`;
+  if (STATE.clienti.length === 0) return `<div class="card"><div class="empty"><div class="big">Aggiungi prima un cliente</div></div></div>`;
+  if (!tutti.length) return kpi + toolbar + `<div class="card"><div class="empty"><div class="big">Nessun libro registrato</div>Per ogni società indica quali libri sociali ha, chi li conserva e quando sono stati stampati l'ultima volta.</div></div>`;
+  if (!lista.length) return kpi + toolbar + `<div class="card"><div class="empty">Nessun libro corrisponde ai filtri.</div></div>`;
+  const righe = lista.map(l => `<tr>
+    <td>${escapeHtml(nomeCliente(l.clienteId))}</td><td>${escapeHtml(l.tipo)}</td>
+    <td><span class="badge ${l.detenutoDa === 'Studio' ? 'stato-da-fare' : 'info'}">${escapeHtml(l.detenutoDa)}</span>${l.detentoreNote ? ` <span class="helptext">${escapeHtml(l.detentoreNote)}</span>` : ''}</td>
+    <td style="white-space:nowrap;">${l.ultimaStampa ? fmtData(l.ultimaStampa) : '—'}</td><td>${l.ultimaPagina != null ? l.ultimaPagina : '—'}</td>
+    <td style="white-space:nowrap;">${l.vidimazione ? fmtData(l.vidimazione) : '—'}</td>
+    <td style="white-space:nowrap;"><button class="btn small" data-action="libro-modifica" data-id="${l.id}">Modifica</button> <button class="btn small danger" data-action="libro-elimina" data-id="${l.id}">Elimina</button></td>
+  </tr>`).join('');
+  return kpi + toolbar + `<div class="card"><table class="tbl"><thead><tr><th>Cliente</th><th>Libro</th><th>Detenuto da</th><th>Ultima stampa</th><th>Ultima pagina</th><th>Vidimazione</th><th></th></tr></thead><tbody>${righe}</tbody></table></div>`;
+}
+function modalLibroSociale(id) {
+  const ed = id ? (STATE.libriSociali || []).find(x => x.id === id) : null;
+  const v = ed || { clienteId: LIBRI_FILTRO.cliente !== 'Tutti' ? LIBRI_FILTRO.cliente : (STATE.clienti[0] || {}).id, tipo: TIPI_LIBRO_SOCIALE[0], detenutoDa: 'Studio', detentoreNote: '', ultimaStampa: '', ultimaPagina: '', vidimazione: '', note: '' };
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
+    <div class="modal" style="max-width:540px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div><h2>${ed ? 'Modifica libro' : 'Nuovo libro sociale'}</h2></div>
+        <button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button>
+      </div>
+      <form id="formLibro" onsubmit="return false;"><div class="grid2">
+        <div class="field full" style="grid-column:1/-1;"><label>Cliente *</label><select id="libCliente">${STATE.clienti.slice().sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale)).map(c => `<option value="${c.id}" ${v.clienteId === c.id ? 'selected' : ''}>${escapeHtml(c.ragioneSociale)}</option>`).join('')}</select></div>
+        <div class="field"><label>Libro</label><select id="libTipo">${TIPI_LIBRO_SOCIALE.map(t => `<option ${v.tipo === t ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+        <div class="field"><label>Detenuto da</label><select id="libDetenuto">${DETENTORI_LIBRO.map(t => `<option ${v.detenutoDa === t ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+        <div class="field full" style="grid-column:1/-1;"><label>Dove si trova / note sul detentore</label><input id="libDetNote" value="${escapeHtml(v.detentoreNote || '')}" placeholder="es. armadio sala riunioni, sede legale…"></div>
+        <div class="field"><label>Ultima stampa</label><input type="date" id="libStampa" value="${escapeHtml(v.ultimaStampa || '')}"></div>
+        <div class="field"><label>Ultima pagina stampata</label><input type="number" min="0" id="libPagina" value="${v.ultimaPagina != null ? v.ultimaPagina : ''}"></div>
+        <div class="field"><label>Data vidimazione</label><input type="date" id="libVidim" value="${escapeHtml(v.vidimazione || '')}"></div>
+        <div class="field full" style="grid-column:1/-1;"><label>Note</label><input id="libNote" value="${escapeHtml(v.note || '')}"></div>
+      </div></form>
+      <div class="modal-actions"><button class="btn" data-action="chiudi-modal">Annulla</button><button class="btn primary" data-action="libro-salva" data-id="${ed ? ed.id : ''}">Salva</button></div>
     </div></div>`;
 }
 
@@ -15932,6 +16057,16 @@ function onClickDelegato(e) {
       toast('Mandato generato dal preventivo accettato.');
       break;
     }
+    case 'libro-nuovo': modalLibroSociale(null); break;
+    case 'libro-modifica': modalLibroSociale(id); break;
+    case 'libro-elimina': if (confermaAzione('Eliminare questo libro dal registro?')) { eliminaLibroSociale(id); render(); } break;
+    case 'libro-salva': {
+      const dati = { clienteId: h('libCliente').value, tipo: h('libTipo').value, detenutoDa: h('libDetenuto').value, detentoreNote: h('libDetNote').value.trim(), ultimaStampa: h('libStampa').value || null, ultimaPagina: h('libPagina').value, vidimazione: h('libVidim').value || null, note: h('libNote').value.trim() };
+      if (!dati.clienteId) { toast('Scegli il cliente.'); return; }
+      if (id) aggiornaLibroSociale(id, dati); else aggiungiLibroSociale(dati);
+      chiudiModal(); render(); toast('Libro salvato.');
+      break;
+    }
     case 'fatt-nuova': modalAttivitaFatturabile(); break;
     case 'fatt-salva': {
       const clienteId = h('fattCliente').value, descrizione = h('fattDescr').value.trim();
@@ -16943,6 +17078,9 @@ function onChangeDelegato(e) {
       if (el.checked) set.delete(el.dataset.id); else set.add(el.dataset.id);
       cfg.periodiciEsclusi = Array.from(set); salvaConfigContabTerzi(cfg); break;
     }
+    case 'libri-filtro-cliente': LIBRI_FILTRO.cliente = el.value; render(); break;
+    case 'libri-filtro-tipo': LIBRI_FILTRO.tipo = el.value; render(); break;
+    case 'libri-filtro-detentore': LIBRI_FILTRO.detentore = el.value; render(); break;
     case 'fatt-filtro-cliente': FATT_FILTRO.cliente = el.value; render(); break;
     case 'fatt-filtro-vista': FATT_FILTRO.vista = el.value; render(); break;
     case 'inc-filtro-cliente': INC_FILTRO.cliente = el.value; resetPagina('incassi'); render(); break;
@@ -17510,6 +17648,7 @@ function esportaVistaMCP() {
     })),
     moduli: MODULI.map(m => ({ id: m.id, nome: m.label, attivo: moduloAttivo(m.id) })),
     team: { responsabili: STATE.meta.responsabili || [], consulenti: STATE.meta.consulenti || [], ruoli: STATE.meta.ruoli || {} },
+    libriSociali: (STATE.libriSociali || []).map(l => ({ id: l.id, clienteId: l.clienteId, cliente: nomeCliente(l.clienteId), tipo: l.tipo, detenutoDa: l.detenutoDa, detentoreNote: l.detentoreNote, ultimaStampa: l.ultimaStampa, ultimaPagina: l.ultimaPagina, vidimazione: l.vidimazione, note: l.note })),
     attivitaFatturabili: (STATE.attivitaFatturabili || []).map(a => ({ id: a.id, clienteId: a.clienteId, cliente: nomeCliente(a.clienteId), data: a.data, descrizione: a.descrizione, importo: a.importo, stato: a.stato, fatturaNumero: a.fatturaNumero, fatturaData: a.fatturaData })),
     incassi: (STATE.incassi || []).map(i => ({ id: i.id, clienteId: i.clienteId, cliente: nomeCliente(i.clienteId), descrizione: i.descrizione, numero: i.numero, importo: i.importo, incassato: i.importoIncassato || 0, residuo: residuoIncasso(i), dataEmissione: i.dataEmissione, dataScadenza: i.dataScadenza, stato: statoIncasso(i), solleciti: (i.solleciti || []).length })),
     appuntamenti: (STATE.appuntamenti || []).map(a => ({
@@ -17963,6 +18102,7 @@ window.rigeneraAccessoSecondarioPortale = rigeneraAccessoSecondarioPortale;
 window.eliminaAccessoSecondarioPortale = eliminaAccessoSecondarioPortale;
 window.trovaAccessoPortale = trovaAccessoPortale;
 window.accessoPortalePuoVedere = accessoPortalePuoVedere;
+window.aggiungiLibroSociale = aggiungiLibroSociale; window.aggiornaLibroSociale = aggiornaLibroSociale;
 window.accettaPreventivo = accettaPreventivo; window.creaClientePotenziale = creaClientePotenziale; window.aggiungiAttivitaFatturabile = aggiungiAttivitaFatturabile; window.segnaAttivitaFatturate = segnaAttivitaFatturate; window.prossimaFatturazioneCliente = prossimaFatturazioneCliente; window.attivitaAperteCliente = attivitaAperteCliente;
 window.clienteAttivo = clienteAttivo; window.cessaCliente = cessaCliente; window.riattivaCliente = riattivaCliente; window.configContabTerzi = configContabTerzi;
 /* Area cliente interattiva (task #88): stessa logica di sopra, ma in scrittura. */

@@ -1,6 +1,6 @@
 {
   "name": "prisma-gestionale-studio",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "private": true,
   "description": "Server locale del gestionale Prisma (Studio Quadra). jsdom serve solo per il portale cliente esterno - vedi i commenti in cima a server.js.",
   "dependencies": {
