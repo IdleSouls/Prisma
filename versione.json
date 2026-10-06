@@ -1,17 +1,17 @@
 {
-  "versione": "1.14.0",
-  "note": "Promemoria rinnovo mandati e adeguamento compensi, scheda privacy e misure di sicurezza",
+  "versione": "1.14.1",
+  "note": "Fix: voce Deontologia duplicata nel menu, modulo registrato correttamente",
   "richiedeNpmInstall": false,
   "file": [
     {
       "nome": "gestionale.htm",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale.htm",
-      "sha256": "2e7e958dce7cf84cebac5a5b173bb5ab327ed5ef239f990a44946934bc252c52"
+      "sha256": "9cb7cefb0a70fb66c177a9c0221cd66e6b714873a9712134e6c401f7c71c8d3e"
     },
     {
       "nome": "server.js",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/server.js",
-      "sha256": "10e0b7eaed945a065b2daf8cea775b0782304a894fcb6a173540c79ab2af1ad6"
+      "sha256": "b1eb963ccb7da4aa8d93d79ae0d657238f28a241a86ee9c4a5b516a9fc2ab6c4"
     },
     {
       "nome": "portale-cliente.htm",
