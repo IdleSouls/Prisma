@@ -1,0 +1,20 @@
+{
+  "appId": "it.studioquadra.prisma",
+  "productName": "Prisma",
+  "extraMetadata": { "main": "main.js" },
+  "files": ["main.js", "attivazione-logica.js", "attivazione.html", "preload-attivazione.js", "icona.ico", "package.json"],
+  "extraResources": [{ "from": "payload", "to": "payload" }],
+  "directories": { "output": "dist-setup" },
+  "win": { "target": "nsis", "icon": "icona.ico" },
+  "nsis": {
+    "oneClick": true,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": false,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "runAfterFinish": true,
+    "shortcutName": "Prisma",
+    "deleteAppDataOnUninstall": false,
+    "artifactName": "Installa-Prisma.exe"
+  }
+}

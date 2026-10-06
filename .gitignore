@@ -54,3 +54,7 @@ accesso-esterno.json
 responsabili-password.json
 push-abbonamenti.json
 backup-esterno.json
+
+# --- Installer (generati da electron-app/prepara-payload.js e electron-builder) ---
+electron-app/payload/
+electron-app/dist-setup/

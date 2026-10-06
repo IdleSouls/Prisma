@@ -9,7 +9,9 @@
   "scripts": {
     "start": "electron .",
     "build": "electron-builder --config build-prisma.json --win portable",
-    "build:rete": "electron-builder --config build-prisma-rete.json --win portable"
+    "build:rete": "electron-builder --config build-prisma-rete.json --win portable",
+    "payload": "node prepara-payload.js",
+    "build:setup": "node prepara-payload.js && electron-builder --config build-setup.json --win nsis"
   },
   "devDependencies": {
     "electron": "^33.0.0",

@@ -31,7 +31,8 @@
  * ============================================================================
  */
 
-const { app, BrowserWindow, Tray, Menu, nativeImage, dialog } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, dialog, ipcMain, clipboard } = require('electron');
+const logica = require('./attivazione-logica.js');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
@@ -45,7 +46,14 @@ const URL_APP = 'http://localhost:' + PORTA + '/';
 // cartella temporanea a ogni avvio, ma imposta questa variabile d'ambiente con
 // la posizione vera del file .exe - e' pensata apposta per questo). PRISMA_INSTALL_DEST
 // resta disponibile per test automatici o casi particolari.
+// MODALITA' INSTALLATA (setup NSIS): i file dell'app sono incorporati nell'installer (cartella
+// "payload" accanto all'eseguibile) e vengono copiati al primo avvio in C:\Users\<nome>\Prisma,
+// dove vivono anche i dati dello studio. Senza "payload" (Prisma.exe portable di Matteo) il
+// comportamento resta quello di sempre.
+const PAYLOAD = process.resourcesPath ? path.join(process.resourcesPath, 'payload') : null;
+const MODALITA_INSTALLATA = !!(PAYLOAD && fs.existsSync(path.join(PAYLOAD, 'server.js')));
 const CARTELLA_INSTALLAZIONE = process.env.PRISMA_INSTALL_DEST
+  || (MODALITA_INSTALLATA ? path.join(os.homedir(), 'Prisma') : null)
   || process.env.PORTABLE_EXECUTABLE_DIR
   || path.join(os.homedir(), 'Prisma');
 const ICONA = path.join(__dirname, 'icona.ico');
@@ -99,6 +107,12 @@ if (!puoProseguire) app.quit();
 function avviaServer() {
   // Impedisce a server.js di aprire un browser suo: ci pensa questa finestra Electron.
   process.env.PRISMA_SKIP_AUTOOPEN = '1';
+  if (MODALITA_INSTALLATA) {
+    // jsdom, pdf-lib, web-push stanno nell'installer: li rendiamo visibili a server.js
+    // (che vive nella cartella dati) senza doverli copiare.
+    process.env.NODE_PATH = path.join(PAYLOAD, 'node_modules') + (process.env.NODE_PATH ? path.delimiter + process.env.NODE_PATH : '');
+    require('module').Module._initPaths();
+  }
   const percorsoServer = path.join(CARTELLA_INSTALLAZIONE, 'server.js');
   require(percorsoServer); // fa partire subito il server HTTP (stesso processo)
 }
@@ -175,8 +189,8 @@ if (puoProseguire) {
     finestraPrincipale.focus();
   });
 
-  app.whenReady().then(() => {
-    scriviLogCrash('Electron pronto, avvio server...');
+  function avviaTutto() {
+    scriviLogCrash('Avvio server...');
     try {
       avviaServer();
     } catch (errore) {
@@ -188,9 +202,6 @@ if (puoProseguire) {
           '"server.js" e "gestionale.htm" (di norma la cartella "Prisma" dentro ' +
           'la tua cartella utente di Windows).');
       } else {
-        // Es. licenza non valida: server.js stampa già il motivo e chiama process.exit(1)
-        // di norma prima ancora di arrivare qui. Questo blocco copre gli altri casi
-        // imprevisti (es. porta già occupata) con un messaggio comprensibile.
         dialog.showErrorBox('Prisma non si avvia', 'Si è verificato un problema all\'avvio:\n\n' + errore.message);
       }
       app.quit();
@@ -204,7 +215,71 @@ if (puoProseguire) {
         dialog.showErrorBox('Prisma - avvio lento', 'Il server ci sta mettendo più del solito ad avviarsi.\nSe la finestra resta vuota, chiudi e riprova tra poco.');
       }
     });
+  }
+
+  // Schermata di attivazione: Prisma e' installato ma senza licenza valida. Mostra il codice
+  // macchina e accetta il license.json (file o trascinamento); appena e' valido parte tutto.
+  function mostraAttivazione(statoIniziale) {
+    let stato = statoIniziale;
+    let attivata = false;
+    const finestra = new BrowserWindow({
+      width: 620, height: 640, resizable: false, title: 'Prisma - Attivazione', icon: ICONA,
+      autoHideMenuBar: true, show: false,
+      webPreferences: { contextIsolation: true, sandbox: true, preload: path.join(__dirname, 'preload-attivazione.js') }
+    });
+    finestra.once('ready-to-show', () => finestra.show());
+    finestra.loadFile(path.join(__dirname, 'attivazione.html'));
+    finestra.on('closed', () => { if (!attivata) app.quit(); });
+
+    function dopoLicenza(esito) {
+      if (!esito.ok) return esito;
+      scriviLogCrash('Licenza attivata per: ' + esito.studio);
+      attivata = true;
+      setTimeout(() => { try { finestra.close(); } catch (e) { /* gia' chiusa */ } avviaTutto(); }, 900);
+      return esito;
+    }
+    ipcMain.handle('att:stato', () => stato);
+    ipcMain.handle('att:copia', (ev, testo) => { clipboard.writeText(String(testo || '')); return true; });
+    ipcMain.handle('att:invia', (ev, testo) => {
+      try { return dopoLicenza(logica.installaLicenza(CARTELLA_INSTALLAZIONE, String(testo || ''))); }
+      catch (e) { return { ok: false, errore: 'Errore imprevisto: ' + e.message }; }
+    });
+    ipcMain.handle('att:scegli-file', async () => {
+      const r = await dialog.showOpenDialog(finestra, {
+        title: 'Scegli il file license.json', properties: ['openFile'],
+        filters: [{ name: 'Licenza Prisma', extensions: ['json'] }, { name: 'Tutti i file', extensions: ['*'] }]
+      });
+      if (r.canceled || !r.filePaths.length) return { annullato: true };
+      try { return dopoLicenza(logica.installaLicenza(CARTELLA_INSTALLAZIONE, fs.readFileSync(r.filePaths[0], 'utf8'))); }
+      catch (e) { return { ok: false, errore: 'Non riesco a leggere il file: ' + e.message }; }
+    });
+  }
+
+  app.whenReady().then(() => {
+    scriviLogCrash('Electron pronto (' + (MODALITA_INSTALLATA ? 'installato' : 'portable') + ').');
+    if (MODALITA_INSTALLATA) {
+      try {
+        const e = logica.sincronizzaPayload(PAYLOAD, CARTELLA_INSTALLAZIONE);
+        scriviLogCrash('File app: ' + (e.aggiornato ? ('copiati/aggiornati (v' + e.versionePayload + ')') : ('gia\' aggiornati (v' + e.versioneLocale + ')')));
+      } catch (err) {
+        scriviLogCrash('Copia file app fallita: ' + (err && err.stack ? err.stack : err));
+        dialog.showErrorBox('Prisma - installazione incompleta', 'Non riesco a preparare i file in ' + CARTELLA_INSTALLAZIONE + ':\n\n' + err.message);
+        app.quit();
+        return;
+      }
+    }
+    let stato = { richiesta: false, valida: true };
+    try { stato = logica.statoLicenza(CARTELLA_INSTALLAZIONE); } catch (err) { scriviLogCrash('Controllo licenza fallito: ' + err.message); }
+    if (stato.richiesta && !stato.valida) {
+      scriviLogCrash('Licenza non attiva: ' + stato.motivo + ' (codice ' + stato.fingerprint + ')');
+      mostraAttivazione(stato);
+    } else {
+      avviaTutto();
+    }
   });
 
+  // Senza questo Electron si chiude da solo quando l'ultima finestra (es. quella di attivazione) si chiude,
+  // prima che parta la finestra principale. La chiusura vera passa da tray / app.quit().
+  app.on('window-all-closed', () => { /* resta in vita */ });
   app.on('before-quit', () => { staChiudendoDavvero = true; });
 }
