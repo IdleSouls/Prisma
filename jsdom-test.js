@@ -1917,6 +1917,14 @@ async function main() {
     assert(st().preventivi.find(x => x.id === pid).stato === 'Accettato', 'preventivo non accettato');
     window.setView('preventivi'); await wait(20);
     assert(q('[data-action="nuovo-potenziale-apri"]'), 'manca il pulsante preventivo a nuovo cliente');
+    // Report mensile + ricerca estesa
+    {
+      const txt = window.reportMensileCliente(cl.id, oggiISOtest().slice(0, 7));
+      assert(/Cosa abbiamo fatto/.test(txt) && /Cosa scade/.test(txt) && txt.includes(cl.ragioneSociale), 'report mensile malformato');
+      const lb = window.aggiungiLibroSociale({ clienteId: cl.id, tipo: 'Libro soci ZZQ' });
+      assert(window.risultatiRicercaGlobale('zzq').some(r => r.categoria === 'Libri sociali'), 'ricerca globale non trova i libri sociali');
+      st().libriSociali = st().libriSociali.filter(x => x.id !== lb.id);
+    }
     // Carico di lavoro, proroghe, CPB
     {
       const dc = window.datiCarico();

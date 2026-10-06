@@ -5009,6 +5009,36 @@ function risultatiRicercaGlobale(query) {
     }
   });
 
+  (STATE.preventivi||[]).forEach(p => {
+    if ([p.oggetto, p.nomeModello, p.categoria].filter(Boolean).some(v => String(v).toLowerCase().includes(q))) {
+      push('Preventivi e mandati', `${p.categoria} — ${nomeCliente(p.clienteId)}`, `${p.oggetto||''} · ${p.stato}`,
+        () => { chiudiModal(); setView('preventivi'); modalDettaglioPreventivo(p.id); });
+    }
+  });
+  (STATE.incassi||[]).forEach(i => {
+    if ([i.descrizione, i.numero].filter(Boolean).some(v => String(v).toLowerCase().includes(q))) {
+      push('Incassi', `${i.descrizione||'Incasso'} — ${nomeCliente(i.clienteId)}`, `${fmtEuro(i.importo)} · ${statoIncasso(i)}`,
+        () => { INC_FILTRO = { cliente: i.clienteId, stato: 'Tutti' }; chiudiModal(); setView('incassi'); });
+    }
+  });
+  (STATE.attivitaFatturabili||[]).forEach(a => {
+    if ((a.descrizione||'').toLowerCase().includes(q)) {
+      push('Da fatturare', `${a.descrizione} — ${nomeCliente(a.clienteId)}`, `${a.stato}${a.importo != null ? ' · ' + fmtEuro(a.importo) : ''}`,
+        () => { FATT_FILTRO = { cliente: a.clienteId, vista: a.stato === 'Fatturata' ? 'storico' : 'aperte' }; chiudiModal(); setView('fatturazione'); });
+    }
+  });
+  (STATE.libriSociali||[]).forEach(l => {
+    if ([l.tipo, l.detentoreNote, l.note].filter(Boolean).some(v => String(v).toLowerCase().includes(q))) {
+      push('Libri sociali', `${l.tipo} — ${nomeCliente(l.clienteId)}`, `Detenuto da ${l.detenutoDa}`,
+        () => { LIBRI_FILTRO = { cliente: l.clienteId, tipo: 'Tutti', detentore: 'Tutti' }; chiudiModal(); setView('libri'); });
+    }
+  });
+  (STATE.procedureInterne||[]).forEach(p => {
+    if ([p.nome, p.categoria].filter(Boolean).some(v => String(v).toLowerCase().includes(q))) {
+      push('Procedure interne', p.nome, p.categoria || '', () => { chiudiModal(); setView('procedure'); });
+    }
+  });
+
   return out;
 }
 
@@ -5018,7 +5048,7 @@ function modalRicercaGlobale() {
   const html = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
     <div class="modal" style="max-width:640px;padding-top:16px;">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-        <input id="ricercaInput" type="text" placeholder="Cerca clienti, scadenze, comunicazioni, documenti, task, soci, F24..." style="flex:1;padding:11px 13px;border:1px solid var(--border);border-radius:8px;font-size:14.5px;" data-action="ricerca-input" autocomplete="off">
+        <input id="ricercaInput" type="text" placeholder="Cerca clienti, scadenze, preventivi, incassi, documenti, task, libri sociali, F24..." style="flex:1;padding:11px 13px;border:1px solid var(--border);border-radius:8px;font-size:14.5px;" data-action="ricerca-input" autocomplete="off">
         <button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button>
       </div>
       <div id="ricercaResults"></div>
@@ -5303,7 +5333,7 @@ function renderSchedaCliente() {
         ${(cliente.atecoCodici||[]).length ? `<div class="helptext" style="margin-top:2px;">ATECO: ${(cliente.atecoCodici||[]).map(a=>escapeHtml(a)).join(', ')}</div>` : ''}
         ${cliente.stato==='cessato' ? `<div class="helptext" style="margin-top:2px;color:var(--rosso);">Cessato${cliente.dataCessazione?' il '+fmtData(cliente.dataCessazione):''}${cliente.motivoCessazione?' · '+escapeHtml(cliente.motivoCessazione):''}</div>` : ''}
         ${(() => { const ce = annualiCedutiCliente(cliente.id); const aperti = derivati().annuali.filter(a => a.clienteId === cliente.id && !a.completato); return cliente.stato==='cessato' ? `<div class="helptext" style="margin-top:2px;">${ce.length ? 'Ceduti al nuovo commercialista: ' + ce.map(x => escapeHtml(x.nome) + ' ' + x.anno).join(', ') : 'Nessun adempimento ceduto'}${aperti.length ? ' · <strong>Ancora in carico allo studio:</strong> ' + aperti.map(a => escapeHtml(a.tipoNome)).join(', ') : ''}</div>` : ''; })()}
-        <div style="margin-top:6px;">${cliente.stato==='cessato' ? `<button class="btn small" data-action="riattiva-cliente" data-id="${cliente.id}">Riattiva cliente</button>` : (cliente.stato==='attivo' ? `<button class="btn small" data-action="cessa-cliente-apri" data-id="${cliente.id}">Cessa cliente…</button>` : '')}</div>
+        <div style="margin-top:6px;">${cliente.stato==='cessato' ? `<button class="btn small" data-action="riattiva-cliente" data-id="${cliente.id}">Riattiva cliente</button>` : (cliente.stato==='attivo' ? `<button class="btn small" data-action="cessa-cliente-apri" data-id="${cliente.id}">Cessa cliente…</button>` : '')} ${cliente.stato==='attivo' ? `<button class="btn small" data-action="report-mensile-apri" data-cliente="${cliente.id}">Report mensile…</button>` : ''}</div>
         ${(contatti.email||contatti.telefono||contatti.pec) ? `<div class="helptext" style="margin-top:2px;">${contatti.email?escapeHtml(contatti.email):''}${contatti.telefono?' · '+escapeHtml(contatti.telefono):''}${contatti.pec?' · PEC '+escapeHtml(contatti.pec):''}</div>` : ''}
       </div>
       <div style="display:flex;gap:22px;">
@@ -8503,6 +8533,40 @@ function renderCpb() {
   const kpi = `<div class="kpi-grid" style="grid-template-columns:repeat(5,1fr);">${STATI_CPB.map(x => `<div class="kpi completati"><div class="n">${conta(x)}</div><div class="l">${x.toUpperCase()}</div></div>`).join('')}</div>`;
   const righe = attivi.map(c => `<tr><td>${escapeHtml(c.ragioneSociale)}</td><td><select data-action="cpb-stato" data-id="${c.id}">${STATI_CPB.map(x => `<option ${st(c.id) === x ? 'selected' : ''}>${x}</option>`).join('')}</select></td><td><input data-action="cpb-nota" data-id="${c.id}" value="${escapeHtml(((STATE.cpb || {})[c.id] || {}).nota || '')}" placeholder="note" style="width:100%;"></td></tr>`).join('');
   return `<div class="helptext" style="margin-bottom:8px;">Tracker interno dell'adesione al concordato preventivo biennale: la valutazione e l'adesione restano decisioni del professionista. <strong>Termine di adesione da verificare ogni anno sul provvedimento ufficiale.</strong></div>` + kpi + `<div class="card"><table class="tbl"><thead><tr><th>Cliente</th><th>Stato</th><th>Note</th></tr></thead><tbody>${righe}</tbody></table></div>`;
+}
+
+/* -------------------- REPORT MENSILE AL CLIENTE --------------------
+   "Cosa abbiamo fatto e cosa scade": generato dai dati già presenti (nessun inserimento), mostrato in anteprima
+   modificabile e salvato come BOZZA di comunicazione nel portale — non parte mai da solo. */
+function reportMensileCliente(clienteId, mese) {
+  const c = clienteById(clienteId);
+  if (!c) return '';
+  const [a, m] = mese.split('-').map(Number);
+  const nomeMese = new Date(a, m - 1, 1).toLocaleDateString('it-IT', { month: 'long', year: 'numeric' });
+  const { tutteScadenze, annuali } = derivati();
+  const inMese = (iso) => !!iso && iso.slice(0, 7) === mese;
+  const fatte = tutteScadenze.filter(x => x.clienteId === clienteId && STATI_SCADENZA_CHIUSI.includes(x.stato) && inMese(x.dataCompletamento));
+  const fasiFatte = [];
+  annuali.filter(x => x.clienteId === clienteId).forEach(x => x.sotto.forEach(sf => { if (sf.completato && inMese(sf.data)) fasiFatte.push(`${x.tipoNome}: ${sf.nome}`); }));
+  const docs = (STATE.documenti || []).filter(d => d.clienteId === clienteId && inMese(d.dataCaricamento));
+  const f24 = (STATE.f24 || []).filter(x => x.clienteId === clienteId && inMese(x.data));
+  const oggi = oggiISO();
+  const prossime = tutteScadenze.filter(x => x.clienteId === clienteId && !STATI_SCADENZA_CHIUSI.includes(x.stato) && x.data >= oggi && giorniTra(oggi, x.data) <= 45).sort((x, y) => x.data.localeCompare(y.data));
+  const annProssimi = annuali.filter(x => x.clienteId === clienteId && !x.completato && x.scadenza && x.scadenza >= oggi && giorniTra(oggi, x.scadenza) <= 45);
+  const lista = (arr, fmt) => arr.length ? arr.map(x => '- ' + fmt(x)).join('\n') : '- nessuna attività in questo periodo';
+  const righeProssime = prossime.map(x => `${fmtData(x.data)} — ${x.nome}`).concat(annProssimi.map(x => `${fmtData(x.scadenza)} — ${x.tipoNome}`));
+  return `Gentile ${c.ragioneSociale},\n\necco il riepilogo delle attività dello studio per ${nomeMese}.\n\nCosa abbiamo fatto\n${lista(fatte.map(x => x.nome).concat(fasiFatte), x => x)}\n${docs.length ? '\nDocumenti archiviati: ' + docs.map(d => d.nome).join(', ') + '.' : ''}${f24.length ? '\nF24 predisposti: ' + f24.length + '.' : ''}\n\nCosa scade nei prossimi 45 giorni\n${lista(righeProssime, x => x)}\n\nPer qualsiasi dubbio siamo a disposizione.\nCordiali saluti`;
+}
+function modalReportMensile(clienteId, mese) {
+  const c = clienteById(clienteId);
+  if (!c) return;
+  mese = mese || oggiISO().slice(0, 7);
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop"><div class="modal" style="max-width:640px;">
+    <div style="display:flex;justify-content:space-between;"><div><h2>Report mensile</h2><div class="modal-sub">${escapeHtml(c.ragioneSociale)}</div></div><button class="icon-x" data-action="chiudi-modal">✕</button></div>
+    <div class="field" style="max-width:200px;"><label>Mese</label><input type="month" id="rmMese" value="${mese}" data-action="report-mensile-mese" data-cliente="${c.id}"></div>
+    <div class="field full"><label>Testo (modificabile)</label><textarea id="rmTesto" rows="16" style="width:100%;">${escapeHtml(reportMensileCliente(clienteId, mese))}</textarea></div>
+    <div class="helptext">Viene salvato come bozza di comunicazione: lo invii tu dal portale quando vuoi.</div>
+    <div class="modal-actions"><button class="btn" data-action="chiudi-modal">Annulla</button><button class="btn primary" data-action="report-mensile-salva" data-cliente="${c.id}">Crea bozza comunicazione</button></div></div></div>`;
 }
 
 /* -------------------- RENDER: PREVENTIVI E MANDATI (task #121, rifatto su modelli #125) --------------------
@@ -16430,6 +16494,12 @@ function onClickDelegato(e) {
       render(); toast(`Proroga applicata a ${o.clienti.size} clienti.`); break;
     }
     case 'proroga-elimina': if (confermaAzione('Annullare la proroga? Le scadenze tornano alla data ordinaria.')) { eliminaProroga(id); render(); } break;
+    case 'report-mensile-apri': modalReportMensile(el.dataset.cliente); break;
+    case 'report-mensile-salva': {
+      const cid = el.dataset.cliente, mese = h('rmMese').value || oggiISO().slice(0, 7);
+      aggiungiComunicazione({ clienteId: cid, data: oggiISO(), categoria: 'Altro', stato: 'Bozza', oggetto: 'Riepilogo mensile ' + mese, corpo: h('rmTesto').value });
+      chiudiModal(); render(); toast('Bozza creata in Comunicazioni.'); break;
+    }
     case 'deon-tab': DEON_TAB = el.dataset.tab; render(); break;
     case 'deon-ia-esporta': salvaFileScaricabile('registro-uso-ia.csv', registroIaCsv()); break;
     case 'deon-fpc-nuovo': modalFpc(); break;
@@ -17471,6 +17541,7 @@ function onChangeDelegato(e) {
       if (el.checked) set.delete(el.dataset.id); else set.add(el.dataset.id);
       cfg.periodiciEsclusi = Array.from(set); salvaConfigContabTerzi(cfg); break;
     }
+    case 'report-mensile-mese': { const t = h('rmTesto'); if (t) t.value = reportMensileCliente(el.dataset.cliente, el.value || oggiISO().slice(0, 7)); break; }
     case 'cpb-stato': STATE.cpb[id] = Object.assign({}, STATE.cpb[id] || {}, { stato: el.value }); salvaStato(); render(); break;
     case 'cpb-nota': STATE.cpb[id] = Object.assign({}, STATE.cpb[id] || {}, { nota: el.value }); salvaStato(); break;
     case 'deon-acc-cliente': DEON_CLIENTE = el.value; render(); break;
@@ -18502,7 +18573,7 @@ window.rigeneraAccessoSecondarioPortale = rigeneraAccessoSecondarioPortale;
 window.eliminaAccessoSecondarioPortale = eliminaAccessoSecondarioPortale;
 window.trovaAccessoPortale = trovaAccessoPortale;
 window.accessoPortalePuoVedere = accessoPortalePuoVedere;
-window.aggiungiProroga = aggiungiProroga; window.datiCarico = datiCarico; window.opzioniProroga = opzioniProroga;
+window.reportMensileCliente = reportMensileCliente; window.aggiungiProroga = aggiungiProroga; window.datiCarico = datiCarico; window.opzioniProroga = opzioniProroga;
 window.aggiornaAccettazione = aggiornaAccettazione; window.accettazioneCompleta = accettazioneCompleta; window.riepilogoFpc = riepilogoFpc; window.registroIaCsv = registroIaCsv;
 window.datiCruscotto = datiCruscotto; window.annualiCedutiCliente = annualiCedutiCliente;
 window.aggiungiLibroSociale = aggiungiLibroSociale; window.aggiornaLibroSociale = aggiornaLibroSociale;

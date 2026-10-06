@@ -1,17 +1,17 @@
 {
-  "versione": "1.12.0",
-  "note": "Carico di lavoro per persona e mese, proroghe massive delle scadenze, tracker concordato preventivo biennale",
+  "versione": "1.13.0",
+  "note": "Ricerca globale estesa (preventivi, incassi, da fatturare, libri sociali, procedure) e report mensile al cliente come bozza di comunicazione",
   "richiedeNpmInstall": false,
   "file": [
     {
       "nome": "gestionale.htm",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale.htm",
-      "sha256": "a2f7a3174172edd12d4bb16d9894e3ea3107016888c961180c42a772403410b1"
+      "sha256": "d38773b46683480a4d95df736fba6ef1ca7c4eada4841bfb58fd619fcb8dba55"
     },
     {
       "nome": "server.js",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/server.js",
-      "sha256": "a002e1d7ce5f58a124fd47e6d145ccf2fbb1f3062300dac733e554a1815fa2ea"
+      "sha256": "5cecb4b8137cb58522d15870dab631f83b095e2cfa05a0a2b40ab13760cf3889"
     },
     {
       "nome": "portale-cliente.htm",
