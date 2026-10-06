@@ -1917,6 +1917,23 @@ async function main() {
     assert(st().preventivi.find(x => x.id === pid).stato === 'Accettato', 'preventivo non accettato');
     window.setView('preventivi'); await wait(20);
     assert(q('[data-action="nuovo-potenziale-apri"]'), 'manca il pulsante preventivo a nuovo cliente');
+    // Carico di lavoro, proroghe, CPB
+    {
+      const dc = window.datiCarico();
+      assert(dc.resp.length > 0 && dc.resp.every(r => dc.m[r].aperte.length === 12), 'carico di lavoro vuoto o malformato');
+      const opz = window.opzioniProroga();
+      assert(opz.length > 0, 'nessuna scadenza prorogabile');
+      const o = opz[0];
+      const prima = window.derivati().periodiche.filter(sc => sc.tipo === o.tipo && (sc.dataOriginale || sc.data) === o.dataOriginale);
+      if (prima.length) {
+        const p = window.aggiungiProroga({ tipo: o.tipo, dataOriginale: o.dataOriginale, dataNuova: '2026-12-31', motivo: 'test' });
+        const dopo = window.derivati().periodiche.filter(sc => sc.tipo === o.tipo && sc.dataOriginale === o.dataOriginale);
+        assert(dopo.length === prima.length && dopo.every(sc => sc.data === '2026-12-31' && sc.prorogata), 'proroga non applicata a tutte le scadenze');
+        assert(dopo[0].id === prima[0].id, 'la proroga non deve cambiare l\'id della scadenza (override)');
+        st().proroghe = st().proroghe.filter(x => x.id !== p.id);
+      }
+      for (const v of ['carico', 'proroghe', 'cpb']) { click(q(`[data-nav="${v}"]`)); await wait(20); assert(q('#content').textContent.length > 50, 'vista ' + v + ' vuota'); }
+    }
     // Deontologia
     {
       window.aggiornaAccettazione(cl.id, { clienteForte: true });

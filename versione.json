@@ -1,17 +1,17 @@
 {
-  "versione": "1.11.0",
-  "note": "Suite deontologia: check-list accettazione incarico con equo compenso, registro uso IA, formazione continua, riservatezza, lettera di rinuncia, clausola IA nel modello di incarico",
+  "versione": "1.12.0",
+  "note": "Carico di lavoro per persona e mese, proroghe massive delle scadenze, tracker concordato preventivo biennale",
   "richiedeNpmInstall": false,
   "file": [
     {
       "nome": "gestionale.htm",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale.htm",
-      "sha256": "3f12185068acc18c8865d5a1f47c9b9f5469f433d72e44d20d51b17eb515126c"
+      "sha256": "a2f7a3174172edd12d4bb16d9894e3ea3107016888c961180c42a772403410b1"
     },
     {
       "nome": "server.js",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/server.js",
-      "sha256": "5368e754a48d1e16af36929fcaa218937f0b73f20d43806bd842521ed769804a"
+      "sha256": "a002e1d7ce5f58a124fd47e6d145ccf2fbb1f3062300dac733e554a1815fa2ea"
     },
     {
       "nome": "portale-cliente.htm",

@@ -1178,6 +1178,16 @@ function dataScadenza(anno, meseIdx1, giorno) {
 /* Un cliente cessato a metà anno resta "in carico" fino alla data di cessazione: le scadenze fino a quel
    giorno le fa lo studio; gli adempimenti annuali li fa lo studio solo se non sono stati ceduti al nuovo
    commercialista (flag "ceduto" in annualiOverrides, vedi cessaCliente). Dopo l'anno di cessazione, niente. */
+/* Proroghe massive (STATE.proroghe): { id, tipo (nome del tipo di scadenza), dataOriginale, dataNuova, motivo, clienteIds|null }.
+   Si applicano alle scadenze generate con quel tipo e quella data originale: la chiave/override della scadenza
+   resta legata alla data originale, quindi stati e note già inseriti non si perdono. */
+function applicaProroga(dataISO, clienteId, tipoNome) {
+  const pr = (typeof STATE !== 'undefined' && STATE.proroghe) || [];
+  for (const p of pr) {
+    if (p.tipo === tipoNome && p.dataOriginale === dataISO && (!p.clienteIds || p.clienteIds.includes(clienteId))) return p.dataNuova;
+  }
+  return dataISO;
+}
 function clienteGeneraScadenze(c, anno) {
   if (!c) return false;
   if (clienteAttivo(c)) return true;
@@ -1200,8 +1210,9 @@ function generaScadenzePeriodiche(clienti, anno, vecchie) {
         const admNome = d.nota;
         const k = chiaveScadenza(dataISO, cliente.id, admNome);
         const salvato = vecchie[k];
+        const dataEff = applicaProroga(dataISO, cliente.id, def.nome);
         out.push({
-          id: k, data: dataISO, clienteId: cliente.id, famiglia: 'periodico',
+          id: k, data: dataEff, dataOriginale: dataISO, prorogata: dataEff !== dataISO, clienteId: cliente.id, famiglia: 'periodico',
           tipo: def.nome, nome: admNome,
           responsabile: (salvato && salvato.responsabile) || cliente.responsabileStudio || '',
           stato: (salvato && salvato.stato) || 'Da fare',
@@ -1370,8 +1381,9 @@ function generaAdempimentiAnnuali(clienti, anno, vecchie) {
       sotto.forEach((x, i) => { if (!x.completato && primaAperta < 0) primaAperta = i; x.fase = x.completato ? 'completata' : (i === primaAperta ? 'pronta' : 'attesa'); });
       const nCompletati = sotto.filter(s => s.completato).length;
       const resolverDinamico = SCADENZA_DINAMICA_ANNUALE[def.chiave];
-      const scadenzaDefault = def.scadenzaDefault ? dataScadenza(anno, def.scadenzaDefault.m, def.scadenzaDefault.g)
+      const scadenzaOrig = def.scadenzaDefault ? dataScadenza(anno, def.scadenzaDefault.m, def.scadenzaDefault.g)
         : (resolverDinamico ? resolverDinamico(cliente, anno) : null);
+      const scadenzaDefault = scadenzaOrig ? applicaProroga(scadenzaOrig, cliente.id, def.nome) : scadenzaOrig;
       out.push({
         id: k, anno, clienteId: cliente.id, tipoChiave: def.chiave, tipoNome: def.nome, tipo: def.tipo || TIPO_ADEMPIMENTO_DEFAULT,
         responsabile: (salvato && salvato.responsabile) || cliente.responsabileStudio || '',
@@ -1779,6 +1791,9 @@ function statoIniziale() {
     libriSociali: [],
     /* Deontologia: check-list accettazione incarico per cliente, formazione continua, impegni di riservatezza. */
     accettazioni: {},
+    /* Proroghe massive di scadenze (decreti), tracker concordato preventivo biennale per cliente. */
+    proroghe: [],
+    cpb: {},
     fpc: [],
     impegniRiservatezza: [],
     /* Procedure interne dello studio (task #146): raccolta di SOP/indicazioni operative per lo staff
@@ -4222,6 +4237,7 @@ function eliminaCliente(id) {
   STATE.attivitaFatturabili = (STATE.attivitaFatturabili || []).filter(a => a.clienteId !== id);
   STATE.libriSociali = (STATE.libriSociali || []).filter(l => l.clienteId !== id);
   if (STATE.accettazioni) delete STATE.accettazioni[id];
+  if (STATE.cpb) delete STATE.cpb[id];
 
   // Entità tenute in oggetti indicizzati per clienteId: basta togliere la chiave.
   delete STATE.onboarding[id];
@@ -4369,6 +4385,9 @@ const NAV = [
   ]},
   { group: 'Scadenze', items: [
     { id: 'scadenze', label: 'Scadenze periodiche', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/></svg>' },
+    { id: 'carico', label: 'Carico di lavoro', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16M15 4v16"/></svg>' },
+    { id: 'proroghe', label: 'Proroghe', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>' },
+    { id: 'cpb', label: 'Concordato preventivo', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>' },
     { id: 'ritenute', label: 'Ritenute d\'acconto', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="2.3"/><circle cx="17" cy="17" r="2.3"/><line x1="18" y1="6" x2="6" y2="18"/></svg>' },
     { id: 'annuali', label: 'Adempimenti annuali', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M8 12.5l2.5 2.5 5.5-6"/></svg>' },
     { id: 'f24', label: 'F24', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5h8l5 5v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-18a1 1 0 0 1 1-1z"/><path d="M14 2.5v5h5"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>' },
@@ -4427,6 +4446,9 @@ const PAGE_TITLES = {
   contabilita: ['Contabilità', 'Import periodico da Excel/CSV: nessuna doppia registrazione, nessuna data indovinata'],
   modelli: ['Modelli documenti', 'Testi precompilati per preventivi, mandati e documenti antiriciclaggio: i segnaposto {{così}} si trasformano in campi da compilare'],
   incassi: ['Incassi', 'Compensi da incassare, scadenze di pagamento e solleciti ai clienti'],
+  carico: ['Carico di lavoro', 'Scadenze e adempimenti aperti per persona e per mese'],
+  proroghe: ['Proroghe', 'Sposta in blocco una scadenza per tutti i clienti interessati (decreti di proroga)'],
+  cpb: ['Concordato preventivo biennale', 'Stato di adesione per cliente'],
   deontologia: ['Deontologia', 'Accettazione incarico, equo compenso, uso dell\'IA, formazione continua e riservatezza'],
   libri: ['Libri sociali', 'Quali libri ha ogni società, chi li detiene e quando sono stati stampati l\'ultima volta'],
   fatturazione: ['Da fatturare', 'Attività extra prestate ai clienti, da includere nella prossima fattura periodica'],
@@ -4620,6 +4642,9 @@ function render() {
     case 'fatturazione': content.innerHTML = renderFatturazione(); break;
     case 'libri': content.innerHTML = renderLibriSociali(); break;
     case 'deontologia': content.innerHTML = renderDeontologia(); break;
+    case 'carico': content.innerHTML = renderCarico(); break;
+    case 'proroghe': content.innerHTML = renderProroghe(); break;
+    case 'cpb': content.innerHTML = renderCpb(); break;
     case 'strumenti': content.innerHTML = renderStrumenti(); break;
     case 'credenziali': content.innerHTML = renderCredenziali(); break;
     case 'portale': content.innerHTML = renderPortaleCliente(); break;
@@ -8422,6 +8447,62 @@ function modalRiservatezza() {
       <div class="field"><label>Scadenza (opzionale)</label><input type="date" id="rsScad"></div>
     </div></form>
     <div class="modal-actions"><button class="btn" data-action="chiudi-modal">Annulla</button><button class="btn primary" data-action="deon-riserv-salva">Salva</button></div></div></div>`;
+}
+
+/* -------------------- CARICO DI LAVORO, PROROGHE, CPB -------------------- */
+const MESI_BREVI = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'];
+/* Carico = scadenze periodiche non chiuse + adempimenti annuali non completati, per responsabile e mese di scadenza. */
+function datiCarico() {
+  const { tutteScadenze, annuali } = derivati();
+  const resp = Array.from(new Set((STATE.meta.responsabili || []).concat(['—'])));
+  const m = {}; resp.forEach(r => { m[r] = { aperte: Array(12).fill(0), chiuse: Array(12).fill(0) }; });
+  const add = (r, iso, chiusa) => { if (!iso) return; const mi = Number(iso.slice(5, 7)) - 1; const k = m[r || '—'] ? (r || '—') : '—'; (chiusa ? m[k].chiuse : m[k].aperte)[mi]++; };
+  tutteScadenze.forEach(sc => add(sc.responsabile, sc.data, STATI_SCADENZA_CHIUSI.includes(sc.stato)));
+  annuali.forEach(a => add(a.responsabile, a.scadenza, a.completato));
+  return { resp: resp.filter(r => m[r].aperte.some(x => x) || m[r].chiuse.some(x => x)), m };
+}
+function renderCarico() {
+  const d = datiCarico();
+  const max = Math.max(1, ...d.resp.flatMap(r => d.m[r].aperte));
+  const oggiM = new Date().getMonth();
+  const righe = d.resp.map(r => `<tr><td style="white-space:nowrap;font-weight:600;">${escapeHtml(r)}</td>${d.m[r].aperte.map((n, i) => `<td style="text-align:center;background:rgba(220,80,60,${n ? (0.1 + 0.6 * n / max).toFixed(2) : 0});${i === oggiM ? 'outline:2px solid var(--blu-mid);' : ''}" title="${n} aperte, ${d.m[r].chiuse[i]} chiuse">${n || ''}</td>`).join('')}<td style="text-align:center;font-weight:700;">${d.m[r].aperte.reduce((a, b) => a + b, 0)}</td></tr>`).join('');
+  return `<div class="helptext" style="margin-bottom:8px;">Scadenze periodiche e adempimenti annuali ancora aperti, per responsabile e mese di scadenza (anno ${STATE.annoCorrente}). Calcolato dai dati già presenti: nessun timesheet. Più è scuro, più lavoro si concentra: serve a bilanciare i picchi (marzo-giugno) prima che arrivino.</div>
+    <div class="card" style="overflow:auto;"><table class="tbl"><thead><tr><th>Persona</th>${MESI_BREVI.map(x => `<th style="text-align:center;">${x}</th>`).join('')}<th>Tot.</th></tr></thead><tbody>${righe || '<tr><td colspan="14" class="helptext">Nessuna scadenza.</td></tr>'}</tbody></table></div>`;
+}
+function opzioniProroga() {
+  const { periodiche, annuali } = derivati();
+  const mappa = new Map();
+  periodiche.forEach(sc => { const dataO = sc.dataOriginale || sc.data; const k = sc.tipo + '|' + dataO; if (!mappa.has(k)) mappa.set(k, { tipo: sc.tipo, dataOriginale: dataO, clienti: new Set() }); mappa.get(k).clienti.add(sc.clienteId); });
+  const out = Array.from(mappa.values());
+  const defA = catalogoAnnualeTutti();
+  annuali.forEach(a => { const def = defA.find(x => x.chiave === a.tipoChiave); if (!def) return; const orig = def.scadenzaDefault ? dataScadenza(a.anno, def.scadenzaDefault.m, def.scadenzaDefault.g) : null; if (!orig) return; const k = a.tipoNome + '|' + orig; let o = out.find(x => x.tipo === a.tipoNome && x.dataOriginale === orig); if (!o) { o = { tipo: a.tipoNome, dataOriginale: orig, clienti: new Set() }; out.push(o); } o.clienti.add(a.clienteId); });
+  return out.sort((a, b) => a.dataOriginale.localeCompare(b.dataOriginale) || a.tipo.localeCompare(b.tipo));
+}
+function aggiungiProroga(d) {
+  const p = Object.assign({ id: uid('pro'), creatoIl: oggiISO(), clienteIds: null, motivo: '' }, d);
+  STATE.proroghe.push(p); salvaStato(); return p;
+}
+function eliminaProroga(id) { STATE.proroghe = (STATE.proroghe || []).filter(x => x.id !== id); salvaStato(); }
+function renderProroghe() {
+  const opz = opzioniProroga();
+  const attive = STATE.proroghe || [];
+  const form = `<div class="card"><div class="section-title">Nuova proroga</div>
+    <div class="helptext" style="margin-bottom:8px;">Scegli la scadenza e la nuova data: si sposta per tutti i clienti che l'hanno. Stati, note e solleciti già inseriti restano. Annullando la proroga la data torna quella ordinaria. Controlla sempre il testo del decreto (ambiti e soggetti interessati).</div>
+    <div class="toolbar"><div class="field grow"><label>Scadenza</label><select id="prScad">${opz.map((o, i) => `<option value="${i}">${escapeHtml(o.tipo)} — ${fmtData(o.dataOriginale)} (${o.clienti.size} clienti)</option>`).join('')}</select></div>
+    <div class="field"><label>Nuova data</label><input type="date" id="prData"></div>
+    <div class="field grow"><label>Motivo / riferimento</label><input id="prMotivo" placeholder="es. DL n. …"></div>
+    <div class="field"><label>&nbsp;</label><button class="btn primary" data-action="proroga-crea">Applica proroga</button></div></div></div>`;
+  const lista = attive.length ? `<div class="card"><div class="section-title">Proroghe attive <span class="cnt">${attive.length}</span></div><table class="compact"><thead><tr><th>Scadenza</th><th>Da</th><th>A</th><th>Motivo</th><th></th></tr></thead><tbody>${attive.map(p => `<tr><td>${escapeHtml(p.tipo)}</td><td>${fmtData(p.dataOriginale)}</td><td><strong>${fmtData(p.dataNuova)}</strong></td><td>${escapeHtml(p.motivo || '')}</td><td><button class="btn small danger" data-action="proroga-elimina" data-id="${p.id}">Annulla</button></td></tr>`).join('')}</tbody></table></div>` : '';
+  return form + lista;
+}
+const STATI_CPB = ['Da valutare', 'Proposta ricevuta', 'Valutata', 'Aderito', 'Non aderito'];
+function renderCpb() {
+  const attivi = STATE.clienti.filter(c => clienteAttivo(c)).sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale));
+  const st = (id) => ((STATE.cpb || {})[id] || {}).stato || 'Da valutare';
+  const conta = (x) => attivi.filter(c => st(c.id) === x).length;
+  const kpi = `<div class="kpi-grid" style="grid-template-columns:repeat(5,1fr);">${STATI_CPB.map(x => `<div class="kpi completati"><div class="n">${conta(x)}</div><div class="l">${x.toUpperCase()}</div></div>`).join('')}</div>`;
+  const righe = attivi.map(c => `<tr><td>${escapeHtml(c.ragioneSociale)}</td><td><select data-action="cpb-stato" data-id="${c.id}">${STATI_CPB.map(x => `<option ${st(c.id) === x ? 'selected' : ''}>${x}</option>`).join('')}</select></td><td><input data-action="cpb-nota" data-id="${c.id}" value="${escapeHtml(((STATE.cpb || {})[c.id] || {}).nota || '')}" placeholder="note" style="width:100%;"></td></tr>`).join('');
+  return `<div class="helptext" style="margin-bottom:8px;">Tracker interno dell'adesione al concordato preventivo biennale: la valutazione e l'adesione restano decisioni del professionista. <strong>Termine di adesione da verificare ogni anno sul provvedimento ufficiale.</strong></div>` + kpi + `<div class="card"><table class="tbl"><thead><tr><th>Cliente</th><th>Stato</th><th>Note</th></tr></thead><tbody>${righe}</tbody></table></div>`;
 }
 
 /* -------------------- RENDER: PREVENTIVI E MANDATI (task #121, rifatto su modelli #125) --------------------
@@ -16341,6 +16422,14 @@ function onClickDelegato(e) {
       toast('Mandato generato dal preventivo accettato.');
       break;
     }
+    case 'proroga-crea': {
+      const o = opzioniProroga()[Number(h('prScad').value)];
+      const nd = h('prData').value;
+      if (!o || !nd) { toast('Scegli la scadenza e la nuova data.'); return; }
+      aggiungiProroga({ tipo: o.tipo, dataOriginale: o.dataOriginale, dataNuova: nd, motivo: h('prMotivo').value.trim() });
+      render(); toast(`Proroga applicata a ${o.clienti.size} clienti.`); break;
+    }
+    case 'proroga-elimina': if (confermaAzione('Annullare la proroga? Le scadenze tornano alla data ordinaria.')) { eliminaProroga(id); render(); } break;
     case 'deon-tab': DEON_TAB = el.dataset.tab; render(); break;
     case 'deon-ia-esporta': salvaFileScaricabile('registro-uso-ia.csv', registroIaCsv()); break;
     case 'deon-fpc-nuovo': modalFpc(); break;
@@ -17382,6 +17471,8 @@ function onChangeDelegato(e) {
       if (el.checked) set.delete(el.dataset.id); else set.add(el.dataset.id);
       cfg.periodiciEsclusi = Array.from(set); salvaConfigContabTerzi(cfg); break;
     }
+    case 'cpb-stato': STATE.cpb[id] = Object.assign({}, STATE.cpb[id] || {}, { stato: el.value }); salvaStato(); render(); break;
+    case 'cpb-nota': STATE.cpb[id] = Object.assign({}, STATE.cpb[id] || {}, { nota: el.value }); salvaStato(); break;
     case 'deon-acc-cliente': DEON_CLIENTE = el.value; render(); break;
     case 'deon-acc-toggle': { aggiornaAccettazione(DEON_CLIENTE, { voci: { [el.dataset.k]: el.checked } }); if (accettazioneCompleta(DEON_CLIENTE)) aggiornaAccettazione(DEON_CLIENTE, { data: oggiISO() }); else aggiornaAccettazione(DEON_CLIENTE, { data: null }); render(); break; }
     case 'deon-acc-forte': aggiornaAccettazione(DEON_CLIENTE, { clienteForte: el.checked, data: null }); render(); break;
@@ -18411,6 +18502,7 @@ window.rigeneraAccessoSecondarioPortale = rigeneraAccessoSecondarioPortale;
 window.eliminaAccessoSecondarioPortale = eliminaAccessoSecondarioPortale;
 window.trovaAccessoPortale = trovaAccessoPortale;
 window.accessoPortalePuoVedere = accessoPortalePuoVedere;
+window.aggiungiProroga = aggiungiProroga; window.datiCarico = datiCarico; window.opzioniProroga = opzioniProroga;
 window.aggiornaAccettazione = aggiornaAccettazione; window.accettazioneCompleta = accettazioneCompleta; window.riepilogoFpc = riepilogoFpc; window.registroIaCsv = registroIaCsv;
 window.datiCruscotto = datiCruscotto; window.annualiCedutiCliente = annualiCedutiCliente;
 window.aggiungiLibroSociale = aggiungiLibroSociale; window.aggiornaLibroSociale = aggiornaLibroSociale;
