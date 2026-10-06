@@ -383,6 +383,16 @@ scriviLog('Avvio di Prisma...');
     console.log('  "license.json" valido da mettere in questa stessa cartella.');
     console.log('');
     scriviLog('AVVIO BLOCCATO - licenza non valida: ' + messaggio + ' (codice macchina: ' + licensingLib.calcolaFingerprint() + ')');
+    // Con Prisma.exe (Electron) non c'è una console da leggere: senza questa finestra il programma
+    // sembrerebbe chiudersi da solo, senza dire perché né mostrare il codice macchina da comunicare.
+    try {
+      if (process.versions && process.versions.electron) {
+        const { dialog } = require('electron');
+        dialog.showErrorBox('Prisma - licenza non attiva',
+          messaggio + '\n\nIl codice macchina di questo computer è:\n\n' + licensingLib.calcolaFingerprint() +
+          '\n\nComunicalo a chi ti ha fornito Prisma: riceverai un file "license.json" da mettere nella cartella ' + CARTELLA + '.');
+      }
+    } catch (e) { /* best effort */ }
     process.exit(1);
   }
 

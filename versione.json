@@ -1,6 +1,6 @@
 {
   "versione": "1.15.0",
-  "note": "Rimosso il menu Azioni (basta la ricerca Ctrl+K)",
+  "note": "Licenza mancante: Prisma.exe mostra una finestra con il codice macchina invece di chiudersi in silenzio",
   "richiedeNpmInstall": false,
   "file": [
     {
@@ -11,7 +11,7 @@
     {
       "nome": "server.js",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/server.js",
-      "sha256": "8acf052fdcd0cc0ac85676d38eb758030f908fd46fa3ca9fb6e48eb55e9b2986"
+      "sha256": "c85d56994078ba8da5c8e9e3cf2a252fa3aaad95347ddda69268b3a7e3630d34"
     },
     {
       "nome": "portale-cliente.htm",

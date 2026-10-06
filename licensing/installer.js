@@ -79,9 +79,27 @@ function stampa(...righe) {
   for (const r of righe) console.log(r);
 }
 
+/* La finestra della console si chiude da sola appena il programma termina: chi fa doppio clic non
+   riuscirebbe a leggere né il codice macchina né un eventuale errore. Per questo, prima di uscire,
+   si aspetta sempre un Invio (solo se c'è davvero una console interattiva). */
+function aspettaInvio() {
+  if (process.env.PRISMA_INSTALLER_TEST) return;
+  try {
+    console.log('');
+    console.log('Premi Invio per chiudere questa finestra...');
+    const buf = Buffer.alloc(16);
+    fs.readSync(0, buf, 0, 16, null);
+  } catch (err) {
+    // niente console interattiva (es. eseguito da script): si esce subito
+  }
+}
 function esci(codice) {
   if (process.env.PRISMA_INSTALLER_TEST) return; // i test leggono lo stato invece di terminare il processo
+  aspettaInvio();
   process.exit(codice);
+}
+function scriviLogInstaller(testo) {
+  try { fs.appendFileSync(path.join(USB, 'installazione-log.txt'), new Date().toISOString() + ' ' + testo + '\n', 'utf8'); } catch (e) { /* best effort */ }
 }
 
 function principale() {
@@ -105,7 +123,20 @@ function principale() {
     return esci(0);
   }
 
-  stampa('Installazione di Prisma in corso...');
+  // ---- Controllo preventivo: i file dell'app devono stare accanto a questo programma ----
+  const indispensabili = ['gestionale.htm', 'server.js'];
+  const mancanti = indispensabili.filter(n => !fs.existsSync(path.join(USB, n)));
+  if (mancanti.length) {
+    stampa('ERRORE: accanto a questo programma mancano i file dell\'app (' + mancanti.join(', ') + ').',
+      'Cartella controllata: ' + USB,
+      'Estrai TUTTO lo zip di Prisma in una cartella e avvia "Installa-Prisma.exe" da lì dentro,',
+      'senza spostare o copiare il solo file .exe da un\'altra parte.');
+    scriviLogInstaller('ERRORE file mancanti in ' + USB + ': ' + mancanti.join(', '));
+    return esci(1);
+  }
+
+  stampa('Installazione di Prisma in corso... (può richiedere qualche minuto: attendi)');
+  scriviLogInstaller('Avvio installazione da ' + USB + ' verso ' + DEST);
 
   // ---- 2) Copia i file dell'app nella cartella di destinazione ----
   fs.mkdirSync(DEST, { recursive: true });
@@ -198,7 +229,15 @@ function principale() {
 }
 
 if (require.main === module || (function () { try { return require('node:sea').isSea(); } catch (e) { return false; } })()) {
-  principale();
+  try {
+    principale();
+  } catch (err) {
+    stampa('ERRORE durante l\'installazione: ' + (err && err.message ? err.message : err),
+      'Nessuna chiavetta è stata marcata come usata: puoi riprovare.',
+      'Se il problema persiste, manda il file "installazione-log.txt" (accanto a questo programma) a chi ti ha dato Prisma.');
+    scriviLogInstaller('ERRORE: ' + (err && err.stack ? err.stack : err));
+    esci(1);
+  }
 }
 
 module.exports = { principale, cartellaChiavetta, cartellaDestinazione };

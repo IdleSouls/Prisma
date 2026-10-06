@@ -15,7 +15,7 @@ const file = ['gestionale.htm', 'portale-cliente.htm', 'portale-sw.js', 'server.
 const cartelle = ['mcp-server', 'logo', 'asset', 'node_modules', 'Documenti-Prisma'];
 let n = 0;
 for (const f of file) { const s = path.join(RADICE, f); if (fs.existsSync(s)) { fs.cpSync(s, path.join(dest, f)); n++; } else console.warn('  (manca) ' + f); }
-for (const c of cartelle) { const s = path.join(RADICE, c); if (fs.existsSync(s)) { fs.cpSync(s, path.join(dest, c), { recursive: true, filter: (x) => !/[\\/]\.git([\\/]|$)/.test(x) }); n++; } else console.warn('  (manca) ' + c + '/'); }
+for (const c of cartelle) { const s = path.join(RADICE, c); if (fs.existsSync(s)) { fs.cpSync(s, path.join(dest, c), { recursive: true, filter: (x) => !/[\\/]\.git([\\/]|$)/.test(x) && !/mcp-server[\\/]node_modules/.test(x) }); n++; } else console.warn('  (manca) ' + c + '/'); }
 for (const f of ['Installa-Prisma.exe', 'lib.js', 'chiave-pubblica.pem']) { const s = path.join(__dirname, f); if (fs.existsSync(s)) { fs.cpSync(s, path.join(dest, f)); n++; } else console.warn('  (manca) licensing/' + f); }
 if (licenza) { const l = path.join(licenza, 'license.json'); if (fs.existsSync(l)) { fs.cpSync(l, path.join(dest, 'license.json')); console.log('Licenza precaricata inclusa.'); } else console.warn('license.json non trovato in ' + licenza); }
 // Mai: dati-studio.json, backup/, documenti-clienti/, ACCESSI, *.txt con password, chiave-privata.pem
