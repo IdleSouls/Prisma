@@ -413,7 +413,7 @@ scriviLog('Avvio di Prisma...');
 const URL_MANIFESTO_AGGIORNAMENTI = 'https://raw.githubusercontent.com/IdleSouls/Prisma/main/versione.json';
 // Cambiala qui a ogni nuova versione pubblicata (deve combaciare con quella scritta nel
 // "versione.json" caricato su GitHub, altrimenti il confronto non ha senso).
-const VERSIONE_LOCALE = '1.8.0';
+const VERSIONE_LOCALE = '1.9.0';
 // Solo questi file possono essere sovrascritti da un aggiornamento - mai un nome libero/a piacere
 // del manifesto, per non correre il rischio (anche solo teorico, es. account GitHub compromesso)
 // di far scrivere un file arbitrario altrove sul PC del cliente.

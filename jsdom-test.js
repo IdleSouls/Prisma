@@ -1915,6 +1915,14 @@ async function main() {
     assert(st().preventivi.find(x => x.id === pid).stato === 'Accettato', 'preventivo non accettato');
     window.setView('preventivi'); await wait(20);
     assert(q('[data-action="nuovo-potenziale-apri"]'), 'manca il pulsante preventivo a nuovo cliente');
+    // Cruscotto titolare
+    {
+      const d = window.datiCruscotto();
+      assert(d.attivi > 0 && Array.isArray(d.adempimenti) && d.adempimenti.length > 0, 'cruscotto: dati incompleti');
+      assert(d.adempimenti.every(t => t.fasi.every(f => f.fatte <= f.tot)), 'cruscotto: fasi incoerenti');
+      click(q('[data-nav="cruscotto"]')); await wait(20);
+      assert(/Avanzamento adempimenti per fase/.test(q('#content').textContent || document.body.textContent), 'cruscotto non renderizzato');
+    }
     // Libri sociali
     {
       const l = window.aggiungiLibroSociale({ clienteId: cl.id, tipo: 'Libro soci', detenutoDa: 'Studio', ultimaStampa: '2025-01-10', ultimaPagina: '12' });

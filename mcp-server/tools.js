@@ -815,6 +815,11 @@ export function creaServer(filePath, baseUrl) {
     async (campi) => testoEsitoScrittura(await inviaComando(url, 'creaIncasso', campi))
   );
   server.registerTool(
+    'cruscotto_titolare',
+    { title: 'Cruscotto titolare', description: 'Quadro d\'insieme dello studio per l\'anno corrente: clienti attivi/nuovi/cessati (continuativi vs una tantum), preventivi fatti/accettati, fatture emesse/incassate, attività da fatturare, avanzamento di ogni adempimento annuale fase per fase e scadenze in ritardo.', inputSchema: {} },
+    async () => { const { vista } = caricaVista(filePath); return testoJson(vista.cruscotto || {}); }
+  );
+  server.registerTool(
     'libri_sociali',
     { title: 'Libri sociali dei clienti', description: 'Libri sociali per cliente: tipo, chi li detiene (Studio/Cliente/Altro), ultima stampa, ultima pagina, vidimazione. Filtro facoltativo: cliente.', inputSchema: { cliente: z.string().optional() } },
     async ({ cliente }) => {

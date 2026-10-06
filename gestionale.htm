@@ -4342,6 +4342,7 @@ const NAV = [
   { group: 'Panoramica', items: [
     { id: 'oggi', label: 'Il mio lavoro', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3.5" width="16" height="17" rx="2.5"/><path d="M8 9l1.8 1.8L13 7.6"/><path d="M8 15h8"/></svg>' },
     { id: 'dashboard', label: 'Dashboard', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>' },
+    { id: 'cruscotto', label: 'Cruscotto titolare', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>' },
     { id: 'azioni', label: 'Azioni', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/></svg>' },
     { id: 'calendario', label: 'Calendario', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="8" y1="2.5" x2="8" y2="6.5"/><line x1="16" y1="2.5" x2="16" y2="6.5"/></svg>' },
   ]},
@@ -4386,6 +4387,7 @@ const NAV = [
 ];
 const PAGE_TITLES = {
   oggi: ['Il mio lavoro', 'Le tue scadenze, i tuoi task e i messaggi da leggere: quello che tocca a te'],
+  cruscotto: ['Cruscotto titolare', 'La situazione dello studio a colpo d\'occhio: clienti, preventivi, fatture e avanzamento di ogni adempimento'],
   dashboard: ['Dashboard', 'Il quadro di tutto lo studio: scadenze, adempimenti e onboarding di tutti'],
   calendario: ['Calendario', 'Vista mensile di tutte le scadenze'],
   clienti: ['Clienti', 'Anagrafica e flag fiscali'],
@@ -4577,6 +4579,7 @@ function render() {
   switch (VIEW) {
     case 'oggi': content.innerHTML = renderOggi(); break;
     case 'dashboard': content.innerHTML = renderDashboard(); break;
+    case 'cruscotto': content.innerHTML = renderCruscotto(); break;
     case 'calendario': content.innerHTML = renderCalendario(); break;
     case 'clienti': content.innerHTML = renderClienti(); break;
     case 'azioni': content.innerHTML = renderAzioni(); break;
@@ -8159,6 +8162,97 @@ function modalLibroSociale(id) {
       </div></form>
       <div class="modal-actions"><button class="btn" data-action="chiudi-modal">Annulla</button><button class="btn primary" data-action="libro-salva" data-id="${ed ? ed.id : ''}">Salva</button></div>
     </div></div>`;
+}
+
+/* -------------------- CRUSCOTTO TITOLARE --------------------
+   Vista d'insieme per chi dirige lo studio: portafoglio clienti, nuovi e cessati nell'anno, preventivi,
+   fatture emesse/incassate, attività da fatturare e — soprattutto — l'avanzamento di ogni adempimento
+   annuale FASE per FASE (es. bilanci: quante contabilità chiuse, fascicoli predisposti, comunicati al
+   cliente, inviati). Tutto calcolato dai dati già presenti: nessun inserimento in più. Visibile a chi non ha
+   il ruolo "limitato" (i limitati vedono solo le sezioni spuntate in Impostazioni › Team). */
+function datiCruscotto() {
+  const anno = STATE.annoCorrente;
+  const inAnno = (iso) => !!iso && String(iso).slice(0, 4) === String(anno);
+  const clienti = STATE.clienti;
+  const attivi = clienti.filter(c => clienteAttivo(c));
+  const perRapporto = (lista) => ({
+    continuativo: lista.filter(c => c.tipoRapporto === 'Contratto continuativo').length,
+    unaTantum: lista.filter(c => c.tipoRapporto === 'Pratica una tantum').length,
+    nd: lista.filter(c => !c.tipoRapporto).length,
+  });
+  const nuovi = clienti.filter(c => clienteAttivo(c) && inAnno(c.dataIngresso));
+  const cessati = clienti.filter(c => c.stato === 'cessato' && inAnno(c.dataCessazione));
+  const motivi = {};
+  cessati.forEach(c => { const m = c.motivoCessazione || 'Non indicato'; motivi[m] = (motivi[m] || 0) + 1; });
+  const prev = STATE.preventivi.filter(p => p.categoria === 'Preventivo' && inAnno(p.dataEmissione));
+  const prevAcc = prev.filter(p => p.stato === 'Accettato');
+  const somma = (arr, k) => arr.reduce((t, x) => t + (Number(x[k]) || 0), 0);
+  const inc = (STATE.incassi || []).filter(i => inAnno(i.dataEmissione));
+  const oggi = oggiISO();
+  const aperte = (STATE.attivitaFatturabili || []).filter(a => a.stato === 'Da fatturare');
+  const { annuali, periodiche, tutteScadenze } = derivati();
+  // avanzamento per tipo di adempimento, fase per fase (unione ordinata dei nomi fase)
+  const perTipo = new Map();
+  annuali.forEach(a => {
+    if (!perTipo.has(a.tipoChiave)) perTipo.set(a.tipoChiave, { nome: a.tipoNome, totale: 0, completati: 0, fasi: new Map() });
+    const t = perTipo.get(a.tipoChiave);
+    t.totale++; if (a.completato) t.completati++;
+    a.sotto.forEach(x => {
+      if (!t.fasi.has(x.nome)) t.fasi.set(x.nome, { nome: x.nome, fatte: 0, tot: 0, pronte: 0 });
+      const f = t.fasi.get(x.nome);
+      f.tot++; if (x.completato) f.fatte++; if (x.fase === 'pronta') f.pronte++;
+    });
+  });
+  const cls = classificaScadenze(tutteScadenze, oggi);
+  const ritardoPerResp = {};
+  cls.scaduti.forEach(x => { const r = x.responsabile || '—'; ritardoPerResp[r] = (ritardoPerResp[r] || 0) + 1; });
+  return {
+    anno, attivi: attivi.length, rapportoAttivi: perRapporto(attivi), potenziali: clienti.filter(c => c.stato === 'potenziale').length,
+    nuovi: nuovi.length, rapportoNuovi: perRapporto(nuovi), cessati: cessati.length, rapportoCessati: perRapporto(cessati), motivi,
+    prev: { fatti: prev.length, inviati: prev.filter(p => p.stato === 'Inviato').length, accettati: prevAcc.length, rifiutati: prev.filter(p => p.stato === 'Rifiutato').length, valoreFatto: somma(prev, 'importo'), valoreAccettato: somma(prevAcc, 'importo') },
+    fatture: { emesse: inc.length, importoEmesso: somma(inc, 'importo'), incassato: somma(inc, 'importoIncassato'), scadute: inc.filter(i => statoIncasso(i) === 'Scaduto').length },
+    daFatturare: { n: aperte.length, importo: somma(aperte, 'importo') },
+    adempimenti: Array.from(perTipo.entries()).map(([chiave, t]) => ({ chiave, nome: t.nome, totale: t.totale, completati: t.completati, fasi: Array.from(t.fasi.values()) })),
+    scadenze: { scadute: cls.scaduti.length, inScadenza: cls.inScadenza.length, completate: cls.completati.length, futuri: cls.futuri.length, ritardoPerResp },
+  };
+}
+function renderCruscotto() {
+  const d = datiCruscotto();
+  const bar = (n, tot) => `<div class="progress" style="width:100%;"><div style="width:${tot ? Math.round(n / tot * 100) : 0}%"></div></div>`;
+  const kpi = (n, l, cls) => `<div class="kpi ${cls || 'completati'}"><div class="n">${n}</div><div class="l">${l}</div></div>`;
+  const rapp = (r) => `<span class="helptext">${r.continuativo} continuativi · ${r.unaTantum} una tantum${r.nd ? ' · ' + r.nd + ' non indicati' : ''}</span>`;
+  const sezClienti = `<div class="card"><div class="section-title">Clienti — ${d.anno}</div>
+    <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);">
+      ${kpi(d.attivi, 'CLIENTI ATTIVI')}${kpi(d.nuovi, 'NUOVI NELL\'ANNO', 'futuri')}${kpi(d.cessati, 'CESSATI NELL\'ANNO', 'scaduti')}${kpi(d.potenziali, 'POTENZIALI (PREVENTIVI)', 'inscadenza')}
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:8px;">
+      <div><div class="helptext"><strong>Portafoglio</strong></div>${rapp(d.rapportoAttivi)}</div>
+      <div><div class="helptext"><strong>Nuovi</strong></div>${rapp(d.rapportoNuovi)}</div>
+      <div><div class="helptext"><strong>Cessati</strong></div>${rapp(d.rapportoCessati)}${Object.keys(d.motivi).length ? '<div class="helptext">' + Object.entries(d.motivi).map(([m, n]) => escapeHtml(m) + ': ' + n).join(' · ') + '</div>' : ''}</div>
+    </div></div>`;
+  const conv = d.prev.fatti ? Math.round(d.prev.accettati / d.prev.fatti * 100) + '%' : '—';
+  const sezPrev = `<div class="card"><div class="section-title">Preventivi — ${d.anno}</div>
+    <div class="kpi-grid" style="grid-template-columns:repeat(5,1fr);">
+      ${kpi(d.prev.fatti, 'FATTI')}${kpi(d.prev.inviati, 'IN ATTESA (INVIATI)', 'inscadenza')}${kpi(d.prev.accettati, 'ACCETTATI', 'futuri')}${kpi(d.prev.rifiutati, 'RIFIUTATI', 'scaduti')}${kpi(conv, 'TASSO DI ACCETTAZIONE')}
+    </div>
+    <div class="helptext" style="margin-top:6px;">Valore preventivato ${fmtEuro(d.prev.valoreFatto)} · accettato ${fmtEuro(d.prev.valoreAccettato)}</div></div>`;
+  const sezFatt = `<div class="card"><div class="section-title">Fatture e incassi — ${d.anno}</div>
+    <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);">
+      ${kpi(d.fatture.emesse, 'FATTURE EMESSE')}${kpi(fmtEuro(d.fatture.importoEmesso), 'IMPORTO EMESSO', 'futuri')}${kpi(fmtEuro(d.fatture.incassato), 'INCASSATO', 'futuri')}${kpi(d.fatture.scadute, 'SCADUTE NON INCASSATE', 'scaduti')}
+    </div>
+    <div class="helptext" style="margin-top:6px;">Residuo da incassare ${fmtEuro(d.fatture.importoEmesso - d.fatture.incassato)} · Attività extra ancora da fatturare: <strong>${d.daFatturare.n}</strong>${d.daFatturare.importo ? ' (' + fmtEuro(d.daFatturare.importo) + ' stimati)' : ''}</div></div>`;
+  const righeAdm = d.adempimenti.length ? d.adempimenti.map(t => `<div style="padding:12px 0;border-bottom:1px solid var(--border);">
+      <div style="display:flex;justify-content:space-between;align-items:center;"><strong>${escapeHtml(t.nome)}</strong><span class="helptext">${t.completati}/${t.totale} completati</span></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px 16px;margin-top:8px;">
+        ${t.fasi.map(f => `<div><div style="display:flex;justify-content:space-between;font-size:12px;"><span>${escapeHtml(f.nome)}</span><strong>${f.fatte}/${f.tot}</strong></div>${bar(f.fatte, f.tot)}<div class="helptext" style="font-size:10.5px;">${f.tot - f.fatte} da fare${f.pronte ? ' · ' + f.pronte + ' pronte per iniziare' : ''}</div></div>`).join('')}
+      </div></div>`).join('') : '<div class="empty">Nessun adempimento annuale applicabile.</div>';
+  const sezAdm = `<div class="card"><div class="section-title">Avanzamento adempimenti per fase — ${d.anno}</div>${righeAdm}</div>`;
+  const rit = Object.entries(d.scadenze.ritardoPerResp).sort((a, b) => b[1] - a[1]);
+  const sezScad = `<div class="card"><div class="section-title">Scadenze periodiche</div>
+    <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);">
+      ${kpi(d.scadenze.scadute, 'IN RITARDO', 'scaduti')}${kpi(d.scadenze.inScadenza, 'ENTRO 30 GIORNI', 'inscadenza')}${kpi(d.scadenze.futuri, 'FUTURE', 'futuri')}${kpi(d.scadenze.completate, 'COMPLETATE')}
+    </div>${rit.length ? '<div class="helptext" style="margin-top:6px;">Ritardi per responsabile: ' + rit.map(([r, n]) => escapeHtml(r) + ' ' + n).join(' · ') + '</div>' : ''}</div>`;
+  return `<div class="helptext" style="margin-bottom:8px;">Anno di riferimento: ${d.anno} (cambialo dal selettore anno in alto).</div>` + sezClienti + sezPrev + sezFatt + sezAdm + sezScad;
 }
 
 /* -------------------- RENDER: PREVENTIVI E MANDATI (task #121, rifatto su modelli #125) --------------------
@@ -17648,6 +17742,7 @@ function esportaVistaMCP() {
     })),
     moduli: MODULI.map(m => ({ id: m.id, nome: m.label, attivo: moduloAttivo(m.id) })),
     team: { responsabili: STATE.meta.responsabili || [], consulenti: STATE.meta.consulenti || [], ruoli: STATE.meta.ruoli || {} },
+    cruscotto: datiCruscotto(),
     libriSociali: (STATE.libriSociali || []).map(l => ({ id: l.id, clienteId: l.clienteId, cliente: nomeCliente(l.clienteId), tipo: l.tipo, detenutoDa: l.detenutoDa, detentoreNote: l.detentoreNote, ultimaStampa: l.ultimaStampa, ultimaPagina: l.ultimaPagina, vidimazione: l.vidimazione, note: l.note })),
     attivitaFatturabili: (STATE.attivitaFatturabili || []).map(a => ({ id: a.id, clienteId: a.clienteId, cliente: nomeCliente(a.clienteId), data: a.data, descrizione: a.descrizione, importo: a.importo, stato: a.stato, fatturaNumero: a.fatturaNumero, fatturaData: a.fatturaData })),
     incassi: (STATE.incassi || []).map(i => ({ id: i.id, clienteId: i.clienteId, cliente: nomeCliente(i.clienteId), descrizione: i.descrizione, numero: i.numero, importo: i.importo, incassato: i.importoIncassato || 0, residuo: residuoIncasso(i), dataEmissione: i.dataEmissione, dataScadenza: i.dataScadenza, stato: statoIncasso(i), solleciti: (i.solleciti || []).length })),
@@ -18102,6 +18197,7 @@ window.rigeneraAccessoSecondarioPortale = rigeneraAccessoSecondarioPortale;
 window.eliminaAccessoSecondarioPortale = eliminaAccessoSecondarioPortale;
 window.trovaAccessoPortale = trovaAccessoPortale;
 window.accessoPortalePuoVedere = accessoPortalePuoVedere;
+window.datiCruscotto = datiCruscotto;
 window.aggiungiLibroSociale = aggiungiLibroSociale; window.aggiornaLibroSociale = aggiornaLibroSociale;
 window.accettaPreventivo = accettaPreventivo; window.creaClientePotenziale = creaClientePotenziale; window.aggiungiAttivitaFatturabile = aggiungiAttivitaFatturabile; window.segnaAttivitaFatturate = segnaAttivitaFatturate; window.prossimaFatturazioneCliente = prossimaFatturazioneCliente; window.attivitaAperteCliente = attivitaAperteCliente;
 window.clienteAttivo = clienteAttivo; window.cessaCliente = cessaCliente; window.riattivaCliente = riattivaCliente; window.configContabTerzi = configContabTerzi;

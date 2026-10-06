@@ -1,17 +1,17 @@
 {
-  "versione": "1.8.0",
-  "note": "Libri sociali dei clienti, adempimenti a SAL con fase pronta/in attesa e passaggio di consegne, sezione fasi in Il mio lavoro",
+  "versione": "1.9.0",
+  "note": "Cruscotto titolare: clienti nuovi/cessati, preventivi, fatture e incassi, avanzamento adempimenti per fase",
   "richiedeNpmInstall": false,
   "file": [
     {
       "nome": "gestionale.htm",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale.htm",
-      "sha256": "1605c31afc2707a41165a06f1e30e3d39be220f393145b8ee0f463884a52fc29"
+      "sha256": "e89e4de012e52adaffe020bdf66069b789468f68f68a7d02cd3544cb7968fe9d"
     },
     {
       "nome": "server.js",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/server.js",
-      "sha256": "ceaa2b0dea201b36cb1cc95ff56eaff9cdb4fb4fccc4f78ed68c50446db41849"
+      "sha256": "19ed037bea094070cfca2436fa63147dcc34e1be4c768a498cf7ad8538035333"
     },
     {
       "nome": "portale-cliente.htm",
