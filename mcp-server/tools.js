@@ -797,61 +797,6 @@ export function creaServer(filePath, baseUrl) {
     async (campi) => testoEsitoScrittura(await inviaComando(url, 'impostaModulo', campi))
   );
 
-  // ---------- TEMPI E REDDITIVITA ----------
-  server.registerTool(
-    'tempi_e_redditivita',
-    { title: 'Ore lavorate e redditività clienti', description: 'Redditività per cliente dell\'anno corrente (ore, compensi emessi, costo = ore x costo orario, margine, euro/ora, dal margine più basso) e registrazioni ore. Filtro facoltativo: cliente.', inputSchema: { cliente: z.string().optional() } },
-    async ({ cliente }) => {
-      const { vista } = caricaVista(filePath);
-      let t = vista.tempi || [], red = (vista.redditivita || {}).clienti || [];
-      if (cliente) { const c = trovaCliente(vista, cliente); if (!c) return testoJson({ errore: 'Cliente non trovato: ' + cliente }); t = t.filter(x => x.clienteId === c.id); red = red.filter(x => x.clienteId === c.id); }
-      return testoJson({ anno: (vista.redditivita || {}).anno, costoOrario: (vista.redditivita || {}).costoOrario, redditivita: red, registrazioni: t.slice(-100) });
-    }
-  );
-  server.registerTool(
-    'registra_tempo',
-    { title: 'Registra ore lavorate', description: 'Registra il tempo dedicato a un cliente (ore decimali, es. 1.5).', inputSchema: { clienteId: z.string(), ore: z.number().positive().max(24), servizio: z.string().optional().describe('Contabilità, IVA e adempimenti, Dichiarazioni, Bilancio, Paghe, Consulenza, Altro'), data: z.string().optional().describe('YYYY-MM-DD, default oggi'), descrizione: z.string().optional(), operatore: z.string().optional() } },
-    async (campi) => testoEsitoScrittura(await inviaComando(url, 'registraTempo', campi))
-  );
-  server.registerTool(
-    'elimina_tempo',
-    { title: 'Elimina registrazione ore', description: 'Elimina una registrazione di ore.', inputSchema: { id: z.string(), conferma: z.literal(true).describe(descrConferma('quale registrazione e cliente')) } },
-    async ({ id }) => testoEsitoScrittura(await inviaComando(url, 'eliminaTempo', { id }))
-  );
-
-  // ---------- RACCOLTA DOCUMENTI ----------
-  server.registerTool(
-    'elenco_richieste_documenti',
-    { title: 'Richieste di documenti ai clienti', description: 'Elenchi di documenti chiesti ai clienti con lo stato di ogni voce (Da caricare / Caricato dal cliente / Ricevuto). Filtri facoltativi: cliente, stato (In attesa, Da verificare, Scaduta, Completa).', inputSchema: { cliente: z.string().optional(), stato: z.enum(['In attesa', 'Da verificare', 'Scaduta', 'Completa']).optional() } },
-    async ({ cliente, stato }) => {
-      const { vista } = caricaVista(filePath);
-      let r = vista.richiesteDocumenti || [];
-      if (cliente) { const c = trovaCliente(vista, cliente); if (!c) return testoJson({ errore: 'Cliente non trovato: ' + cliente }); r = r.filter(x => x.clienteId === c.id); }
-      if (stato) r = r.filter(x => x.stato === stato);
-      return testoJson(r);
-    }
-  );
-  server.registerTool(
-    'crea_richiesta_documenti',
-    { title: 'Chiedi documenti a un cliente', description: 'Crea un elenco di documenti da consegnare: il cliente lo vede nel portale (con avviso) e carica un file per voce.', inputSchema: { clienteId: z.string(), titolo: z.string().optional(), scadenza: z.string().optional().describe('YYYY-MM-DD'), voci: z.array(z.string()).min(1).describe('Nomi dei documenti richiesti') } },
-    async (campi) => testoEsitoScrittura(await inviaComando(url, 'creaRichiestaDocumenti', campi))
-  );
-  server.registerTool(
-    'imposta_stato_documento_richiesto',
-    { title: 'Approva o riapri un documento richiesto', description: 'Imposta lo stato di una voce: Ricevuto (approvato/consegnato in studio), Caricato oppure Da caricare (richiederlo di nuovo).', inputSchema: { richiestaId: z.string(), voceId: z.string(), stato: z.enum(['Da caricare', 'Caricato', 'Ricevuto']) } },
-    async (campi) => testoEsitoScrittura(await inviaComando(url, 'impostaStatoDocumentoRichiesto', campi))
-  );
-  server.registerTool(
-    'sollecita_richiesta_documenti',
-    { title: 'Sollecita documenti mancanti', description: 'Invia al cliente, tramite portale, il promemoria con i documenti ancora mancanti.', inputSchema: { id: z.string(), conferma: z.literal(true).describe(descrConferma('quale cliente e richiesta')) } },
-    async ({ id }) => testoEsitoScrittura(await inviaComando(url, 'sollecitaRichiestaDocumenti', { id }))
-  );
-  server.registerTool(
-    'elimina_richiesta_documenti',
-    { title: 'Elimina richiesta documenti', description: 'Elimina una richiesta di documenti.', inputSchema: { id: z.string(), conferma: z.literal(true).describe(descrConferma('quale richiesta e cliente')) } },
-    async ({ id }) => testoEsitoScrittura(await inviaComando(url, 'eliminaRichiestaDocumenti', { id }))
-  );
-
   // ---------- INCASSI ----------
   server.registerTool(
     'elenco_incassi',

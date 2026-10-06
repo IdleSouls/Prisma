@@ -300,6 +300,14 @@ tr.riga-selezionata{background:var(--blu-light);}
 .doc-foglio ul{margin:4px 0 4px 22px;padding:0;}
 .doc-foglio hr{border:none;border-top:1px solid #c9cfdd;margin:12px 0;}
 .campo-chip{display:inline-block;background:#E7EEFC;color:#2E63C7;border:1px solid rgba(46,99,199,.3);border-radius:10px;padding:0 8px;font:600 12px/20px system-ui,Segoe UI,sans-serif;margin:0 1px;white-space:nowrap;user-select:all;}
+.d-tab{background:#f5f7fc;border-left:3px solid #b8c4e0;font-size:12.5px;padding:1px 8px;margin:0;}
+.d-tab.sep{color:#9aa5bd;font-size:11px;line-height:1.2;}
+table.d-tabella{width:100%;border-collapse:collapse;margin:8px 0;font-size:.95em;}
+table.d-tabella th,table.d-tabella td{border:1px solid #cfd5e3;padding:5px 9px;text-align:left;vertical-align:top;}
+table.d-tabella th{background:#eef2fa;font-weight:700;}
+.d-img{margin:8px 0;} .d-img .img-wrap{display:inline-block;position:relative;max-width:100%;} .d-img img{width:100%;display:block;}
+.d-img .img-ctl{position:absolute;top:4px;right:4px;display:none;gap:2px;background:rgba(255,255,255,.95);border:1px solid #cfd5e3;border-radius:6px;padding:2px;}
+.d-img:hover .img-ctl{display:flex;} .d-img .img-ctl button{border:0;background:none;cursor:pointer;font-size:13px;padding:2px 6px;}
 .campo-chip.custom{background:#FFF1DC;color:#9A5B00;border-color:rgba(154,91,0,.3);}
 .doc-campi{margin-top:10px;border:1px solid var(--border);border-radius:8px;background:#fff;}
 .doc-campi summary{cursor:pointer;padding:8px 12px;font-weight:600;font-size:13px;}
@@ -1718,8 +1726,6 @@ function statoIniziale() {
        scadenze fiscali/adempimenti che restano generate dal motore scadenze esistente. */
     appuntamenti: [],
     incassi: [],
-    richiesteDocumenti: [],
-    tempi: [],
     /* Procedure interne dello studio (task #146): raccolta di SOP/indicazioni operative per lo staff
        ("come si apre una nuova attività X", quali documenti servono ecc.), strutturate come i Modelli
        documenti (categoria/nome/contenuto) più una checklist di documenti necessari. Usate anche dal
@@ -2601,12 +2607,6 @@ const AZIONI_MCP = {
     salvaStato();
     return { modulo: p.modulo, attivo: !!p.attivo };
   },
-  registraTempo: (p) => { const t = aggiungiTempo({ clienteId: p.clienteId, minuti: Math.round((Number(p.ore) || 0) * 60), servizio: p.servizio, data: p.data, descrizione: p.descrizione, operatore: p.operatore }); return { id: t.id }; },
-  eliminaTempo: (p) => { if (!(STATE.tempi || []).find(x => x.id === p.id)) throw new Error('Registrazione non trovata: ' + p.id); eliminaTempo(p.id); return { ok: true }; },
-  creaRichiestaDocumenti: (p) => { const r = aggiungiRichiestaDocumenti({ clienteId: p.clienteId, titolo: p.titolo, scadenza: p.scadenza, voci: p.voci || [] }); return { id: r.id, voci: r.voci.map(v => ({ id: v.id, nome: v.nome })) }; },
-  impostaStatoDocumentoRichiesto: (p) => { const r = impostaStatoVoceRichiesta(p.richiestaId, p.voceId, p.stato); return { stato: statoRichiestaDocumenti(r) }; },
-  sollecitaRichiestaDocumenti: (p) => { if (!richiestaDocumentiById(p.id)) throw new Error('Richiesta non trovata: ' + p.id); return { inviato: sollecitaRichiestaDocumenti(p.id) }; },
-  eliminaRichiestaDocumenti: (p) => { if (!richiestaDocumentiById(p.id)) throw new Error('Richiesta non trovata: ' + p.id); eliminaRichiestaDocumenti(p.id); return { ok: true }; },
   creaIncasso: (p) => { if (!clienteById(p.clienteId)) throw new Error('Cliente non trovato: ' + p.clienteId); if (!(Number(p.importo) > 0)) throw new Error('Importo non valido.'); const i = aggiungiIncasso(p); return { creato: true, id: i.id }; },
   modificaIncasso: (p) => { if (!(STATE.incassi || []).find(x => x.id === p.id)) throw new Error('Incasso non trovato: ' + p.id); aggiornaIncasso(p.id, p.patch || {}); return { aggiornato: true }; },
   registraIncasso: (p) => { const i = registraPagamentoIncasso(p.id, p.importo, p.data); return { stato: statoIncasso(i), residuo: residuoIncasso(i) }; },
@@ -3555,6 +3555,10 @@ const PLACEHOLDER_AUTO_LEGENDA = [
   { chiave: 'studio.indirizzo', label: 'Indirizzo dello studio' },
   { chiave: 'studio.cf', label: 'Codice fiscale del professionista' },
   { chiave: 'studio.citta', label: 'Città dello studio (es. per il foro competente)' },
+  { chiave: 'studio.pec', label: 'PEC dello studio' },
+  { chiave: 'studio.email', label: 'Email dello studio' },
+  { chiave: 'studio.telefono', label: 'Telefono dello studio' },
+  { chiave: 'studio.polizza', label: 'Estremi polizza RC professionale' },
   { chiave: 'data.oggi', label: 'Data odierna (gg/mm/aaaa)' },
   { chiave: 'data.luogoOggi', label: 'Luogo e data odierna (es. "Vicenza, 14/09/2026")' },
 ];
@@ -3576,6 +3580,10 @@ function valoriAutomaticiPlaceholder(clienteId) {
     'studio.indirizzo': STATE.meta.indirizzoStudio || '',
     'studio.cf': STATE.meta.cfStudio || '',
     'studio.citta': STATE.meta.citta || 'Vicenza',
+    'studio.pec': STATE.meta.pecStudio || '',
+    'studio.email': STATE.meta.emailStudio || '',
+    'studio.telefono': STATE.meta.telefonoStudio || '',
+    'studio.polizza': STATE.meta.polizzaRc || '',
     'data.oggi': fmtData(oggi),
     'data.luogoOggi': `${STATE.meta.citta || 'Vicenza'}, ${fmtData(oggi)}`,
   };
@@ -4087,8 +4095,6 @@ function eliminaCliente(id) {
   STATE.taskTeam = STATE.taskTeam.filter(t => t.clienteId !== id);
   STATE.preventivi = STATE.preventivi.filter(p => p.clienteId !== id);
   STATE.incassi = (STATE.incassi || []).filter(i => i.clienteId !== id);
-  STATE.richiesteDocumenti = (STATE.richiesteDocumenti || []).filter(r => r.clienteId !== id);
-  STATE.tempi = (STATE.tempi || []).filter(t => t.clienteId !== id);
 
   // Entità tenute in oggetti indicizzati per clienteId: basta togliere la chiave.
   delete STATE.onboarding[id];
@@ -4251,8 +4257,6 @@ const NAV = [
     { id: 'documenti', label: 'Documenti', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6.5a1.5 1.5 0 0 1 1.5-1.5h4.5l2 2.5h8.5a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18z"/></svg>' },
     { id: 'preventivi', label: 'Preventivi e mandati', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5h8l5 5v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-18a1 1 0 0 1 1-1z"/><path d="M14 2.5v5h5"/><path d="M8 12.5l2.5 2.5 5.5-6"/></svg>' },
     { id: 'incassi', label: 'Incassi', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9v.01M18 15v.01"/></svg>' },
-    { id: 'raccolta', label: 'Raccolta documenti', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9v.01M18 15v.01"/></svg>' },
-    { id: 'tempi', label: 'Tempi e redditività', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9v.01M18 15v.01"/></svg>' },
     { id: 'portale', label: 'Portale cliente', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2"/><line x1="3" y1="8.5" x2="21" y2="8.5"/><circle cx="6" cy="6.5" r=".6" fill="currentColor" stroke="none"/><circle cx="8.2" cy="6.5" r=".6" fill="currentColor" stroke="none"/></svg>' },
   ]},
   { group: 'Analisi cliente', items: [
@@ -4290,8 +4294,6 @@ const PAGE_TITLES = {
   contabilita: ['Contabilità', 'Import periodico da Excel/CSV: nessuna doppia registrazione, nessuna data indovinata'],
   modelli: ['Modelli documenti', 'Testi precompilati per preventivi, mandati e documenti antiriciclaggio: i segnaposto {{così}} si trasformano in campi da compilare'],
   incassi: ['Incassi', 'Compensi da incassare, scadenze di pagamento e solleciti ai clienti'],
-  tempi: ['Tempi e redditività', 'Ore lavorate per cliente e servizio, costo orario e margine rispetto ai compensi'],
-  raccolta: ['Raccolta documenti', 'Elenchi di documenti da chiedere ai clienti, con caricamento dal portale e solleciti'],
   procedure: ['Procedure interne', 'Indicazioni operative per lo staff, passo per passo, con la checklist dei documenti necessari'],
   strumenti: ['Strumenti', 'Convertitore file Word ↔ PDF ↔ PDF/A (serve LibreOffice installato sul PC del server locale)'],
   credenziali: ['Password', 'Credenziali e accessi dello studio e dei clienti — Entratel, Telemaco, home banking, software, ecc.'],
@@ -4335,8 +4337,6 @@ const MODULI = [
   { id: 'procedure', label: 'Procedure interne', desc: 'Istruzioni operative passo per passo per lo staff.', tabs: ['procedure'] },
   { id: 'antiriciclaggio', label: 'Antiriciclaggio', desc: 'Adeguata verifica, profilo di rischio e storico verifiche.', tabs: ['antiriciclaggio'] },
   { id: 'preventivi', label: 'Preventivi e mandati', desc: 'Preventivi, mandati e lettere di incarico da modelli.', tabs: ['preventivi'] },
-  { id: 'tempi', label: 'Tempi e redditività', desc: 'Registra le ore per cliente e servizio e scopri quali clienti rendono davvero.', tabs: ['tempi'] },
-  { id: 'raccolta', label: 'Raccolta documenti', desc: 'Checklist di documenti da chiedere ai clienti: il cliente li carica dal portale, tu li approvi e sollecita chi manca.', tabs: ['raccolta'] },
   { id: 'incassi', label: 'Incassi e solleciti', desc: 'Compensi da incassare, scadenze di pagamento e solleciti ai clienti.', tabs: ['incassi'] },
   { id: 'onboarding', label: 'Onboarding clienti', desc: 'Checklist di attivazione per un nuovo cliente.', tabs: ['onboarding'] },
   { id: 'bilanci', label: 'Bilanci e KPI', desc: 'Situazioni economico-patrimoniali, indici e grafici.', tabs: ['bilanci'] },
@@ -4478,8 +4478,6 @@ function render() {
     case 'modelli': content.innerHTML = renderModelliDocumento(); break;
     case 'procedure': content.innerHTML = renderProcedureInterne(); break;
     case 'incassi': content.innerHTML = renderIncassi(); break;
-    case 'raccolta': content.innerHTML = renderRaccolta(); break;
-    case 'tempi': content.innerHTML = renderTempi(); break;
     case 'strumenti': content.innerHTML = renderStrumenti(); break;
     case 'credenziali': content.innerHTML = renderCredenziali(); break;
     case 'portale': content.innerHTML = renderPortaleCliente(); break;
@@ -7098,6 +7096,30 @@ function eRigaTitoloMaiuscolo(r) {
   const t = r.trim().replace(/^\d+[.)]\s*/, '');
   return t.length >= 4 && t === t.toUpperCase() && /[A-ZÀÈÉÌÒÙ]{3}/.test(t) && !/\{\{/.test(t) && !/[a-z]/.test(t);
 }
+/* Immagini nei documenti (riga [[img:ID|larghezza%|allineamento]]): i dati stanno in STATE.immaginiDocumenti. */
+const IMG_RIGA_RE = /^\[\[img:([\w-]+)\|(\d{1,3})\|(left|center|right)\]\]$/;
+function immagineDocumentoHtml(id, w, al, ed) {
+  const im = (STATE.immaginiDocumenti || {})[id];
+  const src = im ? im.d : '';
+  if (!ed) return src ? `<div style="text-align:${al};margin:8px 0;"><img src="${src}" style="width:${w}%;max-width:100%;" alt=""></div>` : '';
+  const btn = (op, t, tit) => `<button type="button" onmousedown="event.preventDefault()" data-action="doc-img" data-op="${op}" title="${tit}">${t}</button>`;
+  return `<div class="d-img" contenteditable="false" data-img="${id}" data-w="${w}" data-al="${al}" style="text-align:${al};"><span class="img-wrap" style="width:${w}%;">${src ? `<img src="${src}" alt="">` : '<em>(immagine mancante)</em>'}<span class="img-ctl">${btn('meno', '−', 'Più piccola')}${btn('piu', '+', 'Più grande')}${btn('left', '⇤', 'A sinistra')}${btn('center', '↔', 'Al centro')}${btn('right', '⇥', 'A destra')}${btn('del', '✕', 'Rimuovi immagine')}</span></span></div>`;
+}
+function registraImmagineDocumento(dataUrl, w, h) {
+  if (!STATE.immaginiDocumenti) STATE.immaginiDocumenti = {};
+  const id = uid('img');
+  STATE.immaginiDocumenti[id] = { d: dataUrl, w: w || 0, h: h || 0 };
+  salvaStato();
+  return id;
+}
+function potaImmaginiDocumenti() {
+  const usate = new Set();
+  const scan = (t) => String(t || '').split('\n').forEach(r => { const m = IMG_RIGA_RE.exec(r); if (m) usate.add(m[1]); });
+  (STATE.modelliDocumento || []).forEach(m => scan(m.corpo));
+  (STATE.preventivi || []).forEach(p => scan(p.corpo));
+  const im = STATE.immaginiDocumenti || {};
+  Object.keys(im).forEach(k => { if (!usate.has(k)) delete im[k]; });
+}
 /* Testo marcato -> HTML. modo 'editor': una <div> per riga (round-trip esatto con editorDocumentoToTesto);
    modo 'lettura': HTML tipografico per stampa/anteprima (paragrafi, titoli, elenchi). */
 function testoDocumentoToHtml(testo, modo) {
@@ -7105,8 +7127,23 @@ function testoDocumentoToHtml(testo, modo) {
   const ed = modo === 'editor';
   let out = '', inUl = false;
   const chiudiUl = () => { if (inUl) { out += '</ul>'; inUl = false; } };
+  let tab = null;
+  const chiudiTab = () => {
+    if (!tab) return;
+    const celle = (riga) => riga.replace(/^\s*\|/, '').replace(/\|\s*$/, '').split('|').map(c => c.trim());
+    const sepIdx = tab.findIndex(x => /^\s*\|?[\s:|-]+\|?\s*$/.test(x) && x.indexOf('-') >= 0);
+    const intest = sepIdx === 1 ? celle(tab[0]) : null;
+    const corpoRighe = tab.filter((x, i) => !(i === sepIdx && sepIdx >= 0) && !(intest && i === 0));
+    out += '<table class="d-tabella">' + (intest ? '<thead><tr>' + intest.map(c => '<th>' + inlineDocumentoHtml(c, false) + '</th>').join('') + '</tr></thead>' : '') +
+      '<tbody>' + corpoRighe.map(x => '<tr>' + celle(x).map(c => '<td>' + inlineDocumentoHtml(c, false) + '</td>').join('') + '</tr>').join('') + '</tbody></table>';
+    tab = null;
+  };
   righe.forEach((r) => {
     let m;
+    if (!ed && /^\s*\|.*\|\s*$/.test(r)) { chiudiUl(); (tab = tab || []).push(r); return; }
+    if (tab) chiudiTab();
+    if ((m = IMG_RIGA_RE.exec(r))) { chiudiUl(); out += immagineDocumentoHtml(m[1], Number(m[2]), m[3], ed); return; }
+    if (ed && /^\s*\|.*\|\s*$/.test(r)) { chiudiUl(); out += '<div class="d-riga d-tab' + (/^\s*\|?[\s:|-]+\|?\s*$/.test(r) ? ' sep' : '') + '">' + inlineDocumentoHtml(r, true) + '</div>'; return; }
     if ((m = /^- (.*)$/.exec(r))) {
       if (!inUl) { out += '<ul>'; inUl = true; }
       out += '<li>' + inlineDocumentoHtml(m[1], ed) + '</li>';
@@ -7122,7 +7159,7 @@ function testoDocumentoToHtml(testo, modo) {
     if (!ed && eRigaTitoloMaiuscolo(r)) { out += '<h2>' + inlineDocumentoHtml(r.trim(), false) + '</h2>'; return; }
     out += '<div class="d-riga">' + inlineDocumentoHtml(r, ed) + '</div>';
   });
-  chiudiUl();
+  chiudiUl(); if (tab) chiudiTab();
   return out;
 }
 /* HTML dell'editor -> testo marcato. */
@@ -7152,6 +7189,7 @@ function editorDocumentoToTesto(root) {
     if (n.nodeType === 3) { const t = n.nodeValue.replace(/ /g, ' '); t.split('\n').forEach(x => righe.push(x)); return; }
     if (n.nodeType !== 1) return;
     const tag = n.tagName;
+    if (n.classList && n.classList.contains('d-img')) { righe.push('[[img:' + n.getAttribute('data-img') + '|' + (n.getAttribute('data-w') || '50') + '|' + (n.getAttribute('data-al') || 'center') + ']]'); return; }
     if (tag === 'UL' || tag === 'OL') { Array.from(n.children).forEach(li => righe.push('- ' + inline(li).replace(/\n/g, ' ').trim())); return; }
     if (tag === 'HR') { righe.push('---'); return; }
     if (tag === 'H1' || tag === 'H2') { righe.push((tag === 'H1' ? '# ' : '## ') + inline(n).replace(/\n/g, ' ').trim()); return; }
@@ -7171,9 +7209,23 @@ function editorDocumentoToTesto(root) {
   return righe.join('\n');
 }
 function testoDocumentoSenzaMarcatura(testo) {
-  return String(testo || '').split('\n').map(r => r.replace(/^(#{1,2} |- |\^\^ |>> )/, '').replace(/^---$/, '').replace(/\*\*([^*]+)\*\*/g, '$1').replace(/(^|[^*\w])\*([^*\n]+)\*(?![*\w])/g, '$1$2')).join('\n');
+  const eTab = (r) => /^\s*\|.*\|\s*$/.test(r);
+  const eSep = (r) => eTab(r) && /^[\s|:-]+$/.test(r) && r.indexOf('-') >= 0;
+  return String(testo || '').split('\n')
+    .filter(r => !IMG_RIGA_RE.test(r) && !eSep(r))
+    .map(r => eTab(r) ? r.replace(/^\s*\|/, '').replace(/\|\s*$/, '').split('|').map(c => c.trim()).join('   ') : r)
+    .map(r => r.replace(/^(#{1,2} |- |\^\^ |>> )/, '').replace(/^---$/, '').replace(/\*\*([^*]+)\*\*/g, '$1').replace(/(^|[^*\w])\*([^*\n]+)\*(?![*\w])/g, '$1$2'))
+    .join('\n');
 }
 /* Barra strumenti + foglio + pannello campi. id: id dell'elemento editabile. */
+const CAMPI_PERSONALIZZATI_SUGGERITI = ['dettaglioAttivita', 'condizioniPagamento', 'gradoComplessita', 'regimeIva', 'durataIncarico', 'dataInizioIncarico', 'modalitaFatturazione'];
+function campiPersonalizzatiNoti(testoCorrente) {
+  const auto = new Set(PLACEHOLDER_AUTO_LEGENDA.map(x => x.chiave).concat(PLACEHOLDER_RISERVATI));
+  const set = new Set(CAMPI_PERSONALIZZATI_SUGGERITI);
+  (STATE.modelliDocumento || []).forEach(m => estraiPlaceholder(m.corpo).forEach(k => set.add(k)));
+  estraiPlaceholder(testoCorrente).forEach(k => set.add(k));
+  return Array.from(set).filter(k => !auto.has(k)).sort((a, b) => etichettaCampoDocumento(a).localeCompare(etichettaCampoDocumento(b)));
+}
 function editorDocumentoHtml(id, testo, conCampi) {
   const btn = (cmd, label, titolo) => `<button type="button" onmousedown="event.preventDefault()" data-action="doc-fmt" data-cmd="${cmd}" title="${titolo}">${label}</button>`;
   const gruppi = [
@@ -7181,7 +7233,8 @@ function editorDocumentoHtml(id, testo, conCampi) {
     ['Studio', PLACEHOLDER_AUTO_LEGENDA.filter(x => x.chiave.startsWith('studio.'))],
     ['Data', PLACEHOLDER_AUTO_LEGENDA.filter(x => x.chiave.startsWith('data.'))],
     ['Dati del documento', PLACEHOLDER_RISERVATI.map(k => ({ chiave: k, label: etichettaCampoDocumento(k) }))],
-  ];
+    ['Campi da compilare già usati nei modelli', campiPersonalizzatiNoti(testo).map(k => ({ chiave: k, label: etichettaCampoDocumento(k) }))],
+  ].filter(([, lista]) => lista.length);
   const pannelloCampi = conCampi ? `<details class="doc-campi" open>
       <summary>＋ Inserisci un campo (si compila da solo)</summary>
       <div class="doc-campi-corpo">
@@ -7196,7 +7249,9 @@ function editorDocumentoHtml(id, testo, conCampi) {
       ${btn('bold', '<b>G</b>', 'Grassetto')}${btn('italic', '<i>C</i>', 'Corsivo')}<span class="sep"></span>
       ${btn('h1', 'Titolo', 'Titolo del documento')}${btn('h2', 'Sezione', 'Titolo di sezione')}${btn('p', 'Testo', 'Testo normale')}<span class="sep"></span>
       ${btn('ul', '• Elenco', 'Elenco puntato')}<span class="sep"></span>
-      ${btn('left', '⇤', 'Allinea a sinistra')}${btn('center', '↔', 'Centra')}${btn('right', '⇥', 'Allinea a destra')}
+      ${btn('left', '⇤', 'Allinea a sinistra')}${btn('center', '↔', 'Centra')}${btn('right', '⇥', 'Allinea a destra')}<span class="sep"></span>
+      ${btn('tabella', '▦ Tabella', 'Inserisci una tabella (righe che iniziano con |)')}${btn('linea', '― Linea', 'Linea di separazione')}
+      <label title="Inserisci un'immagine (logo, firma, timbro)" style="cursor:pointer;"><span class="btn small" style="pointer-events:none;">🖼 Immagine</span><input type="file" accept="image/*" data-action="doc-img-file" style="display:none;"></label>
     </div>
     <div class="doc-sfondo"><div class="doc-foglio doc-editor" id="${id}" contenteditable="true" spellcheck="true">${testoDocumentoToHtml(testo, 'editor')}</div></div>
     ${pannelloCampi}`;
@@ -7218,8 +7273,47 @@ function docEseguiComando(cmd) {
   ed.focus();
   if (DOC_RANGE && DOC_RANGE.ed === ed) { const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(DOC_RANGE.range); }
   const mappa = { bold: ['bold'], italic: ['italic'], ul: ['insertUnorderedList'], left: ['justifyLeft'], center: ['justifyCenter'], right: ['justifyRight'], h1: ['formatBlock', 'h1'], h2: ['formatBlock', 'h2'], p: ['formatBlock', 'div'] };
+  if (cmd === 'tabella' || cmd === 'linea') {
+    const html = cmd === 'linea' ? '<hr><div class="d-riga"><br></div>' : '<div class="d-riga d-tab">| Descrizione | Dettaglio | Importo (€) |</div><div class="d-riga d-tab sep">|---|---|---|</div><div class="d-riga d-tab">| Voce 1 | | |</div><div class="d-riga d-tab">| Voce 2 | | |</div><div class="d-riga"><br></div>';
+    if (!(document.execCommand && document.execCommand('insertHTML', false, html))) ed.insertAdjacentHTML('beforeend', html);
+    return;
+  }
   const c = mappa[cmd];
   if (c && document.execCommand) document.execCommand(c[0], false, c[1] || null);
+}
+function docInserisciImmagineId(idImg) {
+  const ed = docEditorAttivo(); if (!ed) return;
+  const html = immagineDocumentoHtml(idImg, 50, 'center', true) + '<div class="d-riga"><br></div>';
+  ed.focus();
+  if (DOC_RANGE && DOC_RANGE.ed === ed) { const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(DOC_RANGE.range); }
+  if (!(document.execCommand && document.execCommand('insertHTML', false, html))) ed.insertAdjacentHTML('beforeend', html);
+}
+/* Ridimensiona a max 900px e comprime, così il documento resta leggero. */
+function caricaImmagineNelDocumento(file) {
+  if (!file || !/^image\//.test(file.type)) { toast('Scegli un file immagine.'); return; }
+  const fr = new FileReader();
+  fr.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, 900 / img.width);
+      const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      const png = file.type === 'image/png';
+      docInserisciImmagineId(registraImmagineDocumento(c.toDataURL(png ? 'image/png' : 'image/jpeg', 0.85), c.width, c.height));
+    };
+    img.onerror = () => toast('Immagine non leggibile.', true);
+    img.src = fr.result;
+  };
+  fr.readAsDataURL(file);
+}
+function docImmagineOperazione(blocco, op) {
+  if (!blocco) return;
+  let w = Number(blocco.getAttribute('data-w')) || 50;
+  if (op === 'del') { blocco.remove(); return; }
+  if (op === 'piu') w = Math.min(100, w + 15); else if (op === 'meno') w = Math.max(10, w - 15);
+  else if (['left', 'center', 'right'].includes(op)) { blocco.setAttribute('data-al', op); blocco.style.textAlign = op; }
+  blocco.setAttribute('data-w', String(w));
+  const wrap = blocco.querySelector('.img-wrap'); if (wrap) wrap.style.width = w + '%';
 }
 function docInserisciCampo(chiave) {
   const ed = docEditorAttivo();
@@ -7231,9 +7325,120 @@ function docInserisciCampo(chiave) {
   ed.insertAdjacentHTML('beforeend', html);
 }
 
+/* Modelli "strutturati" (ricerca su facsimile ODCEC/CNDCEC: oggetto, grado di complessità e oneri,
+   compenso a voci, recesso, polizza RC, privacy, antiriciclaggio, firme). Non duplicano l'intestazione
+   dello studio: la mette già la carta intestata in stampa/PDF. Si aggiungono con un pulsante, senza
+   toccare i modelli esistenti. */
+function modelliBaseStrutturati() {
+  const mk = (categoria, nome, corpo) => ({ id: uid('mod'), categoria, nome, corpo, attivo: true, predefinito: false, creatoIl: oggiISO() });
+  return [
+    mk('Preventivo', 'Preventivo strutturato (a voci)', `>> {{data.luogoOggi}}
+
+**Spett.le**
+**{{cliente.ragioneSociale}}**
+{{cliente.indirizzo}}
+P.IVA {{cliente.piva}} – C.F. {{cliente.codiceFiscale}}
+
+**Oggetto:** preventivo per prestazioni professionali – {{oggetto}}
+
+Egregio Cliente,
+in adempimento degli obblighi informativi sul compenso professionale (art. 9, D.P.R. 137/2012) Le sottoponiamo il preventivo relativo all'incarico in oggetto.
+
+## 1. Prestazioni oggetto dell'incarico
+{{dettaglioAttivita}}
+
+## 2. Compenso
+| Descrizione | Periodicità | Compenso (€) |
+|---|---|---|
+| {{voce1Descrizione}} | {{voce1Periodicita}} | {{voce1Compenso}} |
+| {{voce2Descrizione}} | {{voce2Periodicita}} | {{voce2Compenso}} |
+| **Totale** | | **{{importo}}** |
+
+{{regimeIva}}
+
+## 3. Grado di complessità e oneri ipotizzabili
+{{gradoComplessita}}
+
+## 4. Condizioni di pagamento
+{{condizioniPagamento}}
+
+## 5. Assicurazione professionale
+Il professionista è coperto da polizza di responsabilità civile professionale: {{studio.polizza}}
+
+## 6. Validità
+La presente proposta è valida fino al {{validoFino}}.
+
+## 7. Accettazione
+Per accettazione, il Cliente restituisce copia firmata del presente documento.
+
+| Il Professionista | Per accettazione, il Cliente |
+|---|---|
+| {{studio.nome}} | {{cliente.ragioneSociale}} |
+| | |
+| ______________________ | ______________________ |
+
+Luogo e data: ____________________`),
+    mk('Lettera di incarico', 'Lettera di incarico strutturata', `>> {{data.luogoOggi}}
+
+**Spett.le**
+**{{cliente.ragioneSociale}}**
+{{cliente.indirizzo}}
+P.IVA {{cliente.piva}} – C.F. {{cliente.codiceFiscale}}
+
+# LETTERA DI INCARICO PROFESSIONALE
+^^ {{oggetto}}
+
+## Art. 1 – Oggetto
+Il Cliente conferisce a {{studio.nome}} ({{studio.iscrizione}}), di seguito "Professionista", l'incarico di svolgere le seguenti attività:
+
+{{dettaglioAttivita}}
+
+L'incarico è limitato alle attività descritte; eventuali ulteriori prestazioni saranno oggetto di separato accordo.
+
+## Art. 2 – Durata
+{{durataIncarico}}
+
+## Art. 3 – Compenso
+Il compenso è pari a € {{importo}}. {{regimeIva}}
+
+{{condizioniPagamento}}
+
+## Art. 4 – Obblighi del Cliente
+- fornire tempestivamente la documentazione necessaria e comunicare ogni variazione rilevante;
+- collaborare con il Professionista e rispondere alle richieste di integrazione;
+- fornire le informazioni richieste per l'adeguata verifica ai sensi del D.Lgs. 231/2007.
+
+## Art. 5 – Responsabilità e polizza
+Il Professionista opera con la diligenza richiesta dalla natura dell'attività (art. 2236 c.c.). Estremi della polizza RC professionale: {{studio.polizza}}
+
+## Art. 6 – Recesso
+Ciascuna parte può recedere con comunicazione scritta (PEC o raccomandata) e preavviso di 15 giorni. Resta dovuto il compenso per l'attività già svolta. Il Professionista può recedere con effetto immediato nei casi previsti dalla normativa antiriciclaggio.
+
+## Art. 7 – Trattamento dei dati personali
+I dati sono trattati esclusivamente per l'esecuzione dell'incarico e gli obblighi di legge, ai sensi del Reg. UE 2016/679. Titolare: {{studio.nome}} – {{studio.pec}}.
+
+## Art. 8 – Foro competente
+Per ogni controversia è competente il Foro di {{studio.citta}}.
+
+| Il Professionista | Il Cliente |
+|---|---|
+| {{studio.nome}} | {{cliente.ragioneSociale}} |
+| | |
+| ______________________ | ______________________ |
+
+Luogo e data: ____________________`),
+  ];
+}
+function aggiungiModelliBaseStrutturati() {
+  const esistenti = new Set((STATE.modelliDocumento || []).map(m => m.nome));
+  const nuovi = modelliBaseStrutturati().filter(m => !esistenti.has(m.nome));
+  nuovi.forEach(m => STATE.modelliDocumento.push(m));
+  if (nuovi.length) salvaStato();
+  return nuovi.length;
+}
 function renderModelliDocumento() {
   const modelli = STATE.modelliDocumento;
-  const intro = `<div style="display:flex;justify-content:flex-end;margin-bottom:10px;"><button class="btn primary" data-action="nuovo-modello">+ Nuovo modello</button></div>`;
+  const intro = `<div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:10px;flex-wrap:wrap;"><button class="btn" data-action="modelli-base-strutturati" title="Aggiunge un preventivo a voci e una lettera di incarico completi di tabella compensi, polizza, recesso, privacy">+ Aggiungi modelli base strutturati</button><button class="btn primary" data-action="nuovo-modello">+ Nuovo modello</button></div>`;
   if (modelli.length === 0) {
     return intro + `<div class="card"><div class="empty"><div class="big">Nessun modello ancora</div>Crea un modello per Preventivi, Mandati o documenti Antiriciclaggio: scrivi il testo con segnaposto {{così}}. Quelli automatici (dati cliente/studio/data) si compilano da soli, gli altri diventano campi da compilare a ogni documento.</div></div>`;
   }
@@ -7592,182 +7797,6 @@ function modalRegistraIncasso(id) {
     </div></div>`;
 }
 
-/* -------------------- TEMPI E REDDITIVITÀ (task #206) --------------------
-   Ore lavorate per cliente e servizio. Ricavi = compensi (STATE.incassi emessi) nell'anno scelto;
-   costo = ore x costo orario dello studio (STATE.meta.costoOrarioStudio, modificabile qui).
-   Margine = ricavi - costo; "€/ora" = ricavi / ore. Stima gestionale, non dato di bilancio. */
-let TEMPI_FILTRO = { anno: String(new Date().getFullYear()), cliente: 'Tutti' };
-const SERVIZI_TEMPI = ['Contabilità', 'IVA e adempimenti', 'Dichiarazioni', 'Bilancio', 'Paghe', 'Consulenza', 'Altro'];
-function costoOrarioStudio() { const v = Number(STATE.meta.costoOrarioStudio); return v > 0 ? v : 40; }
-function aggiungiTempo(d) {
-  if (!clienteById(d.clienteId)) throw new Error('Cliente non trovato: ' + d.clienteId);
-  const minuti = Math.round(Number(d.minuti));
-  if (!(minuti > 0) || minuti > 1440) throw new Error('Indica una durata tra 1 minuto e 24 ore.');
-  const t = { id: uid('tempo'), clienteId: d.clienteId, data: d.data || oggiISO(), minuti, servizio: d.servizio || 'Altro', descrizione: (d.descrizione || '').trim().slice(0, 300), operatore: d.operatore || operatoreCorrente() || '' };
-  if (!STATE.tempi) STATE.tempi = [];
-  STATE.tempi.push(t); salvaStato(); return t;
-}
-function eliminaTempo(id) { STATE.tempi = (STATE.tempi || []).filter(t => t.id !== id); salvaStato(); }
-function riepilogoRedditivita(anno) {
-  const costo = costoOrarioStudio(); const per = {};
-  const riga = (cid) => per[cid] || (per[cid] = { clienteId: cid, minuti: 0, ricavi: 0 });
-  (STATE.tempi || []).filter(t => (t.data || '').slice(0, 4) === anno).forEach(t => { riga(t.clienteId).minuti += t.minuti; });
-  (STATE.incassi || []).filter(i => (i.dataEmissione || i.creatoIl || '').slice(0, 4) === anno).forEach(i => { riga(i.clienteId).ricavi += Number(i.importo) || 0; });
-  return Object.values(per).map(r => { const ore = r.minuti / 60; const costoTot = ore * costo; return Object.assign(r, { ore, costo: costoTot, margine: r.ricavi - costoTot, euroOra: ore > 0 ? r.ricavi / ore : null }); })
-    .sort((a, b) => a.margine - b.margine);
-}
-function fmtOre(min) { return (min / 60).toLocaleString('it-IT', { maximumFractionDigits: 1 }) + ' h'; }
-function renderTempi() {
-  if (STATE.clienti.length === 0) return `<div class="card"><div class="empty"><div class="big">Aggiungi prima un cliente</div>Le ore sono sempre legate a un cliente.</div></div>`;
-  const anni = Array.from(new Set([TEMPI_FILTRO.anno, String(new Date().getFullYear())].concat((STATE.tempi || []).map(t => (t.data || '').slice(0, 4))))).filter(Boolean).sort().reverse();
-  const riep = riepilogoRedditivita(TEMPI_FILTRO.anno);
-  const totMin = riep.reduce((n, r) => n + r.minuti, 0), totRic = riep.reduce((n, r) => n + r.ricavi, 0);
-  const totMarg = riep.reduce((n, r) => n + r.margine, 0);
-  const kpi = `<div class="kpi-grid">
-    <div class="kpi"><div class="label">Ore registrate</div><div class="value">${fmtOre(totMin)}</div></div>
-    <div class="kpi"><div class="label">Compensi emessi</div><div class="value">${fmtEuro(totRic)}</div></div>
-    <div class="kpi"><div class="label">Margine stimato</div><div class="value" style="color:${totMarg < 0 ? 'var(--rosso)' : 'inherit'};">${fmtEuro(totMarg)}</div></div></div>`;
-  const barra = `<div class="toolbar" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;">
-    <button class="btn primary" data-action="nuovo-tempo">+ Registra ore</button>
-    <div class="field" style="margin:0;"><label>Anno</label><select data-action="tempi-filtro-anno">${anni.map(a => `<option ${a === TEMPI_FILTRO.anno ? 'selected' : ''}>${a}</option>`).join('')}</select></div>
-    <div class="field" style="margin:0;"><label>Cliente (elenco ore)</label><select data-action="tempi-filtro-cliente"><option>Tutti</option>${STATE.clienti.slice().sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale)).map(c => `<option value="${c.id}" ${TEMPI_FILTRO.cliente === c.id ? 'selected' : ''}>${escapeHtml(c.ragioneSociale)}</option>`).join('')}</select></div>
-    <div class="field" style="margin:0;"><label>Costo orario studio (€)</label><input type="number" min="1" step="1" style="width:110px;" data-action="tempi-costo-orario" value="${costoOrarioStudio()}"></div></div>`;
-  const tabRed = riep.length ? `<div class="card"><h3 style="margin:0 0 8px;">Redditività per cliente ${TEMPI_FILTRO.anno}</h3><table class="tbl"><thead><tr><th>Cliente</th><th style="text-align:right;">Ore</th><th style="text-align:right;">Compensi</th><th style="text-align:right;">Costo</th><th style="text-align:right;">Margine</th><th style="text-align:right;">€/ora</th></tr></thead><tbody>${riep.map(r => `<tr><td>${escapeHtml(nomeCliente(r.clienteId))}</td><td style="text-align:right;">${fmtOre(r.minuti)}</td><td style="text-align:right;">${fmtEuro(r.ricavi)}</td><td style="text-align:right;">${fmtEuro(r.costo)}</td><td style="text-align:right;color:${r.margine < 0 ? 'var(--rosso)' : 'var(--verde)'};font-weight:600;">${fmtEuro(r.margine)}</td><td style="text-align:right;">${r.euroOra == null ? '—' : fmtEuro(r.euroOra)}</td></tr>`).join('')}</tbody></table><div class="helptext">Ordinati dal margine più basso. Compensi = incassi emessi nell'anno (modulo Incassi); costo = ore × costo orario. È una stima gestionale.</div></div>`
-    : `<div class="card"><div class="empty"><div class="big">Ancora nessun dato</div>Registra le ore lavorate e inserisci i compensi in Incassi per vedere quali clienti rendono di più.</div></div>`;
-  let lista = (STATE.tempi || []).filter(t => (t.data || '').slice(0, 4) === TEMPI_FILTRO.anno);
-  if (TEMPI_FILTRO.cliente !== 'Tutti') lista = lista.filter(t => t.clienteId === TEMPI_FILTRO.cliente);
-  lista = lista.sort((a, b) => (b.data || '').localeCompare(a.data || '')).slice(0, 100);
-  const elenco = lista.length ? `<div class="card" style="margin-top:12px;"><h3 style="margin:0 0 8px;">Ultime ore registrate</h3><table class="tbl"><tbody>${lista.map(t => `<tr><td>${fmtData(t.data)}</td><td>${escapeHtml(nomeCliente(t.clienteId))}</td><td>${escapeHtml(t.servizio)}${t.descrizione ? ` <span class="helptext">${escapeHtml(t.descrizione)}</span>` : ''}</td><td>${escapeHtml(t.operatore || '')}</td><td style="text-align:right;">${fmtOre(t.minuti)}</td><td style="text-align:right;"><button class="btn small danger" data-action="elimina-tempo" data-id="${t.id}">✕</button></td></tr>`).join('')}</tbody></table></div>` : '';
-  return kpi + barra + tabRed + elenco;
-}
-function modalTempo() {
-  document.getElementById('modalRoot').innerHTML = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
-    <div class="modal" style="max-width:480px;">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;"><div><h2>Registra ore</h2><div class="modal-sub">Tempo dedicato a un cliente.</div></div><button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button></div>
-      <div class="grid2">
-        <div class="field full" style="grid-column:1/-1;"><label>Cliente *</label><select id="tmpCliente">${STATE.clienti.slice().sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale)).map(c => `<option value="${c.id}" ${TEMPI_FILTRO.cliente === c.id ? 'selected' : ''}>${escapeHtml(c.ragioneSociale)}</option>`).join('')}</select></div>
-        <div class="field"><label>Servizio</label><select id="tmpServizio">${SERVIZI_TEMPI.map(x => `<option>${x}</option>`).join('')}</select></div>
-        <div class="field"><label>Data</label><input id="tmpData" type="date" value="${oggiISO()}"></div>
-        <div class="field"><label>Ore</label><input id="tmpOre" type="number" min="0" step="1" value="1"></div>
-        <div class="field"><label>Minuti</label><input id="tmpMin" type="number" min="0" max="59" step="5" value="0"></div>
-        <div class="field full" style="grid-column:1/-1;"><label>Note</label><input id="tmpNote" placeholder="facoltative"></div>
-      </div>
-      <div class="modal-actions"><button class="btn" data-action="chiudi-modal">Annulla</button><button class="btn primary" data-action="salva-tempo">Registra</button></div>
-    </div></div>`;
-}
-
-/* -------------------- RACCOLTA DOCUMENTI (task #208) --------------------
-   Lo studio crea per un cliente un elenco di documenti da consegnare (anche partendo dalla checklist
-   di una procedura interna). Il cliente lo vede nel portale (scheda Documenti), carica un file per
-   ogni voce e lo studio lo approva. I solleciti non partono mai da soli: sono una comunicazione sul
-   portale, inviata solo dopo conferma. Voce: 'Da caricare' -> 'Caricato' (dal cliente) -> 'Ricevuto' (approvato). */
-const GIORNI_TRA_SOLLECITI_RACCOLTA = 7;
-let RACC_FILTRO = { cliente: 'Tutti', stato: 'Aperte' };
-function statoRichiestaDocumenti(r) {
-  const v = r.voci || [];
-  if (v.length && v.every(x => x.stato === 'Ricevuto')) return 'Completa';
-  if (v.some(x => x.stato === 'Da caricare')) return (r.scadenza && r.scadenza < oggiISO()) ? 'Scaduta' : 'In attesa';
-  return 'Da verificare';
-}
-function aggiungiRichiestaDocumenti(d) {
-  const nomi = (d.voci || []).map(x => String(x).trim()).filter(Boolean);
-  if (!clienteById(d.clienteId)) throw new Error('Cliente non trovato: ' + d.clienteId);
-  if (!nomi.length) throw new Error('Serve almeno un documento da richiedere.');
-  const r = { id: uid('racc'), clienteId: d.clienteId, titolo: (d.titolo || '').trim() || 'Documenti da consegnare', scadenza: d.scadenza || '', creatoIl: oggiISO(), solleciti: [],
-    voci: nomi.map(n => ({ id: uid('voce'), nome: n.slice(0, 200), stato: 'Da caricare' })) };
-  if (!STATE.richiesteDocumenti) STATE.richiesteDocumenti = [];
-  STATE.richiesteDocumenti.push(r);
-  // Avviso sul portale: il cliente trova l'elenco anche tra le comunicazioni.
-  STATE.comunicazioni.push({ id: uid('com'), clienteId: r.clienteId, data: oggiISO(), categoria: 'Documentale', stato: 'Inviata', oggetto: 'Documenti da consegnare: ' + r.titolo,
-    corpo: 'Ti chiediamo di caricare questi documenti dalla scheda Documenti del portale' + (r.scadenza ? ' entro il ' + fmtData(r.scadenza) : '') + ':\n- ' + nomi.join('\n- '), note: '', visibilePortale: true, creataIl: new Date().toISOString() });
-  salvaStato();
-  return r;
-}
-function richiestaDocumentiById(id) { return (STATE.richiesteDocumenti || []).find(x => x.id === id); }
-function impostaStatoVoceRichiesta(rid, vid, stato) {
-  const r = richiestaDocumentiById(rid); if (!r) throw new Error('Richiesta non trovata: ' + rid);
-  const v = (r.voci || []).find(x => x.id === vid); if (!v) throw new Error('Voce non trovata: ' + vid);
-  if (['Da caricare', 'Caricato', 'Ricevuto'].indexOf(stato) < 0) throw new Error('Stato non valido: ' + stato);
-  v.stato = stato; if (stato === 'Ricevuto') v.ricevutoIl = oggiISO();
-  salvaStato(); return r;
-}
-function eliminaRichiestaDocumenti(id) { STATE.richiesteDocumenti = (STATE.richiesteDocumenti || []).filter(x => x.id !== id); salvaStato(); }
-function richiesteDaSollecitare() {
-  const oggi = oggiISO();
-  return (STATE.richiesteDocumenti || []).filter(r => {
-    if (!(r.voci || []).some(v => v.stato === 'Da caricare')) return false;
-    const ultimo = (r.solleciti || []).length ? r.solleciti[r.solleciti.length - 1].data : r.creatoIl;
-    return giorniTra(ultimo, oggi) >= GIORNI_TRA_SOLLECITI_RACCOLTA;
-  });
-}
-function sollecitaRichiestaDocumenti(id) {
-  const r = richiestaDocumentiById(id); if (!r) return false;
-  const mancanti = (r.voci || []).filter(v => v.stato === 'Da caricare').map(v => v.nome);
-  if (!mancanti.length) return false;
-  const oggi = oggiISO();
-  const com = { id: uid('com'), clienteId: r.clienteId, data: oggi, categoria: 'Documentale', stato: 'Inviata', oggetto: 'Promemoria documenti: ' + r.titolo,
-    corpo: 'Gentile cliente, per procedere ci mancano ancora questi documenti' + (r.scadenza ? ' (richiesti entro il ' + fmtData(r.scadenza) + ')' : '') + ':\n- ' + mancanti.join('\n- ') + '\nPuoi caricarli direttamente dalla scheda Documenti del portale. Grazie!', note: '', visibilePortale: true, creataIl: new Date().toISOString() };
-  STATE.comunicazioni.push(com);
-  r.solleciti.push({ data: oggi, comunicazioneId: com.id });
-  salvaStato(); return true;
-}
-function renderRaccolta() {
-  if (STATE.clienti.length === 0) return `<div class="card"><div class="empty"><div class="big">Aggiungi prima un cliente</div>Le richieste di documenti sono sempre legate a un cliente.</div></div>`;
-  const tutte = STATE.richiesteDocumenti || [];
-  const aperte = tutte.filter(r => statoRichiestaDocumenti(r) !== 'Completa');
-  const daVerificare = tutte.reduce((n, r) => n + (r.voci || []).filter(v => v.stato === 'Caricato').length, 0);
-  const daSoll = richiesteDaSollecitare();
-  const kpi = `<div class="kpi-grid">
-    <div class="kpi"><div class="label">Richieste aperte</div><div class="value">${aperte.length}</div></div>
-    <div class="kpi"><div class="label">Documenti da verificare</div><div class="value" style="color:${daVerificare ? 'var(--arancio)' : 'inherit'};">${daVerificare}</div></div>
-    <div class="kpi"><div class="label">Da sollecitare</div><div class="value">${daSoll.length}</div></div></div>`;
-  const barra = `<div class="toolbar" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;">
-    <button class="btn primary" data-action="nuova-richiesta-doc">+ Nuova richiesta</button>
-    ${daSoll.length ? `<button class="btn" data-action="sollecita-tutte-richieste-doc">Sollecita ${daSoll.length === 1 ? 'questo cliente' : 'tutti (' + daSoll.length + ')'}</button>` : ''}
-    <div class="field" style="margin:0;"><label>Cliente</label><select data-action="racc-filtro-cliente"><option>Tutti</option>${STATE.clienti.slice().sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale)).map(c => `<option value="${c.id}" ${RACC_FILTRO.cliente === c.id ? 'selected' : ''}>${escapeHtml(c.ragioneSociale)}</option>`).join('')}</select></div>
-    <div class="field" style="margin:0;"><label>Stato</label><select data-action="racc-filtro-stato">${['Aperte', 'Complete', 'Tutte'].map(x => `<option ${RACC_FILTRO.stato === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div></div>`;
-  let lista = tutte.slice();
-  if (RACC_FILTRO.cliente !== 'Tutti') lista = lista.filter(r => r.clienteId === RACC_FILTRO.cliente);
-  if (RACC_FILTRO.stato === 'Aperte') lista = lista.filter(r => statoRichiestaDocumenti(r) !== 'Completa');
-  else if (RACC_FILTRO.stato === 'Complete') lista = lista.filter(r => statoRichiestaDocumenti(r) === 'Completa');
-  lista.sort((a, b) => (b.creatoIl || '').localeCompare(a.creatoIl || ''));
-  if (!lista.length) return kpi + barra + `<div class="card"><div class="empty"><div class="big">Nessuna richiesta</div>Crea un elenco di documenti da chiedere a un cliente: li caricherà dal portale e li vedrai qui.</div></div>`;
-  const card = (r) => {
-    const st = statoRichiestaDocumenti(r);
-    const badge = st === 'Completa' ? '<span class="badge attivo">Completa</span>' : (st === 'Scaduta' ? '<span class="badge stato-errore">Scaduta</span>' : (st === 'Da verificare' ? '<span class="badge info">Da verificare</span>' : '<span class="badge">In attesa</span>'));
-    const ricevute = (r.voci || []).filter(v => v.stato === 'Ricevuto').length;
-    const righe = (r.voci || []).map(v => {
-      const b = v.stato === 'Ricevuto' ? '<span class="badge attivo">Ricevuto</span>' : (v.stato === 'Caricato' ? '<span class="badge info">Caricato</span>' : '<span class="badge">Da caricare</span>');
-      const file = v.filePercorso ? ` <a href="${linkScaricaFileReale(v.filePercorso)}" target="_blank">📎 ${escapeHtml(v.fileNome || 'file')}</a>` : '';
-      const az = v.stato === 'Caricato' ? `<button class="btn small primary" data-action="voce-richiesta-stato" data-id="${r.id}" data-voce="${v.id}" data-stato="Ricevuto">Approva</button> <button class="btn small" data-action="voce-richiesta-stato" data-id="${r.id}" data-voce="${v.id}" data-stato="Da caricare">Richiedi di nuovo</button>`
-        : (v.stato === 'Da caricare' ? `<button class="btn small" data-action="voce-richiesta-stato" data-id="${r.id}" data-voce="${v.id}" data-stato="Ricevuto" title="Già in studio (es. consegnato a mano)">Segna ricevuto</button>` : '');
-      return `<tr><td>${escapeHtml(v.nome)}${file}</td><td>${b}</td><td style="text-align:right;white-space:nowrap;">${az}</td></tr>`;
-    }).join('');
-    return `<div class="card" style="margin-bottom:12px;"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;">
-      <div><strong>${escapeHtml(nomeCliente(r.clienteId))}</strong> · ${escapeHtml(r.titolo)} ${badge}<div class="helptext">${ricevute}/${(r.voci || []).length} ricevuti${r.scadenza ? ' · entro il ' + fmtData(r.scadenza) : ''}${(r.solleciti || []).length ? ' · ' + r.solleciti.length + ' solleciti' : ''}</div></div>
-      <div>${(r.voci || []).some(v => v.stato === 'Da caricare') ? `<button class="btn small" data-action="sollecita-richiesta-doc" data-id="${r.id}">Sollecita</button> ` : ''}<button class="btn small danger" data-action="elimina-richiesta-doc" data-id="${r.id}">Elimina</button></div></div>
-      <table class="tbl" style="margin-top:8px;"><tbody>${righe}</tbody></table></div>`;
-  };
-  return kpi + barra + lista.map(card).join('');
-}
-function modalRichiestaDocumenti() {
-  const procs = (STATE.procedureInterne || []).filter(p => (p.checklistDocumenti || []).length);
-  document.getElementById('modalRoot').innerHTML = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
-    <div class="modal" style="max-width:560px;">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-        <div><h2>Nuova richiesta documenti</h2><div class="modal-sub">Il cliente la vedrà nel portale e potrà caricare un file per ogni voce.</div></div>
-        <button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button></div>
-      <div class="grid2">
-        <div class="field full" style="grid-column:1/-1;"><label>Cliente *</label><select id="raccCliente">${STATE.clienti.slice().sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale)).map(c => `<option value="${c.id}">${escapeHtml(c.ragioneSociale)}</option>`).join('')}</select></div>
-        <div class="field"><label>Titolo</label><input id="raccTitolo" placeholder="es. Dichiarazione redditi 2026"></div>
-        <div class="field"><label>Da consegnare entro</label><input id="raccScadenza" type="date"></div>
-        ${procs.length ? `<div class="field full" style="grid-column:1/-1;"><label>Parti da una procedura (facoltativo)</label><select data-action="racc-da-procedura"><option value="">— scegli —</option>${procs.map(p => `<option value="${p.id}">${escapeHtml(p.nome)}</option>`).join('')}</select></div>` : ''}
-        <div class="field full" style="grid-column:1/-1;"><label>Documenti richiesti * (uno per riga)</label><textarea id="raccVoci" rows="7" placeholder="Documento d'identità&#10;Estratti conto&#10;Fatture acquisti"></textarea></div>
-      </div>
-      <div class="modal-actions"><button class="btn" data-action="chiudi-modal">Annulla</button><button class="btn primary" data-action="salva-richiesta-doc">Crea e avvisa il cliente</button></div>
-    </div></div>`;
-}
-
 /* -------------------- RENDER: PREVENTIVI E MANDATI (task #121, rifatto su modelli #125) --------------------
    Documento generato da un modello (vedi motore modelli sopra): entità in array e legata al
    cliente via clienteId diretto, esattamente come documenti/comunicazioni/F24/taskTeam —
@@ -7817,6 +7846,8 @@ function documentoStampaHtml(p) {
     h2{font-size:14px;text-transform:uppercase;letter-spacing:.05em;margin:20px 0 6px;border-bottom:1px solid #cfd5e3;padding-bottom:3px;page-break-after:avoid;}
     ul{margin:4px 0 4px 22px;padding:0;} hr{border:none;border-top:1px solid #c9cfdd;margin:14px 0;}
     .d-riga{min-height:0;} .campo-vuoto{background:#fff3cd;padding:0 3px;}
+    table.d-tabella{width:100%;border-collapse:collapse;margin:10px 0;font-size:12.5px;page-break-inside:avoid;} table.d-tabella th,table.d-tabella td{border:1px solid #b9c1d3;padding:5px 9px;text-align:left;vertical-align:top;} table.d-tabella th{background:#eef2fa;}
+    img{max-width:100%;}
     @media print{body{margin:0;padding:0;max-width:none;}}
   </style></head><body>${intestazioneStudioHtml()}${corpo}</body></html>`;
 }
@@ -7872,6 +7903,14 @@ function inlineRtf(riga) {
     return escapeRtf(x);
   }).join('');
 }
+function rtfImmagine(id, w, al) {
+  const im = (STATE.immaginiDocumenti || {})[id];
+  const m = im && /^data:image\/(png|jpeg);base64,(.+)$/.exec(im.d);
+  if (!m || !im.w || !im.h) return '';
+  const hex = Array.from(atob(m[2]), ch => ch.charCodeAt(0).toString(16).padStart(2, '0')).join('');
+  const gw = Math.round(9000 * w / 100), gh = Math.round(gw * im.h / im.w);
+  return `{\\pard${al === 'center' ? '\\qc' : (al === 'right' ? '\\qr' : '')} {\\pict\\${m[1] === 'png' ? 'pngblip' : 'jpegblip'}\\picw${im.w}\\pich${im.h}\\picwgoal${gw}\\pichgoal${gh} ${hex}}\\par}`;
+}
 function generaRtfDaTesto(testo) {
   const righe = togliBloccoIntestazioneVecchio(testo || '').split('\n');
   const intest = [STATE.meta.studioNome, STATE.meta.iscrizione, STATE.meta.indirizzoStudio, STATE.meta.cfStudio ? 'C.F. ' + STATE.meta.cfStudio : ''].filter(Boolean);
@@ -7884,6 +7923,11 @@ function generaRtfDaTesto(testo) {
     if ((m = /^\^\^ (.*)$/.exec(riga))) return `{\\pard\\qc ${inlineRtf(m[1])}\\par}`;
     if ((m = /^>> (.*)$/.exec(riga))) return `{\\pard\\qr ${inlineRtf(m[1])}\\par}`;
     if (riga.trim() === '---') return '{\\pard\\brdrb\\brdrs\\brdrw10\\par}';
+    if ((m = IMG_RIGA_RE.exec(riga))) return rtfImmagine(m[1], Number(m[2]), m[3]);
+    if (/^\s*\|.*\|\s*$/.test(riga)) {
+      if (/^[\s|:-]+$/.test(riga) && riga.indexOf('-') >= 0) return '';
+      return `{\\pard\\li200 ${riga.replace(/^\s*\|/, '').replace(/\|\s*$/, '').split('|').map(c => inlineRtf(c.trim())).join('\\tab ')}\\par}`;
+    }
     if (eRigaTitoloMaiuscolo(riga)) return `{\\pard\\sb200\\b\\fs24 ${escapeRtf(riga.trim())}\\par}`;
     return `{\\pard ${inlineRtf(riga) || ' '}\\par}`;
   }).join('\n');
@@ -11081,9 +11125,6 @@ function costruisciVistaPortaleClienteEsterna(token, password) {
     // riguardano versamenti verso l'Erario, concettualmente la stessa area per un accesso limitato.
     ritenute: puoVedere('scadenze') ? ritenute : [],
     documenti: puoVedere('documenti') ? documenti : [],
-    richiesteDocumenti: puoVedere('documenti') ? (STATE.richiesteDocumenti || []).filter(r => r.clienteId === cliente.id && statoRichiestaDocumenti(r) !== 'Completa').map(r => ({
-      id: r.id, titolo: r.titolo, scadenza: r.scadenza || null,
-      voci: (r.voci || []).map(v => ({ id: v.id, nome: v.nome, stato: v.stato, fileNome: v.stato !== 'Da caricare' ? (v.fileNome || null) : null })) })) : [],
     andamento: puoVedere('andamento') ? andamento : null,
   };
 }
@@ -11150,24 +11191,6 @@ function aggiungiRispostaComunicazione(id, testo, autore, fileInfo) {
   return c;
 }
 
-/* Il cliente carica dal portale il file di UNA voce di una richiesta documenti (task #208). Token,
-   richiesta e voce vengono ricontrollati qui: niente id fidati dall'esterno. Il file è già su disco
-   (server.js); si segna la voce 'Caricato' e si avvisa lo studio con una comunicazione in arrivo. */
-function caricaDocumentoRichiestaPortaleEsterno(token, richiestaId, voceId, fileInfo) {
-  if (!token || typeof token !== 'string') return null;
-  const trovato = trovaAccessoPortale(token);
-  if (!trovato || !accessoPortalePuoVedere(trovato.accesso, 'documenti')) return null;
-  const r = (STATE.richiesteDocumenti || []).find(x => x.id === richiestaId && x.clienteId === trovato.cliente.id);
-  const v = r && (r.voci || []).find(x => x.id === voceId);
-  if (!v || !fileInfo || !fileInfo.percorso || v.stato === 'Ricevuto') return null;
-  v.stato = 'Caricato'; v.filePercorso = fileInfo.percorso; v.fileNome = fileInfo.nomeFile; v.caricatoIl = oggiISO();
-  STATE.comunicazioni.push({ id: uid('com'), clienteId: trovato.cliente.id, data: oggiISO(), direzione: 'cliente', categoria: 'Documento consegnato',
-    oggetto: 'Documento caricato: ' + v.nome, corpo: 'Il cliente ha caricato "' + v.nome + '" per la richiesta "' + r.titolo + '". Verificalo in Raccolta documenti.',
-    stato: 'Inviata', visibilePortale: false, vistaPortale: true, vistaStudio: false, scadenzaRif: null, risposte: [],
-    filePercorso: fileInfo.percorso, fileNome: fileInfo.nomeFile, fileDimensione: fileInfo.dimensione });
-  salvaStato();
-  return { richiesta: r.id, voce: v.id };
-}
 
 /* -------------------- AREA CLIENTE INTERATTIVA (task #88) --------------------
    Fin qui (task #87) il portale esterno era di sola lettura: il cliente vedeva i propri dati ma
@@ -14094,6 +14117,10 @@ function renderImpostazioniStudio() {
       <div class="field"><label>Codice fiscale</label><input type="text" id="impStudioCf" value="${escapeHtml(STATE.meta.cfStudio)}"></div>
       <div class="field full" style="grid-column:1/-1;"><label>Indirizzo</label><input type="text" id="impStudioIndirizzo" value="${escapeHtml(STATE.meta.indirizzoStudio)}" placeholder="es. Strada di Casale, 98 – 36100 Vicenza"></div>
       <div class="field"><label>Città (per luogo/data)</label><input type="text" id="impStudioCitta" value="${escapeHtml(STATE.meta.citta)}"></div>
+      <div class="field"><label>PEC</label><input type="text" id="impStudioPec" value="${escapeHtml(STATE.meta.pecStudio || '')}"></div>
+      <div class="field"><label>Email</label><input type="text" id="impStudioEmail" value="${escapeHtml(STATE.meta.emailStudio || '')}"></div>
+      <div class="field"><label>Telefono</label><input type="text" id="impStudioTelefono" value="${escapeHtml(STATE.meta.telefonoStudio || '')}"></div>
+      <div class="field full" style="grid-column:1/-1;"><label>Polizza assicurativa RC professionale</label><input type="text" id="impStudioPolizza" value="${escapeHtml(STATE.meta.polizzaRc || '')}" placeholder="es. Compagnia X, polizza n. 123456, massimale € 1.000.000"></div>
     </div>
     <button class="btn primary small" style="margin-top:10px;" data-action="salva-studio-nome">Salva</button>
   </div>
@@ -14895,35 +14922,6 @@ function onClickDelegato(e) {
     case 'nuovo-incasso': modalIncasso(null); break;
     case 'modifica-incasso': modalIncasso(id); break;
     case 'incasso-registra-apri': modalRegistraIncasso(id); break;
-    case 'nuovo-tempo': modalTempo(); break;
-    case 'salva-tempo': {
-      try { aggiungiTempo({ clienteId: h('tmpCliente').value, servizio: h('tmpServizio').value, data: h('tmpData').value, minuti: (Number(h('tmpOre').value) || 0) * 60 + (Number(h('tmpMin').value) || 0), descrizione: h('tmpNote').value }); }
-      catch (err) { toast(err.message, true); return; }
-      chiudiModal(); render(); toast('Ore registrate.');
-      break;
-    }
-    case 'elimina-tempo': eliminaTempo(id); render(); break;
-    case 'nuova-richiesta-doc': modalRichiestaDocumenti(); break;
-    case 'salva-richiesta-doc': {
-      try { aggiungiRichiestaDocumenti({ clienteId: h('raccCliente').value, titolo: h('raccTitolo').value, scadenza: h('raccScadenza').value, voci: h('raccVoci').value.split('\n') }); }
-      catch (err) { toast(err.message, true); return; }
-      chiudiModal(); render(); toast('Richiesta creata: il cliente la trova nel portale.');
-      break;
-    }
-    case 'voce-richiesta-stato': { try { impostaStatoVoceRichiesta(id, el.dataset.voce, el.dataset.stato); } catch (err) { toast(err.message, true); return; } render(); break; }
-    case 'elimina-richiesta-doc': if (confermaAzione('Eliminare questa richiesta di documenti?')) { eliminaRichiestaDocumenti(id); render(); toast('Richiesta eliminata.'); } break;
-    case 'sollecita-richiesta-doc': {
-      const r = richiestaDocumentiById(id); if (!r) return;
-      if (!confermaAzione('Inviare il promemoria dei documenti mancanti a ' + nomeCliente(r.clienteId) + ' tramite portale?')) return;
-      sollecitaRichiestaDocumenti(id); render(); toast('Sollecito inviato tramite portale.');
-      break;
-    }
-    case 'sollecita-tutte-richieste-doc': {
-      const lista = richiesteDaSollecitare(); if (!lista.length) return;
-      if (!confermaAzione('Inviare ' + lista.length + ' promemoria tramite portale?')) return;
-      lista.forEach(r => sollecitaRichiestaDocumenti(r.id)); render(); toast(lista.length + ' solleciti inviati.');
-      break;
-    }
     case 'salva-incasso': {
       const dati = { clienteId: h('incCliente').value, descrizione: h('incDescrizione').value.trim(), numero: h('incNumero').value.trim(), importo: Number(h('incImporto').value), dataEmissione: h('incEmissione').value, dataScadenza: h('incScadenza').value, note: h('incNote').value.trim() };
       if (!dati.clienteId || !(dati.importo > 0)) { toast('Scegli il cliente e indica un importo maggiore di zero.'); return; }
@@ -15463,10 +15461,13 @@ function onClickDelegato(e) {
       }
       const dati = { categoria, nome: nomeModello, corpo, attivo, predefinito };
       if (id) aggiornaModelloDocumento(id, dati); else aggiungiModelloDocumento(dati);
+      potaImmaginiDocumenti(); salvaStato();
       chiudiModal(); render(); toast(id ? 'Modello aggiornato.' : 'Modello creato.');
       break;
     }
+    case 'modelli-base-strutturati': { const n = aggiungiModelliBaseStrutturati(); render(); toast(n ? n + ' modelli aggiunti.' : 'Modelli già presenti.'); break; }
     case 'doc-fmt': docEseguiComando(el.dataset.cmd); break;
+    case 'doc-img': docImmagineOperazione(el.closest('.d-img'), el.dataset.op); break;
     case 'doc-campo': docInserisciCampo(el.dataset.chiave); break;
     case 'doc-campo-nuovo': {
       const inp = document.getElementById('docNuovoCampoNome');
@@ -15592,6 +15593,7 @@ function onClickDelegato(e) {
       const ta = document.getElementById('prevAnteprimaCorpo');
       if (!ta) return;
       aggiornaPreventivo(id, { corpo: editorDocumentoToTesto(ta) });
+      potaImmaginiDocumenti(); salvaStato();
       toast('Testo del documento salvato.');
       break;
     }
@@ -16160,6 +16162,10 @@ function onClickDelegato(e) {
       STATE.meta.cfStudio = h('impStudioCf').value.trim();
       STATE.meta.indirizzoStudio = h('impStudioIndirizzo').value.trim();
       STATE.meta.citta = h('impStudioCitta').value.trim() || 'Vicenza';
+      STATE.meta.pecStudio = h('impStudioPec').value.trim();
+      STATE.meta.emailStudio = h('impStudioEmail').value.trim();
+      STATE.meta.telefonoStudio = h('impStudioTelefono').value.trim();
+      STATE.meta.polizzaRc = h('impStudioPolizza').value.trim();
       salvaStato(); render(); toast('Dati studio salvati.');
       break;
     case 'rimuovi-logo-studio':
@@ -16515,17 +16521,7 @@ function onChangeDelegato(e) {
       break;
     }
     case 'toggle-mcp-conferma': STATE.meta.mcpChiediConferma = !!el.checked; salvaStato(); toast(el.checked ? 'Ogni azione di Claude richiederà la tua conferma.' : 'Le azioni di Claude vengono eseguite senza conferma (restano nel registro).'); break;
-    case 'tempi-filtro-anno': TEMPI_FILTRO.anno = el.value; render(); break;
-    case 'tempi-filtro-cliente': TEMPI_FILTRO.cliente = el.value; render(); break;
-    case 'tempi-costo-orario': { const v = Number(el.value); if (v > 0) { STATE.meta.costoOrarioStudio = v; salvaStato(); render(); } break; }
-    case 'racc-filtro-cliente': RACC_FILTRO.cliente = el.value; render(); break;
-    case 'racc-filtro-stato': RACC_FILTRO.stato = el.value; render(); break;
-    case 'racc-da-procedura': {
-      const p = (STATE.procedureInterne || []).find(x => x.id === el.value); if (!p) break;
-      const t = document.getElementById('raccVoci'); if (t) t.value = (p.checklistDocumenti || []).join('\n');
-      const ti = document.getElementById('raccTitolo'); if (ti && !ti.value) ti.value = p.nome;
-      break;
-    }
+    case 'doc-img-file': caricaImmagineNelDocumento(el.files && el.files[0]); el.value = ''; break;
     case 'inc-filtro-cliente': INC_FILTRO.cliente = el.value; resetPagina('incassi'); render(); break;
     case 'inc-filtro-stato': INC_FILTRO.stato = el.value; resetPagina('incassi'); render(); break;
     case 'import-cli-mappa': if (IMPORT_CLI) { IMPORT_CLI.mappa[el.dataset.chiave] = Number(el.value); renderWizardImportClienti(); } break;
@@ -17087,9 +17083,6 @@ function esportaVistaMCP() {
     })),
     moduli: MODULI.map(m => ({ id: m.id, nome: m.label, attivo: moduloAttivo(m.id) })),
     team: { responsabili: STATE.meta.responsabili || [], consulenti: STATE.meta.consulenti || [], ruoli: STATE.meta.ruoli || {} },
-    tempi: (STATE.tempi || []).map(t => ({ id: t.id, clienteId: t.clienteId, cliente: nomeCliente(t.clienteId), data: t.data, ore: Math.round(t.minuti / 6) / 10, servizio: t.servizio, descrizione: t.descrizione, operatore: t.operatore })),
-    redditivita: (() => { const a = String(new Date().getFullYear()); return { anno: a, costoOrario: costoOrarioStudio(), clienti: riepilogoRedditivita(a).map(r => ({ clienteId: r.clienteId, cliente: nomeCliente(r.clienteId), ore: Math.round(r.ore * 10) / 10, compensi: r.ricavi, costo: Math.round(r.costo), margine: Math.round(r.margine), euroOra: r.euroOra == null ? null : Math.round(r.euroOra) })) }; })(),
-    richiesteDocumenti: (STATE.richiesteDocumenti || []).map(r => ({ id: r.id, clienteId: r.clienteId, cliente: nomeCliente(r.clienteId), titolo: r.titolo, scadenza: r.scadenza, stato: statoRichiestaDocumenti(r), solleciti: (r.solleciti || []).length, voci: (r.voci || []).map(v => ({ id: v.id, nome: v.nome, stato: v.stato })) })),
     incassi: (STATE.incassi || []).map(i => ({ id: i.id, clienteId: i.clienteId, cliente: nomeCliente(i.clienteId), descrizione: i.descrizione, numero: i.numero, importo: i.importo, incassato: i.importoIncassato || 0, residuo: residuoIncasso(i), dataEmissione: i.dataEmissione, dataScadenza: i.dataScadenza, stato: statoIncasso(i), solleciti: (i.solleciti || []).length })),
     appuntamenti: (STATE.appuntamenti || []).map(a => ({
       id: a.id, clienteId: a.clienteId || null, cliente: a.clienteId ? nomeCliente(a.clienteId) : null, data: a.data, ora: a.ora || '',
@@ -17542,7 +17535,6 @@ window.rigeneraAccessoSecondarioPortale = rigeneraAccessoSecondarioPortale;
 window.eliminaAccessoSecondarioPortale = eliminaAccessoSecondarioPortale;
 window.trovaAccessoPortale = trovaAccessoPortale;
 window.accessoPortalePuoVedere = accessoPortalePuoVedere;
-window.caricaDocumentoRichiestaPortaleEsterno = caricaDocumentoRichiestaPortaleEsterno;
 /* Area cliente interattiva (task #88): stessa logica di sopra, ma in scrittura. */
 window.aggiungiMessaggioPortaleClienteEsterno = aggiungiMessaggioPortaleClienteEsterno;
 window.aggiungiRispostaPortaleClienteEsterno = aggiungiRispostaPortaleClienteEsterno;

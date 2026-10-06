@@ -995,7 +995,7 @@ async function main() {
 
   // ---------- 8a-bis) Calendario: creazione evento (appuntamento + scadenza ricorrente, task #141) ----------
   {
-    const celleTarget = qa('.cal-day').filter(el => el.classList.contains('altromese') === false && el.querySelector('.num'));
+    const celleTarget = qa('.cal-day').filter(el => el.classList.contains('altromese') === false && !el.classList.contains('has-eventi') && el.querySelector('.num'));
     assert(celleTarget.length > 0, 'nessuna cella cliccabile per testare la creazione evento');
     const dataTarget = celleTarget[0].dataset.data;
     click(celleTarget[0]);
@@ -1884,89 +1884,46 @@ async function main() {
     console.log('=== Incassi (task #207): registrazione, scaduto, banner solleciti, sollecito via portale (una volta ogni 15 gg), pagamento parziale/saldo, MCP OK');
   }
 
-  // ---------- Task #206: Tempi e redditività ----------
+  // ---------- Modelli documenti: tabelle, immagini, campi personalizzati, modelli base ----------
   {
     const st = () => window.getSTATE();
-    const cid = st().clienti[0].id;
-    click(q('[data-nav="tempi"]'));
-    await wait(20);
-    assert(q('[data-action="nuovo-tempo"]'), 'la vista Tempi non mostra "+ Registra ore"');
-    click(q('[data-action="nuovo-tempo"]'));
-    await wait(20);
-    setVal(q('#tmpCliente'), cid); setVal(q('#tmpOre'), '2'); setVal(q('#tmpMin'), '30');
-    click(q('[data-action="salva-tempo"]'));
-    await wait(20);
-    const t = st().tempi.find(x => x.clienteId === cid);
-    assert(t && t.minuti === 150, 'ore non registrate (attesi 150 minuti)');
-    const anno = String(new Date().getFullYear());
-    const inc = window.aggiungiIncasso({ clienteId: cid, importo: 500, descrizione: 'Test redditività', dataEmissione: anno + '-02-01', dataScadenza: anno + '-03-01' });
-    const r = window.riepilogoRedditivita(anno).find(x => x.clienteId === cid);
-    assert(r && r.minuti === 150 && r.ricavi === 500, 'riepilogo ore/ricavi errato');
-    assert(Math.abs(r.margine - (500 - 2.5 * window.costoOrarioStudio())) < 0.01 && Math.abs(r.euroOra - 200) < 0.01, 'margine o €/ora errati');
-    assert(q('body').textContent.includes('Redditività per cliente'), 'tabella redditività assente');
-    try { window.aggiungiTempo({ clienteId: cid, minuti: 0 }); assert(false, 'durata 0 deve essere rifiutata'); } catch (e) { assert(/durata/i.test(e.message), 'messaggio errore durata inatteso'); }
-    const fetchPrima = window.fetch; window.fetch = () => Promise.resolve({ ok: true, json: () => ({}) });
-    await window.eseguiComandoMCP({ id: 'cmdT1', azione: 'registraTempo', parametri: { clienteId: cid, ore: 1.5, servizio: 'Consulenza' } });
-    window.fetch = fetchPrima;
-    assert(st().tempi.some(x => x.minuti === 90 && x.servizio === 'Consulenza'), 'registraTempo via MCP fallita');
-    assert(window.esportaVistaMCP().redditivita.clienti.some(x => x.clienteId === cid), 'la vista MCP non espone la redditività');
-    const s2 = st(); s2.tempi = []; s2.incassi = s2.incassi.filter(i => i.id !== inc.id); window.setSTATE(s2);
-    click(q('[data-nav="dashboard"]'));
-    await wait(20);
-    console.log('=== Tempi e redditività (task #206): registrazione ore, riepilogo per cliente, margine, €/ora, validazione, MCP OK');
-  }
-
-  // ---------- Task #208: Raccolta documenti guidata (studio + portale + solleciti) ----------
-  {
-    const st = () => window.getSTATE();
-    const cid = st().clienti[0].id;
-    click(q('[data-nav="raccolta"]'));
-    await wait(20);
-    assert(q('[data-action="nuova-richiesta-doc"]'), 'la vista Raccolta documenti non mostra "+ Nuova richiesta"');
-    click(q('[data-action="nuova-richiesta-doc"]'));
-    await wait(20);
-    setVal(q('#raccCliente'), cid);
-    setVal(q('#raccTitolo'), 'Test raccolta');
-    setVal(q('#raccVoci'), 'Documento identità\nEstratti conto\n');
-    click(q('[data-action="salva-richiesta-doc"]'));
-    await wait(20);
-    const r = st().richiesteDocumenti.find(x => x.titolo === 'Test raccolta');
-    assert(r && r.voci.length === 2 && r.voci.every(v => v.stato === 'Da caricare'), 'richiesta non creata con 2 voci "Da caricare"');
-    assert(st().comunicazioni.some(c => c.clienteId === cid && c.oggetto === 'Documenti da consegnare: Test raccolta' && c.visibilePortale), 'manca l\'avviso al cliente sul portale');
-    assert(window.statoRichiestaDocumenti(r) === 'In attesa', 'stato iniziale deve essere In attesa');
-    // portale: la vista del cliente espone la richiesta
-    const cl = window.clienteById(cid); cl.portaleToken = 'tok-racc-test';
-    const vista = window.costruisciVistaPortaleClienteEsterna('tok-racc-test');
-    assert(vista.richiesteDocumenti.length === 1 && vista.richiesteDocumenti[0].voci.length === 2, 'la vista portale non espone la richiesta');
-    assert(!JSON.stringify(vista.richiesteDocumenti).includes('filePercorso'), 'la vista portale non deve esporre percorsi di file');
-    // caricamento dal portale
-    const ok = window.caricaDocumentoRichiestaPortaleEsterno('tok-racc-test', r.id, r.voci[0].id, { percorso: 'x/doc.pdf', nomeFile: 'doc.pdf', dimensione: 10 });
-    assert(ok && st().richiesteDocumenti.find(x => x.id === r.id).voci[0].stato === 'Caricato', 'caricamento dal portale non registrato');
-    assert(window.caricaDocumentoRichiestaPortaleEsterno('token-sbagliato', r.id, r.voci[1].id, { percorso: 'x/a.pdf', nomeFile: 'a.pdf', dimensione: 1 }) === null, 'un token non valido non deve poter caricare');
-    assert(st().comunicazioni.some(c => c.direzione === 'cliente' && c.oggetto === 'Documento caricato: Documento identità' && !c.vistaStudio), 'lo studio non è avvisato del documento caricato');
-    // approvazione + sollecito solo per le voci mancanti
-    window.render(); await wait(20);
-    click(q(`[data-action="voce-richiesta-stato"][data-voce="${r.voci[0].id}"][data-stato="Ricevuto"]`));
-    await wait(20);
-    assert(st().richiesteDocumenti.find(x => x.id === r.id).voci[0].stato === 'Ricevuto', 'approvazione non registrata');
-    const nCom = st().comunicazioni.length;
-    window.sollecitaRichiestaDocumenti(r.id);
-    const soll = st().comunicazioni[st().comunicazioni.length - 1];
-    assert(st().comunicazioni.length === nCom + 1 && soll.corpo.includes('Estratti conto') && !soll.corpo.includes('Documento identità'), 'il sollecito deve citare solo i documenti mancanti');
-    window.impostaStatoVoceRichiesta(r.id, r.voci[1].id, 'Ricevuto');
-    assert(window.statoRichiestaDocumenti(st().richiesteDocumenti.find(x => x.id === r.id)) === 'Completa', 'tutte le voci ricevute = Completa');
-    // MCP
-    const fetchPrima = window.fetch; window.fetch = () => Promise.resolve({ ok: true, json: () => ({}) });
-    await window.eseguiComandoMCP({ id: 'cmdR1', azione: 'creaRichiestaDocumenti', parametri: { clienteId: cid, titolo: 'Via MCP racc', voci: ['A', 'B'] } });
-    window.fetch = fetchPrima;
-    assert(window.esportaVistaMCP().richiesteDocumenti.some(x => x.titolo === 'Via MCP racc' && x.voci.length === 2), 'creaRichiestaDocumenti via MCP / vista MCP non funzionano');
-    const s2 = st();
-    s2.richiesteDocumenti = []; delete window.clienteById(cid).portaleToken;
-    s2.comunicazioni = s2.comunicazioni.filter(c => !/Test raccolta|Via MCP racc|Documento caricato: Documento identità/.test(c.oggetto));
-    window.setSTATE(s2);
-    click(q('[data-nav="dashboard"]'));
-    await wait(20);
-    console.log('=== Raccolta documenti (task #208): richiesta, avviso portale, vista cliente, upload da portale, approvazione, sollecito mirato, MCP OK');
+    // tabelle: lettura -> <table>, editor -> righe, round-trip testo identico
+    const tx = '## Compenso\n| Descrizione | Importo |\n|---|---|\n| {{voce1}} | 100 |\n| **Totale** | 100 |\n\nFine';
+    const lett = window.testoDocumentoToHtml(tx, 'lettura');
+    assert(lett.includes('<table class="d-tabella">') && lett.includes('<th>Descrizione</th>') && lett.includes('<td>100</td>') && !lett.includes('|---|'), 'la tabella non è resa come <table> in lettura');
+    const box = window.document.createElement('div'); box.innerHTML = window.testoDocumentoToHtml(tx, 'editor');
+    assert(window.editorDocumentoToTesto(box) === tx, 'round-trip tabella nell\'editor non fedele: ' + JSON.stringify(window.editorDocumentoToTesto(box)));
+    assert(!window.testoDocumentoSenzaMarcatura(tx).includes('|'), 'l\'export testo non deve contenere le barre della tabella');
+    // immagini
+    const idImg = window.registraImmagineDocumento('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 1, 1);
+    const tImg = 'Prima\n[[img:' + idImg + '|40|right]]\nDopo';
+    const box2 = window.document.createElement('div'); box2.innerHTML = window.testoDocumentoToHtml(tImg, 'editor');
+    assert(box2.querySelector('.d-img img'), 'immagine non resa nell\'editor');
+    assert(window.editorDocumentoToTesto(box2) === tImg, 'round-trip immagine non fedele: ' + JSON.stringify(window.editorDocumentoToTesto(box2)));
+    window.docImmagineOperazione(box2.querySelector('.d-img'), 'piu');
+    assert(window.editorDocumentoToTesto(box2).includes('|55|right]]'), 'ridimensionamento immagine non applicato');
+    assert(window.testoDocumentoToHtml(tImg, 'lettura').includes('width:40%'), 'immagine non resa in stampa con la larghezza scelta');
+    assert(window.generaRtfDaTesto(tImg).includes('\\pict\\pngblip'), 'immagine non inclusa nell\'export Word/RTF');
+    assert(!window.testoDocumentoSenzaMarcatura(tImg).includes('[[img'), 'export testo non deve contenere la riga immagine');
+    window.potaImmaginiDocumenti();
+    assert(!st().immaginiDocumenti[idImg], 'un\'immagine non usata da nessun documento deve essere potata');
+    // campi: l'elenco inseribili include i personalizzati degli altri modelli (quelli "gialli")
+    const campi = window.campiPersonalizzatiNoti('');
+    assert(campi.includes('dettaglioAttivita') && campi.includes('condizioniPagamento'), 'mancano i campi personalizzati dei modelli standard tra quelli inseribili');
+    click(q('[data-nav="modelli"]')); await wait(20);
+    click(q('[data-action="nuovo-modello"]')); await wait(20);
+    assert(q('.doc-campi').textContent.includes('Elenco attività') && q('.doc-campi').textContent.includes('Condizioni Pagamento'), 'il pannello campi non mostra i campi personalizzati');
+    assert(q('.doc-toolbar').textContent.includes('Tabella') && q('.doc-toolbar input[type=file]'), 'toolbar senza Tabella/Immagine');
+    click(q('[data-action="chiudi-modal"]')); await wait(20);
+    // modelli base strutturati
+    const nPrima = st().modelliDocumento.length;
+    click(q('[data-action="modelli-base-strutturati"]')); await wait(20);
+    assert(st().modelliDocumento.length === nPrima + 2 && st().modelliDocumento.some(m => m.nome === 'Preventivo strutturato (a voci)'), 'modelli base non aggiunti');
+    click(q('[data-action="modelli-base-strutturati"]')); await wait(20);
+    assert(st().modelliDocumento.length === nPrima + 2, 'i modelli base non devono duplicarsi');
+    const s2 = st(); s2.modelliDocumento = s2.modelliDocumento.filter(m => !/strutturat/.test(m.nome)); window.setSTATE(s2);
+    click(q('[data-nav="dashboard"]')); await wait(20);
+    console.log('=== Modelli documenti: tabelle, immagini (editor/stampa/RTF/potatura), campi personalizzati inseribili, modelli base strutturati OK');
   }
 
   // ---------- 8d-quinquies) Modelli documenti: pagina di gestione CRUD (task #124) ----------

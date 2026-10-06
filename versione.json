@@ -1,22 +1,22 @@
 {
-  "versione": "1.4.0",
-  "note": "Tempi e redditività per cliente/servizio",
+  "versione": "1.5.0",
+  "note": "Modelli documenti: tabelle, immagini, campi personalizzati inseribili, modelli base strutturati; rimossi tab Raccolta documenti e Tempi",
   "richiedeNpmInstall": false,
   "file": [
     {
       "nome": "gestionale.htm",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale.htm",
-      "sha256": "5ddb4b6688400da42a37fe8494e0763f5c6a215c49da4da4865bd49ff38c5ca0"
+      "sha256": "2b4c59c10bdb584d301f4b17503ee436a04d5b34e1b329c6cb8d7f7632e92d26"
     },
     {
       "nome": "server.js",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/server.js",
-      "sha256": "52dd7db0b0a865da0a658ee5aa20979d447e518077761290fe45deba40e53fe0"
+      "sha256": "526cfa81230f04814ba369aea6b5bea8c753579a78c325a873d2e1da0bd9c945"
     },
     {
       "nome": "portale-cliente.htm",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/portale-cliente.htm",
-      "sha256": "070f1d1833cbcd5b7e17f5062ffe58605c98891418a37c384239136960050656"
+      "sha256": "a60a1e1a5b7f34aa3de565de193bcc428688ba3ac9f9385dceaaa49f119f567d"
     },
     {
       "nome": "portale-sw.js",
