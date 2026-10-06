@@ -1,17 +1,17 @@
 {
-  "versione": "1.13.0",
-  "note": "Ricerca globale estesa (preventivi, incassi, da fatturare, libri sociali, procedure) e report mensile al cliente come bozza di comunicazione",
+  "versione": "1.14.0",
+  "note": "Promemoria rinnovo mandati e adeguamento compensi, scheda privacy e misure di sicurezza",
   "richiedeNpmInstall": false,
   "file": [
     {
       "nome": "gestionale.htm",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale.htm",
-      "sha256": "d38773b46683480a4d95df736fba6ef1ca7c4eada4841bfb58fd619fcb8dba55"
+      "sha256": "2e7e958dce7cf84cebac5a5b173bb5ab327ed5ef239f990a44946934bc252c52"
     },
     {
       "nome": "server.js",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/server.js",
-      "sha256": "5cecb4b8137cb58522d15870dab631f83b095e2cfa05a0a2b40ab13760cf3889"
+      "sha256": "10e0b7eaed945a065b2daf8cea775b0782304a894fcb6a173540c79ab2af1ad6"
     },
     {
       "nome": "portale-cliente.htm",

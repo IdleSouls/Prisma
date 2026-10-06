@@ -1917,6 +1917,15 @@ async function main() {
     assert(st().preventivi.find(x => x.id === pid).stato === 'Accettato', 'preventivo non accettato');
     window.setView('preventivi'); await wait(20);
     assert(q('[data-action="nuovo-potenziale-apri"]'), 'manca il pulsante preventivo a nuovo cliente');
+    // Rinnovo mandati
+    {
+      const c0 = st().clienti.find(c => c.stato === 'attivo');
+      const old = { tr: c0.tipoRapporto, di: c0.dataIngresso };
+      c0.tipoRapporto = 'Contratto continuativo'; c0.dataIngresso = '2020-01-01';
+      assert(window.mandatiDaRinnovare().some(x => x.c.id === c0.id), 'cliente continuativo senza accordo recente non segnalato');
+      c0.tipoRapporto = old.tr; c0.dataIngresso = old.di;
+      click(q('[data-nav="preventivi"]')); await wait(20);
+    }
     // Report mensile + ricerca estesa
     {
       const txt = window.reportMensileCliente(cl.id, oggiISOtest().slice(0, 7));

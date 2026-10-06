@@ -8402,7 +8402,7 @@ function registroIaCsv() {
 }
 let DEON_TAB = 'accettazione', DEON_CLIENTE = null;
 function renderDeontologia() {
-  const tabs = [['accettazione', 'Accettazione incarico'], ['ia', 'Registro uso IA'], ['fpc', 'Formazione continua'], ['riservatezza', 'Riservatezza'], ['testi', 'Testi standard']];
+  const tabs = [['accettazione', 'Accettazione incarico'], ['ia', 'Registro uso IA'], ['fpc', 'Formazione continua'], ['riservatezza', 'Riservatezza'], ['privacy', 'Privacy e sicurezza'], ['testi', 'Testi standard']];
   const nav = `<div class="toolbar" style="gap:6px;">${tabs.map(([k, l]) => `<button class="btn ${DEON_TAB === k ? 'primary' : ''}" data-action="deon-tab" data-tab="${k}">${l}</button>`).join('')}</div>`;
   const avviso = `<div class="helptext" style="margin-bottom:10px;">Promemoria organizzativi basati sul Codice deontologico dei dottori commercialisti: non sostituiscono la lettura delle fonti ufficiali né il tuo giudizio professionale.</div>`;
   let corpo = '';
@@ -8445,6 +8445,20 @@ function renderDeontologia() {
       <button class="btn primary" data-action="deon-riserv-nuovo">+ Registra impegno</button>
       ${lista.length ? `<table class="compact" style="margin-top:8px;"><thead><tr><th>Persona</th><th>Documento</th><th>Firmato il</th><th>Scadenza</th><th></th></tr></thead><tbody>${lista.map(i => `<tr><td>${escapeHtml(i.persona)}</td><td>${escapeHtml(i.tipo)}</td><td>${i.data ? fmtData(i.data) : '—'}</td><td>${i.scadenza ? fmtData(i.scadenza) + (i.scadenza < oggi ? ' <span class="badge stato-errore">scaduto</span>' : '') : '—'}</td><td><button class="btn small danger" data-action="deon-riserv-elimina" data-id="${i.id}">Elimina</button></td></tr>`).join('')}</tbody></table>` : ''}
       <div class="helptext" style="margin-top:8px;">Persone dello studio senza alcun impegno registrato: ${((STATE.meta.responsabili || []).filter(p => !lista.some(i => i.persona === p)).map(escapeHtml).join(', ')) || 'nessuna'}</div></div>`;
+  } else if (DEON_TAB === 'privacy') {
+    const nOp = (STATE.meta.responsabili || []).length;
+    const nLim = (STATE.meta.responsabili || []).filter(r => ruoloOperatore(r) === 'limitato').length;
+    const info = `Lo studio tratta i dati dei clienti per l'esecuzione degli incarichi e per gli obblighi di legge (Reg. UE 2016/679). I dati sono conservati sui sistemi dello studio, con accessi riservati al personale autorizzato, credenziali conservate in forma cifrata e copie di sicurezza periodiche. I dati non sono ceduti a terzi, salvo i fornitori necessari al servizio e gli obblighi di legge. Il cliente può esercitare i diritti previsti dagli artt. 15-22 GDPR scrivendo allo studio.`;
+    corpo = `<div class="card"><div class="section-title">Misure di sicurezza adottate</div>
+      <div class="helptext" style="margin-bottom:8px;">Scheda di sintesi per il registro dei trattamenti e per le richieste dei clienti. Verifica che corrisponda alla tua realtà prima di usarla.</div>
+      <ul style="margin:0 0 0 18px;line-height:1.7;">
+        <li>Dati archiviati in locale sul computer/server dello studio (nessun cloud del fornitore del software).</li>
+        <li>Password delle credenziali conservate cifrate (AES-256-GCM); la chiave è inclusa nelle copie di sicurezza locali.</li>
+        <li>Accessi: ${nOp} utenti configurati, di cui ${nLim} con ruolo limitato alle sezioni consentite.</li>
+        <li>Tracciamento di tutte le azioni dell'IA (Registro uso IA) con possibilità di conferma preventiva.</li>
+        <li>Backup automatico e copia esterna configurabili da Impostazioni › Dati.</li>
+        <li>Portale cliente: accessi con password, solo se attivato l'accesso esterno.</li></ul>
+      <div class="field full" style="margin-top:10px;"><label>Testo per l'informativa ai clienti</label><textarea rows="5" style="width:100%;" readonly>${escapeHtml(info)}</textarea></div></div>`;
   } else {
     const clausolaIa = `Lo studio può avvalersi di strumenti di intelligenza artificiale come supporto ad attività di analisi, ricerca e organizzazione del lavoro. Le valutazioni, i pareri e le scelte professionali restano sempre di esclusiva responsabilità del Professionista, che verifica ogni risultato prodotto con tali strumenti.`;
     const impRis = `Il sottoscritto si impegna a mantenere la più rigorosa riservatezza su tutte le informazioni apprese in occasione dell'attività svolta per lo studio, a non comunicarle a terzi e a trattare i dati personali solo nei limiti delle istruzioni ricevute, anche dopo la cessazione del rapporto.`;
@@ -8719,7 +8733,24 @@ async function esportaPreventivoRtf(id) {
   }
 }
 
+/* Rinnovo annuale dei mandati: clienti con contratto continuativo il cui ultimo preventivo/mandato accettato
+   (o, in mancanza, la data di ingresso) risale a oltre 12 mesi fa → promemoria per adeguare il compenso. */
+function mandatiDaRinnovare() {
+  const oggi = oggiISO();
+  return STATE.clienti.filter(c => clienteAttivo(c) && c.tipoRapporto === 'Contratto continuativo').map(c => {
+    const date = (STATE.preventivi || []).filter(p => p.clienteId === c.id && p.stato === 'Accettato' && !categoriaEAml(p.categoria)).map(p => p.dataAccettazione || p.dataEmissione).filter(Boolean);
+    const ultima = date.sort().pop() || c.dataIngresso || null;
+    return { c, ultima, giorni: ultima ? giorniTra(ultima, oggi) : null };
+  }).filter(x => x.giorni != null && x.giorni > 365).sort((a, b) => b.giorni - a.giorni);
+}
 function renderPreventivi() {
+  const rin = mandatiDaRinnovare();
+  const card = rin.length ? `<div class="card" style="margin-bottom:12px;"><div class="section-title">Mandati da rinnovare / compensi da adeguare <span class="cnt">${rin.length}</span></div>
+    <div class="helptext" style="margin-bottom:6px;">Clienti con contratto continuativo senza un preventivo o mandato accettato da oltre 12 mesi.</div>
+    ${rin.slice(0, 8).map(x => `<div style="display:flex;align-items:center;gap:12px;padding:6px 0;border-bottom:1px solid var(--border);"><span style="flex:1;">${escapeHtml(x.c.ragioneSociale)} <span class="helptext">· ultimo accordo ${fmtData(x.ultima)}</span></span><button class="btn small" data-action="nuovo-preventivo" data-cliente="${x.c.id}">Nuovo preventivo</button></div>`).join('')}${rin.length > 8 ? `<div class="helptext">…e altri ${rin.length - 8}</div>` : ''}</div>` : '';
+  return card + renderPreventiviBase();
+}
+function renderPreventiviBase() {
   const tutti = STATE.preventivi.filter(p => !categoriaEAml(p.categoria));
   const accettati = tutti.filter(p => p.stato === 'Accettato');
   const inAttesa = tutti.filter(p => p.stato === 'Bozza' || p.stato === 'Inviato').length;
@@ -18573,7 +18604,7 @@ window.rigeneraAccessoSecondarioPortale = rigeneraAccessoSecondarioPortale;
 window.eliminaAccessoSecondarioPortale = eliminaAccessoSecondarioPortale;
 window.trovaAccessoPortale = trovaAccessoPortale;
 window.accessoPortalePuoVedere = accessoPortalePuoVedere;
-window.reportMensileCliente = reportMensileCliente; window.aggiungiProroga = aggiungiProroga; window.datiCarico = datiCarico; window.opzioniProroga = opzioniProroga;
+window.mandatiDaRinnovare = mandatiDaRinnovare; window.reportMensileCliente = reportMensileCliente; window.aggiungiProroga = aggiungiProroga; window.datiCarico = datiCarico; window.opzioniProroga = opzioniProroga;
 window.aggiornaAccettazione = aggiornaAccettazione; window.accettazioneCompleta = accettazioneCompleta; window.riepilogoFpc = riepilogoFpc; window.registroIaCsv = registroIaCsv;
 window.datiCruscotto = datiCruscotto; window.annualiCedutiCliente = annualiCedutiCliente;
 window.aggiungiLibroSociale = aggiungiLibroSociale; window.aggiornaLibroSociale = aggiornaLibroSociale;
