@@ -1870,7 +1870,9 @@ async function main() {
     assert(bil2.sotto.some(x => /Chiusura contabile/.test(x.nome)), 'cliente a contabilità dello studio deve avere la chiusura contabile');
     // cessazione
     window.cessaCliente(id, { data: '2026-03-31', motivo: 'Pratica conclusa' });
-    assert(!window.clienteAttivo(window.clienteById(id)) && window.derivati().periodiche.every(s => s.clienteId !== id), 'un cliente cessato non deve generare scadenze');
+    assert(!window.clienteAttivo(window.clienteById(id)) && window.derivati().periodiche.every(s => s.clienteId !== id || s.data <= '2026-03-31'), 'un cliente cessato genera scadenze solo fino alla data di cessazione');
+    assert(window.derivati().annuali.every(a => a.clienteId !== id), 'gli adempimenti annuali ceduti non devono restare in carico');
+    assert(window.annualiCedutiCliente(id).length >= 1, 'adempimenti ceduti non registrati');
     assert(window.clienteById(id).dataCessazione === '2026-03-31', 'data cessazione non salvata');
     window.riattivaCliente(id);
     assert(window.clienteAttivo(window.clienteById(id)) && window.clienteById(id).storicoCessazioni.length === 1, 'riattivazione non registrata');

@@ -1,17 +1,17 @@
 {
-  "versione": "1.9.0",
-  "note": "Cruscotto titolare: clienti nuovi/cessati, preventivi, fatture e incassi, avanzamento adempimenti per fase",
+  "versione": "1.10.0",
+  "note": "Cessazione a metà anno: data, scadenze fino alla cessazione in carico allo studio, adempimenti annuali ceduti al nuovo commercialista",
   "richiedeNpmInstall": false,
   "file": [
     {
       "nome": "gestionale.htm",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale.htm",
-      "sha256": "e89e4de012e52adaffe020bdf66069b789468f68f68a7d02cd3544cb7968fe9d"
+      "sha256": "1e654f6c365eed3a719843e15b81c3fcd9d79a25132712b418411889864ff80b"
     },
     {
       "nome": "server.js",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/server.js",
-      "sha256": "19ed037bea094070cfca2436fa63147dcc34e1be4c768a498cf7ad8538035333"
+      "sha256": "9da193785701be33f3f6821ff3c64585ed0bad4fe0710fbb6f57845f8dbeaf24"
     },
     {
       "nome": "portale-cliente.htm",

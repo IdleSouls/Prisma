@@ -1175,12 +1175,21 @@ function dataScadenza(anno, meseIdx1, giorno) {
   return spostaSeFestivo(toISO(anno, meseIdx1, giorno));
 }
 
+/* Un cliente cessato a metà anno resta "in carico" fino alla data di cessazione: le scadenze fino a quel
+   giorno le fa lo studio; gli adempimenti annuali li fa lo studio solo se non sono stati ceduti al nuovo
+   commercialista (flag "ceduto" in annualiOverrides, vedi cessaCliente). Dopo l'anno di cessazione, niente. */
+function clienteGeneraScadenze(c, anno) {
+  if (!c) return false;
+  if (clienteAttivo(c)) return true;
+  if (c.stato !== 'cessato' || !c.dataCessazione) return false;
+  return Number(anno) <= Number(String(c.dataCessazione).slice(0, 4));
+}
 function generaScadenzePeriodiche(clienti, anno, vecchie) {
   vecchie = vecchie || {};
   const out = [];
   const catalogo = catalogoPeriodici();
   for (const cliente of clienti) {
-    if (!clienteAttivo(cliente)) continue;
+    if (!clienteGeneraScadenze(cliente, anno)) continue;
     const flags = flagsAttivi(cliente);
     const esclusiTerzi = contabilitaDaTerzi(cliente) ? new Set(configContabTerzi().periodiciEsclusi) : null;
     for (const def of catalogo) {
@@ -1338,13 +1347,14 @@ function generaAdempimentiAnnuali(clienti, anno, vecchie) {
   vecchie = vecchie || {};
   const out = [];
   for (const cliente of clienti) {
-    if (!clienteAttivo(cliente)) continue;
+    if (!clienteGeneraScadenze(cliente, anno)) continue;
     const applicabili = cliente.adempimentiAnnualiApplicabili || [];
     for (const chiave of applicabili) {
       const def = catalogoAnnualeTutti().find(a => a.chiave === chiave);
       if (!def || def.attivo === false) continue;
       const k = `${anno}|${cliente.id}|${def.chiave}`;
       const salvato = vecchie[k];
+      if (salvato && salvato.ceduto) continue; // passato al nuovo commercialista: non più in carico allo studio
       const sottoSalvati = (salvato && salvato.sotto) || {};
       const altFasi = contabilitaDaTerzi(cliente) ? (configContabTerzi().sotto[def.chiave] || []) : [];
       const sotto = (altFasi.length ? altFasi : def.sotto).map(nomeSotto => ({
@@ -3059,7 +3069,7 @@ function avviaNgrokDaPrisma(porta, titoloPulsante) {
 /* -------------------- DERIVED: ricalcola tutto per l'anno corrente -------------------- */
 function derivati() {
   const anno = STATE.annoCorrente;
-  const periodiche = generaScadenzePeriodiche(STATE.clienti, anno, STATE.scadenzeOverrides);
+  const periodiche = generaScadenzePeriodiche(STATE.clienti, anno, STATE.scadenzeOverrides).filter(sc => { const cc = clienteById(sc.clienteId); return !(cc && cc.stato === 'cessato' && cc.dataCessazione && sc.data > cc.dataCessazione); });
   const righeRitenuteAnno = STATE.ritenuteRighe.filter(r => new Date(r.dataPagamento+'T00:00:00').getFullYear() === anno
     || new Date(r.dataPagamento+'T00:00:00').getFullYear() === anno - 1); // includiamo dicembre anno prec. che può slittare a gennaio anno corrente
   const { scadenze: ritenuteScad } = generaScadenzeRitenute(STATE.ritenuteRighe, STATE.scadenzeOverrides);
@@ -5258,6 +5268,7 @@ function renderSchedaCliente() {
         <div class="helptext" style="margin-top:2px;">Resp. studio: ${escapeHtml(cliente.responsabileStudio||'—')}${cliente.settore?' · Settore '+escapeHtml(cliente.settore):''}${cliente.annoIngresso?' · Cliente dal '+cliente.annoIngresso:''}</div>
         ${(cliente.atecoCodici||[]).length ? `<div class="helptext" style="margin-top:2px;">ATECO: ${(cliente.atecoCodici||[]).map(a=>escapeHtml(a)).join(', ')}</div>` : ''}
         ${cliente.stato==='cessato' ? `<div class="helptext" style="margin-top:2px;color:var(--rosso);">Cessato${cliente.dataCessazione?' il '+fmtData(cliente.dataCessazione):''}${cliente.motivoCessazione?' · '+escapeHtml(cliente.motivoCessazione):''}</div>` : ''}
+        ${(() => { const ce = annualiCedutiCliente(cliente.id); const aperti = derivati().annuali.filter(a => a.clienteId === cliente.id && !a.completato); return cliente.stato==='cessato' ? `<div class="helptext" style="margin-top:2px;">${ce.length ? 'Ceduti al nuovo commercialista: ' + ce.map(x => escapeHtml(x.nome) + ' ' + x.anno).join(', ') : 'Nessun adempimento ceduto'}${aperti.length ? ' · <strong>Ancora in carico allo studio:</strong> ' + aperti.map(a => escapeHtml(a.tipoNome)).join(', ') : ''}</div>` : ''; })()}
         <div style="margin-top:6px;">${cliente.stato==='cessato' ? `<button class="btn small" data-action="riattiva-cliente" data-id="${cliente.id}">Riattiva cliente</button>` : (cliente.stato==='attivo' ? `<button class="btn small" data-action="cessa-cliente-apri" data-id="${cliente.id}">Cessa cliente…</button>` : '')}</div>
         ${(contatti.email||contatti.telefono||contatti.pec) ? `<div class="helptext" style="margin-top:2px;">${contatti.email?escapeHtml(contatti.email):''}${contatti.telefono?' · '+escapeHtml(contatti.telefono):''}${contatti.pec?' · PEC '+escapeHtml(contatti.pec):''}</div>` : ''}
       </div>
@@ -14805,17 +14816,31 @@ function renderImpostazioniDati() {
 
 /* Cessazione di un cliente (task #233): data, motivo, tipo di rapporto restano sul record per le statistiche
    del titolare. Il cliente cessato smette da solo di generare scadenze (clienteAttivo). */
+/* Cessazione (anche a metà anno). dati: { data, motivo, nota, ceduti }.
+   ceduti = id degli adempimenti annuali che passano al nuovo commercialista (non più in carico allo studio);
+   se omesso, tutti gli adempimenti annuali non ancora completati dell'anno della cessazione sono ceduti.
+   Gli altri restano allo studio (con le scadenze periodiche fino alla data di cessazione). */
 function cessaCliente(id, dati) {
   const c = clienteById(id); if (!c) throw new Error('Cliente non trovato: ' + id);
   c.stato = 'cessato';
   c.dataCessazione = (dati && dati.data) || oggiISO();
   c.motivoCessazione = (dati && dati.motivo) || '';
   if (dati && dati.nota) c.noteCessazione = dati.nota;
+  const annoC = Number(c.dataCessazione.slice(0, 4));
+  const annuali = generaAdempimentiAnnuali([c], annoC, STATE.annualiOverrides);
+  const ceduti = (dati && Array.isArray(dati.ceduti)) ? dati.ceduti : annuali.filter(a => !a.completato).map(a => a.id);
+  ceduti.forEach(aid => { STATE.annualiOverrides[aid] = Object.assign({}, STATE.annualiOverrides[aid] || {}, { ceduto: true, dataCessione: c.dataCessazione }); });
   salvaStato(); return c;
+}
+/* Adempimenti annuali ceduti al nuovo commercialista, per la scheda cliente. */
+function annualiCedutiCliente(clienteId) {
+  return Object.keys(STATE.annualiOverrides || {}).filter(k => STATE.annualiOverrides[k].ceduto && k.split('|')[1] === clienteId)
+    .map(k => { const [anno, , chiave] = k.split('|'); const def = catalogoAnnualeTutti().find(a => a.chiave === chiave); return { id: k, anno, nome: def ? def.nome : chiave }; });
 }
 function riattivaCliente(id) {
   const c = clienteById(id); if (!c) throw new Error('Cliente non trovato: ' + id);
   if (c.dataCessazione) { c.storicoCessazioni = (c.storicoCessazioni || []).concat([{ data: c.dataCessazione, motivo: c.motivoCessazione || '' }]); }
+  annualiCedutiCliente(id).forEach(x => { const o = STATE.annualiOverrides[x.id]; delete o.ceduto; delete o.dataCessione; });
   c.stato = 'attivo'; c.dataCessazione = ''; c.motivoCessazione = '';
   salvaStato(); return c;
 }
@@ -14829,7 +14854,13 @@ function modalCessazioneCliente(id) {
         <div class="field"><label>Motivo</label><select id="cessMotivo">${MOTIVI_CESSAZIONE.map(m => `<option>${escapeHtml(m)}</option>`).join('')}</select></div>
         <div class="field full" style="grid-column:1/-1;"><label>Note</label><input id="cessNota" placeholder="facoltative"></div>
       </div>
-      <div class="helptext">Da questo momento non genera più scadenze e non compare negli elenchi di lavoro. I dati e i documenti restano e puoi riattivarlo.</div>
+      ${(() => {
+        const ann = generaAdempimentiAnnuali([c], STATE.annoCorrente, STATE.annualiOverrides).filter(a => !a.completato);
+        return ann.length ? `<div style="margin-top:8px;"><div style="font-weight:600;font-size:12.5px;">Adempimenti ${STATE.annoCorrente} ancora aperti</div>
+          <div class="helptext" style="margin-bottom:4px;">Spunta quelli che passano al nuovo commercialista; lasciati senza spunta li completa lo studio.</div>
+          ${ann.map(a => `<label class="checkline" style="display:block;"><input type="checkbox" class="cess-ceduto" data-id="${a.id}" checked> ${escapeHtml(a.tipoNome)} <span class="helptext">(${a.percentuale}% fatto)</span></label>`).join('')}</div>` : '';
+      })()}
+      <div class="helptext" style="margin-top:8px;">Le scadenze periodiche fino alla data di cessazione restano in carico allo studio; dopo non genera più nulla e non compare negli elenchi di lavoro. Dati e documenti restano e puoi riattivarlo.</div>
       <div class="modal-actions"><button class="btn" data-action="chiudi-modal">Annulla</button><button class="btn danger" data-action="cessa-cliente-conferma" data-id="${c.id}">Cessa cliente</button></div>
     </div></div>`;
 }
@@ -16265,7 +16296,7 @@ function onClickDelegato(e) {
     case 'nuovo-task-team': modalTaskTeam(null, el.dataset.cliente || null); break;
 
     case 'cessa-cliente-apri': modalCessazioneCliente(id); break;
-    case 'cessa-cliente-conferma': { try { cessaCliente(id, { data: h('cessData').value, motivo: h('cessMotivo').value, nota: h('cessNota').value }); } catch (err) { toast(err.message, true); return; } chiudiModal(); render(); toast('Cliente cessato.'); break; }
+    case 'cessa-cliente-conferma': { try { cessaCliente(id, { data: h('cessData').value, motivo: h('cessMotivo').value, nota: h('cessNota').value, ceduti: Array.from(document.querySelectorAll('.cess-ceduto:checked')).map(x => x.dataset.id) }); } catch (err) { toast(err.message, true); return; } chiudiModal(); render(); toast('Cliente cessato.'); break; }
     case 'riattiva-cliente': if (confermaAzione('Riattivare questo cliente? Tornerà a generare le scadenze.')) { riattivaCliente(id); render(); toast('Cliente riattivato.'); } break;
     case 'contab-terzi-salva-fasi': {
       const k = el.dataset.chiave; const t = document.getElementById('ctFasi_' + k); if (!t) break;
@@ -18197,7 +18228,7 @@ window.rigeneraAccessoSecondarioPortale = rigeneraAccessoSecondarioPortale;
 window.eliminaAccessoSecondarioPortale = eliminaAccessoSecondarioPortale;
 window.trovaAccessoPortale = trovaAccessoPortale;
 window.accessoPortalePuoVedere = accessoPortalePuoVedere;
-window.datiCruscotto = datiCruscotto;
+window.datiCruscotto = datiCruscotto; window.annualiCedutiCliente = annualiCedutiCliente;
 window.aggiungiLibroSociale = aggiungiLibroSociale; window.aggiornaLibroSociale = aggiornaLibroSociale;
 window.accettaPreventivo = accettaPreventivo; window.creaClientePotenziale = creaClientePotenziale; window.aggiungiAttivitaFatturabile = aggiungiAttivitaFatturabile; window.segnaAttivitaFatturate = segnaAttivitaFatturate; window.prossimaFatturazioneCliente = prossimaFatturazioneCliente; window.attivitaAperteCliente = attivitaAperteCliente;
 window.clienteAttivo = clienteAttivo; window.cessaCliente = cessaCliente; window.riattivaCliente = riattivaCliente; window.configContabTerzi = configContabTerzi;
