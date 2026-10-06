@@ -247,9 +247,9 @@ async function main() {
   assert(optAddebito.every(o => o.textContent !== o.textContent.toUpperCase() || !/[A-Za-z]/.test(o.textContent)), 'etichetta Addebito F24 ancora tutta in maiuscolo');
   const optContab = qa('#fContabilita option');
   const optContabEsterna = optContab.find(o => o.value === 'ESTERNA');
-  assert(optContabEsterna && optContabEsterna.textContent === 'Esterna (tenuta dallo studio)', `etichetta "Tenuta contabilità" (ESTERNA) non corretta: "${optContabEsterna && optContabEsterna.textContent}"`);
+  assert(optContabEsterna && optContabEsterna.textContent === 'Tenuta dallo studio', `etichetta "Tenuta contabilità" (ESTERNA) non corretta: "${optContabEsterna && optContabEsterna.textContent}"`);
   const optContabInterna = optContab.find(o => o.value === 'INTERNA');
-  assert(optContabInterna && optContabInterna.textContent === 'Interna (tenuta dalla società)', `etichetta "Tenuta contabilità" (INTERNA) non corretta: "${optContabInterna && optContabInterna.textContent}"`);
+  assert(optContabInterna && optContabInterna.textContent === 'Tenuta da terzi / dal cliente (lo studio non la registra)', `etichetta "Tenuta contabilità" (INTERNA) non corretta: "${optContabInterna && optContabInterna.textContent}"`);
   console.log('=== Etichette "Addebito F24"/"Tenuta contabilità" leggibili (maiuscolo solo iniziale, parentesi esplicativa) OK');
 
   // codici ATECO multipli: input libero separato da virgola -> array in STATE, senza duplicati
@@ -1828,6 +1828,54 @@ async function main() {
     const senza = window.testoDocumentoSenzaMarcatura('# T\n**b** *i*\n- x');
     assert(senza === 'T\nb i\nx', 'testoDocumentoSenzaMarcatura non ha tolto la marcatura: ' + JSON.stringify(senza));
     console.log('=== Task #223: motore documenti (marcatura, retrocompatibilità, carta intestata, export senza marcatura) OK');
+  }
+
+  // ---------- Task #233/#235: cessazione clienti, contabilità tenuta da terzi, modifica cliente senza perdere dati ----------
+  {
+    const st = () => window.getSTATE();
+    const cl = st().clienti.find(c => c.stato === 'attivo' && c.periodicitaIva === 'Mensile') || st().clienti.find(c => c.stato === 'attivo');
+    assert(cl, 'serve almeno un cliente attivo');
+    const id = cl.id;
+    // la modifica da form non deve cancellare token/password del portale
+    cl.portaleToken = 'tok-keep-1'; cl.portalePassword = 'pw-keep'; window.salvaStato();
+    window.setView('clienti'); await wait(20);
+    click(q(`[data-action="apri-cliente"][data-id="${id}"]`)); await wait(20);
+    const btnMod = q(`[data-action="modifica-cliente"][data-id="${id}"]`);
+    if (btnMod) {
+      click(btnMod); await wait(20);
+      if (q('#formCliente')) {
+        setVal(q('#fTipoRapporto'), 'Pratica una tantum');
+        click(q('[data-action="salva-cliente"]')); await wait(20);
+        const dopo = window.clienteById(id);
+        assert(dopo.portaleToken === 'tok-keep-1' && dopo.portalePassword === 'pw-keep', 'la modifica del cliente ha cancellato token/password del portale');
+        assert(dopo.tipoRapporto === 'Pratica una tantum', 'tipo rapporto non salvato');
+      }
+    }
+    window.clienteById(id).tipoRapporto = 'Contratto continuativo';
+    // contabilità tenuta da terzi: niente IVA periodica, fasi alternative per il bilancio
+    window.clienteById(id).contabilita = 'ESTERNA'; window.clienteById(id).periodicitaIva = 'Mensile';
+    const conIva = window.derivati().periodiche.filter(s => s.clienteId === id && /IVA/.test(s.tipo)).length;
+    assert(conIva > 0, 'cliente a contabilità dello studio con IVA mensile deve avere scadenze IVA');
+    window.clienteById(id).contabilita = 'INTERNA';
+    const senzaIva = window.derivati().periodiche.filter(s => s.clienteId === id && /Liquidazione IVA/.test(s.tipo)).length;
+    assert(senzaIva === 0, 'cliente con contabilità da terzi non deve avere le liquidazioni IVA dello studio');
+    window.clienteById(id).adempimentiAnnualiApplicabili = Array.from(new Set((window.clienteById(id).adempimentiAnnualiApplicabili || []).concat(['BILANCIO'])));
+    const bil = window.derivati().annuali.find(a => a.clienteId === id && a.tipoChiave === 'BILANCIO');
+    assert(bil && bil.sotto[0].nome.startsWith('Richiesta contabilità') && !bil.sotto.some(x => /Chiusura contabile/.test(x.nome)), 'fasi del bilancio per contabilità da terzi non applicate: ' + JSON.stringify(bil && bil.sotto.map(x => x.nome)));
+    window.clienteById(id).contabilita = 'ESTERNA';
+    const bil2 = window.derivati().annuali.find(a => a.clienteId === id && a.tipoChiave === 'BILANCIO');
+    assert(bil2.sotto.some(x => /Chiusura contabile/.test(x.nome)), 'cliente a contabilità dello studio deve avere la chiusura contabile');
+    // cessazione
+    window.cessaCliente(id, { data: '2026-03-31', motivo: 'Pratica conclusa' });
+    assert(!window.clienteAttivo(window.clienteById(id)) && window.derivati().periodiche.every(s => s.clienteId !== id), 'un cliente cessato non deve generare scadenze');
+    assert(window.clienteById(id).dataCessazione === '2026-03-31', 'data cessazione non salvata');
+    window.riattivaCliente(id);
+    assert(window.clienteAttivo(window.clienteById(id)) && window.clienteById(id).storicoCessazioni.length === 1, 'riattivazione non registrata');
+    window.clienteById(id).stato = 'potenziale';
+    assert(!window.clienteAttivo(window.clienteById(id)), 'un potenziale cliente non è attivo');
+    window.clienteById(id).stato = 'attivo'; delete window.clienteById(id).portaleToken; delete window.clienteById(id).portalePassword;
+    window.setView('dashboard'); await wait(20);
+    console.log('=== Clienti: modifica senza perdere token portale, contabilità da terzi (scadenze/fasi), cessazione e riattivazione, potenziale OK');
   }
 
   // ---------- Task #207: Incassi dello studio + solleciti ----------
@@ -5091,7 +5139,7 @@ async function main() {
     const header = window.COLONNE_IMPORT_CLIENTI.map(c => c.intestazione);
     const rigaValida = [
       'Ditta individuale', 'Test Import Rossi Mario', 'RSSMRA80A01L840X', '99999999991',
-      'Forfettario', 'N.A.', responsabileValido, 'Interna (tenuta dalla società)', 'Cliente',
+      'Forfettario', 'N.A.', responsabileValido, 'Tenuta da terzi / dal cliente (lo studio non la registra)', 'Cliente',
       'Artigiani/Commercianti', 'test1@test.it', 'test1@pec.it', '3331234567', 'Via Test 1',
       '36100', 'Vicenza', 'vi', 'Test settore', '01.11.00, 01.12.00', 'riga di test valida',
     ];

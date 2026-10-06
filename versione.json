@@ -1,17 +1,17 @@
 {
-  "versione": "1.5.0",
-  "note": "Modelli documenti: tabelle, immagini, campi personalizzati inseribili, modelli base strutturati; rimossi tab Raccolta documenti e Tempi",
+  "versione": "1.6.0",
+  "note": "Clienti cessati/potenziali, contabilità tenuta da terzi (scadenze e fasi dedicate), fix perdita token portale su modifica cliente, chiave credenziali nel backup",
   "richiedeNpmInstall": false,
   "file": [
     {
       "nome": "gestionale.htm",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale.htm",
-      "sha256": "2b4c59c10bdb584d301f4b17503ee436a04d5b34e1b329c6cb8d7f7632e92d26"
+      "sha256": "c511c7007450ffae0605cb9fdb7bb5b16f0c6ebed8dca58bbc3efd636be63fc8"
     },
     {
       "nome": "server.js",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/server.js",
-      "sha256": "526cfa81230f04814ba369aea6b5bea8c753579a78c325a873d2e1da0bd9c945"
+      "sha256": "3773e93c007fbeb0167cd6ff9e25cce3b5ae717a9dd8c2bfe3969733081fb9a8"
     },
     {
       "nome": "portale-cliente.htm",

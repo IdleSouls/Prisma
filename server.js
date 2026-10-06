@@ -413,7 +413,7 @@ scriviLog('Avvio di Prisma...');
 const URL_MANIFESTO_AGGIORNAMENTI = 'https://raw.githubusercontent.com/IdleSouls/Prisma/main/versione.json';
 // Cambiala qui a ogni nuova versione pubblicata (deve combaciare con quella scritta nel
 // "versione.json" caricato su GitHub, altrimenti il confronto non ha senso).
-const VERSIONE_LOCALE = '1.5.0';
+const VERSIONE_LOCALE = '1.6.0';
 // Solo questi file possono essere sovrascritti da un aggiornamento - mai un nome libero/a piacere
 // del manifesto, per non correre il rischio (anche solo teorico, es. account GitHub compromesso)
 // di far scrivere un file arbitrario altrove sul PC del cliente.
@@ -1247,7 +1247,10 @@ function eseguiBackupDocumentiEConfig() {
     const n = specchiaCartella(path.join(CARTELLA, 'documenti-clienti'), path.join(CARTELLA_BACKUP, 'documenti-clienti'));
     const cfg = path.join(CARTELLA_BACKUP, 'config');
     fs.mkdirSync(cfg, { recursive: true });
-    for (const f of FILE_CONFIG_BACKUP) {
+    // credenziali.key SOLO nella copia locale: senza la chiave le password cifrate non si recuperano
+    // dopo un ripristino; NON va nella copia esterna (può essere un cloud): lì resterebbe accanto ai dati
+    // cifrati e annullerebbe la cifratura. Per un ripristino da copia esterna la chiave va conservata a parte.
+    for (const f of FILE_CONFIG_BACKUP.concat(['credenziali.key'])) {
       const o = path.join(CARTELLA, f);
       if (fs.existsSync(o)) fs.copyFileSync(o, path.join(cfg, f));
     }

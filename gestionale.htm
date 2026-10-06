@@ -805,10 +805,38 @@ const SCELTE_ADDEBITO_F24 = [
   {v:'CLIENTE', l:'Cliente'},
   {v:'NOI/CLIENTE', l:'Noi o cliente, a seconda dei casi'},
 ];
+/* ATTENZIONE alle parole: nei dati il valore 'ESTERNA' significa che la contabilità la tiene LO STUDIO
+   (esterna rispetto all'azienda); 'INTERNA' che la tiene l'azienda stessa o un altro professionista.
+   Nel linguaggio dello studio si dice l'opposto ("contabilità interna" = la fa Sabrina in studio),
+   quindi le etichette mostrate dicono sempre chi la tiene, senza usare "interna/esterna" da soli. */
 const SCELTE_CONTABILITA = [
-  {v:'INTERNA', l:'Interna (tenuta dalla società)'},
-  {v:'ESTERNA', l:'Esterna (tenuta dallo studio)'},
+  {v:'ESTERNA', l:'Tenuta dallo studio'},
+  {v:'INTERNA', l:'Tenuta da terzi / dal cliente (lo studio non la registra)'},
 ];
+const MOTIVI_CESSAZIONE = ['Cessata attività dell\'azienda', 'Passato ad altro professionista', 'Revoca del mandato / insoluto', 'Pratica conclusa', 'Decisione dello studio', 'Altro'];
+const TIPI_RAPPORTO = ['Contratto continuativo', 'Pratica una tantum'];
+const PERIODICITA_FATTURAZIONE = ['Mensile', 'Trimestrale', 'Semestrale', 'Annuale', 'Alla prestazione'];
+/* Cliente "operativo": genera scadenze, compare negli elenchi di lavoro. Esclusi i cessati e i
+   potenziali clienti (hanno solo un preventivo, non ancora accettato). */
+function clienteAttivo(c) { return !!c && c.stato !== 'cessato' && c.stato !== 'potenziale'; }
+function contabilitaDaTerzi(c) { return !!c && c.contabilita === 'INTERNA'; }
+/* Cosa cambia per i clienti la cui contabilità NON è tenuta dallo studio (task #235): quali scadenze
+   periodiche lo studio non gestisce e quali fasi hanno gli adempimenti annuali (es. non c'è la
+   "chiusura contabile": si aspettano i dati dal terzo). Impostazioni > Catalogo. */
+const CONTAB_TERZI_DEFAULT = {
+  periodiciEsclusi: ['ivaMensile', 'ivaTrimestrale', 'accontoIva', 'lipe', 'intrastatMensile', 'intrastatTrimestrale', 'bolloFattElett', 'fattureEstere', 'oss', 'iva398'],
+  sotto: {
+    BILANCIO: ['Richiesta contabilità/bilancio provvisorio al terzo', 'Ricezione contabilità chiusa', 'Verifica dati ricevuti', 'Calcolo imposte', 'Condivisione con il cliente', 'Predisposizione pratica', 'Deposito'],
+    REDDITI_ORDINARI: ['Richiesta dati contabili al terzo', 'Ricezione e verifica dati', 'Calcolo imposte dovute', 'Predisposizione dichiarazione', 'Comunicazione importi dovuti al cliente', 'Predisposizione F24 di versamento', 'Invio telematico dichiarazione', 'Consegna copia al cliente'],
+    REDDITI_SEMPLIFICATI: ['Richiesta dati contabili al terzo', 'Ricezione e verifica dati', 'Calcolo imposte dovute', 'Predisposizione dichiarazione', 'Comunicazione importi dovuti al cliente', 'Predisposizione F24 di versamento', 'Invio telematico dichiarazione', 'Consegna copia al cliente'],
+    DICH_IVA_ANNUALE: ['Richiesta dati IVA al terzo', 'Ricezione e verifica dati', 'Predisposizione dichiarazione', 'Invio telematico', 'Consegna copia al cliente'],
+  },
+};
+function configContabTerzi() {
+  const c = STATE && STATE.meta && STATE.meta.contabTerzi;
+  return c ? { periodiciEsclusi: c.periodiciEsclusi || [], sotto: c.sotto || {} } : JSON.parse(JSON.stringify(CONTAB_TERZI_DEFAULT));
+}
+function salvaConfigContabTerzi(cfg) { STATE.meta.contabTerzi = cfg; salvaStato(); }
 // Unica lista di previdenze, condivisa dal form cliente e dall'import da Excel/CSV, così le due
 // cose non possono mai andare fuori sincrono tra loro.
 const PREVIDENZE = ['No previdenza','Artigiani/Commercianti','Gestione Separata','Cassa Privata','Agricoltura (CD/IAP)','Inarcassa','Dipendente','Cassa Forense','Cassa Geometri'];
@@ -938,7 +966,7 @@ const DEFAULT_CATALOGO_PERIODICO = [
 function catalogoPeriodici() {
   const sorgente = (STATE && STATE.catalogoPeriodico) || DEFAULT_CATALOGO_PERIODICO;
   return sorgente.filter(def => def.attivo !== false).map(def => ({
-    flag: def.flag, nome: def.nome, dates: def.occorrenze,
+    id: def.id, flag: def.flag, nome: def.nome, dates: def.occorrenze,
   }));
 }
 
@@ -1152,10 +1180,12 @@ function generaScadenzePeriodiche(clienti, anno, vecchie) {
   const out = [];
   const catalogo = catalogoPeriodici();
   for (const cliente of clienti) {
-    if (cliente.stato === 'cessato') continue;
+    if (!clienteAttivo(cliente)) continue;
     const flags = flagsAttivi(cliente);
+    const esclusiTerzi = contabilitaDaTerzi(cliente) ? new Set(configContabTerzi().periodiciEsclusi) : null;
     for (const def of catalogo) {
       if (!flags[def.flag]) continue;
+      if (esclusiTerzi && esclusiTerzi.has(def.id)) continue;
       for (const d of def.dates) {
         const dataISO = dataScadenza(anno, d.m, d.g);
         const admNome = d.nota;
@@ -1308,7 +1338,7 @@ function generaAdempimentiAnnuali(clienti, anno, vecchie) {
   vecchie = vecchie || {};
   const out = [];
   for (const cliente of clienti) {
-    if (cliente.stato === 'cessato') continue;
+    if (!clienteAttivo(cliente)) continue;
     const applicabili = cliente.adempimentiAnnualiApplicabili || [];
     for (const chiave of applicabili) {
       const def = catalogoAnnualeTutti().find(a => a.chiave === chiave);
@@ -1316,7 +1346,8 @@ function generaAdempimentiAnnuali(clienti, anno, vecchie) {
       const k = `${anno}|${cliente.id}|${def.chiave}`;
       const salvato = vecchie[k];
       const sottoSalvati = (salvato && salvato.sotto) || {};
-      const sotto = def.sotto.map(nomeSotto => ({
+      const altFasi = contabilitaDaTerzi(cliente) ? (configContabTerzi().sotto[def.chiave] || []) : [];
+      const sotto = (altFasi.length ? altFasi : def.sotto).map(nomeSotto => ({
         nome: nomeSotto,
         completato: !!(sottoSalvati[nomeSotto] && sottoSalvati[nomeSotto].completato),
         data: (sottoSalvati[nomeSotto] && sottoSalvati[nomeSotto].data) || null,
@@ -4566,7 +4597,7 @@ function renderDashboard() {
   </div>`;
 
   const onboardingIncompleti = STATE.clienti
-    .filter(c => c.stato !== 'cessato')
+    .filter(c => clienteAttivo(c))
     .map(c => ({ c, pct: percentualeOnboarding(STATE.onboarding[c.id]) }))
     .filter(x => x.pct < 100)
     .sort((a,b)=>a.pct-b.pct).slice(0,6);
@@ -4980,14 +5011,14 @@ let CLI_FILTRO = { q: '', regime: 'Tutti', resp: 'Tutti', mostraCessati: false }
 function renderClienti() {
   const f = CLI_FILTRO;
   let lista = STATE.clienti.filter(c => {
-    if (!f.mostraCessati && c.stato === 'cessato') return false;
+    if (!f.mostraCessati && !clienteAttivo(c)) return false;
     if (f.regime !== 'Tutti' && c.regimeFiscale !== f.regime) return false;
     if (f.resp !== 'Tutti' && c.responsabileStudio !== f.resp) return false;
     if (f.q && !c.ragioneSociale.toLowerCase().includes(f.q.toLowerCase())) return false;
     return true;
   }).sort((a,b) => a.ragioneSociale.localeCompare(b.ragioneSociale));
 
-  const attivi = STATE.clienti.filter(c => c.stato !== 'cessato').length;
+  const attivi = STATE.clienti.filter(c => clienteAttivo(c)).length;
 
   const toolbar = `<div class="toolbar">
     <div class="field grow"><label>Cerca</label><input type="text" placeholder="Nome o ragione sociale..." value="${escapeHtml(f.q)}" data-action="cli-filtro-q"></div>
@@ -4999,7 +5030,7 @@ function renderClienti() {
       <option ${f.resp==='Tutti'?'selected':''}>Tutti</option>
       ${STATE.meta.responsabili.map(r=>`<option ${f.resp===r?'selected':''}>${escapeHtml(r)}</option>`).join('')}
     </select></div>
-    <div class="field" style="min-width:max-content;"><label>&nbsp;</label><label class="checkline" style="white-space:nowrap;"><input type="checkbox" data-action="cli-filtro-cessati" ${f.mostraCessati?'checked':''}> Mostra cessati</label></div>
+    <div class="field" style="min-width:max-content;"><label>&nbsp;</label><label class="checkline" style="white-space:nowrap;"><input type="checkbox" data-action="cli-filtro-cessati" ${f.mostraCessati?'checked':''}> Mostra cessati e potenziali</label></div>
     <div class="field" style="margin-left:auto;"><label>&nbsp;</label><button class="btn primary" data-action="nuovo-cliente">+ Nuovo cliente</button></div>
   </div>`;
 
@@ -5020,7 +5051,7 @@ function renderClienti() {
     const pct = percentualeOnboarding(STATE.onboarding[c.id]);
     return `<div class="client-row" data-action="apri-cliente" data-id="${c.id}">
       <div>
-        <div class="name">${escapeHtml(c.ragioneSociale)} ${c.stato==='cessato'?'<span class="badge cessato">CESSATO</span>':''}</div>
+        <div class="name">${escapeHtml(c.ragioneSociale)} ${c.stato==='cessato'?'<span class="badge cessato">CESSATO</span>':''}${c.stato==='potenziale'?'<span class="badge info">POTENZIALE</span>':''}${contabilitaDaTerzi(c)?' <span class="badge" title="Contabilità tenuta da terzi: le scadenze e le fasi sono quelle per contabilità non tenuta dallo studio">contab. terzi</span>':''}</div>
         <div class="meta">${escapeHtml(c.regimeFiscale||'—')} · Resp. ${escapeHtml(c.responsabileStudio||'—')} ${c.partitaIva?'· P.IVA '+escapeHtml(c.partitaIva):''} ${c.settore?'· '+escapeHtml(c.settore):''}</div>
       </div>
       <div class="right">
@@ -5045,7 +5076,7 @@ let RUBRICA_FILTRO = { q: '' };
 
 function renderRubrica() {
   const q = (RUBRICA_FILTRO.q || '').trim().toLowerCase();
-  let lista = STATE.clienti.filter(c => c.stato !== 'cessato').slice().sort((a,b) => a.ragioneSociale.localeCompare(b.ragioneSociale));
+  let lista = STATE.clienti.filter(c => clienteAttivo(c)).slice().sort((a,b) => a.ragioneSociale.localeCompare(b.ragioneSociale));
   if (q) {
     lista = lista.filter(c => {
       const co = c.contatti || {};
@@ -5117,10 +5148,12 @@ function renderSchedaCliente() {
   const header = `<div class="card">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;">
       <div>
-        <div style="font-size:19px;font-weight:800;">${escapeHtml(cliente.ragioneSociale)} ${cliente.stato==='cessato'?'<span class="badge cessato">CESSATO</span>':''}</div>
+        <div style="font-size:19px;font-weight:800;">${escapeHtml(cliente.ragioneSociale)} ${cliente.stato==='cessato'?'<span class="badge cessato">CESSATO</span>':''}${cliente.stato==='potenziale'?'<span class="badge info">POTENZIALE</span>':''}${contabilitaDaTerzi(cliente)?' <span class="badge" title="Contabilità tenuta da terzi">contab. terzi</span>':''}</div>
         <div class="helptext" style="margin-top:4px;">${escapeHtml(cliente.regimeFiscale||'—')} · ${escapeHtml(labelTipoCliente(cliente.tipo))}${cliente.partitaIva?' · P.IVA '+escapeHtml(cliente.partitaIva):''}${cliente.codiceFiscale?' · CF '+escapeHtml(cliente.codiceFiscale):''}</div>
         <div class="helptext" style="margin-top:2px;">Resp. studio: ${escapeHtml(cliente.responsabileStudio||'—')}${cliente.settore?' · Settore '+escapeHtml(cliente.settore):''}${cliente.annoIngresso?' · Cliente dal '+cliente.annoIngresso:''}</div>
         ${(cliente.atecoCodici||[]).length ? `<div class="helptext" style="margin-top:2px;">ATECO: ${(cliente.atecoCodici||[]).map(a=>escapeHtml(a)).join(', ')}</div>` : ''}
+        ${cliente.stato==='cessato' ? `<div class="helptext" style="margin-top:2px;color:var(--rosso);">Cessato${cliente.dataCessazione?' il '+fmtData(cliente.dataCessazione):''}${cliente.motivoCessazione?' · '+escapeHtml(cliente.motivoCessazione):''}</div>` : ''}
+        <div style="margin-top:6px;">${cliente.stato==='cessato' ? `<button class="btn small" data-action="riattiva-cliente" data-id="${cliente.id}">Riattiva cliente</button>` : (cliente.stato==='attivo' ? `<button class="btn small" data-action="cessa-cliente-apri" data-id="${cliente.id}">Cessa cliente…</button>` : '')}</div>
         ${(contatti.email||contatti.telefono||contatti.pec) ? `<div class="helptext" style="margin-top:2px;">${contatti.email?escapeHtml(contatti.email):''}${contatti.telefono?' · '+escapeHtml(contatti.telefono):''}${contatti.pec?' · PEC '+escapeHtml(contatti.pec):''}</div>` : ''}
       </div>
       <div style="display:flex;gap:22px;">
@@ -5416,6 +5449,11 @@ function modalCliente(clienteId) {
           <legend>Valore cliente per lo studio</legend>
           <div class="grid3">
             <div class="field"><label>Preventivo annuo (€)</label><input type="number" step="0.01" id="fPreventivo" value="${escapeHtml(c.preventivoAnnuo||'')}"></div>
+            <div class="field"><label>Tipo di rapporto</label><select id="fTipoRapporto">${TIPI_RAPPORTO.map(t=>`<option ${(c.tipoRapporto||TIPI_RAPPORTO[0])===t?'selected':''}>${t}</option>`).join('')}</select></div>
+            <div class="field"><label>Fatturazione dei compensi</label><select id="fFatturazione"><option value="">— non indicata —</option>${PERIODICITA_FATTURAZIONE.map(t=>`<option ${c.fatturazione===t?'selected':''}>${t}</option>`).join('')}</select></div>
+            <div class="field"><label>Data ingresso</label><input type="date" id="fDataIngresso" value="${escapeHtml(c.dataIngresso||'')}"></div>
+            <div class="field"><label>Data cessazione</label><input type="date" id="fDataCessazione" value="${escapeHtml(c.dataCessazione||'')}"></div>
+            <div class="field"><label>Motivo cessazione</label><select id="fMotivoCessazione"><option value="">—</option>${MOTIVI_CESSAZIONE.map(t=>`<option ${c.motivoCessazione===t?'selected':''}>${escapeHtml(t)}</option>`).join('')}</select></div>
           </div>
         </fieldset>
 
@@ -5424,7 +5462,7 @@ function modalCliente(clienteId) {
           <div class="grid3">
             <div class="field"><label>Regime fiscale</label><select id="fRegime">${REGIMI_FISCALI.map(r=>`<option ${c.regimeFiscale===r?'selected':''}>${r}</option>`).join('')}</select></div>
             <div class="field"><label>Responsabile studio</label><select id="fResponsabile">${STATE.meta.responsabili.map(r=>`<option ${c.responsabileStudio===r?'selected':''}>${escapeHtml(r)}</option>`).join('')}</select></div>
-            <div class="field"><label>Stato cliente</label><select id="fStato"><option value="attivo" ${c.stato==='attivo'?'selected':''}>Attivo</option><option value="cessato" ${c.stato==='cessato'?'selected':''}>Cessato</option></select></div>
+            <div class="field"><label>Stato cliente</label><select id="fStato"><option value="attivo" ${c.stato==='attivo'?'selected':''}>Attivo</option><option value="cessato" ${c.stato==='cessato'?'selected':''}>Cessato</option><option value="potenziale" ${c.stato==='potenziale'?'selected':''}>Potenziale (solo preventivo)</option></select></div>
             <div class="field"><label>Addebito F24</label><select id="fAddebito">${SCELTE_ADDEBITO_F24.map(o=>`<option value="${o.v}" ${c.addebitoF24===o.v?'selected':''}>${o.l}</option>`).join('')}</select></div>
             <div class="field"><label>Tenuta contabilità</label><select id="fContabilita">${SCELTE_CONTABILITA.map(o=>`<option value="${o.v}" ${c.contabilita===o.v?'selected':''}>${o.l}</option>`).join('')}</select></div>
           </div>
@@ -5527,6 +5565,11 @@ function leggiFormCliente(id, editing) {
     versamentoImposteScelta: versamentoScelta,
     adempimentiAnnualiApplicabili: annuali,
     note: document.getElementById('fNote').value,
+    tipoRapporto: document.getElementById('fTipoRapporto').value,
+    fatturazione: document.getElementById('fFatturazione').value,
+    dataIngresso: document.getElementById('fDataIngresso').value || '',
+    dataCessazione: document.getElementById('fDataCessazione').value || '',
+    motivoCessazione: document.getElementById('fMotivoCessazione').value || '',
     creatoIl: editing ? (clienteById(id)?.creatoIl || oggiISO()) : oggiISO(),
   };
   return { cliente, valido: !!ragioneSociale };
@@ -6110,7 +6153,7 @@ function modalRitenuta() {
       </div>
       <form id="formRitenuta" onsubmit="return false;">
         <div class="grid2">
-          <div class="field"><label>Cliente *</label><select id="rCliente">${STATE.clienti.filter(c=>c.stato!=='cessato').map(c=>`<option value="${c.id}">${escapeHtml(c.ragioneSociale)}</option>`).join('')}</select></div>
+          <div class="field"><label>Cliente *</label><select id="rCliente">${STATE.clienti.filter(c=>clienteAttivo(c)).map(c=>`<option value="${c.id}">${escapeHtml(c.ragioneSociale)}</option>`).join('')}</select></div>
           <div class="field"><label>Percipiente / Fornitore *</label><input id="rPercipiente" required></div>
           <div class="field"><label>Data fattura *</label><input type="date" id="rDataFattura" required></div>
           <div class="field"><label>Data pagamento</label><input type="date" id="rDataPagamento"></div>
@@ -6234,7 +6277,7 @@ let ONBOARD_SELECTED = null;
 let ONBOARD_FILTRO_Q = '';
 function renderOnboarding() {
   if (VIEW_PARAMS.clienteId) { ONBOARD_SELECTED = VIEW_PARAMS.clienteId; VIEW_PARAMS = {}; }
-  const attivi = STATE.clienti.filter(c => c.stato !== 'cessato').sort((a,b)=>a.ragioneSociale.localeCompare(b.ragioneSociale));
+  const attivi = STATE.clienti.filter(c => clienteAttivo(c)).sort((a,b)=>a.ragioneSociale.localeCompare(b.ragioneSociale));
   if (attivi.length === 0) {
     return `<div class="card"><div class="empty"><div class="big">Nessun cliente attivo</div>Aggiungi un cliente per iniziare la checklist di onboarding.</div></div>`;
   }
@@ -6293,7 +6336,7 @@ function classeRischioAml(profilo) {
 let AML_FILTRO_Q = '';
 function renderAntiriciclaggio() {
   if (VIEW_PARAMS.clienteId) { AML_SELECTED = VIEW_PARAMS.clienteId; VIEW_PARAMS = {}; }
-  const attivi = STATE.clienti.filter(c => c.stato !== 'cessato').sort((a,b)=>a.ragioneSociale.localeCompare(b.ragioneSociale));
+  const attivi = STATE.clienti.filter(c => clienteAttivo(c)).sort((a,b)=>a.ragioneSociale.localeCompare(b.ragioneSociale));
   if (attivi.length === 0) {
     return `<div class="card"><div class="empty"><div class="big">Nessun cliente attivo</div>Aggiungi un cliente per aprire un fascicolo antiriciclaggio.</div></div>`;
   }
@@ -6414,7 +6457,7 @@ function categoriaComunicazione(c) { return c.categoria || c.tipo || 'Altro'; }
    prefix distingue gli id nei due modal (non sono mai aperti insieme, ma restiamo puliti). */
 function destinatariFieldsHtml(prefix, modo, clienteIdSingolo, clienteIdsMulti) {
   modo = modo || 'singolo';
-  const attivi = STATE.clienti.filter(c => c.stato !== 'cessato').sort((a,b)=>a.ragioneSociale.localeCompare(b.ragioneSociale));
+  const attivi = STATE.clienti.filter(c => clienteAttivo(c)).sort((a,b)=>a.ragioneSociale.localeCompare(b.ragioneSociale));
   return `
     <div class="field full" style="grid-column:1/-1;">
       <label>Destinatari</label>
@@ -6434,7 +6477,7 @@ function destinatariFieldsHtml(prefix, modo, clienteIdSingolo, clienteIdsMulti) 
 function leggiDestinatari(prefix) {
   const radioChecked = document.querySelector(`input[name="${prefix}DestModo"]:checked`);
   const modo = radioChecked ? radioChecked.value : 'singolo';
-  if (modo === 'tutti') return { modo, clienteIds: STATE.clienti.filter(c=>c.stato!=='cessato').map(c=>c.id) };
+  if (modo === 'tutti') return { modo, clienteIds: STATE.clienti.filter(c=>clienteAttivo(c)).map(c=>c.id) };
   if (modo === 'multi') return { modo, clienteIds: Array.from(document.querySelectorAll(`[data-multi-cliente="${prefix}"]:checked`)).map(cb=>cb.value) };
   const el = document.getElementById(`${prefix}DestSingolo`);
   return { modo, clienteIds: (el && el.value) ? [el.value] : [] };
@@ -6566,7 +6609,7 @@ function renderComunicazioni() {
 
 function modalComunicazione(presetClienteId) {
   if (STATE.clienti.length === 0) { toast('Aggiungi prima almeno un cliente.'); return; }
-  const attivi0 = STATE.clienti.filter(c => c.stato !== 'cessato');
+  const attivi0 = STATE.clienti.filter(c => clienteAttivo(c));
   const presetValido = presetClienteId && attivi0.find(c => c.id === presetClienteId) ? presetClienteId : null;
   const sezioneFileCom = HTTP_SYNC_ATTIVO
     ? `<div class="field full" style="grid-column:1/-1;"><label>Allegato (opzionale)</label><input type="file" id="cFile">
@@ -6723,7 +6766,7 @@ function adempimentiCollegabili() {
 function clientiPerAdempimentoCollegato(adempimentoCollegato) {
   if (!adempimentoCollegato) return [];
   const prefisso = adempimentoCollegato.slice(0, 2), valore = adempimentoCollegato.slice(2);
-  const attivi = STATE.clienti.filter(c => c.stato !== 'cessato');
+  const attivi = STATE.clienti.filter(c => clienteAttivo(c));
   if (prefisso === 'p:') return attivi.filter(c => flagsAttivi(c)[valore]).map(c => c.id);
   if (prefisso === 'a:') return attivi.filter(c => (c.adempimentiAnnualiApplicabili||[]).includes(valore)).map(c => c.id);
   return [];
@@ -6889,8 +6932,8 @@ function generaComunicazioniRicorrentiDovute() {
     if (!ricorrenzaDovutaOggi(t, oggi)) return;
     let clienteIds = [];
     if (t.adempimentoCollegato) clienteIds = clientiPerAdempimentoCollegato(t.adempimentoCollegato);
-    else if (t.destinatari.modo === 'tutti') clienteIds = STATE.clienti.filter(c=>c.stato!=='cessato').map(c=>c.id);
-    else clienteIds = (t.destinatari.clienteIds||[]).filter(cid => { const c = clienteById(cid); return c && c.stato !== 'cessato'; });
+    else if (t.destinatari.modo === 'tutti') clienteIds = STATE.clienti.filter(c=>clienteAttivo(c)).map(c=>c.id);
+    else clienteIds = (t.destinatari.clienteIds||[]).filter(cid => { const c = clienteById(cid); return c && clienteAttivo(c); });
     if (t.destinatari.modo === 'singolo' && !t.adempimentoCollegato) clienteIds = clienteIds.slice(0,1);
     if (clienteIds.length > 0) {
       const gruppoId = clienteIds.length > 1 ? uid('comgrp') : null;
@@ -7044,7 +7087,7 @@ function modalDocumento() {
       </div>
       <form id="formDocumento" onsubmit="return false;">
         <div class="grid2">
-          <div class="field"><label>Cliente *</label><select id="dCliente">${STATE.clienti.filter(c=>c.stato!=='cessato').map(c=>`<option value="${c.id}">${escapeHtml(c.ragioneSociale)}</option>`).join('')}</select></div>
+          <div class="field"><label>Cliente *</label><select id="dCliente">${STATE.clienti.filter(c=>clienteAttivo(c)).map(c=>`<option value="${c.id}">${escapeHtml(c.ragioneSociale)}</option>`).join('')}</select></div>
           <div class="field"><label>Categoria</label><select id="dCategoria" data-action="doc-categoria-manual">${CATEGORIE_DOCUMENTO.map(c=>`<option>${c}</option>`).join('')}</select><div class="helptext" id="dCategoriaSuggerimento" style="margin-top:4px;"></div></div>
           <div class="field full" style="grid-column:1/-1;"><label>Nome documento *</label><input id="dNome" required data-action="doc-nome-suggerisci" placeholder="es. Visura camerale 2026"></div>
           <div class="field"><label>Caricato il</label><input type="date" id="dDataCaricamento" value="${oggiISO()}"></div>
@@ -8029,7 +8072,7 @@ function modalPreventivo(id, clienteIdCorrente, soloAml, modelloIdForzato, clien
   const editing = id ? STATE.preventivi.find(x => x.id === id) : null;
   if (id && !editing) { toast('Documento non trovato.'); return; }
   if (!editing && STATE.clienti.length === 0) { toast('Aggiungi prima almeno un cliente.'); return; }
-  const clientiAttivi = STATE.clienti.filter(c => c.stato !== 'cessato');
+  const clientiAttivi = STATE.clienti.filter(c => clienteAttivo(c));
   /* clienteBloccatoForzato è un flag esplicito (non dedotto dalla presenza di clienteIdCorrente):
      un documento aperto dal fascicolo di un cliente specifico resta bloccato su quel cliente anche
      dopo aver cambiato modello; un documento aperto "libero" resta libero anche dopo aver scelto un
@@ -8278,7 +8321,7 @@ let F24_CLIENTE_QUERY = '';
 function risultatiClienteF24Html() {
   const q = F24_CLIENTE_QUERY.trim().toLowerCase();
   if (!q) return '';
-  const match = STATE.clienti.filter(c => c.stato !== 'cessato' && c.ragioneSociale.toLowerCase().includes(q))
+  const match = STATE.clienti.filter(c => clienteAttivo(c) && c.ragioneSociale.toLowerCase().includes(q))
     .sort((a,b) => a.ragioneSociale.localeCompare(b.ragioneSociale)).slice(0, 30);
   if (!match.length) return `<div class="f24-cliente-vuoto">Nessun cliente trovato per "${escapeHtml(F24_CLIENTE_QUERY.trim())}".</div>`;
   return match.map(c => `<div class="f24-cliente-riga" data-action="f24-cliente-scegli" data-id="${c.id}">${escapeHtml(c.ragioneSociale)}</div>`).join('');
@@ -9899,7 +9942,7 @@ function importaBilancio(inputEl) {
 let BILANCIO_CLIENTE = null;
 
 function renderBilanci() {
-  const attivi = STATE.clienti.filter(c=>c.stato!=='cessato').sort((a,b)=>a.ragioneSociale.localeCompare(b.ragioneSociale));
+  const attivi = STATE.clienti.filter(c=>clienteAttivo(c)).sort((a,b)=>a.ragioneSociale.localeCompare(b.ragioneSociale));
   if (attivi.length === 0) return `<div class="card"><div class="empty"><div class="big">Nessun cliente attivo</div>Aggiungi un cliente per caricare i suoi dati di bilancio.</div></div>`;
   if (!BILANCIO_CLIENTE || !attivi.find(c=>c.id===BILANCIO_CLIENTE)) BILANCIO_CLIENTE = attivi[0].id;
   const cliente = clienteById(BILANCIO_CLIENTE);
@@ -10650,7 +10693,7 @@ function pillFreschezza(giorniFa) {
 }
 
 function renderContabilita() {
-  const attivi = STATE.clienti.filter(c=>c.stato!=='cessato').sort((a,b)=>a.ragioneSociale.localeCompare(b.ragioneSociale));
+  const attivi = STATE.clienti.filter(c=>clienteAttivo(c)).sort((a,b)=>a.ragioneSociale.localeCompare(b.ragioneSociale));
   if (attivi.length === 0) return `<div class="card"><div class="empty"><div class="big">Nessun cliente attivo</div>Aggiungi un cliente per iniziare a importare la sua contabilità.</div></div>`;
   if (!CONTAB_CLIENTE || !attivi.find(c=>c.id===CONTAB_CLIENTE)) CONTAB_CLIENTE = attivi[0].id;
   const cliente = clienteById(CONTAB_CLIENTE);
@@ -11582,7 +11625,7 @@ function tabellaAccessoPortaleClienti(attivi) {
 }
 
 function renderPortaleCliente() {
-  const attivi = STATE.clienti.filter(c => c.stato !== 'cessato').sort((a,b)=>a.ragioneSociale.localeCompare(b.ragioneSociale));
+  const attivi = STATE.clienti.filter(c => clienteAttivo(c)).sort((a,b)=>a.ragioneSociale.localeCompare(b.ragioneSociale));
   if (attivi.length === 0) {
     return `<div class="card"><div class="empty"><div class="big">Nessun cliente attivo</div>Aggiungi un cliente per vedere l'anteprima del portale.</div></div>`;
   }
@@ -12376,7 +12419,7 @@ function renderFormNuovoEvento(dataISO) {
   const btnApp = document.getElementById('nevBtnApp'), btnScad = document.getElementById('nevBtnScad');
   if (btnApp) btnApp.className = 'btn small ' + (NUOVO_EVENTO_TIPO === 'appuntamento' ? 'primary' : 'ghost');
   if (btnScad) btnScad.className = 'btn small ' + (NUOVO_EVENTO_TIPO === 'scadenza' ? 'primary' : 'ghost');
-  const attivi = STATE.clienti.filter(c => c.stato !== 'cessato').sort((a,b) => a.ragioneSociale.localeCompare(b.ragioneSociale));
+  const attivi = STATE.clienti.filter(c => clienteAttivo(c)).sort((a,b) => a.ragioneSociale.localeCompare(b.ragioneSociale));
 
   if (NUOVO_EVENTO_TIPO === 'appuntamento') {
     el.innerHTML = `
@@ -12778,7 +12821,7 @@ function renderFormPrenotaAppuntamento() {
   if (!el) return;
   const consulenti = STATE.meta.consulenti || [];
   const oggi = oggiISO();
-  const attivi = STATE.clienti.filter(c => c.stato !== 'cessato').sort((a,b) => a.ragioneSociale.localeCompare(b.ragioneSociale));
+  const attivi = STATE.clienti.filter(c => clienteAttivo(c)).sort((a,b) => a.ragioneSociale.localeCompare(b.ragioneSociale));
   el.innerHTML = `
     <div class="field"><label>Consulente</label>
       <select id="prenConsulente" data-action="prenota-cambia-consulente">${consulenti.map(c => `<option value="${escapeHtml(c)}" ${c===PRENOTA_CONSULENTE?'selected':''}>${escapeHtml(c)}</option>`).join('')}</select>
@@ -13185,6 +13228,7 @@ function cardBackupEsterno() {
   return `<div class="card">
     <div class="section-title">Copia esterna dei backup</div>
     <div class="helptext" style="margin-bottom:10px;">Se il disco di questo PC si rompe, perdi dati <b>e</b> backup insieme. Indica una cartella su un altro disco, un NAS o una cartella sincronizzata (OneDrive, Google Drive...): a ogni backup Prisma ci copia i dati, i documenti dei clienti e la configurazione.</div>
+    <div class="helptext" style="margin-bottom:10px;">⚠ La chiave che decifra le password dello studio (<code>credenziali.key</code>) resta solo nella copia locale <code>backup/config</code>: <b>non</b> viene copiata all'esterno, per non vanificare la cifratura. Conservane una copia a parte (es. chiavetta in cassaforte): senza di essa, dopo un ripristino su un altro PC le password non si leggono più.</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
       <input type="text" id="backupEsternoCartella" value="${escapeHtml(b.cartella || '')}" placeholder="es. D:\\Backup\\Prisma  oppure  \\\\NAS\\studio\\prisma" style="flex:1;min-width:260px;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">
       <button class="btn primary" data-action="backup-esterno-salva">Salva e copia</button>
@@ -13360,7 +13404,7 @@ function cardAccessoEsterno() {
    "nome utente": il link personale identifica già il cliente, la password è il secondo controllo. */
 let ACC_CLIENTE_SEL = null;
 function sezioneAreaRiservataCliente(blocco, titoloBlocco) {
-  const attivi = STATE.clienti.filter(c => c.stato !== 'cessato').sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale));
+  const attivi = STATE.clienti.filter(c => clienteAttivo(c)).sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale));
   if (!attivi.length) return '';
   if (!ACC_CLIENTE_SEL || !attivi.find(c => c.id === ACC_CLIENTE_SEL)) ACC_CLIENTE_SEL = attivi[0].id;
   const c = clienteById(ACC_CLIENTE_SEL);
@@ -13934,7 +13978,7 @@ function renderCredenziali() {
     <div class="field"><label>Cliente</label><select data-action="cred-filtro-cliente">
       <option value="Tutti" ${f.cliente==='Tutti'?'selected':''}>Tutti</option>
       <option value="__studio__" ${f.cliente==='__studio__'?'selected':''}>— Solo studio (nessun cliente) —</option>
-      ${STATE.clienti.filter(c=>c.stato!=='cessato').map(c=>`<option value="${c.id}" ${f.cliente===c.id?'selected':''}>${escapeHtml(c.ragioneSociale)}</option>`).join('')}
+      ${STATE.clienti.filter(c=>clienteAttivo(c)).map(c=>`<option value="${c.id}" ${f.cliente===c.id?'selected':''}>${escapeHtml(c.ragioneSociale)}</option>`).join('')}
     </select></div>
     <div class="field" style="margin-left:auto;"><label>&nbsp;</label><button class="btn primary" data-action="nuova-credenziale">+ Nuova credenziale</button></div>
   </div>`;
@@ -14030,7 +14074,7 @@ function modalCredenziale(id) {
           </div>
           <div class="field"><label>Cliente (opzionale)</label><select id="credCliente">
             <option value="">— Nessuno (credenziale studio) —</option>
-            ${STATE.clienti.filter(c=>c.stato!=='cessato').map(c=>`<option value="${c.id}" ${editing&&editing.clienteId===c.id?'selected':''}>${escapeHtml(c.ragioneSociale)}</option>`).join('')}
+            ${STATE.clienti.filter(c=>clienteAttivo(c)).map(c=>`<option value="${c.id}" ${editing&&editing.clienteId===c.id?'selected':''}>${escapeHtml(c.ragioneSociale)}</option>`).join('')}
           </select></div>
           <div class="field full" style="grid-column:1/-1;">
             <label>Campi (nome utente, password, PIN, ambiente di sicurezza...) *</label>
@@ -14285,11 +14329,64 @@ function renderImpostazioniDati() {
   ${cardBackupPiattaforma()}`;
 }
 
+/* Cessazione di un cliente (task #233): data, motivo, tipo di rapporto restano sul record per le statistiche
+   del titolare. Il cliente cessato smette da solo di generare scadenze (clienteAttivo). */
+function cessaCliente(id, dati) {
+  const c = clienteById(id); if (!c) throw new Error('Cliente non trovato: ' + id);
+  c.stato = 'cessato';
+  c.dataCessazione = (dati && dati.data) || oggiISO();
+  c.motivoCessazione = (dati && dati.motivo) || '';
+  if (dati && dati.nota) c.noteCessazione = dati.nota;
+  salvaStato(); return c;
+}
+function riattivaCliente(id) {
+  const c = clienteById(id); if (!c) throw new Error('Cliente non trovato: ' + id);
+  if (c.dataCessazione) { c.storicoCessazioni = (c.storicoCessazioni || []).concat([{ data: c.dataCessazione, motivo: c.motivoCessazione || '' }]); }
+  c.stato = 'attivo'; c.dataCessazione = ''; c.motivoCessazione = '';
+  salvaStato(); return c;
+}
+function modalCessazioneCliente(id) {
+  const c = clienteById(id); if (!c) return;
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
+    <div class="modal" style="max-width:460px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;"><div><h2>Cessa cliente</h2><div class="modal-sub">${escapeHtml(c.ragioneSociale)}</div></div><button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button></div>
+      <div class="grid2">
+        <div class="field"><label>Data cessazione</label><input id="cessData" type="date" value="${oggiISO()}"></div>
+        <div class="field"><label>Motivo</label><select id="cessMotivo">${MOTIVI_CESSAZIONE.map(m => `<option>${escapeHtml(m)}</option>`).join('')}</select></div>
+        <div class="field full" style="grid-column:1/-1;"><label>Note</label><input id="cessNota" placeholder="facoltative"></div>
+      </div>
+      <div class="helptext">Da questo momento non genera più scadenze e non compare negli elenchi di lavoro. I dati e i documenti restano e puoi riattivarlo.</div>
+      <div class="modal-actions"><button class="btn" data-action="chiudi-modal">Annulla</button><button class="btn danger" data-action="cessa-cliente-conferma" data-id="${c.id}">Cessa cliente</button></div>
+    </div></div>`;
+}
+/* Impostazioni > Catalogo: cosa cambia per i clienti con contabilità tenuta da terzi (task #235). */
+function renderCardContabTerzi() {
+  const cfg = configContabTerzi();
+  const periodici = (STATE.catalogoPeriodico || DEFAULT_CATALOGO_PERIODICO).filter(d => d.attivo !== false);
+  const esclusi = new Set(cfg.periodiciEsclusi);
+  const annuali = catalogoAnnualeTutti().filter(d => d.attivo !== false);
+  const righeAnn = Object.keys(cfg.sotto).map(k => ({ k, def: annuali.find(a => a.chiave === k) })).filter(x => x.def).map(({ k, def }) => `<div class="field full" style="margin-bottom:10px;">
+      <label>${escapeHtml(def.nome)} <span class="helptext">— fasi per clienti a contabilità tenuta da terzi (una per riga)</span></label>
+      <textarea id="ctFasi_${k}" rows="${Math.max(3, cfg.sotto[k].length)}" style="width:100%;">${escapeHtml(cfg.sotto[k].join('\n'))}</textarea>
+      <button class="btn small" data-action="contab-terzi-salva-fasi" data-chiave="${k}" style="margin-top:4px;">Salva fasi</button></div>`).join('');
+  return `<div class="card">
+    <div class="section-title">Clienti con contabilità tenuta da terzi</div>
+    <div class="helptext" style="margin-bottom:10px;">Per questi clienti (campo «Tenuta contabilità» nella scheda) lo studio non registra la contabilità: alcune scadenze periodiche non vanno gestite e gli adempimenti annuali hanno fasi diverse (si parte dalla richiesta dei dati al terzo, non dalla chiusura contabile). <b>Ho impostato dei valori di partenza ragionevoli: controllali e correggili in base a come lavorate davvero.</b></div>
+    <div style="font-weight:600;margin:6px 0;">Scadenze periodiche che lo studio gestisce comunque</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:4px 14px;margin-bottom:12px;">
+      ${periodici.map(d => `<label class="checkline"><input type="checkbox" data-action="contab-terzi-periodico" data-id="${d.id}" ${esclusi.has(d.id) ? '' : 'checked'}> ${escapeHtml(d.nome)}</label>`).join('')}
+    </div>
+    <div style="font-weight:600;margin:10px 0 6px;">Fasi degli adempimenti annuali</div>
+    ${righeAnn}
+    <button class="btn small" data-action="contab-terzi-ripristina">Ripristina valori di partenza</button>
+  </div>`;
+}
 function renderImpostazioniCatalogo() {
   return `
   ${cardAggiornamentiELog()}
   ${renderCatalogoPeriodico()}
   ${renderCatalogoAnnuale()}
+  ${renderCardContabTerzi()}
   ${renderRegoleImportiStatutari()}
   ${renderCatalogoAttivitaStudio()}`;
 }
@@ -14983,7 +15080,12 @@ function onClickDelegato(e) {
         // viene rimpiazzato, non fuso campo per campo - aggiornaCliente() invece fa un merge, quindi
         // qui restiamo sull'assegnazione diretta per non cambiare comportamento a chi usa il form.
         const idx = STATE.clienti.findIndex(c => c.id === id);
-        STATE.clienti[idx] = cliente;
+        // MERGE e non sostituzione: il form non contiene portaleToken/password/accessi del portale e gli
+        // altri campi gestiti altrove, che con la sostituzione completa andavano persi a ogni modifica.
+        const vecchio = STATE.clienti[idx];
+        if (cliente.stato === 'cessato' && !cliente.dataCessazione) cliente.dataCessazione = oggiISO();
+        if (cliente.stato === 'attivo' && vecchio.stato === 'potenziale' && !cliente.dataIngresso) cliente.dataIngresso = oggiISO();
+        STATE.clienti[idx] = Object.assign({}, vecchio, cliente);
         salvaStato();
       } else {
         aggiungiCliente(cliente);
@@ -15628,6 +15730,15 @@ function onClickDelegato(e) {
 
     case 'nuovo-task-team': modalTaskTeam(null, el.dataset.cliente || null); break;
 
+    case 'cessa-cliente-apri': modalCessazioneCliente(id); break;
+    case 'cessa-cliente-conferma': { try { cessaCliente(id, { data: h('cessData').value, motivo: h('cessMotivo').value, nota: h('cessNota').value }); } catch (err) { toast(err.message, true); return; } chiudiModal(); render(); toast('Cliente cessato.'); break; }
+    case 'riattiva-cliente': if (confermaAzione('Riattivare questo cliente? Tornerà a generare le scadenze.')) { riattivaCliente(id); render(); toast('Cliente riattivato.'); } break;
+    case 'contab-terzi-salva-fasi': {
+      const k = el.dataset.chiave; const t = document.getElementById('ctFasi_' + k); if (!t) break;
+      const cfg = configContabTerzi(); cfg.sotto[k] = t.value.split('\n').map(x => x.trim()).filter(Boolean);
+      salvaConfigContabTerzi(cfg); toast('Fasi salvate.'); break;
+    }
+    case 'contab-terzi-ripristina': if (confermaAzione('Ripristinare i valori di partenza?')) { STATE.meta.contabTerzi = null; salvaStato(); render(); } break;
     case 'schcli-apri-onboarding': setView('onboarding', { clienteId: el.dataset.cliente }); break;
     case 'schcli-apri-aml': setView('antiriciclaggio', { clienteId: el.dataset.cliente }); break;
     case 'schcli-apri-scadenze':
@@ -16522,6 +16633,11 @@ function onChangeDelegato(e) {
     }
     case 'toggle-mcp-conferma': STATE.meta.mcpChiediConferma = !!el.checked; salvaStato(); toast(el.checked ? 'Ogni azione di Claude richiederà la tua conferma.' : 'Le azioni di Claude vengono eseguite senza conferma (restano nel registro).'); break;
     case 'doc-img-file': caricaImmagineNelDocumento(el.files && el.files[0]); el.value = ''; break;
+    case 'contab-terzi-periodico': {
+      const cfg = configContabTerzi(); const set = new Set(cfg.periodiciEsclusi);
+      if (el.checked) set.delete(el.dataset.id); else set.add(el.dataset.id);
+      cfg.periodiciEsclusi = Array.from(set); salvaConfigContabTerzi(cfg); break;
+    }
     case 'inc-filtro-cliente': INC_FILTRO.cliente = el.value; resetPagina('incassi'); render(); break;
     case 'inc-filtro-stato': INC_FILTRO.stato = el.value; resetPagina('incassi'); render(); break;
     case 'import-cli-mappa': if (IMPORT_CLI) { IMPORT_CLI.mappa[el.dataset.chiave] = Number(el.value); renderWizardImportClienti(); } break;
@@ -17535,6 +17651,7 @@ window.rigeneraAccessoSecondarioPortale = rigeneraAccessoSecondarioPortale;
 window.eliminaAccessoSecondarioPortale = eliminaAccessoSecondarioPortale;
 window.trovaAccessoPortale = trovaAccessoPortale;
 window.accessoPortalePuoVedere = accessoPortalePuoVedere;
+window.clienteAttivo = clienteAttivo; window.cessaCliente = cessaCliente; window.riattivaCliente = riattivaCliente; window.configContabTerzi = configContabTerzi;
 /* Area cliente interattiva (task #88): stessa logica di sopra, ma in scrittura. */
 window.aggiungiMessaggioPortaleClienteEsterno = aggiungiMessaggioPortaleClienteEsterno;
 window.aggiungiRispostaPortaleClienteEsterno = aggiungiRispostaPortaleClienteEsterno;
