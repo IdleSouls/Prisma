@@ -1,5 +1,5 @@
 {
-  "versione": "1.15.0",
+  "versione": "1.15.1",
   "note": "Licenza mancante: Prisma.exe mostra una finestra con il codice macchina invece di chiudersi in silenzio",
   "richiedeNpmInstall": false,
   "file": [
@@ -11,7 +11,7 @@
     {
       "nome": "server.js",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/server.js",
-      "sha256": "c85d56994078ba8da5c8e9e3cf2a252fa3aaad95347ddda69268b3a7e3630d34"
+      "sha256": "8c574c8ad5464f90f4a579c9aa5f7a001794d58f90ad04b942237cc3f0db45d6"
     },
     {
       "nome": "portale-cliente.htm",
