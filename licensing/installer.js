@@ -110,7 +110,10 @@ function principale() {
       'La chiavetta sembra incompleta o danneggiata - contatta l\'assistenza.');
     return esci(1);
   }
-  const { calcolaFingerprint, verificaLicenza } = require(percorsoLib);
+  // Nell'eseguibile (SEA) "require" accetta solo moduli interni di Node: per caricare lib.js dal disco
+  // serve createRequire, che costruisce un require "normale" ancorato a un percorso reale.
+  const requireEsterno = require('node:module').createRequire(path.join(USB, 'installer-placeholder.js'));
+  const { calcolaFingerprint, verificaLicenza } = requireEsterno(percorsoLib);
 
   // ---- 1) La chiavetta è già stata usata? ----
   if (fs.existsSync(FILE_ATTIVAZIONE)) {
