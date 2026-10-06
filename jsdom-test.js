@@ -6163,62 +6163,6 @@ async function main() {
   assert(stCasc.preventivi.some(p => p.clienteId === cascControllo.id), 'preventivi/mandati del cliente di controllo cancellati per errore dalla cascata');
   console.log('=== eliminaCliente: cascata su documenti/comunicazioni/F24/ritenute/task/onboarding/antiriciclaggio/bilanci/contabilità/preventivi-mandati/note scadenze OK, socio condiviso solo scollegato, cliente di controllo intatto');
 
-  // ---------- 11n) Tab "Azioni" (task #144): ricerca a parole chiave sulle funzioni dell'app ----------
-  click(q('[data-nav="azioni"]'));
-  await wait(20);
-  assert(q('#azioniInput'), 'tab Azioni: campo di ricerca non trovato');
-  assert(qa('#azioniResults .client-row').length > 0, 'tab Azioni: nessun risultato mostrato a registro vuoto (dovrebbe mostrare tutte le azioni)');
-
-  // Cercando "creazione cliente" deve saltare fuori l'azione rapida "+ Nuovo cliente" e, cliccandola,
-  // deve aprire ESATTAMENTE la vista Clienti col modale di creazione già aperto (stesso comportamento
-  // richiesto esplicitamente da Matteo come esempio guida per questa funzione).
-  setVal(q('#azioniInput'), 'creazione cliente');
-  await wait(20);
-  const risNuovoCliente = qa('#azioniResults .client-row .name').map(el => el.textContent);
-  const idxNuovoCliente = risNuovoCliente.findIndex(t => t.includes('Nuovo cliente'));
-  assert(idxNuovoCliente !== -1, `tab Azioni: "creazione cliente" non trova "+ Nuovo cliente" tra i risultati (trovati: ${risNuovoCliente.join(' | ')})`);
-  click(qa('[data-action="azioni-apri"]')[idxNuovoCliente]);
-  await wait(20);
-  assert(window.getVIEW() === 'clienti', `tab Azioni: cliccando "+ Nuovo cliente" ci si aspettava la vista clienti, trovata "${window.getVIEW()}"`);
-  assert(q('#formCliente'), 'tab Azioni: "+ Nuovo cliente" non ha aperto il modale di creazione cliente');
-  window.document.getElementById('modalRoot').innerHTML = ''; // il prossimo giro di ricerca parte pulito
-  window.setView('azioni');
-  await wait(20);
-
-  // Parola chiave su un'azione rapida diversa (credenziali), per verificare che il matching non
-  // funzioni per caso su un solo esempio.
-  setVal(q('#azioniInput'), 'password');
-  await wait(20);
-  const risPassword = qa('#azioniResults .client-row .name').map(el => el.textContent);
-  const idxPassword = risPassword.findIndex(t => t.toLowerCase().includes('password'));
-  assert(idxPassword !== -1, `tab Azioni: "password" non trova l'azione rapida credenziali (trovati: ${risPassword.join(' | ')})`);
-  click(qa('[data-action="azioni-apri"]')[idxPassword]);
-  await wait(20);
-  assert(window.getVIEW() === 'credenziali', `tab Azioni: cliccando l'azione password ci si aspettava la vista credenziali, trovata "${window.getVIEW()}"`);
-  assert(q('#formCredenziale'), 'tab Azioni: l\'azione password non ha aperto il modale nuova credenziale');
-  window.document.getElementById('modalRoot').innerHTML = '';
-  window.setView('azioni');
-  await wait(20);
-
-  // Scorciatoia di semplice navigazione (non creazione): "Vai a Rubrica".
-  setVal(q('#azioniInput'), 'rubrica');
-  await wait(20);
-  const risRubrica = qa('#azioniResults .client-row .name').map(el => el.textContent);
-  const idxRubrica = risRubrica.findIndex(t => t.includes('Rubrica'));
-  assert(idxRubrica !== -1, `tab Azioni: "rubrica" non trova la voce di navigazione "Vai a Rubrica" (trovati: ${risRubrica.join(' | ')})`);
-  click(qa('[data-action="azioni-apri"]')[idxRubrica]);
-  await wait(20);
-  assert(window.getVIEW() === 'rubrica', `tab Azioni: cliccando "Vai a Rubrica" ci si aspettava la vista rubrica, trovata "${window.getVIEW()}"`);
-  window.setView('azioni');
-  await wait(20);
-
-  // Nessun risultato: messaggio chiaro, nessun errore.
-  setVal(q('#azioniInput'), 'zqxwnonesisteproprio');
-  await wait(20);
-  assert(qa('#azioniResults .client-row').length === 0, 'tab Azioni: una query senza senso non dovrebbe restituire risultati');
-  assert(q('#azioniResults').textContent.toLowerCase().includes('nessuna funzione trovata'), 'tab Azioni: manca il messaggio "nessuna funzione trovata" per una ricerca senza esito');
-  console.log('=== Tab Azioni: ricerca a parole chiave su azioni rapide e su navigazione, apertura diretta della funzione corretta, nessun risultato gestito OK');
-
   // ---------- 11o) Catalogo adempimenti annuali: data predefinita editabile (task #149) ----------
   click(q('[data-nav="impostazioni"]'));
   await wait(20);

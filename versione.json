@@ -1,17 +1,17 @@
 {
-  "versione": "1.14.1",
-  "note": "Fix: voce Deontologia duplicata nel menu, modulo registrato correttamente",
+  "versione": "1.15.0",
+  "note": "Rimosso il menu Azioni (basta la ricerca Ctrl+K)",
   "richiedeNpmInstall": false,
   "file": [
     {
       "nome": "gestionale.htm",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale.htm",
-      "sha256": "9cb7cefb0a70fb66c177a9c0221cd66e6b714873a9712134e6c401f7c71c8d3e"
+      "sha256": "f6b65252bf045fe8c1cec5b27b8517956b1954991b2a10bd4eb1b7019b97d6c4"
     },
     {
       "nome": "server.js",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/server.js",
-      "sha256": "b1eb963ccb7da4aa8d93d79ae0d657238f28a241a86ee9c4a5b516a9fc2ab6c4"
+      "sha256": "8acf052fdcd0cc0ac85676d38eb758030f908fd46fa3ca9fb6e48eb55e9b2986"
     },
     {
       "nome": "portale-cliente.htm",

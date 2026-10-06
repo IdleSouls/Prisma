@@ -4374,7 +4374,6 @@ const NAV = [
     { id: 'oggi', label: 'Il mio lavoro', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3.5" width="16" height="17" rx="2.5"/><path d="M8 9l1.8 1.8L13 7.6"/><path d="M8 15h8"/></svg>' },
     { id: 'dashboard', label: 'Dashboard', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>' },
     { id: 'cruscotto', label: 'Cruscotto titolare', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>' },
-    { id: 'azioni', label: 'Azioni', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/></svg>' },
     { id: 'calendario', label: 'Calendario', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="8" y1="2.5" x2="8" y2="6.5"/><line x1="16" y1="2.5" x2="16" y2="6.5"/></svg>' },
   ]},
   { group: 'Anagrafiche', items: [
@@ -4426,7 +4425,6 @@ const PAGE_TITLES = {
   dashboard: ['Dashboard', 'Il quadro di tutto lo studio: scadenze, adempimenti e onboarding di tutti'],
   calendario: ['Calendario', 'Vista mensile di tutte le scadenze'],
   clienti: ['Clienti', 'Anagrafica e flag fiscali'],
-  azioni: ['Azioni', 'Cerca una funzione per parola chiave e vai dritto al punto giusto'],
   rubrica: ['Rubrica', 'Tutti i contatti dei clienti in un unico elenco ricercabile'],
   schedacliente: ['Scheda cliente', 'Tutto quello che riguarda questo cliente, in un unico posto'],
   soci: ['Soci e referenti', 'Persone collegate ai clienti — soci, amministratori, referenti'],
@@ -4622,7 +4620,6 @@ function render() {
     case 'cruscotto': content.innerHTML = renderCruscotto(); break;
     case 'calendario': content.innerHTML = renderCalendario(); break;
     case 'clienti': content.innerHTML = renderClienti(); break;
-    case 'azioni': content.innerHTML = renderAzioni(); break;
     case 'rubrica': content.innerHTML = renderRubrica(); break;
     case 'schedacliente': content.innerHTML = renderSchedaCliente(); break;
     case 'soci': content.innerHTML = renderSoci(); break;
@@ -5085,103 +5082,6 @@ function aggiornaRisultatiRicerca() {
       <div><div class="name">${escapeHtml(r.titolo)}</div><div class="meta">${escapeHtml(r.sottotitolo||'')}</div></div>
     </div>`).join('')}
   `).join('') + `</div>`;
-}
-
-/* -------------------- TAB AZIONI: ricerca a parole chiave sulle funzioni dell'app --------------------
-   No IA, nessun costo: puro matching testuale locale su un registro curato di azioni (creazioni rapide
-   + scorciatoie verso ogni sezione della nav). Digitando es. "creazione cliente" si trova la voce e,
-   cliccandola, si naviga direttamente lì aprendo subito la funzione (stesso pattern collaudato di
-   risultatiRicercaGlobale: chiudiModal() + setView() + eventuale modalXxx() nella stessa chiusura). */
-let AZIONI_QUERY = '';
-let AZIONI_RISULTATI = [];
-
-function registroAzioni() {
-  const out = [];
-  const push = (categoria, titolo, sottotitolo, parole, azione) => out.push({ categoria, titolo, sottotitolo, parole: (parole || '').toLowerCase(), azione });
-
-  // Azioni rapide: creazione diretta di una nuova voce (le stesse funzioni richiamate dai pulsanti "+ Nuovo..." nell'app)
-  push('Azioni rapide', '+ Nuovo cliente', 'Apre la creazione di una nuova anagrafica cliente', 'anagrafica azienda ditta partita iva creazione nuovo cliente',
-    () => { chiudiModal(); setView('clienti'); modalCliente(null); });
-  push('Azioni rapide', '+ Nuovo socio o referente', 'Persona collegata a uno o più clienti (socio, amministratore, referente)', 'socio referente amministratore persona nuovo',
-    () => { chiudiModal(); setView('soci'); modalSocio(null); });
-  push('Azioni rapide', '+ Nuovo task', 'Assegna un\'attività a un collega dello studio', 'task cosa da fare todo attivita team assegna nuovo',
-    () => { chiudiModal(); setView('taskteam'); modalTaskTeam(null); });
-  push('Azioni rapide', '+ Nuova comunicazione', 'Pubblica un messaggio nel portale cliente', 'comunicazione messaggio portale broadcast invio nuova',
-    () => { chiudiModal(); setView('comunicazioni'); modalComunicazione(null); });
-  push('Azioni rapide', '+ Registra F24', 'F24 versato o compensato per un cliente', 'f24 versamento compensazione pagamento modello registra nuovo',
-    () => { chiudiModal(); setView('f24'); modalF24(null); });
-  push('Azioni rapide', '+ Nuovo preventivo o mandato', 'Documento da modello: preventivo, mandato professionale, lettera di incarico', 'preventivo mandato lettera incarico documento nuovo',
-    () => { chiudiModal(); setView('preventivi'); modalPreventivo(null, null, false, null, false); });
-  push('Azioni rapide', '+ Nuovo modello documento', 'Testo precompilato con segnaposto {{così}} per preventivi/mandati/antiriciclaggio', 'modello template segnaposto documento nuovo',
-    () => { chiudiModal(); setView('modelli'); modalModelloDocumento(null); });
-  push('Azioni rapide', '+ Nuova password/credenziale', 'Salva un accesso: Entratel, Telemaco, home banking, software...', 'password credenziale accesso entratel telemaco banking vault nuova',
-    () => { chiudiModal(); setView('credenziali'); modalCredenziale(null); });
-  push('Azioni rapide', '+ Nuova attività a catalogo', 'Voce del tariffario dello studio usata nei preventivi', 'catalogo tariffario listino prezzo attivita nuova',
-    () => { chiudiModal(); setView('impostazioni'); modalAttivitaCatalogo(null); });
-  push('Azioni rapide', 'Cerca un record esistente (Ctrl/Cmd+K)', 'Cerca tra clienti, scadenze, comunicazioni, documenti, task, soci, F24 già presenti', 'ricerca cerca trova cliente scadenza pratica record esistente',
-    () => { chiudiModal(); modalRicercaGlobale(); });
-  push('Azioni rapide', 'Importa clienti da Excel/CSV', 'Carica più anagrafiche insieme da un file', 'importa excel csv massivo clienti caricamento',
-    () => { chiudiModal(); setView('clienti'); });
-  push('Azioni rapide', 'Esporta o importa backup', 'Backup JSON di tutti i dati dello studio, esportazione per MCP', 'backup esporta importa json ripristino salvataggio mcp',
-    () => { chiudiModal(); setView('impostazioni'); });
-
-  // Vai a una sezione: una voce per ogni pagina della barra laterale
-  NAV.forEach(g => g.items.forEach(it => {
-    if (it.id === 'azioni') return;
-    const sotto = (PAGE_TITLES[it.id] || ['', ''])[1];
-    push(g.group, `Vai a ${it.label}`, sotto, `vai apri sezione ${it.label}`,
-      () => { chiudiModal(); setView(it.id); });
-  }));
-
-  return out;
-}
-
-function risultatiAzioni(query) {
-  const q = (query || '').trim().toLowerCase();
-  const tutte = registroAzioni();
-  if (!q) return tutte;
-  // Match "a parole": ogni parola digitata deve comparire da qualche parte nel testo cercabile
-  // dell'azione, in un ordine qualsiasi — non l'intera query come un'unica sottostringa contigua.
-  // Altrimenti "creazione cliente" non troverebbe mai "+ Nuovo cliente" (il cui testo cercabile
-  // contiene "creazione" e "cliente" separati da altre parole, non uno accanto all'altro).
-  const parole = q.split(/\s+/).filter(Boolean);
-  return tutte.filter(a => {
-    const testo = `${a.titolo} ${a.sottotitolo || ''} ${a.categoria} ${a.parole}`.toLowerCase();
-    return parole.every(p => testo.includes(p));
-  });
-}
-
-function generaListaAzioniHTML(risultati) {
-  if (risultati.length === 0) {
-    return `<div class="empty" style="padding:24px 4px;">Nessuna funzione trovata per "${escapeHtml(AZIONI_QUERY)}". Prova un'altra parola chiave.</div>`;
-  }
-  const perCategoria = new Map();
-  risultati.forEach((r, idx) => { r._idx = idx; if (!perCategoria.has(r.categoria)) perCategoria.set(r.categoria, []); perCategoria.get(r.categoria).push(r); });
-  return Array.from(perCategoria.entries()).map(([cat, righe]) => `
-    <div style="font-size:11px;font-weight:700;color:var(--text-mut);text-transform:uppercase;letter-spacing:.03em;margin:14px 2px 6px;">${escapeHtml(cat)}</div>
-    ${righe.map(r => `<div class="client-row" data-action="azioni-apri" data-idx="${r._idx}" style="cursor:pointer;margin-bottom:4px;">
-      <div><div class="name">${escapeHtml(r.titolo)}</div><div class="meta">${escapeHtml(r.sottotitolo || '')}</div></div>
-    </div>`).join('')}
-  `).join('');
-}
-
-function renderAzioni() {
-  AZIONI_RISULTATI = risultatiAzioni(AZIONI_QUERY);
-  return `
-  <div class="card">
-    <input id="azioniInput" type="text" placeholder="Es. &quot;creazione cliente&quot;, &quot;nuovo task&quot;, &quot;password&quot;, &quot;backup&quot;..." value="${escapeHtml(AZIONI_QUERY)}" style="width:100%;padding:11px 13px;border:1px solid var(--border);border-radius:8px;font-size:14.5px;box-sizing:border-box;" data-action="azioni-input" autocomplete="off">
-    <div class="helptext" style="margin-top:8px;">Digita una parola chiave per trovare una funzione, oppure sfoglia l'elenco qui sotto. Cliccando su una voce vai dritto lì.</div>
-    <div id="azioniResults" style="margin-top:6px;">${generaListaAzioniHTML(AZIONI_RISULTATI)}</div>
-  </div>`;
-}
-
-/* Aggiorna SOLO il contenitore dei risultati, senza toccare l'input: stesso motivo di
-   aggiornaRisultatiRicerca() sopra — rifare l'intero tab ad ogni tasto premuto farebbe perdere il focus. */
-function aggiornaRisultatiAzioni() {
-  const el = document.getElementById('azioniResults');
-  if (!el) return;
-  AZIONI_RISULTATI = risultatiAzioni(AZIONI_QUERY);
-  el.innerHTML = generaListaAzioniHTML(AZIONI_RISULTATI);
 }
 
 /* -------------------- RENDER: CLIENTI -------------------- */
@@ -15943,7 +15843,6 @@ function onClickDelegato(e) {
     case 'apri-riferimento-chat': modalRiferimentoChat(); break;
     case 'chat-rif-scegli': inserisciRiferimentoChat(el.dataset.tipo, el.dataset.id, el.dataset.label); break;
     case 'ricerca-apri': { const r = RICERCA_RISULTATI[Number(el.dataset.idx)]; if (r && r.azione) r.azione(); break; }
-    case 'azioni-apri': { const r = AZIONI_RISULTATI[Number(el.dataset.idx)]; if (r && r.azione) r.azione(); break; }
     case 'chiudi-modal-backdrop': if (e.target === el) chiediPrimaDiChiudereModal(); break;
     case 'conferma-chiusura-annulla': chiudiConfermaChiusuraModal(); break;
     case 'conferma-chiusura-conferma': chiudiConfermaChiusuraModal(); chiudiModal(); break;
@@ -18010,7 +17909,6 @@ function onInputDelegato(e) {
     case 'ann-filtro-q': ANN_FILTRO.q = el.value; resetPagina('annuali'); render(); restoreFocus('[data-action="ann-filtro-q"]'); break;
     case 'ricerca-input': RICERCA_QUERY = el.value; RICERCA_SEL = 0; aggiornaRisultatiRicerca(); break; // niente render(): perderebbe il focus sull'input
     case 'chat-rif-input': CHAT_RIF_QUERY = el.value; aggiornaRisultatiRiferimentoChat(); break; // idem
-    case 'azioni-input': AZIONI_QUERY = el.value; aggiornaRisultatiAzioni(); break; // idem: niente render() mentre si digita
 
     case 'cat-per-nome': aggiornaTipoPeriodico(el.dataset.tipo, { nome: el.value }); break;
     case 'cat-per-giorno': aggiornaOccorrenzaPeriodica(el.dataset.tipo, Number(el.dataset.idx), { g: Number(el.value) || 1 }); break;
