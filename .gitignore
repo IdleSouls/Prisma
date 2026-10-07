@@ -58,3 +58,4 @@ backup-esterno.json
 # --- Installer (generati da electron-app/prepara-payload.js e electron-builder) ---
 electron-app/payload/
 electron-app/dist-setup/
+licensing/Licenze-emesse.xlsx
