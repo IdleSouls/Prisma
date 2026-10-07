@@ -2,6 +2,16 @@
 
 Audit fatto leggendo il codice e lanciando i test. Non è un penetration test: dove scrivo "da verificare" non ho una prova.
 
+## Aggiornamento del 7 ottobre (sera): cosa è stato sistemato (v1.17.0)
+
+| Problema | Stato |
+|---|---|
+| CORS aperto e nessun controllo sull'origine | **Risolto.** Tolto l'header; rifiutate le richieste che scrivono da un sito esterno; rifiutati gli indirizzi sospetti (anti "DNS rebinding"). Provato avviando il server: host sconosciuto 403, scrittura da origine esterna 403, uso normale 200. |
+| Chiave delle licenze sostituibile | **Ridotto.** La chiave ora sta dentro l'app, non nella cartella dati. Cambiare un file non basta più. Chi sa smontare l'app o far girare `server.js` a mano può ancora provarci: è un deterrente, non una cassaforte. |
+| Aggiornamenti non firmati | **Risolto.** Il manifesto è firmato con la tua chiave privata e Prisma lo rifiuta se la firma manca o non torna. Per pubblicare serve avere `chiave-privata.pem` sul PC. |
+| Tentativi di password illimitati | **Risolto** per il login dei collaboratori (5 errori = 5 minuti di blocco). L'accesso da internet (porta ngrok) aveva già un limite di richieste per indirizzo: avevo sbagliato a dire che mancasse. |
+| `chiave-privata.pem` in una sola copia | **Da fare tu:** copia il file in due posti (chiavetta + un altro PC), mai su cloud sincronizzato con il progetto. Senza quel file non puoi più emettere licenze né firmare aggiornamenti. |
+
 ## 1. Audit del codice
 
 ### Da sistemare prima di dare Prisma a studi diversi dal tuo (P0)
@@ -88,9 +98,22 @@ Cose da sapere:
 
 ## 5. Questioni da chiarire (non tecniche)
 
-- **Attività e fisco:** vendere licenze richiede un'attività con partita IVA; verifica tu (sei del mestiere) regime, compatibilità con il tuo rapporto di lavoro attuale e con eventuali clausole di esclusiva o non concorrenza del contratto con lo studio. Non ho elementi per dirlo.
+- **Attività e fisco:** vendere licenze richiede un'attività con partita IVA. Vedi §6: prima la compatibilità con l'albo (se iscritto) e con il tuo contratto; poi regime fiscale e ATECO.
 - **Proprietà e rapporto con la Tavola/Federico:** chi è titolare di cosa, soprattutto se Prisma nasce con dati, esperienza o strumenti dello studio. Meglio metterlo per iscritto prima di vendere.
 - **IA e privacy:** se uno studio collega Claude a Prisma, i dati passano da un fornitore terzo: serve una nota chiara per i clienti.
+
+## 6. Codice ATECO e compatibilità con la professione
+
+**Codice.** Prisma è un software "a pacchetto" venduto in licenza a più studi: nella classificazione ATECO 2007 corrisponde all'**edizione di altri software, 58.29**. La produzione di software *su commissione* per un singolo cliente è invece 62.01. Dal 2025 è in vigore la nuova ATECO 2025: il sottocodice esatto va verificato sullo strumento ISTAT/Camera di Commercio prima di aprire la posizione.
+
+**Compatibilità con il codice deontologico: non è un dettaglio, va chiarita prima di aprire la partita IVA.**
+- L'**art. 4, comma 1, lett. c) del D.Lgs. 139/2005** dichiara incompatibile l'esercizio della professione di dottore commercialista ed esperto contabile con l'esercizio, *anche non prevalente né abituale*, dell'attività di impresa "di produzione di beni o servizi" svolta in nome proprio o altrui e per proprio conto.
+- Sviluppare e vendere licenze software con partita IVA rientra, con ogni probabilità, in quella definizione. Per la giurisprudenza e i pareri del CNDCEC conta l'attività effettivamente svolta, non l'intestazione formale.
+- **Se sei iscritto all'albo** (anche nella sezione degli esperti contabili), il rischio è reale: andrebbe chiesto un parere scritto all'Ordine (ODCEC) **prima** di aprire l'attività.
+- **Se non sei iscritto** e lavori nello studio come dipendente o collaboratore, la norma dell'albo non ti riguarda; contano invece il tuo contratto (esclusiva, non concorrenza) e quanto detto sopra sulla proprietà del lavoro.
+- Non sono in grado di stabilire quale sia il tuo caso né di dare un parere: ti segnalo il punto e le fonti. Se serve, il modo pulito di procedere è chiedere il parere all'Ordine e, a seconda della risposta, valutare con un legale la struttura giusta. Eviterei soluzioni di intestazione "di comodo": la norma guarda alla sostanza.
+
+Fonti: [Fiscal Focus: situazioni di incompatibilità dei commercialisti](https://www.fiscal-focus.it/quotidiano/altre-tematiche/infoprofessioni/commercialisti-situazioni-di-incompatibilita,3,162591), [D.Lgs. 139/2005 (testo)](https://www.unitn.it/sites/default/files/2025-01/Dlsg_139_2005.pdf), [ATECO 2025: novità](https://www.partitaiva.it/codice-ateco-2025-nuova-classificazione/).
 
 ## Fonti
 
