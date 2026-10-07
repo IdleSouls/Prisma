@@ -9,7 +9,7 @@ fs.rmSync(DEST, { recursive: true, force: true });
 fs.mkdirSync(DEST, { recursive: true });
 const file = ['gestionale.htm', 'portale-cliente.htm', 'portale-sw.js', 'server.js', 'package.json', 'versione.json', 'Prisma.mcpb'];
 const cartelle = ['logo', 'asset', 'mcp-server', 'node_modules', 'Documenti-Prisma'];
-const escludi = (x) => !/[\\/]\.git([\\/]|$)/.test(x) && !/mcp-server[\\/]node_modules/.test(x) && !/mcp-server[\\/]gestionale-mcp\.json/.test(x) && !/mcp-server[\\/]test-/.test(x)
+const escludi = (x) => !/node_modules[\\/]\.bin([\\/]|$)/.test(x) && !/[\\/]\.git([\\/]|$)/.test(x) && !/mcp-server[\\/]node_modules/.test(x) && !/mcp-server[\\/]gestionale-mcp\.json/.test(x) && !/mcp-server[\\/]test-/.test(x)
   && !/Documenti-Prisma[\\/](ANALISI|.*\.docx$)/.test(x);
 let n = 0;
 for (const f of file) { const s = path.join(RADICE, f); if (fs.existsSync(s)) { fs.cpSync(s, path.join(DEST, f)); n++; } else console.warn('  (manca) ' + f); }

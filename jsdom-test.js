@@ -4365,6 +4365,11 @@ async function main() {
     click(q('[data-action="setup-vai"][data-imp="moduli"]'));
     await wait(20);
     assert(window.getVIEW() === 'impostazioni' && q('[data-action="conferma-moduli"]'), '#215: il passo "moduli" deve portare a Impostazioni > Moduli con il bottone di conferma');
+    assert(qa('[data-action="toggle-modulo"]').length >= 19 && q('[data-modulo="cruscotto"]') && q('[data-modulo="carico"]') && q('[data-modulo="cpb"]'), 'Moduli: devono esserci anche cruscotto, carico/proroghe, cpb');
+    click(q('[data-action="moduli-tutti"][data-val="0"]'));
+    assert(qa('[data-action="toggle-modulo"]:checked').length === 0 && !window.operatorePuoVedere('cruscotto'), 'Moduli: "Disattiva tutti" spegne tutto e nasconde il cruscotto');
+    click(q('[data-action="moduli-tutti"][data-val="1"]'));
+    assert(qa('[data-action="toggle-modulo"]:checked').length === qa('[data-action="toggle-modulo"]').length && window.operatorePuoVedere('cruscotto'), 'Moduli: "Attiva tutti" riaccende tutto');
     click(q('[data-action="conferma-moduli"]'));
     await wait(20);
     assert(st.meta.moduliConfermati === true && window.getVIEW() === 'oggi', '#215: confermare i moduli deve spuntare il passo e tornare a Oggi');

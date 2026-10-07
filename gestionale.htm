@@ -4501,6 +4501,9 @@ const MODULI = [
   { id: 'fiscale', label: 'Ritenute e F24', desc: 'Registro ritenute d\'acconto e registro F24.', tabs: ['ritenute', 'f24'] },
   { id: 'rubrica', label: 'Rubrica contatti', desc: 'Elenco unico dei contatti dei clienti.', tabs: ['rubrica'] },
   { id: 'credenziali', label: 'Password dello studio', desc: 'Archivio credenziali (Entratel, Telemaco, home banking...).', tabs: ['credenziali'] },
+  { id: 'cruscotto', label: 'Cruscotto titolare', desc: 'Vista d\'insieme dello studio: portafoglio clienti, nuovi e cessati, avanzamento adempimenti.', tabs: ['cruscotto'] },
+  { id: 'carico', label: 'Carico di lavoro e proroghe', desc: 'Carico per responsabile e registro delle proroghe concesse.', tabs: ['carico', 'proroghe'] },
+  { id: 'cpb', label: 'Concordato preventivo biennale', desc: 'Tracker delle proposte CPB e delle adesioni dei clienti.', tabs: ['cpb'] },
   { id: 'strumenti', label: 'Strumenti file', desc: 'Convertitore Word/PDF, unisci e dividi PDF.', tabs: ['strumenti'] },
 ];
 function moduloAttivo(id) {
@@ -14987,6 +14990,11 @@ function renderImpostazioniModuli() {
     <div class="section-title">Moduli attivi nello studio</div>
     <div class="helptext" style="margin-bottom:6px;">Tieni accesi solo i moduli che usate davvero: quelli spenti spariscono dal menu e dalla home per tutti, così Prisma resta semplice. I dati già inseriti non si perdono: riaccendendo un modulo ritrovi tutto com'era. Dashboard, clienti, scadenze, adempimenti annuali, documenti e impostazioni sono sempre attivi.</div>
     ${righe}
+    <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+      <button class="btn small" data-action="moduli-tutti" data-val="1">Attiva tutti</button>
+      <button class="btn small" data-action="moduli-tutti" data-val="0">Disattiva tutti</button>
+      <span class="helptext">(Dashboard, clienti, scadenze, adempimenti, documenti e impostazioni restano sempre attivi.)</span>
+    </div>
     <div style="margin-top:14px;"><button class="btn primary" data-action="conferma-moduli">${STATE.meta.moduliConfermati ? 'Ok, torna a Oggi' : 'Conferma la scelta'}</button></div>
   </div>`;
 }
@@ -16145,6 +16153,12 @@ function onClickDelegato(e) {
       salvaStato();
       render();
       break;
+    case 'moduli-tutti': {
+      if (!STATE.meta) break;
+      STATE.meta.moduliDisattivati = el.dataset.val === '1' ? [] : MODULI.map(m => m.id);
+      salvaStato(); render();
+      break;
+    }
     case 'conferma-moduli':
       STATE.meta.moduliConfermati = true;
       salvaStato();
