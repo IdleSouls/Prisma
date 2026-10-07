@@ -1,0 +1,12 @@
+SITO DI PRISMA (bozza)
+======================
+index.html  = il sito completo in un solo file (HTML + CSS + JS). Si apre con doppio clic.
+pagina.html = lo stesso contenuto in formato anteprima (per Claude): se modifichi uno, rifai l'altro.
+
+Da completare prima della pubblicazione (evidenziato in giallo nella pagina):
+ - email di contatto, prezzo, ragione sociale e partita IVA
+ - pagine Privacy e Termini di licenza (da far scrivere/rivedere)
+ - schermate reali di Prisma al posto del disegno dimostrativo
+
+Per pubblicarlo gratis su Cloudflare Pages: carica la cartella "sito" (basta index.html).
+Prima di pubblicare: vedi Documenti-Prisma\AUDIT-E-ROADMAP-ottobre-2026.md (sezione 6: compatibilita' con la professione).

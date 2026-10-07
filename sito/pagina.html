@@ -1,0 +1,443 @@
+<title>Prisma per studi professionali</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Schibsted+Grotesk:wght@400;500;600;700;800&display=swap">
+<style>
+/* Layout: un solo fascio di luce (tutte le scadenze) attraversa un prisma e si separa in corsie di lavoro.
+   Colonna di lettura stretta, sezioni a larghezza piena alternate tra carta e inchiostro. */
+:root{
+  --paper:#F3F5F8; --paper-2:#E8ECF2; --card:#FFFFFF;
+  --ink:#0E1A2B; --ink-2:#3B4A5F; --ink-3:#6A788C; --line:#D5DBE5;
+  --accent:#2457D6; --accent-ink:#FFFFFF; --beam:#FFFFFF;
+  --deep:#0E1A2B; --deep-fg:#E9EEF6; --deep-2:#9FB0C7; --deep-line:#25364D;
+  --s1:#E5484D; --s2:#F2A20C; --s3:#2FA66B; --s4:#2E7BE6; --s5:#8B5CF6;
+  --font:'Schibsted Grotesk',system-ui,-apple-system,'Segoe UI',Arial,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --paper:#0A1220; --paper-2:#101B2E; --card:#132036;
+  --ink:#EAF0F8; --ink-2:#B4C1D4; --ink-3:#8294AD; --line:#233450;
+  --accent:#6C97FF; --accent-ink:#0A1220; --beam:#FFFFFF;
+  --deep:#060C17; --deep-fg:#EAF0F8; --deep-2:#8FA2BE; --deep-line:#1C2B43; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --paper:#0A1220; --paper-2:#101B2E; --card:#132036;
+  --ink:#EAF0F8; --ink-2:#B4C1D4; --ink-3:#8294AD; --line:#233450;
+  --accent:#6C97FF; --accent-ink:#0A1220; --beam:#FFFFFF;
+  --deep:#060C17; --deep-fg:#EAF0F8; --deep-2:#8FA2BE; --deep-line:#1C2B43; color-scheme:dark}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--font);font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased}
+a{color:inherit}
+h1,h2,h3{text-wrap:balance;line-height:1.1;margin:0;letter-spacing:-.02em}
+p{margin:0}
+.wrap{width:min(1120px,100%);margin-inline:auto;padding-inline:20px}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:13px 20px;border-radius:10px;font-weight:600;font-size:15px;text-decoration:none;border:1px solid transparent;cursor:pointer;font-family:inherit}
+.btn.pri{background:var(--accent);color:var(--accent-ink)}
+.btn.pri:hover{filter:brightness(1.08)}
+.btn.sec{border-color:var(--line);color:var(--ink);background:transparent}
+.btn.sec:hover{background:var(--paper-2)}
+:focus-visible{outline:3px solid var(--accent);outline-offset:3px;border-radius:6px}
+
+/* NAV */
+.nav{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:color-mix(in srgb,var(--paper) 88%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.nav .wrap{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:64px}
+.logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:20px;letter-spacing:-.03em;text-decoration:none}
+.nav ul{display:flex;gap:26px;list-style:none;margin:0;padding:0;font-size:14.5px;font-weight:500;color:var(--ink-2)}
+.nav ul a{text-decoration:none}.nav ul a:hover{color:var(--ink)}
+@media(max-width:820px){.nav ul{display:none}}
+
+/* HERO */
+.hero{padding-block:56px 72px}
+.hero .grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:48px;align-items:center}
+.hero h1{font-size:clamp(38px,5.4vw,66px);font-weight:800}
+.hero h1 span{color:var(--accent)}
+.hero .lead{font-size:clamp(17px,1.7vw,20px);color:var(--ink-2);margin-top:20px;max-width:34em}
+.hero .cta{display:flex;flex-wrap:wrap;gap:12px;margin-top:30px}
+.hero .note{margin-top:18px;font-size:13.5px;color:var(--ink-3)}
+.visual{display:grid;grid-template-columns:minmax(0,1fr) 250px;height:430px;position:relative}
+.visual svg{width:100%;height:100%;overflow:visible;display:block}
+.lanes{display:grid;grid-template-rows:repeat(5,1fr);gap:10px;height:430px}
+.lane{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;justify-content:center;gap:3px;border-left:4px solid var(--c);min-width:0}
+.lane b{font-size:13.5px;line-height:1.25}
+.lane small{font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+.lane .tag{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--c)}
+.vcap{position:absolute;right:0;bottom:-26px;font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+@media(max-width:940px){
+  .hero .grid{grid-template-columns:1fr;gap:34px}
+  .visual{grid-template-columns:1fr;height:auto}
+  .visual svg{display:none}
+  .lanes{height:auto;grid-template-rows:none}
+  .lane{min-height:68px}
+  .vcap{position:static;margin-top:10px;display:block}
+}
+
+/* BAND (problema) */
+.band{background:var(--paper-2);border-block:1px solid var(--line);padding-block:34px}
+.band .wrap{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:28px}
+.band h3{font-size:17px;letter-spacing:-.01em;margin-bottom:6px}
+.band p{font-size:15px;color:var(--ink-2)}
+@media(max-width:800px){.band .wrap{grid-template-columns:1fr;gap:18px}}
+
+section.blk{padding-block:84px}
+.head{max-width:44rem;margin-bottom:40px}
+.head h2{font-size:clamp(30px,3.8vw,46px);font-weight:800;margin-top:10px}
+.head p{color:var(--ink-2);margin-top:14px;font-size:17px}
+
+/* ESPLORA I MODULI */
+.explorer{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:22px;align-items:start}
+.mods{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.mod{display:flex;gap:12px;align-items:flex-start;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;cursor:pointer;font-family:inherit;color:inherit;min-width:0}
+.mod:hover{border-color:var(--ink-3)}
+.mod .tick{flex:none;width:22px;height:22px;border-radius:7px;border:2px solid var(--line);display:grid;place-items:center;margin-top:1px;color:transparent;font-size:14px;font-weight:700}
+.mod[aria-pressed="true"]{border-color:var(--accent)}
+.mod[aria-pressed="true"] .tick{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.mod b{display:block;font-size:15px;line-height:1.3}
+.mod span.d{display:block;font-size:13px;color:var(--ink-3);margin-top:3px;line-height:1.4}
+.menu{background:var(--deep);color:var(--deep-fg);border-radius:16px;padding:22px;position:sticky;top:84px}
+.menu .eyebrow{color:var(--deep-2)}
+.menu h3{font-size:20px;margin:6px 0 14px}
+.menu ul{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+.menu li{display:flex;justify-content:space-between;gap:10px;padding:8px 10px;border-radius:8px;font-size:14.5px}
+.menu li.fixed{color:var(--deep-2)}
+.menu li.on{background:color-mix(in srgb,var(--accent) 22%,transparent)}
+.menu li em{font-style:normal;font-family:var(--mono);font-size:11px;color:var(--deep-2);align-self:center}
+.menu .count{margin-top:14px;padding-top:12px;border-top:1px solid var(--deep-line);font-family:var(--mono);font-size:12px;color:var(--deep-2)}
+@media(max-width:900px){.explorer{grid-template-columns:1fr}.menu{position:static}}
+@media(max-width:560px){.mods{grid-template-columns:1fr}}
+
+/* FUNZIONI IN DETTAGLIO */
+.feats{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:14px}
+.feat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px;grid-column:span 2;min-width:0}
+.feat.w3{grid-column:span 3}
+.feat h3{font-size:19px;letter-spacing:-.01em;margin-bottom:8px}
+.feat p{font-size:15px;color:var(--ink-2)}
+.feat .k{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);display:block;margin-bottom:12px}
+.steps{display:flex;gap:6px;margin-top:16px}
+.steps i{flex:1;height:8px;border-radius:4px;background:var(--paper-2)}
+.steps i.d{background:var(--s3)}.steps i.n{background:var(--accent)}
+@media(max-width:900px){.feats{grid-template-columns:1fr}.feat,.feat.w3{grid-column:auto}}
+
+/* COME FUNZIONA */
+.how{background:var(--deep);color:var(--deep-fg)}
+.how .eyebrow{color:var(--deep-2)} .how .head p{color:var(--deep-2)}
+.seq{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;border-top:1px solid var(--deep-line)}
+.seq div{padding:26px 24px 8px 0}
+.seq div+div{padding-left:24px;border-left:1px solid var(--deep-line)}
+.seq .n{font-family:var(--mono);color:var(--deep-2);font-size:12px}
+.seq h3{font-size:22px;margin:8px 0 8px}
+.seq p{color:var(--deep-2);font-size:15px}
+@media(max-width:800px){.seq{grid-template-columns:1fr}.seq div,.seq div+div{padding:22px 0;border-left:0;border-bottom:1px solid var(--deep-line)}}
+
+/* DATI */
+.dati{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:48px;align-items:start}
+.dati ul{list-style:none;margin:0;padding:0;display:grid;gap:0}
+.dati li{padding:15px 0;border-bottom:1px solid var(--line);display:grid;grid-template-columns:26px 1fr;gap:10px}
+.dati li svg{width:20px;height:20px;margin-top:3px;stroke:var(--accent)}
+.dati li b{display:block;font-size:16px}
+.dati li span{font-size:14.5px;color:var(--ink-2)}
+.dati .big{font-size:clamp(28px,3.4vw,42px);font-weight:800;line-height:1.1}
+.dati .big em{font-style:normal;color:var(--accent)}
+@media(max-width:860px){.dati{grid-template-columns:1fr;gap:28px}}
+
+/* PER CHI */
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.two>div{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px}
+.two h3{font-size:19px;margin-bottom:12px}
+.two ul{margin:0;padding-left:18px;color:var(--ink-2);font-size:15px;display:grid;gap:6px}
+@media(max-width:760px){.two{grid-template-columns:1fr}}
+
+/* PREZZI / CONTATTI */
+.offer{background:var(--paper-2);border:1px solid var(--line);border-radius:18px;padding:clamp(24px,4vw,44px);display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:36px;align-items:center}
+.offer h2{font-size:clamp(28px,3.4vw,40px);font-weight:800}
+.offer p{color:var(--ink-2);margin-top:12px}
+.offer .box{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px;display:grid;gap:12px}
+.offer .box .row{display:flex;justify-content:space-between;gap:12px;font-size:14.5px;border-bottom:1px solid var(--line);padding-bottom:10px}
+.offer .box .row:last-of-type{border-bottom:0;padding-bottom:0}
+.offer .box .row span:last-child{font-family:var(--mono);font-size:13px;color:var(--ink-2);text-align:right}
+.ph{background:color-mix(in srgb,var(--s2) 28%,transparent);border-radius:4px;padding:0 4px}
+@media(max-width:860px){.offer{grid-template-columns:1fr}}
+
+/* FAQ */
+.faq{display:grid;gap:0;max-width:52rem}
+.faq details{border-bottom:1px solid var(--line);padding:18px 0}
+.faq summary{cursor:pointer;font-weight:600;font-size:17px;list-style:none;display:flex;justify-content:space-between;gap:16px}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary::after{content:"+";font-family:var(--mono);color:var(--ink-3)}
+.faq details[open] summary::after{content:"−"}
+.faq p{color:var(--ink-2);margin-top:10px;font-size:15.5px;max-width:44rem}
+
+footer{border-top:1px solid var(--line);padding-block:34px;font-size:13.5px;color:var(--ink-3)}
+footer .wrap{display:flex;flex-wrap:wrap;gap:12px 28px;justify-content:space-between}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+</style>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="logo" href="#top" aria-label="Prisma, torna in cima">
+      <svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true"><polygon points="16,3 29,27 3,27" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/><line x1="16" y1="3" x2="16" y2="27" stroke="var(--s4)" stroke-width="2"/><line x1="16" y1="15" x2="23" y2="27" stroke="var(--s3)" stroke-width="2"/><line x1="16" y1="15" x2="9" y2="27" stroke="var(--s1)" stroke-width="2"/></svg>
+      Prisma
+    </a>
+    <ul>
+      <li><a href="#moduli">Moduli</a></li>
+      <li><a href="#funzioni">Funzioni</a></li>
+      <li><a href="#come">Come funziona</a></li>
+      <li><a href="#dati">I tuoi dati</a></li>
+      <li><a href="#faq">Domande</a></li>
+    </ul>
+    <a class="btn pri" href="#contatti">Richiedi una prova</a>
+  </div>
+</header>
+
+<main id="top">
+<section class="hero">
+  <div class="wrap grid">
+    <div>
+      <div class="eyebrow" style="margin-bottom:18px">Per studi di commercialisti ed esperti contabili</div>
+      <h1>Sai sempre cosa scade, <span>chi ci lavora</span> e a che punto è.</h1>
+      <p class="lead">Prisma è il cruscotto operativo del tuo studio. Scadenze, adempimenti a fasi, task e clienti in un unico posto, senza timesheet e senza cambiare il gestionale che già usi.</p>
+      <div class="cta">
+        <a class="btn pri" href="#contatti">Richiedi una prova</a>
+        <a class="btn sec" href="#moduli">Costruisci il tuo Prisma</a>
+      </div>
+      <p class="note">Installato sul PC dello studio. I dati dei clienti restano da voi.</p>
+    </div>
+    <div class="visual" role="img" aria-label="Un unico flusso di scadenze si separa in corsie di lavoro: IVA e F24, dichiarazioni, bilanci, antiriciclaggio, task di studio.">
+      <svg viewBox="0 0 400 430" preserveAspectRatio="xMaxYMid meet" aria-hidden="true">
+        <defs>
+          <linearGradient id="glass" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="var(--card)"/><stop offset="1" stop-color="var(--paper-2)"/></linearGradient>
+        </defs>
+        <line x1="-700" y1="215" x2="232" y2="215" stroke="var(--ink)" stroke-opacity=".85" stroke-width="5" stroke-linecap="round"/>
+        <g stroke-width="3.4" stroke-linecap="round" fill="none">
+          <path d="M318 215 C 350 215, 360 43, 400 43" stroke="var(--s1)"/>
+          <path d="M318 215 C 350 215, 360 129, 400 129" stroke="var(--s2)"/>
+          <path d="M318 215 L400 215" stroke="var(--s3)"/>
+          <path d="M318 215 C 350 215, 360 301, 400 301" stroke="var(--s4)"/>
+          <path d="M318 215 C 350 215, 360 387, 400 387" stroke="var(--s5)"/>
+        </g>
+        <polygon points="275,100 195,330 355,330" fill="url(#glass)" stroke="var(--ink)" stroke-width="2.4" stroke-linejoin="round"/>
+        <polygon points="275,100 275,330 195,330" fill="var(--ink)" opacity=".05"/>
+      </svg>
+      <div class="lanes">
+        <div class="lane" style="--c:var(--s1)"><span class="tag">IVA e F24</span><b>Liquidazione mensile</b><small>giorno 16 · 12 clienti</small></div>
+        <div class="lane" style="--c:var(--s2)"><span class="tag">Dichiarazioni</span><b>Redditi, fase 2 di 4</b><small>pronta per Anna</small></div>
+        <div class="lane" style="--c:var(--s3)"><span class="tag">Bilanci</span><b>Bilancio in attesa</b><small>mancano le registrazioni</small></div>
+        <div class="lane" style="--c:var(--s4)"><span class="tag">Antiriciclaggio</span><b>Verifica da rinnovare</b><small>scade tra 18 giorni</small></div>
+        <div class="lane" style="--c:var(--s5)"><span class="tag">Task di studio</span><b>Richiesta documenti</b><small>assegnato a Luca</small></div>
+      </div>
+      <span class="vcap">Dati dimostrativi</span>
+    </div>
+  </div>
+</section>
+
+<div class="band">
+  <div class="wrap">
+    <div><h3>Oggi: fogli Excel e calendari</h3><p>Le scadenze stanno in più posti. Chi lavora a una pratica lo sa a memoria, gli altri chiedono.</p></div>
+    <div><h3>Il passaggio di consegne si perde</h3><p>Una dichiarazione passa da una persona all'altra. Nessuno vede dove si è fermata.</p></div>
+    <div><h3>Il titolare non vede l'insieme</h3><p>Per sapere come va lo studio serve chiedere, raccogliere e ricontare.</p></div>
+  </div>
+</div>
+
+<section class="blk" id="moduli">
+  <div class="wrap">
+    <div class="head">
+      <div class="eyebrow">Prisma si adatta allo studio</div>
+      <h2>Accendi solo ciò che vi serve.</h2>
+      <p>Il nucleo è sempre incluso. Il resto sono moduli: li scegli al primo avvio, li cambi quando vuoi, e ogni collaboratore vede solo quelli che gli assegni.</p>
+    </div>
+    <div class="explorer">
+      <div class="mods" id="mods"></div>
+      <aside class="menu" aria-live="polite">
+        <div class="eyebrow">Il menu del tuo Prisma</div>
+        <h3 id="menuTitolo">Solo il nucleo</h3>
+        <ul id="menuLista"></ul>
+        <div class="count" id="menuCount"></div>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<section class="blk" id="funzioni" style="padding-top:0">
+  <div class="wrap">
+    <div class="head">
+      <div class="eyebrow">Cosa fa</div>
+      <h2>Fatto per come lavora uno studio italiano.</h2>
+    </div>
+    <div class="feats">
+      <article class="feat w3">
+        <span class="k">Adempimenti a fasi</span>
+        <h3>Ogni dichiarazione ha le sue fasi e un responsabile per fase</h3>
+        <p>Quando un collega chiude una fase, il successivo vede che può partire. Nessuno chiede più "a che punto sei?".</p>
+        <div class="steps" aria-hidden="true"><i class="d"></i><i class="d"></i><i class="n"></i><i></i></div>
+      </article>
+      <article class="feat w3">
+        <span class="k">Scadenze</span>
+        <h3>Le scadenze si generano dai dati del cliente</h3>
+        <p>IVA, F24, ritenute, IMU, Intrastat e altro nascono dai flag fiscali del cliente. Una proroga si applica a tutti i clienti interessati in un colpo solo.</p>
+      </article>
+      <article class="feat">
+        <span class="k">Il mio lavoro</span>
+        <h3>Ognuno vede ciò che tocca a lui</h3>
+        <p>Scadenze urgenti, fasi pronte e task personali in una sola schermata.</p>
+      </article>
+      <article class="feat">
+        <span class="k">Cruscotto titolare</span>
+        <h3>L'andamento dello studio senza chiedere</h3>
+        <p>Portafoglio clienti, nuovi e cessati, preventivi e avanzamento delle pratiche.</p>
+      </article>
+      <article class="feat">
+        <span class="k">Clienti</span>
+        <h3>Cessazioni anche a metà anno</h3>
+        <p>Con la data di cessazione e gli adempimenti ceduti al nuovo commercialista.</p>
+      </article>
+      <article class="feat w3">
+        <span class="k">Dal preventivo al cliente</span>
+        <h3>Il preventivo accettato crea il cliente e l'onboarding</h3>
+        <p>Preventivi, mandati e lettere d'incarico da modelli precompilati, con i mandati in scadenza da rinnovare.</p>
+      </article>
+      <article class="feat w3">
+        <span class="k">Obblighi dello studio</span>
+        <h3>Deontologia e antiriciclaggio nello stesso posto</h3>
+        <p>Accettazione dell'incarico, registro dell'uso dell'IA, formazione continua, riservatezza e adeguata verifica.</p>
+      </article>
+      <article class="feat w3">
+        <span class="k">Portale clienti, se lo vuoi</span>
+        <h3>Un'area riservata solo per i clienti che la usano</h3>
+        <p>Scadenze, richieste di documenti e comunicazioni. È un modulo opzionale e non sostituisce la mail.</p>
+      </article>
+      <article class="feat w3">
+        <span class="k">Con Claude</span>
+        <h3>Un assistente che agisce solo con il tuo via libera</h3>
+        <p>Se colleghi Claude, ogni azione resta registrata e puoi chiedere la conferma prima che venga eseguita.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="blk how" id="come">
+  <div class="wrap">
+    <div class="head">
+      <div class="eyebrow">Come si parte</div>
+      <h2>Dall'installazione al lavoro in un pomeriggio.</h2>
+    </div>
+    <div class="seq">
+      <div><span class="n">PRIMO</span><h3>Installi un solo file</h3><p>Un programma per Windows che si installa da solo e crea il collegamento sul desktop.</p></div>
+      <div><span class="n">SECONDO</span><h3>Attivi la licenza</h3><p>Prisma mostra il codice del tuo computer. Ce lo invii e ricevi il file di licenza da trascinare nella finestra.</p></div>
+      <div><span class="n">TERZO</span><h3>Rispondi a poche domande</h3><p>Che cosa vi serve, chi lavora con voi e quali moduli deve vedere ognuno. Poi importi i clienti da Excel.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="blk" id="dati">
+  <div class="wrap dati">
+    <div>
+      <div class="eyebrow">I tuoi dati</div>
+      <p class="big" style="margin-top:12px">I dati dei clienti restano <em>nello studio</em>.</p>
+      <p style="margin-top:16px;color:var(--ink-2);max-width:30rem">Prisma gira sul PC dello studio. Noi non abbiamo accesso ai vostri dati e non c'è un archivio centrale da proteggere.</p>
+    </div>
+    <ul>
+      <li><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><div><b>Installazione sul vostro computer</b><span>Funziona in rete locale. L'accesso da internet è opzionale e lo attivate voi.</span></div></li>
+      <li><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M4 20h16"/></svg><div><b>Backup automatici</b><span>Copie ogni giorno e prima di ogni aggiornamento, con possibilità di copiare su un altro disco o cloud.</span></div></li>
+      <li><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M17 8h4M17 12h4"/></svg><div><b>Utenze e permessi</b><span>Un utente master per lo studio e collaboratori che vedono solo i moduli assegnati.</span></div></li>
+      <li><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg><div><b>Aggiornamenti verificati</b><span>Ogni aggiornamento è firmato: Prisma lo applica solo se la firma è corretta.</span></div></li>
+    </ul>
+  </div>
+</section>
+
+<section class="blk" style="padding-top:0">
+  <div class="wrap">
+    <div class="head"><div class="eyebrow">Cosa non è</div><h2>Un cruscotto, non un altro gestionale.</h2></div>
+    <div class="two">
+      <div><h3>Prisma serve a</h3><ul><li>Non dimenticare una scadenza</li><li>Coordinare chi lavora a una pratica</li><li>Vedere lo stato di tutto lo studio</li><li>Tenere in ordine gli obblighi dello studio</li></ul></div>
+      <div><h3>Prisma non sostituisce</h3><ul><li>Il software di contabilità e dichiarativi</li><li>La fatturazione elettronica</li><li>Il giudizio del professionista</li><li>Il tuo modo di parlare con i clienti</li></ul></div>
+    </div>
+  </div>
+</section>
+
+<section class="blk" id="contatti" style="padding-top:0">
+  <div class="wrap">
+    <div class="offer">
+      <div>
+        <div class="eyebrow">Prova e licenza</div>
+        <h2 style="margin-top:10px">Provalo nel tuo studio.</h2>
+        <p>Stiamo aprendo Prisma a un gruppo ristretto di studi. Scrivici e ti accompagniamo nell'installazione e nella prima configurazione.</p>
+        <div class="cta" style="display:flex;gap:12px;flex-wrap:wrap;margin-top:22px"><a class="btn pri" href="mailto:info@dominio-da-definire.it">Scrivici</a></div>
+        <p style="font-size:13.5px;margin-top:14px">Email: <span class="ph">info@dominio-da-definire.it</span></p>
+      </div>
+      <div class="box">
+        <div class="row"><span>Licenza</span><span>per studio, annuale</span></div>
+        <div class="row"><span>Prezzo</span><span class="ph">da definire</span></div>
+        <div class="row"><span>Installazione e avvio</span><span>inclusi</span></div>
+        <div class="row"><span>Aggiornamenti</span><span>inclusi</span></div>
+        <div class="row"><span>Cambio computer</span><span>nuova licenza</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="blk" id="faq" style="padding-top:0">
+  <div class="wrap">
+    <div class="head"><div class="eyebrow">Domande</div><h2>Quello che ci chiedono di solito.</h2></div>
+    <div class="faq">
+      <details><summary>Devo cambiare il mio gestionale?</summary><p>No. Prisma si affianca al software di contabilità e di fatturazione che usate già. Non tiene la contabilità e non emette fatture.</p></details>
+      <details><summary>Dove sono i miei dati?</summary><p>Sul computer dello studio, in una cartella che potete copiare e salvare. Non passano da noi.</p></details>
+      <details><summary>Serve internet?</summary><p>Per lavorare in studio no. Serve per gli aggiornamenti e per il portale clienti, se lo attivate.</p></details>
+      <details><summary>Posso usarlo in più persone?</summary><p>Sì. I colleghi si collegano dalla rete dello studio e ognuno ha i moduli che gli assegnate. Non è pensato per decine di utenti contemporanei.</p></details>
+      <details><summary>Che cosa succede se cambio computer?</summary><p>La licenza è legata al computer. Con il nuovo ci mandi il suo codice e ricevi una nuova licenza; i dati si spostano copiando la cartella.</p></details>
+      <details><summary>Il portale clienti è obbligatorio?</summary><p>No. È un modulo che accendete solo se vi serve, cliente per cliente.</p></details>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Prisma · prodotto di <span class="ph">ragione sociale da inserire</span> · P. IVA <span class="ph">da inserire</span></span>
+    <span><a href="#" onclick="return false">Privacy</a> · <a href="#" onclick="return false">Termini di licenza</a></span>
+  </div>
+</footer>
+
+<script>
+(function(){
+  var MODULI=[
+    ['calendario','Calendario e appuntamenti','Scadenze e prenotazione dei consulenti.'],
+    ['portale','Portale clienti','Area riservata e comunicazioni con i clienti.'],
+    ['team','Lavoro di squadra','Task del team e chat interna.'],
+    ['procedure','Procedure interne','Istruzioni operative per lo staff.'],
+    ['antiriciclaggio','Antiriciclaggio','Adeguata verifica e profilo di rischio.'],
+    ['preventivi','Preventivi e mandati','Dal preventivo al cliente con onboarding.'],
+    ['deontologia','Deontologia','Incarichi, uso dell\'IA, formazione, riservatezza.'],
+    ['libri','Libri sociali','Detentore, ultima stampa e ultima pagina.'],
+    ['fatturazione','Attività da fatturare','Pratiche extra da portare in fattura.'],
+    ['incassi','Incassi e solleciti','Compensi da incassare e solleciti.'],
+    ['bilanci','Bilanci e KPI','Indici, grafici e confronti.'],
+    ['fiscale','Ritenute e F24','Registro ritenute e registro F24.'],
+    ['cruscotto','Cruscotto titolare','La vista d\'insieme dello studio.'],
+    ['carico','Carico di lavoro e proroghe','Chi è sovraccarico, proroghe in blocco.'],
+    ['cpb','Concordato preventivo biennale','Stato di adesione per cliente.']
+  ];
+  var NUCLEO=['Il mio lavoro','Dashboard','Clienti','Scadenze periodiche','Adempimenti annuali','Documenti'];
+  var attivi={team:1,preventivi:1,cruscotto:1};
+  var box=document.getElementById('mods');
+  MODULI.forEach(function(m){
+    var b=document.createElement('button');
+    b.type='button';b.className='mod';b.setAttribute('aria-pressed',attivi[m[0]]?'true':'false');b.dataset.id=m[0];
+    b.innerHTML='<span class="tick" aria-hidden="true">✓</span><span><b></b><span class="d"></span></span>';
+    b.querySelector('b').textContent=m[1];b.querySelector('.d').textContent=m[2];
+    b.addEventListener('click',function(){
+      if(attivi[m[0]]){delete attivi[m[0]];}else{attivi[m[0]]=1;}
+      b.setAttribute('aria-pressed',attivi[m[0]]?'true':'false');disegna();
+    });
+    box.appendChild(b);
+  });
+  function disegna(){
+    var ul=document.getElementById('menuLista');ul.innerHTML='';
+    NUCLEO.forEach(function(n){var li=document.createElement('li');li.className='fixed';li.innerHTML='<span></span><em>sempre</em>';li.firstChild.textContent=n;ul.appendChild(li);});
+    var n=0;
+    MODULI.forEach(function(m){if(attivi[m[0]]){n++;var li=document.createElement('li');li.className='on';li.innerHTML='<span></span><em>modulo</em>';li.firstChild.textContent=m[1];ul.appendChild(li);}});
+    document.getElementById('menuTitolo').textContent=n===0?'Solo il nucleo':(n===1?'Nucleo e un modulo':'Nucleo e '+n+' moduli');
+    document.getElementById('menuCount').textContent=(NUCLEO.length+n)+' voci nel menu su '+(NUCLEO.length+MODULI.length)+' possibili';
+  }
+  disegna();
+})();
+</script>
