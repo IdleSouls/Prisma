@@ -6593,12 +6593,60 @@ async function main() {
     await wait(20);
   }
 
+  // ===== Questionario di primo avvio + utenza master =====
+  {
+    const salva = JSON.parse(JSON.stringify(window.getSTATE()));
+    const vuoto = JSON.parse(JSON.stringify(salva));
+    vuoto.clienti = []; vuoto.meta.moduliConfermati = false; vuoto.meta.setupCompletato = false;
+    vuoto.meta.ruoli = {}; vuoto.meta.tabConsentiti = {}; vuoto.meta.moduliDisattivati = [];
+    window.setSTATE(vuoto);
+    assert(window.setupDaFare(), 'Setup: con stato vuoto deve essere richiesto');
+    window.avviaSetupSeServe();
+    assert(q('#setupRoot'), 'Setup: overlay assente');
+    const setVal = (sel, v) => { const el = q(sel); el.value = v; fire(el, 'input'); };
+    click(q('[data-setup-avanti]'));
+    assert(/Inserisci il nome/.test(q('#setupRoot').textContent), 'Setup: deve chiedere nome studio e master');
+    setVal('[data-setup="studio"]', 'Studio Prova'); setVal('[data-setup="master"]', 'Anna Master');
+    click(q('[data-setup-avanti]'));
+    const cb = q('[data-setup-risposta="fatt"]'); cb.checked = true; fire(cb, 'change');
+    const cb2 = q('[data-setup-risposta="squadra"]'); cb2.checked = true; fire(cb2, 'change');
+    click(q('[data-setup-avanti]'));
+    assert(q('[data-setup-modulo="fatturazione"]').checked && q('[data-setup-modulo="incassi"]').checked && q('[data-setup-modulo="team"]').checked && !q('[data-setup-modulo="portale"]').checked, 'Setup: i moduli proposti devono seguire le risposte');
+    click(q('[data-setup-avanti]'));
+    click(q('[data-setup-collab-aggiungi]'));
+    setVal('[data-setup-collab-nome="0"]', 'Luca Collab');
+    const cm = q('[data-setup-collab-modulo="0|incassi"]'); cm.checked = false; fire(cm, 'change');
+    click(q('[data-setup-avanti]'));
+    const S = window.getSTATE();
+    assert(!q('#setupRoot'), 'Setup: overlay deve chiudersi');
+    assert(S.meta.studioNome === 'Studio Prova' && S.meta.responsabili.join() === 'Anna Master,Luca Collab', 'Setup: studio e utenze');
+    assert(S.meta.ruoli['Anna Master'] === 'master' && S.meta.ruoli['Luca Collab'] === 'limitato', 'Setup: ruoli master/limitato');
+    assert(S.meta.moduliDisattivati.includes('portale') && !S.meta.moduliDisattivati.includes('fatturazione'), 'Setup: moduli disattivati');
+    const tabLuca = S.meta.tabConsentiti['Luca Collab'];
+    assert(tabLuca.includes('fatturazione') && !tabLuca.includes('incassi') && tabLuca.includes('scadenze') && !tabLuca.includes('impostazioni'), 'Setup: tab consentiti del collaboratore');
+    assert(S.meta.setupCompletato && !window.setupDaFare(), 'Setup: non deve ripresentarsi');
+    // master vs collaboratore
+    window.impostaOperatore('Anna Master');
+    assert(window.operatoreMaster(), 'Master: Anna deve essere master');
+    window.impostaOperatore('Luca Collab');
+    assert(!window.operatoreMaster(), 'Master: Luca non e master');
+    window.impostaOperatore('Anna Master');
+    window.setView('impostazioni');
+    assert(qa('[data-sezione="gestione"]').length === 1 && qa('[data-sezione="moduli"]').length === 1, 'Master: vede Gestione studio e Moduli');
+    window.impostaOperatore('Luca Collab');
+    S.meta.tabConsentiti['Luca Collab'].push('impostazioni'); window.setView('impostazioni');
+    assert(qa('[data-sezione="gestione"]').length === 0 && qa('[data-sezione="moduli"]').length === 0 && qa('[data-sezione="studio"]').length === 1, 'Collaboratore: niente Gestione/Moduli');
+    window.setSTATE(salva); window.impostaOperatore(null); window.setView('dashboard');
+    assert(!window.setupDaFare(), 'Setup: lo stato originale (con clienti) non deve richiederlo');
+    console.log('=== Questionario di primo avvio + master: OK');
+  }
   console.log('\n✅ TUTTI I TEST END-TO-END PASSATI (' + errors.length + ' errori console catturati)');
   if (errors.length) {
     console.log('--- Dettaglio errori console/jsdom catturati durante il test ---');
     errors.forEach(e => console.log(' -', e));
     process.exit(1);
   }
+
   process.exit(0);
 }
 

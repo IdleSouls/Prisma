@@ -14832,6 +14832,7 @@ const IMP_SEZIONI = [
   { id: 'catalogo', label: 'Catalogo & aggiornamenti' },
   { id: 'guide', label: 'Guide' },
   { id: 'avanzate', label: 'Avanzate' },
+  { id: 'gestione', label: 'Gestione studio' },
 ];
 const GUIDE_STUDIO = [
   { id: 'guida-ia-di-studio', titolo: "Guida per l'IA di studio", descrizione: "Allegala alla tua IA (Claude o altra) e scrivile «Aiutami a installare e configurare Prisma»: contiene installazione, moduli, utenti, portale clienti e collegamento MCP." },
@@ -14868,7 +14869,7 @@ async function apriGuida(id) {
 
 function impTabBarHtml() {
   return `<div class="imp-tabbar" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;border-bottom:1px solid var(--border);padding-bottom:10px;">
-    ${IMP_SEZIONI.map(s => `<button class="btn small${s.id === IMP_SEZIONE ? ' primary' : ''}" data-action="imp-sezione" data-sezione="${s.id}">${escapeHtml(s.label)}</button>`).join('')}
+    ${impSezioniVisibili().map(s => `<button class="btn small${s.id === IMP_SEZIONE ? ' primary' : ''}" data-action="imp-sezione" data-sezione="${s.id}">${escapeHtml(s.label)}</button>`).join('')}
   </div>`;
 }
 
@@ -14973,6 +14974,7 @@ function rigaResponsabileConRuolo(r, i) {
         <input type="checkbox" data-action="toggle-consulente" data-idx="${i}" ${(STATE.meta.consulenti||[]).includes(r)?'checked':''}> Consulente
       </label>
       <select data-action="cambia-ruolo-responsabile" data-resp="${escapeHtml(r)}" title="Ruolo di accesso" style="border:1px solid var(--border);border-radius:6px;padding:5px 7px;">
+        <option value="master" ${ruolo==='master'?'selected':''}>Master — gestisce moduli, utenze e licenza</option>
         <option value="admin" ${ruolo==='admin'?'selected':''}>Admin — accesso completo</option>
         <option value="limitato" ${ruolo==='limitato'?'selected':''}>Limitato — solo alcune sezioni</option>
       </select>
@@ -15177,7 +15179,7 @@ function renderImpostazioniAvanzate() {
 }
 
 function renderImpostazioni() {
-  if (!IMP_SEZIONI.some(s => s.id === IMP_SEZIONE)) IMP_SEZIONE = 'studio';
+  if (!impSezioniVisibili().some(s => s.id === IMP_SEZIONE)) IMP_SEZIONE = 'studio';
   let contenuto;
   switch (IMP_SEZIONE) {
     case 'moduli': contenuto = renderImpostazioniModuli(); break;
@@ -15186,6 +15188,7 @@ function renderImpostazioni() {
     case 'catalogo': contenuto = renderImpostazioniCatalogo(); break;
     case 'guide': contenuto = renderImpostazioniGuide(); break;
     case 'avanzate': contenuto = renderImpostazioniAvanzate(); break;
+    case 'gestione': contenuto = renderImpostazioniGestione(); break;
     case 'studio':
     default: contenuto = renderImpostazioniStudio(); break;
   }
@@ -17504,8 +17507,11 @@ function onChangeDelegato(e) {
     case 'cambia-ruolo-responsabile': {
       const resp = el.dataset.resp;
       if (!STATE.meta.ruoli) STATE.meta.ruoli = {};
+      if (ruoloOperatore(resp) === 'master' && el.value !== 'master' && (STATE.meta.responsabili || []).filter(r => ruoloOperatore(r) === 'master').length <= 1) {
+        toast('Deve esserci almeno un utente master.'); render(); break;
+      }
       if (el.value === 'admin') delete STATE.meta.ruoli[resp]; // 'admin' è il default implicito, non serve salvarlo
-      else STATE.meta.ruoli[resp] = 'limitato';
+      else STATE.meta.ruoli[resp] = el.value === 'master' ? 'master' : 'limitato';
       salvaStato();
       render(); // se il referente diventa "limitato" ora, la sua nav va filtrata subito se è lui l'operatore corrente
       break;
@@ -18470,9 +18476,217 @@ function init() {
     if (DB_STATO_REMOTO_PENDENTE) setTimeout(applicaStatoRemotoSeLibero, 50);
   }, true);
   render();
-  eventualeSelettoreOperatore(); // task #98: chiede "chi sei" solo se serve (2+ responsabili, non ancora scelto su questo PC)
+  if (!avviaSetupSeServe()) eventualeSelettoreOperatore(); // primo avvio: questionario; altrimenti task #98: chiede "chi sei" solo se serve (2+ responsabili, non ancora scelto su questo PC)
   inizializzaSyncCondiviso(); // asincrono, non blocca il primo render: se non disponibile (file locale) non fa nulla
 }
+
+/* -------------------- Master, "Gestione studio" e questionario di primo avvio -------------------- */
+// Master = utenza che gestisce moduli, utenze e licenza. Compatibilità: se nessun responsabile ha
+// ruolo 'master' (installazioni nate prima di questa funzione) restano tutti "master di fatto", come
+// prima; così non si blocca nessuno. Come il resto dei ruoli è un filtro di interfaccia, non un
+// controllo di accesso ai dati (vedi commento su tabConsentitiOperatore).
+function esisteMaster() {
+  return (STATE.meta.responsabili || []).some(r => ruoloOperatore(r) === 'master');
+}
+function operatoreMaster() {
+  if (!esisteMaster()) return true;
+  if (!OPERATORE) return true; // nessun operatore scelto: nessuna restrizione (vedi operatorePuoVedere)
+  return ruoloOperatore(OPERATORE) === 'master';
+}
+const IMP_SEZIONI_MASTER = ['moduli', 'team', 'avanzate', 'gestione'];
+function impSezioniVisibili() {
+  return IMP_SEZIONI.filter(s => !IMP_SEZIONI_MASTER.includes(s.id) || operatoreMaster());
+}
+// Tab "di nucleo": quelli che non appartengono a nessun modulo (sempre attivi per tutti).
+function tabNucleo() {
+  const inModuli = new Set(); MODULI.forEach(m => m.tabs.forEach(t => inModuli.add(t)));
+  const ids = [];
+  NAV.forEach(g => g.items.forEach(it => { if (!inModuli.has(it.id) && it.id !== 'impostazioni') ids.push(it.id); }));
+  return ids;
+}
+function renderImpostazioniGestione() {
+  setTimeout(async () => {
+    const box = h('gestLicenza'); if (!box) return;
+    try {
+      const r = await fetch('/api/licenza'); const d = await r.json();
+      if (!d.richiesta) box.innerHTML = '<div class="helptext">Installazione senza vincolo di licenza (uso interno).</div>';
+      else box.innerHTML = `<table class="compact"><tbody>
+        <tr><td>Intestata a</td><td><strong>${escapeHtml(d.studio || '—')}</strong></td></tr>
+        <tr><td>Stato</td><td>${d.valida ? '<span class="badge attivo">Attiva</span>' : '<span class="badge stato-errore">Non valida</span>'}</td></tr>
+        <tr><td>Scadenza</td><td>${d.scadenza ? escapeHtml(d.scadenza) : 'Nessuna scadenza'}</td></tr>
+        <tr><td>Codice macchina</td><td><code>${escapeHtml(d.fingerprint || '')}</code></td></tr>
+      </tbody></table>`;
+    } catch (e) { box.innerHTML = '<div class="helptext">Informazioni sulla licenza non disponibili.</div>'; }
+  }, 0);
+  const nMod = MODULI.filter(m => moduloAttivo(m.id)).length;
+  return `<div class="card">
+    <div class="section-title">Licenza</div>
+    <div id="gestLicenza"><div class="helptext">Carico…</div></div>
+  </div>
+  <div class="card">
+    <div class="section-title">Gestione dello studio</div>
+    <div class="helptext" style="margin-bottom:12px;">Quest'area è visibile solo agli utenti master. Moduli attivi: ${nMod} su ${MODULI.length}. Utenze: ${(STATE.meta.responsabili || []).length}.</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn" data-action="imp-sezione" data-sezione="moduli">Moduli dello studio</button>
+      <button class="btn" data-action="imp-sezione" data-sezione="team">Utenze e permessi</button>
+    </div>
+  </div>`;
+}
+
+const SETUP_DOMANDE = [
+  { id: 'squadra', q: 'Lavorate in più persone e vi passate il lavoro (task, chat)?', moduli: ['team'] },
+  { id: 'cal', q: 'Volete gestire appuntamenti e prenotazioni dei consulenti?', moduli: ['calendario'] },
+  { id: 'portale', q: 'Volete dare ai clienti un portale (documenti, scadenze, messaggi)?', moduli: ['portale'] },
+  { id: 'prev', q: 'Fate preventivi, mandati e lettere d\'incarico e l\'onboarding dei nuovi clienti?', moduli: ['preventivi', 'onboarding'] },
+  { id: 'fatt', q: 'Volete tenere traccia di cosa fatturare e degli incassi dei compensi?', moduli: ['fatturazione', 'incassi'] },
+  { id: 'compl', q: 'Volete gestire antiriciclaggio e obblighi deontologici (accettazione incarico, uso IA, formazione)?', moduli: ['antiriciclaggio', 'deontologia'] },
+  { id: 'fisc', q: 'Seguite ritenute d\'acconto e F24?', moduli: ['fiscale'] },
+  { id: 'bil', q: 'Analizzate bilanci e KPI dei clienti?', moduli: ['bilanci'] },
+  { id: 'libri', q: 'Tenete i libri sociali dei clienti?', moduli: ['libri'] },
+  { id: 'tit', q: 'Il titolare vuole una vista d\'insieme (cruscotto, carico di lavoro, proroghe, CPB)?', moduli: ['cruscotto', 'carico', 'cpb'] },
+  { id: 'proc', q: 'Volete procedure interne e un archivio password dello studio?', moduli: ['procedure', 'credenziali'] },
+];
+let SETUP = null;
+function setupDaFare() {
+  const m = STATE.meta || {};
+  return !m.setupCompletato && !m.moduliConfermati && (STATE.clienti || []).length === 0;
+}
+function avviaSetupSeServe() {
+  if (!setupDaFare()) return false;
+  SETUP = { step: 1, studio: (STATE.meta.studioNome && STATE.meta.studioNome !== 'Studio') ? STATE.meta.studioNome : '', master: '', risposte: {}, moduli: [], collab: [] };
+  renderSetup();
+  return true;
+}
+function setupModuliDaRisposte() {
+  const s = new Set();
+  SETUP_DOMANDE.forEach(d => { if (SETUP.risposte[d.id]) d.moduli.forEach(m => s.add(m)); });
+  return Array.from(s);
+}
+function renderSetup() {
+  let root = h('setupRoot');
+  if (!SETUP) { if (root) root.remove(); return; }
+  if (!root) {
+    root = document.createElement('div'); root.id = 'setupRoot';
+    root.style.cssText = 'position:fixed;inset:0;z-index:9000;background:var(--bg,#f4f6f9);overflow:auto;display:flex;justify-content:center;padding:32px 16px;';
+    document.body.appendChild(root);
+    root.addEventListener('click', onSetupClick);
+    root.addEventListener('input', onSetupInput);
+    root.addEventListener('change', onSetupInput);
+  }
+  const passi = ['Il tuo studio', 'Cosa vi serve', 'Moduli', 'Collaboratori'];
+  const barra = passi.map((p, i) => `<span style="flex:1;text-align:center;padding:6px 4px;border-radius:6px;font-size:12px;${i + 1 === SETUP.step ? 'background:var(--accent,#2b6cdf);color:#fff;' : 'color:var(--text-mut,#7a8794);'}">${i + 1}. ${p}</span>`).join('');
+  let corpo = '';
+  if (SETUP.step === 1) {
+    corpo = `<h2 style="margin:0 0 6px;">Benvenuto in Prisma</h2>
+      <div class="helptext" style="margin-bottom:18px;">Prima di iniziare ti faccio poche domande per preparare Prisma sul tuo studio. Dopo potrai cambiare tutto dalle Impostazioni.</div>
+      <div class="field"><label>Nome dello studio</label><input type="text" data-setup="studio" value="${escapeHtml(SETUP.studio)}" placeholder="es. Studio Rossi"></div>
+      <div class="field"><label>Il tuo nome (sarai l'utente master dello studio)</label><input type="text" data-setup="master" value="${escapeHtml(SETUP.master)}" placeholder="es. Mario Rossi"></div>
+      <div class="helptext">Il master gestisce moduli, utenze e licenza. Gli altri collaboratori useranno Prisma con i moduli che sceglierai per loro.</div>`;
+  } else if (SETUP.step === 2) {
+    corpo = `<h2 style="margin:0 0 6px;">Cosa vi serve?</h2>
+      <div class="helptext" style="margin-bottom:14px;">Sempre inclusi: scadenziario, adempimenti annuali, dashboard "Oggi", clienti e documenti. Spunta quello che volete in più.</div>
+      ${SETUP_DOMANDE.map(d => `<label style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--border);font-weight:400;cursor:pointer;"><input type="checkbox" style="margin-top:3px;" data-setup-risposta="${d.id}" ${SETUP.risposte[d.id] ? 'checked' : ''}><span>${escapeHtml(d.q)}</span></label>`).join('')}`;
+  } else if (SETUP.step === 3) {
+    corpo = `<h2 style="margin:0 0 6px;">Moduli proposti</h2>
+      <div class="helptext" style="margin-bottom:14px;">Ecco i moduli in base alle tue risposte. Puoi aggiungerne o toglierne: li cambi in qualsiasi momento da Impostazioni › Moduli.</div>
+      ${MODULI.map(m => `<label style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--border);font-weight:400;cursor:pointer;"><input type="checkbox" style="margin-top:3px;" data-setup-modulo="${m.id}" ${SETUP.moduli.includes(m.id) ? 'checked' : ''}><span><strong>${escapeHtml(m.label)}</strong><br><span class="helptext">${escapeHtml(m.desc)}</span></span></label>`).join('')}`;
+  } else {
+    const righe = SETUP.collab.map((c, i) => `<div style="border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px;">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <input type="text" style="flex:1;min-width:140px;" data-setup-collab-nome="${i}" value="${escapeHtml(c.nome)}" placeholder="Nome del collaboratore">
+          <select data-setup-collab-ruolo="${i}"><option value="limitato" ${c.ruolo === 'limitato' ? 'selected' : ''}>Vede solo i moduli scelti</option><option value="admin" ${c.ruolo === 'admin' ? 'selected' : ''}>Accesso completo</option></select>
+          <button class="icon-x" data-setup-collab-rimuovi="${i}" title="Rimuovi">✕</button>
+        </div>
+        ${c.ruolo === 'limitato' ? `<div style="display:flex;flex-wrap:wrap;gap:4px 16px;margin-top:10px;">${MODULI.filter(m => SETUP.moduli.includes(m.id)).map(m => `<label class="checkline" style="font-size:12.5px;"><input type="checkbox" data-setup-collab-modulo="${i}|${m.id}" ${c.moduli.includes(m.id) ? 'checked' : ''}> ${escapeHtml(m.label)}</label>`).join('') || '<span class="helptext">Nessun modulo opzionale attivo: vedrà solo il nucleo base.</span>'}</div>` : ''}
+      </div>`).join('');
+    corpo = `<h2 style="margin:0 0 6px;">Collaboratori</h2>
+      <div class="helptext" style="margin-bottom:14px;">Aggiungi chi lavorerà in Prisma e scegli per ognuno quali moduli vede (tra quelli attivati). Puoi saltare e aggiungerli dopo.</div>
+      ${righe || '<div class="helptext" style="margin-bottom:10px;">Nessun collaboratore aggiunto.</div>'}
+      <button class="btn small" data-setup-collab-aggiungi="1">+ Aggiungi collaboratore</button>`;
+  }
+  const errore = SETUP.errore ? `<div style="color:#c0392b;margin-top:10px;font-size:13px;">${escapeHtml(SETUP.errore)}</div>` : '';
+  const ultimo = SETUP.step === 4;
+  root.innerHTML = `<div style="width:min(720px,100%);">
+    <div style="display:flex;gap:4px;margin-bottom:18px;">${barra}</div>
+    <div class="card" style="padding:26px;">${corpo}${errore}
+      <div style="display:flex;justify-content:space-between;margin-top:22px;gap:10px;">
+        ${SETUP.step > 1 ? '<button class="btn" data-setup-indietro="1">Indietro</button>' : '<span></span>'}
+        <button class="btn primary" data-setup-avanti="1">${ultimo ? 'Concludi e inizia' : 'Avanti'}</button>
+      </div>
+    </div></div>`;
+}
+function onSetupInput(e) {
+  const t = e.target;
+  if (t.dataset.setup) SETUP[t.dataset.setup] = t.value;
+  else if (t.dataset.setupRisposta) {
+    SETUP.risposte[t.dataset.setupRisposta] = t.checked;
+  } else if (t.dataset.setupModulo) {
+    const id = t.dataset.setupModulo; const i = SETUP.moduli.indexOf(id);
+    if (t.checked && i === -1) SETUP.moduli.push(id); else if (!t.checked && i !== -1) SETUP.moduli.splice(i, 1);
+  } else if (t.dataset.setupCollabNome != null) SETUP.collab[Number(t.dataset.setupCollabNome)].nome = t.value;
+  else if (t.dataset.setupCollabRuolo != null && e.type === 'change') {
+    const c = SETUP.collab[Number(t.dataset.setupCollabRuolo)]; c.ruolo = t.value; renderSetup();
+  } else if (t.dataset.setupCollabModulo) {
+    const [i, id] = t.dataset.setupCollabModulo.split('|'); const c = SETUP.collab[Number(i)];
+    const k = c.moduli.indexOf(id);
+    if (t.checked && k === -1) c.moduli.push(id); else if (!t.checked && k !== -1) c.moduli.splice(k, 1);
+  }
+}
+function onSetupClick(e) {
+  const el = e.target.closest('button'); if (!el) return;
+  if (el.dataset.setupIndietro) { SETUP.errore = ''; SETUP.step--; renderSetup(); return; }
+  if (el.dataset.setupCollabAggiungi) {
+    SETUP.collab.push({ nome: '', ruolo: 'limitato', moduli: SETUP.moduli.slice() }); renderSetup();
+    return;
+  }
+  if (el.dataset.setupCollabRimuovi != null) { SETUP.collab.splice(Number(el.dataset.setupCollabRimuovi), 1); renderSetup(); return; }
+  if (!el.dataset.setupAvanti) return;
+  SETUP.errore = '';
+  if (SETUP.step === 1) {
+    if (!SETUP.studio.trim() || !SETUP.master.trim()) { SETUP.errore = 'Inserisci il nome dello studio e il tuo nome.'; renderSetup(); return; }
+    SETUP.step = 2;
+  } else if (SETUP.step === 2) {
+    SETUP.moduli = setupModuliDaRisposte();
+    SETUP.step = 3;
+  } else if (SETUP.step === 3) {
+    SETUP.step = 4;
+  } else {
+    const nomi = [SETUP.master.trim()].concat(SETUP.collab.map(c => c.nome.trim()).filter(Boolean));
+    if (new Set(nomi.map(n => n.toLowerCase())).size !== nomi.length) { SETUP.errore = 'Ci sono due utenti con lo stesso nome.'; renderSetup(); return; }
+    applicaSetup();
+    return;
+  }
+  renderSetup();
+}
+function applicaSetup() {
+  const master = SETUP.master.trim();
+  const collab = SETUP.collab.filter(c => c.nome.trim());
+  const nucleo = tabNucleo();
+  STATE.meta.studioNome = SETUP.studio.trim();
+  STATE.meta.responsabili = [master].concat(collab.map(c => c.nome.trim()));
+  STATE.meta.consulenti = [master];
+  STATE.meta.ruoli = { [master]: 'master' };
+  STATE.meta.tabConsentiti = {};
+  collab.forEach(c => {
+    const nome = c.nome.trim();
+    if (c.ruolo === 'admin') return; // admin = default implicito
+    STATE.meta.ruoli[nome] = 'limitato';
+    const tabs = new Set(nucleo);
+    MODULI.filter(m => SETUP.moduli.includes(m.id) && c.moduli.includes(m.id)).forEach(m => m.tabs.forEach(t => tabs.add(t)));
+    STATE.meta.tabConsentiti[nome] = Array.from(tabs);
+  });
+  STATE.meta.moduliDisattivati = MODULI.filter(m => !SETUP.moduli.includes(m.id)).map(m => m.id);
+  STATE.meta.moduliConfermati = true;
+  STATE.meta.setupCompletato = true;
+  salvaStato();
+  SETUP = null; renderSetup();
+  impostaOperatore(master);
+  toast('Prisma è pronto. Puoi cambiare moduli e utenze dalle Impostazioni.');
+}
+window.avviaSetupSeServe = avviaSetupSeServe;
+window.setupDaFare = setupDaFare;
+window.operatoreMaster = operatoreMaster;
+window.getSETUP = () => SETUP;
 
 /* -------------------- Export su window (debug + test automatici) --------------------
    Nota tecnica: le variabili dichiarate con let/const in uno script non-module NON

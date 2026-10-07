@@ -423,7 +423,7 @@ scriviLog('Avvio di Prisma...');
 const URL_MANIFESTO_AGGIORNAMENTI = 'https://raw.githubusercontent.com/IdleSouls/Prisma/main/versione.json';
 // Cambiala qui a ogni nuova versione pubblicata (deve combaciare con quella scritta nel
 // "versione.json" caricato su GitHub, altrimenti il confronto non ha senso).
-const VERSIONE_LOCALE = '1.15.1';
+const VERSIONE_LOCALE = '1.16.0';
 // Solo questi file possono essere sovrascritti da un aggiornamento - mai un nome libero/a piacere
 // del manifesto, per non correre il rischio (anche solo teorico, es. account GitHub compromesso)
 // di far scrivere un file arbitrario altrove sul PC del cliente.
@@ -1593,6 +1593,24 @@ function gestisciRichiesta(req, res) {
       'Content-Disposition': 'attachment; filename="prisma-log.txt"',
     });
     res.end(contenuto);
+    return;
+  }
+
+  if (url === '/api/licenza' && req.method === 'GET') {
+    // Stato della licenza per il tab "Gestione studio" (solo lettura). Senza chiave pubblica accanto
+    // a server.js l'installazione non e' licenziata (uso interno): richiesta=false.
+    let info = { richiesta: false };
+    try {
+      const filePub = path.join(CARTELLA, 'licensing', 'chiave-pubblica.pem');
+      if (fs.existsSync(filePub)) {
+        const lib = require(path.join(CARTELLA, 'licensing', 'lib.js'));
+        const lic = JSON.parse(fs.readFileSync(path.join(CARTELLA, 'license.json'), 'utf8'));
+        const esito = lib.verificaLicenza(lic, fs.readFileSync(filePub, 'utf8'));
+        info = { richiesta: true, valida: !!esito.valida, studio: (esito.dati || lic).studio || null, scadenza: (esito.dati || lic).scadenza || null, fingerprint: lib.calcolaFingerprint(), motivo: esito.motivo || null };
+      }
+    } catch (err) { info = { richiesta: true, valida: false, motivo: 'licenza non leggibile' }; }
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify(info));
     return;
   }
 

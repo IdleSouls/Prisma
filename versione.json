@@ -1,12 +1,12 @@
 {
-  "versione": "1.15.1",
-  "note": "Licenza mancante: Prisma.exe mostra una finestra con il codice macchina invece di chiudersi in silenzio",
+  "versione": "1.16.0",
+  "note": "Questionario di primo avvio, utenza master e tab Gestione studio (licenza); moduli Cruscotto/Carico/CPB",
   "richiedeNpmInstall": false,
   "file": [
     {
       "nome": "gestionale.htm",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale.htm",
-      "sha256": "f6b65252bf045fe8c1cec5b27b8517956b1954991b2a10bd4eb1b7019b97d6c4"
+      "sha256": "eb7109e460d675f9745318c2e2556a8e74b8d7f80ff595b9ff9bac809233892c"
     },
     {
       "nome": "server.js",
