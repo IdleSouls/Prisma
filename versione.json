@@ -1,17 +1,17 @@
 {
-  "versione": "1.16.1",
-  "note": "Pulsante ? con guida in ogni sezione",
+  "versione": "1.17.0",
+  "note": "Sicurezza: niente CORS aperto, controllo Host/Origin, blocco tentativi password, chiave licenza incorporata, manifesto aggiornamenti firmato",
   "richiedeNpmInstall": false,
   "file": [
     {
       "nome": "gestionale.htm",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale.htm",
-      "sha256": "94b06ac88655c93a4cd1576198c9738d53435d0fef17b41c98d99fd60e0515ee"
+      "sha256": "b61c67a0f192d0d6442d1ea7784a14cd9f4d8affa893a2aea1f9527b87123414"
     },
     {
       "nome": "server.js",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/server.js",
-      "sha256": "7e4dc1dce430e9347a4cf7dbefd2052a26b5559e4a8adcf7c8abeea996f6f039"
+      "sha256": "fc53ef36ca96768fbf655c9373920ce09dcd603dd56d12e91ab1e474eefc6854"
     },
     {
       "nome": "portale-cliente.htm",
@@ -23,5 +23,6 @@
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/portale-sw.js",
       "sha256": "2ef5a0fe81a09f871a56489a86ae276f0e2f123d845afa484ff703650b47b24e"
     }
-  ]
+  ],
+  "firma": "3338VY7CM64sGjGA0jqfK+0jfZIBmcsCy5k97SNN/grlSQZk3i5FdbrMwSMivYGKcRBakm15ekdzM8VhqFxoAg=="
 }

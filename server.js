@@ -362,11 +362,11 @@ scriviLog('Avvio di Prisma...');
 // non basta a farla funzionare lì, perché il fingerprint calcolato non corrisponderà più.
 (function verificaLicenzaAllAvvio() {
   const FILE_CHIAVE_PUBBLICA = path.join(CARTELLA, 'licensing', 'chiave-pubblica.pem');
-  if (!fs.existsSync(FILE_CHIAVE_PUBBLICA)) return; // installazione non licenziata (sviluppo/uso interno) - nessun controllo
+  if (!process.env.PRISMA_CHIAVE_PUBBLICA && !fs.existsSync(FILE_CHIAVE_PUBBLICA)) return; // installazione non licenziata (sviluppo/uso interno) - nessun controllo
 
   const FILE_LICENZA = path.join(CARTELLA, 'license.json');
   const licensingLib = require(path.join(CARTELLA, 'licensing', 'lib.js'));
-  const chiavePubblica = fs.readFileSync(FILE_CHIAVE_PUBBLICA, 'utf8');
+  const chiavePubblica = process.env.PRISMA_CHIAVE_PUBBLICA || fs.readFileSync(FILE_CHIAVE_PUBBLICA, 'utf8');
 
   function fermaConErrore(messaggio) {
     console.log('');
@@ -423,7 +423,7 @@ scriviLog('Avvio di Prisma...');
 const URL_MANIFESTO_AGGIORNAMENTI = 'https://raw.githubusercontent.com/IdleSouls/Prisma/main/versione.json';
 // Cambiala qui a ogni nuova versione pubblicata (deve combaciare con quella scritta nel
 // "versione.json" caricato su GitHub, altrimenti il confronto non ha senso).
-const VERSIONE_LOCALE = '1.16.1';
+const VERSIONE_LOCALE = '1.17.0';
 // Solo questi file possono essere sovrascritti da un aggiornamento - mai un nome libero/a piacere
 // del manifesto, per non correre il rischio (anche solo teorico, es. account GitHub compromesso)
 // di far scrivere un file arbitrario altrove sul PC del cliente.
@@ -456,12 +456,30 @@ function scaricaTesto(url, timeoutMs) {
   });
 }
 
+// Chiave pubblica per licenze e firma aggiornamenti: quella incorporata nell'app (passata da
+// Prisma.exe in PRISMA_CHIAVE_PUBBLICA, non modificabile dall'utente) ha la precedenza sul file
+// nella cartella. Null = installazione senza licenza (uso interno).
+function chiavePubblicaLicenza() {
+  if (process.env.PRISMA_CHIAVE_PUBBLICA) return process.env.PRISMA_CHIAVE_PUBBLICA;
+  try {
+    const f = path.join(CARTELLA, 'licensing', 'chiave-pubblica.pem');
+    return fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : null;
+  } catch (e) { return null; }
+}
 async function verificaAggiornamentoDisponibile() {
   const grezzo = await scaricaTesto(URL_MANIFESTO_AGGIORNAMENTI, 10000);
   let manifesto;
   try { manifesto = JSON.parse(grezzo.toString('utf8')); } catch (err) { throw new Error('Il manifesto degli aggiornamenti non è un JSON valido.'); }
   if (!manifesto || typeof manifesto.versione !== 'string' || !Array.isArray(manifesto.file)) {
     throw new Error('Il manifesto degli aggiornamenti non ha il formato atteso.');
+  }
+  // Firma del manifesto: obbligatoria nelle installazioni con licenza (hanno la chiave pubblica).
+  const chiavePub = chiavePubblicaLicenza();
+  if (chiavePub) {
+    const lib = require(path.join(CARTELLA, 'licensing', 'lib.js'));
+    if (!lib.verificaFirmaOggetto(manifesto, chiavePub)) {
+      throw new Error('Aggiornamento rifiutato: il manifesto non e\' firmato correttamente (potrebbe essere stato manomesso).');
+    }
   }
   return manifesto;
 }
@@ -1441,6 +1459,23 @@ function serviGestionale(res) {
   });
 }
 
+// Blocco dei tentativi di password: dopo 5 errori consecutivi dallo stesso indirizzo per lo stesso
+// nome, il login resta bloccato 5 minuti (in memoria: si azzera al riavvio del server).
+const erroriLogin = new Map();
+const LOGIN_MAX_ERRORI = 5, LOGIN_BLOCCO_MS = 5 * 60 * 1000;
+function tentativiLoginBloccati(chiave) {
+  const e = erroriLogin.get(chiave);
+  if (!e || !e.bloccatoFino) return 0;
+  const resta = e.bloccatoFino - Date.now();
+  if (resta <= 0) { erroriLogin.delete(chiave); return 0; }
+  return resta;
+}
+function registraErroreLogin(chiave) {
+  const e = erroriLogin.get(chiave) || { n: 0, bloccatoFino: 0 };
+  e.n++;
+  if (e.n >= LOGIN_MAX_ERRORI) { e.bloccatoFino = Date.now() + LOGIN_BLOCCO_MS; e.n = 0; }
+  erroriLogin.set(chiave, e);
+}
 function leggiCorpoRichiesta(req, callback) {
   let corpo = '';
   req.on('data', (chunk) => {
@@ -1458,12 +1493,21 @@ function leggiCorpoRichiesta(req, callback) {
 function gestisciRichiesta(req, res) {
   const url = req.url.split('?')[0];
 
-  // Consenti l'uso anche da un indirizzo diverso da quello con cui si e' aperta la pagina
-  // (utile se in futuro si vuole aprire da un dominio diverso sulla stessa rete)
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Client-Id');
+  // SICUREZZA: nessun header CORS. Prima c'era "Access-Control-Allow-Origin: *", che permetteva a
+  // QUALUNQUE sito aperto nel browser di leggere i dati dello studio da questo server. La pagina di
+  // Prisma e il server hanno la stessa origine, quindi CORS non serve. Per sicurezza una richiesta
+  // che scrive (non GET) con un'origine diversa da quella del server viene rifiutata: blocca i siti
+  // esterni che provassero a scrivere dati "alla cieca".
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+  if (req.method !== 'GET' && req.method !== 'HEAD' && req.headers.origin) {
+    let origineHost = null;
+    try { origineHost = new URL(req.headers.origin).host.toLowerCase(); } catch (e) { origineHost = null; }
+    if (origineHost !== String(req.headers.host || '').toLowerCase()) {
+      res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('Richiesta da un\'origine non consentita.');
+      return;
+    }
+  }
 
   if (url === '/' || url === '/gestionale.htm') {
     serviGestionale(res);
@@ -1601,11 +1645,11 @@ function gestisciRichiesta(req, res) {
     // a server.js l'installazione non e' licenziata (uso interno): richiesta=false.
     let info = { richiesta: false };
     try {
-      const filePub = path.join(CARTELLA, 'licensing', 'chiave-pubblica.pem');
-      if (fs.existsSync(filePub)) {
+      const chiavePub = chiavePubblicaLicenza();
+      if (chiavePub) {
         const lib = require(path.join(CARTELLA, 'licensing', 'lib.js'));
         const lic = JSON.parse(fs.readFileSync(path.join(CARTELLA, 'license.json'), 'utf8'));
-        const esito = lib.verificaLicenza(lic, fs.readFileSync(filePub, 'utf8'));
+        const esito = lib.verificaLicenza(lic, chiavePub);
         info = { richiesta: true, valida: !!esito.valida, studio: (esito.dati || lic).studio || null, scadenza: (esito.dati || lic).scadenza || null, fingerprint: lib.calcolaFingerprint(), motivo: esito.motivo || null };
       }
     } catch (err) { info = { richiesta: true, valida: false, motivo: 'licenza non leggibile' }; }
@@ -1795,6 +1839,13 @@ function gestisciRichiesta(req, res) {
         const nome = String(dati.nome || '').trim();
         const password = String(dati.password || '');
         const deviceId = String(dati.deviceId || '').trim() || null;
+        const chiaveTentativi = ((req.socket && req.socket.remoteAddress) || '?') + '|' + nome.toLowerCase();
+        const blocco = tentativiLoginBloccati(chiaveTentativi);
+        if (blocco) {
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ ok: false, errore: 'Troppi tentativi errati. Riprova tra ' + Math.ceil(blocco / 60000) + ' minuti.' }));
+          return;
+        }
         const cfg = leggiResponsabiliPassword();
         const passwordAttesa = cfg[nome];
         if (!passwordAttesa) {
@@ -1807,10 +1858,12 @@ function gestisciRichiesta(req, res) {
         const b = Buffer.from(passwordAttesa);
         const passwordCorretta = a.length === b.length && crypto.timingSafeEqual(a, b);
         if (!passwordCorretta) {
+          registraErroreLogin(chiaveTentativi);
           res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
           res.end(JSON.stringify({ ok: false, errore: 'Password non corretta.' }));
           return;
         }
+        erroriLogin.delete(chiaveTentativi);
         const sessioneAttuale = sessioneAttivaPerNome.get(nome);
         const occupatoDaAltri = sessioneAttuale
           && sessioneAttuale.deviceId !== deviceId
@@ -2787,7 +2840,26 @@ function gestisciRichiesta(req, res) {
   res.end('Non trovato');
 }
 
-const server = http.createServer(gestisciRichiesta);
+// Anti "DNS rebinding": un sito malevolo puo' far puntare un proprio nome a questo PC. Si accettano
+// solo richieste fatte a localhost, a un indirizzo IP, al nome di questo computer o a un nome .local.
+function hostConsentito(req) {
+  const host = String(req.headers.host || '').toLowerCase().replace(/:\d+$/, '').replace(/^\[|\]$/g, '');
+  if (!host) return false;
+  if (host === 'localhost' || host.endsWith('.localhost')) return true;
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return true;
+  if (host.includes(':')) return true; // indirizzo IPv6
+  if (host === String(os.hostname() || '').toLowerCase()) return true;
+  if (host.endsWith('.local')) return true;
+  return false;
+}
+const server = http.createServer((req, res) => {
+  if (!hostConsentito(req)) {
+    res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Indirizzo non consentito.');
+    return;
+  }
+  gestisciRichiesta(req, res);
+});
 
 // ---------------------------------------------------------------------------
 // Accesso esterno (ngrok): UNA SOLA porta (8421) per sia il portale clienti (percorsi
@@ -3086,9 +3158,9 @@ async function provaCollegamento() {
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 2500);
-      const risp = await fetch(url + 'api/stato', { signal: controller.signal });
+      await fetch(url + 'api/versione', { signal: controller.signal, mode: 'no-cors' });
       clearTimeout(timer);
-      if (risp.ok) { window.location.href = url; return; }
+      window.location.href = url; return; // risposta "opaca": basta sapere che il server risponde
     } catch (e) { /* provo il prossimo indirizzo */ }
   }
   spinner.style.display = 'none';

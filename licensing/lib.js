@@ -144,4 +144,15 @@ function verificaLicenza(licenzaConFirma, chiavePubblicaPem, opzioni) {
   return { valida: true, motivo: null, dati };
 }
 
-module.exports = { calcolaFingerprint, generaChiavi, firmaLicenza, verificaLicenza, testoCanonico };
+// Verifica solo la firma di un oggetto {..., firma} (senza fingerprint/scadenza): serve per il
+// manifesto degli aggiornamenti, firmato da Matteo con la stessa chiave delle licenze.
+function verificaFirmaOggetto(oggettoConFirma, chiavePubblicaPem) {
+  try {
+    if (!oggettoConFirma || typeof oggettoConFirma !== 'object' || !oggettoConFirma.firma) return false;
+    const { firma, ...dati } = oggettoConFirma;
+    const chiave = crypto.createPublicKey(chiavePubblicaPem);
+    return crypto.verify(null, Buffer.from(testoCanonico(dati), 'utf8'), chiave, Buffer.from(firma, 'base64'));
+  } catch (err) { return false; }
+}
+
+module.exports = { calcolaFingerprint, generaChiavi, firmaLicenza, verificaLicenza, testoCanonico, verificaFirmaOggetto };

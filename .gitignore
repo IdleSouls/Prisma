@@ -59,3 +59,4 @@ backup-esterno.json
 electron-app/payload/
 electron-app/dist-setup/
 licensing/Licenze-emesse.xlsx
+electron-app/chiave-pubblica.pem

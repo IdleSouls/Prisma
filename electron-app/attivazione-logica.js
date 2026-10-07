@@ -55,10 +55,18 @@ function sincronizzaPayload(payload, dest) {
   return esito;
 }
 
-function statoLicenza(cartella) {
+// chiavePem: chiave pubblica INCORPORATA nell'app (non modificabile dall'utente). Se assente (uso
+// portable/interno) si usa il file nella cartella, come prima.
+function chiavePubblicaDa(cartella, chiavePem) {
+  if (chiavePem) return chiavePem;
   const filePub = path.join(cartella, 'licensing', 'chiave-pubblica.pem');
+  return fs.existsSync(filePub) ? fs.readFileSync(filePub, 'utf8') : null;
+}
+
+function statoLicenza(cartella, chiavePem) {
   const fileLib = path.join(cartella, 'licensing', 'lib.js');
-  if (!fs.existsSync(filePub) || !fs.existsSync(fileLib)) return { richiesta: false, valida: true };
+  const pem = chiavePubblicaDa(cartella, chiavePem);
+  if (!pem || !fs.existsSync(fileLib)) return { richiesta: false, valida: true };
   const lib = require(fileLib);
   const fingerprint = lib.calcolaFingerprint();
   const fileLic = path.join(cartella, 'license.json');
@@ -67,19 +75,19 @@ function statoLicenza(cartella) {
   try { grezza = JSON.parse(fs.readFileSync(fileLic, 'utf8')); } catch (e) {
     return { richiesta: true, valida: false, motivo: 'Il file di licenza presente è illeggibile.', fingerprint };
   }
-  const esito = lib.verificaLicenza(grezza, fs.readFileSync(filePub, 'utf8'));
+  const esito = lib.verificaLicenza(grezza, pem);
   if (!esito.valida) return { richiesta: true, valida: false, motivo: 'Licenza non valida: ' + esito.motivo + '.', fingerprint };
   return { richiesta: true, valida: true, studio: esito.dati.studio, scadenza: esito.dati.scadenza || null, fingerprint };
 }
 
-function installaLicenza(cartella, testo) {
+function installaLicenza(cartella, testo, chiavePem) {
   let grezza;
   try { grezza = JSON.parse(testo); } catch (e) { return { ok: false, errore: 'Il file scelto non è una licenza Prisma valida (non è leggibile).' }; }
-  const filePub = path.join(cartella, 'licensing', 'chiave-pubblica.pem');
   const fileLib = path.join(cartella, 'licensing', 'lib.js');
-  if (!fs.existsSync(filePub) || !fs.existsSync(fileLib)) return { ok: false, errore: 'Installazione incompleta: manca il modulo licenze. Reinstalla Prisma.' };
+  const pem = chiavePubblicaDa(cartella, chiavePem);
+  if (!pem || !fs.existsSync(fileLib)) return { ok: false, errore: 'Installazione incompleta: manca il modulo licenze. Reinstalla Prisma.' };
   const lib = require(fileLib);
-  const esito = lib.verificaLicenza(grezza, fs.readFileSync(filePub, 'utf8'));
+  const esito = lib.verificaLicenza(grezza, pem);
   if (!esito.valida) return { ok: false, errore: 'Licenza non valida: ' + esito.motivo + '.' };
   fs.writeFileSync(path.join(cartella, 'license.json'), JSON.stringify(grezza, null, 2), 'utf8');
   return { ok: true, studio: esito.dati.studio, scadenza: esito.dati.scadenza || null };

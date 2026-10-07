@@ -57,6 +57,9 @@ const CARTELLA_INSTALLAZIONE = process.env.PRISMA_INSTALL_DEST
   || process.env.PORTABLE_EXECUTABLE_DIR
   || path.join(os.homedir(), 'Prisma');
 const ICONA = path.join(__dirname, 'icona.ico');
+// Chiave pubblica per verificare le licenze: nell'installer sta DENTRO l'app (app.asar), non nella
+// cartella dati dove l'utente potrebbe sostituirla. Assente nel Prisma.exe portable di uso interno.
+const CHIAVE_PUBBLICA = (() => { try { return fs.readFileSync(path.join(__dirname, 'chiave-pubblica.pem'), 'utf8'); } catch (e) { return null; } })();
 
 // Stesso file di log di server.js (stessa cartella "logs" dentro l'installazione): un problema che
 // impedisce persino di arrivare a require(server.js) - es. un bug in questo file, o un crash di
@@ -107,6 +110,7 @@ if (!puoProseguire) app.quit();
 function avviaServer() {
   // Impedisce a server.js di aprire un browser suo: ci pensa questa finestra Electron.
   process.env.PRISMA_SKIP_AUTOOPEN = '1';
+  if (CHIAVE_PUBBLICA) process.env.PRISMA_CHIAVE_PUBBLICA = CHIAVE_PUBBLICA; // server.js la usa al posto del file in cartella
   if (MODALITA_INSTALLATA) {
     // jsdom, pdf-lib, web-push stanno nell'installer: li rendiamo visibili a server.js
     // (che vive nella cartella dati) senza doverli copiare.
@@ -241,7 +245,7 @@ if (puoProseguire) {
     ipcMain.handle('att:stato', () => stato);
     ipcMain.handle('att:copia', (ev, testo) => { clipboard.writeText(String(testo || '')); return true; });
     ipcMain.handle('att:invia', (ev, testo) => {
-      try { return dopoLicenza(logica.installaLicenza(CARTELLA_INSTALLAZIONE, String(testo || ''))); }
+      try { return dopoLicenza(logica.installaLicenza(CARTELLA_INSTALLAZIONE, String(testo || ''), CHIAVE_PUBBLICA)); }
       catch (e) { return { ok: false, errore: 'Errore imprevisto: ' + e.message }; }
     });
     ipcMain.handle('att:scegli-file', async () => {
@@ -250,7 +254,7 @@ if (puoProseguire) {
         filters: [{ name: 'Licenza Prisma', extensions: ['json'] }, { name: 'Tutti i file', extensions: ['*'] }]
       });
       if (r.canceled || !r.filePaths.length) return { annullato: true };
-      try { return dopoLicenza(logica.installaLicenza(CARTELLA_INSTALLAZIONE, fs.readFileSync(r.filePaths[0], 'utf8'))); }
+      try { return dopoLicenza(logica.installaLicenza(CARTELLA_INSTALLAZIONE, fs.readFileSync(r.filePaths[0], 'utf8'), CHIAVE_PUBBLICA)); }
       catch (e) { return { ok: false, errore: 'Non riesco a leggere il file: ' + e.message }; }
     });
   }
@@ -269,7 +273,7 @@ if (puoProseguire) {
       }
     }
     let stato = { richiesta: false, valida: true };
-    try { stato = logica.statoLicenza(CARTELLA_INSTALLAZIONE); } catch (err) { scriviLogCrash('Controllo licenza fallito: ' + err.message); }
+    try { stato = logica.statoLicenza(CARTELLA_INSTALLAZIONE, CHIAVE_PUBBLICA); } catch (err) { scriviLogCrash('Controllo licenza fallito: ' + err.message); }
     if (stato.richiesta && !stato.valida) {
       scriviLogCrash('Licenza non attiva: ' + stato.motivo + ' (codice ' + stato.fingerprint + ')');
       mostraAttivazione(stato);
