@@ -1,17 +1,17 @@
 {
-  "versione": "1.16.0",
-  "note": "Questionario di primo avvio, utenza master e tab Gestione studio (licenza); moduli Cruscotto/Carico/CPB",
+  "versione": "1.16.1",
+  "note": "Pulsante ? con guida in ogni sezione",
   "richiedeNpmInstall": false,
   "file": [
     {
       "nome": "gestionale.htm",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale.htm",
-      "sha256": "eb7109e460d675f9745318c2e2556a8e74b8d7f80ff595b9ff9bac809233892c"
+      "sha256": "94b06ac88655c93a4cd1576198c9738d53435d0fef17b41c98d99fd60e0515ee"
     },
     {
       "nome": "server.js",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/server.js",
-      "sha256": "8c574c8ad5464f90f4a579c9aa5f7a001794d58f90ad04b942237cc3f0db45d6"
+      "sha256": "7e4dc1dce430e9347a4cf7dbefd2052a26b5559e4a8adcf7c8abeea996f6f039"
     },
     {
       "nome": "portale-cliente.htm",

@@ -641,7 +641,7 @@ select[multiple]{min-height:150px;}
 <div id="main">
   <div id="topbar">
     <div>
-      <h1 id="pageTitle">Dashboard</h1>
+      <h1 id="pageTitle" style="display:inline-block;">Dashboard</h1> <button class="btn small ghost" id="btnGuidaTab" data-action="guida-tab" title="Come si usa questa sezione" style="display:none;border-radius:50%;width:26px;height:26px;padding:0;vertical-align:middle;margin-left:6px;">?</button>
       <div class="sub" id="pageSub"></div>
     </div>
     <div style="display:flex;align-items:center;gap:10px;">
@@ -4608,6 +4608,7 @@ function render() {
   const [title, sub] = PAGE_TITLES[VIEW] || ['', ''];
   document.getElementById('pageTitle').textContent = title;
   document.getElementById('pageSub').textContent = sub;
+  const btnGuida = document.getElementById('btnGuidaTab'); if (btnGuida) btnGuida.style.display = GUIDA_TAB[VIEW] ? '' : 'none';
   const content = document.getElementById('content');
   // Task #196: ogni render() ricrea il DOM e la conversazione della chat ripartiva dal primo
   // messaggio. Si ricorda la posizione (e se si era in fondo) PRIMA di ridisegnare, poi si
@@ -15844,6 +15845,7 @@ function onClickDelegato(e) {
       chiudiModal(); render(); toast(editing ? 'Cliente aggiornato.' : 'Cliente aggiunto.');
       break;
     }
+    case 'guida-tab': apriGuidaTab(); break;
     case 'chiudi-modal': chiudiModal(); break;
     case 'pagina-prev': { const v = el.dataset.vista; PAGINE[v] = Math.max(1, (PAGINE[v]||1) - 1); render(); break; }
     case 'pagina-next': { const v = el.dataset.vista; const tot = Number(el.dataset.tot)||1; PAGINE[v] = Math.min(tot, (PAGINE[v]||1) + 1); render(); break; }
@@ -18479,6 +18481,65 @@ function init() {
   if (!avviaSetupSeServe()) eventualeSelettoreOperatore(); // primo avvio: questionario; altrimenti task #98: chiede "chi sei" solo se serve (2+ responsabili, non ancora scelto su questo PC)
   inizializzaSyncCondiviso(); // asincrono, non blocca il primo render: se non disponibile (file locale) non fa nulla
 }
+
+/* -------------------- Guida in ogni sezione (pulsante "?" accanto al titolo) -------------------- */
+const GUIDA_TAB = {
+  oggi: { cosa: 'La tua giornata: solo ciò che tocca a te, senza il rumore del resto dello studio.', funzioni: ['Scadenze urgenti assegnate a te', 'Fasi di adempimento pronte per te (quando il collega precedente ha finito)', 'Task e messaggi da leggere'], consiglio: 'Aprila ogni mattina: se è vuota, sei in pari.' },
+  dashboard: { cosa: 'Il quadro di tutto lo studio: scadenze, adempimenti e onboarding di tutti.', funzioni: ['Conteggi per stato e per urgenza', 'Filtri per responsabile', 'Accesso rapido alle sezioni che richiedono attenzione'], consiglio: 'Per vedere solo il tuo lavoro usa "Il mio lavoro".' },
+  cruscotto: { cosa: 'Vista d\'insieme per il titolare: portafoglio clienti, nuovi e cessati, preventivi, fatturazione e avanzamento degli adempimenti.', funzioni: ['Clienti per tipologia e andamento', 'Preventivi in attesa e accettati', 'Avanzamento adempimenti per fase'], consiglio: 'Se non ti serve, spegni il modulo da Impostazioni › Moduli.' },
+  calendario: { cosa: 'Calendario mensile con scadenze, appuntamenti e impegni.', funzioni: ['Vista mese, settimana e giorno', 'Nuovo evento: appuntamento o scadenza ricorrente', '"Prenota un appuntamento" con un consulente, con controllo dei conflitti di orario'], consiglio: 'Clicca un giorno per vedere e aggiungere tutto ciò che lo riguarda.' },
+  clienti: { cosa: 'Anagrafica dei clienti e dei flag fiscali che generano le scadenze.', funzioni: ['Nuovo cliente o import da Excel/CSV', 'Filtri per regime, responsabile e stato (anche cessati)', 'Cessazione cliente con data e adempimenti ceduti al nuovo commercialista'], consiglio: 'I flag fiscali del cliente decidono quali scadenze gli vengono generate: tienili aggiornati.' },
+  rubrica: { cosa: 'Tutti i contatti dei clienti in un unico elenco ricercabile.', funzioni: ['Ricerca per nome, ruolo o cliente', 'Contatti collegati ai clienti'], consiglio: 'Se usate già un\'altra rubrica puoi spegnere il modulo.' },
+  schedacliente: { cosa: 'Tutto ciò che riguarda un singolo cliente in un posto solo.', funzioni: ['Scadenze, adempimenti, documenti e comunicazioni del cliente', 'Rapporto con lo studio: contabilità interna o da terzi', 'Report mensile da inviare al cliente'], consiglio: 'Si apre cliccando il nome di un cliente da qualsiasi elenco.' },
+  soci: { cosa: 'Persone collegate ai clienti: soci, amministratori, referenti.', funzioni: ['Anagrafica per socio con ruolo', 'Collegamento a uno o più clienti'], consiglio: 'Utile per sapere a chi rivolgersi per ogni società.' },
+  scadenze: { cosa: 'Scadenze periodiche (IVA, INPS, ritenute, IMU, Intrastat…) generate automaticamente dai flag del cliente.', funzioni: ['Segna una scadenza come fatta, in corso o da fare', 'Filtri per periodo, tipo, cliente e responsabile', 'Importi e note per ogni scadenza'], consiglio: 'Non devi creare le scadenze a mano: se ne manca una, controlla i flag del cliente.' },
+  ritenute: { cosa: 'Registro delle fatture con ritenuta d\'acconto e cumulo dei versamenti (soglia 100 € al mese).', funzioni: ['Inserimento righe per cliente', 'Calcolo del cumulo da versare', 'Collegamento all\'F24'], consiglio: 'Controlla sempre la soglia prima di rinviare un versamento.' },
+  annuali: { cosa: 'Dichiarazioni e adempimenti annuali, divisi in fasi con un responsabile per ogni fase.', funzioni: ['Fasi pronte / in attesa / completate', 'Passaggio di consegne: chi finisce una fase avvisa chi segue', 'Proroghe e adempimenti ceduti nei clienti cessati'], consiglio: 'Segna le fasi man mano: il cruscotto e "Il mio lavoro" si aggiornano da soli.' },
+  f24: { cosa: 'Registro degli F24 versati o compensati per cliente.', funzioni: ['Righe multiple con codici tributo', 'Pagamento anche misto (versamento e compensazione)'], consiglio: 'Registra l\'F24 appena pagato per tenere allineato il cumulo ritenute.' },
+  taskteam: { cosa: 'Compiti interni dello studio, assegnati a una persona con scadenza.', funzioni: ['Crea, assegna e chiudi task', 'Collegamento a procedure interne', 'Notifica quando un task ti viene assegnato o modificato'], consiglio: 'Per le cose ricorrenti di studio usa le procedure interne, non i task.' },
+  onboarding: { cosa: 'Checklist di attivazione per un nuovo cliente.', funzioni: ['Voci da spuntare una a una', 'Si crea da sola quando un preventivo viene accettato'], consiglio: 'Il cliente è "operativo" quando la checklist è completa.' },
+  antiriciclaggio: { cosa: 'Adeguata verifica, profilo di rischio e storico delle verifiche per cliente.', funzioni: ['Compilazione guidata dei modelli', 'Rischio per cliente e storico', 'Documenti collegati'], consiglio: 'Conserva sempre la data dell\'ultima verifica: è ciò che ti chiede un controllo.' },
+  comunicazioni: { cosa: 'Messaggi tra studio e clienti e comunicazioni ricorrenti.', funzioni: ['Conversazioni per cliente con stato aperto/chiuso', 'Comunicazioni ricorrenti (es. richieste periodiche)', 'Notifiche per i messaggi non letti'], consiglio: 'I messaggi arrivano al cliente solo se ha il portale attivo.' },
+  documenti: { cosa: 'Archivio documenti dello studio e dei clienti.', funzioni: ['Cartelle per cliente', 'Richieste di documenti con checklist e solleciti', 'Anteprima e download'], consiglio: 'Le richieste documenti sono il modo più veloce per sollecitare un cliente.' },
+  preventivi: { cosa: 'Preventivi, mandati e lettere d\'incarico da modelli precompilati.', funzioni: ['Crea documento dal modello e dal catalogo attività', 'Accettazione: crea il cliente e l\'onboarding', 'Mandati in scadenza da rinnovare'], consiglio: 'Il catalogo attività (Impostazioni) calcola da solo gli importi.' },
+  portale: { cosa: 'Anteprima di ciò che vede il cliente nel suo portale.', funzioni: ['Scadenze, documenti e comunicazioni', 'Accesso individuale per cliente'], consiglio: 'Attivalo solo per i clienti che lo useranno davvero: non sostituisce la mail.' },
+  bilanci: { cosa: 'Situazioni economico-patrimoniali, indici e grafici.', funzioni: ['Carica un bilancio e ottieni indici con semafori', 'Confronto tra periodi', 'Spiegazioni degli indici in parole semplici'], consiglio: 'Utile se fate consulenza sui numeri dei clienti; altrimenti spegni il modulo.' },
+  modelli: { cosa: 'Testi precompilati per preventivi, mandati e antiriciclaggio.', funzioni: ['Editor con segnaposto {{così}} che diventano campi', 'Immagini e formattazione di base'], consiglio: 'I segnaposto mancanti si evidenziano in giallo prima dell\'uso.' },
+  incassi: { cosa: 'Compensi da incassare, scadenze di pagamento e solleciti.', funzioni: ['Elenco per cliente e stato', 'Solleciti dal portale', 'Registrazione dell\'incasso'], consiglio: 'È un promemoria per lo studio, non un programma di fatturazione.' },
+  carico: { cosa: 'Scadenze e adempimenti aperti per persona e per mese.', funzioni: ['Chi è sovraccarico e chi ha spazio', 'Filtro per mese'], consiglio: 'Usalo prima di assegnare una nuova pratica.' },
+  proroghe: { cosa: 'Sposta in blocco una scadenza per tutti i clienti interessati (decreti di proroga).', funzioni: ['Scegli scadenza, nuova data e clienti', 'Registro delle proroghe applicate'], consiglio: 'Controlla l\'anteprima dei clienti coinvolti prima di confermare.' },
+  cpb: { cosa: 'Concordato preventivo biennale: stato di adesione per cliente.', funzioni: ['Stato per cliente e note'], consiglio: 'Le regole fiscali cambiano: verifica sempre le soglie sulle fonti ufficiali.' },
+  deontologia: { cosa: 'Obblighi deontologici dello studio.', funzioni: ['Check-list di accettazione incarico', 'Registro dell\'uso dell\'IA', 'Formazione continua (FPC)', 'Impegni di riservatezza e privacy'], consiglio: 'Compila la check-list all\'accettazione dell\'incarico, non dopo.' },
+  libri: { cosa: 'Libri sociali dei clienti.', funzioni: ['Chi detiene il libro', 'Ultima stampa e ultima pagina'], consiglio: 'Aggiorna la data dopo ogni stampa o vidimazione.' },
+  fatturazione: { cosa: 'Attività extra da fatturare e periodicità di fatturazione di ogni cliente.', funzioni: ['Registra le pratiche extra man mano', 'Segnale "da fatturare" alla prossima fattura periodica', 'Segna come fatturate'], consiglio: 'È un promemoria: la fattura la emetti nel tuo software di fatturazione.' },
+  procedure: { cosa: 'Istruzioni operative passo per passo per lo staff.', funzioni: ['Procedure con checklist documenti', 'Collegamento a task e appuntamenti'], consiglio: 'Scrivi una procedura per ogni cosa che spieghi più di due volte.' },
+  strumenti: { cosa: 'Convertitore Word/PDF e unisci/dividi PDF.', funzioni: ['Conversione file', 'Unione e divisione PDF'], consiglio: 'La conversione richiede LibreOffice sul PC del server.' },
+  credenziali: { cosa: 'Archivio delle credenziali dello studio e dei clienti (Entratel, Telemaco, home banking…).', funzioni: ['Campi personalizzabili per voce', 'Cifrate sul PC dello studio'], consiglio: 'Fai il backup anche del file chiave: senza non si leggono.' },
+  impostazioni: { cosa: 'Configurazione dello studio.', funzioni: ['Studio, team e accessi, moduli', 'Backup e ripristino', 'Catalogo attività e aggiornamenti', 'Gestione studio (solo master): licenza'], consiglio: 'Se qualcosa non compare nel menu, controlla i moduli.' },
+  chat: { cosa: 'Messaggi diretti tra i collaboratori.', funzioni: ['Conversazioni per persona', 'Riferimenti a pratiche, task e documenti', 'Indicatore online'], consiglio: 'Per cose da non dimenticare crea un task: la chat scorre.' },
+};
+function guidaTabHtml(view) {
+  const g = GUIDA_TAB[view];
+  if (!g) return '';
+  const titolo = (PAGE_TITLES[view] || [view])[0];
+  return `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
+    <div class="modal" style="max-width:560px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div><h2>Guida: ${escapeHtml(titolo)}</h2></div>
+        <button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button>
+      </div>
+      <p style="margin:12px 0 8px;">${escapeHtml(g.cosa)}</p>
+      <div style="font-size:12px;font-weight:700;color:var(--text-mut);text-transform:uppercase;margin:12px 0 4px;">Cosa puoi fare qui</div>
+      <ul style="margin:0 0 12px 18px;padding:0;line-height:1.55;">${g.funzioni.map(f => `<li>${escapeHtml(f)}</li>`).join('')}</ul>
+      <div class="helptext" style="background:var(--bg-2,#f7f8fa);border-radius:8px;padding:10px 12px;"><strong>Consiglio:</strong> ${escapeHtml(g.consiglio)}</div>
+      <div class="modal-actions"><button class="btn primary" data-action="chiudi-modal">Ho capito</button></div>
+    </div>
+  </div>`;
+}
+function apriGuidaTab() { const html = guidaTabHtml(VIEW); if (html) h('modalRoot').innerHTML = html; }
+window.GUIDA_TAB = GUIDA_TAB;
+window.PAGE_TITLES = PAGE_TITLES;
+window.apriGuidaTab = apriGuidaTab;
 
 /* -------------------- Master, "Gestione studio" e questionario di primo avvio -------------------- */
 // Master = utenza che gestisce moduli, utenze e licenza. Compatibilità: se nessun responsabile ha

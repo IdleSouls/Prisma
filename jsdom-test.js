@@ -6640,6 +6640,22 @@ async function main() {
     assert(!window.setupDaFare(), 'Setup: lo stato originale (con clienti) non deve richiederlo');
     console.log('=== Questionario di primo avvio + master: OK');
   }
+  // ===== Guida "?" per tab =====
+  {
+    const senza = Object.keys(window.PAGE_TITLES).filter(v => !window.GUIDA_TAB[v] && v !== 'contabilita');
+    assert(senza.length === 0, 'Guida: sezioni senza guida: ' + senza.join(', '));
+    for (const v of ['oggi', 'clienti', 'scadenze', 'annuali', 'taskteam', 'fatturazione', 'impostazioni']) {
+      window.setView(v);
+      const b = q('#btnGuidaTab');
+      assert(b && b.style.display !== 'none', 'Guida: pulsante ? deve esserci in ' + v);
+      click(b);
+      assert(q('.modal') && /Cosa puoi fare qui/.test(q('.modal').textContent), 'Guida: modal assente in ' + v);
+      click(q('[data-action="chiudi-modal"]'));
+      assert(!q('.modal'), 'Guida: deve chiudersi');
+    }
+    window.setView('dashboard');
+    console.log('=== Guida "?" per tab: OK');
+  }
   console.log('\n✅ TUTTI I TEST END-TO-END PASSATI (' + errors.length + ' errori console catturati)');
   if (errors.length) {
     console.log('--- Dettaglio errori console/jsdom catturati durante il test ---');
