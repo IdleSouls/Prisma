@@ -107,11 +107,11 @@ Variabili d'ambiente opzionali (via `"env"` nella configurazione sopra):
 - **crea_preventivo / modifica_preventivo / elimina_preventivo** — crea_preventivo risolve il testo
   da un modello esistente (vedi catalogo_studio per modelloId) e può collegare attività a listino
   (attivitaIds), calcolando l'importo dalla somma dei prezzi se non indicato esplicitamente.
-- **modifica_scadenza** — aggiorna stato/importo/responsabile/nota di una scadenza periodica
-  esistente (le scadenze si generano da sole dal catalogo, qui si aggiornano soltanto).
-- **aggiorna_step_controllo** — segna completato/da fare uno step (Calcolato/Comunicato al
-  cliente/Versamento predisposto/Inviato) di una scadenza.
-- **aggiorna_sotto_adempimento** — stato di avanzamento di un sotto-adempimento annuale.
+- **modifica_scadenza** — aggiorna avanzamento/importo/responsabile/nota di una scadenza periodica
+  esistente. Ogni adempimento ha le sue fasi (es. fatture estere: Registrate, Inviate; IVA: Calcolata,
+  F24 inviato al cliente, Addebitato dallo studio), elencate da `scadenze` in `avanzamentiPossibili`.
+- **aggiorna_sotto_adempimento** — stato di avanzamento di un sotto-adempimento annuale (Prisma registra chi lo ha spuntato).
+- **modifica_adempimento_annuale** — note, scadenza o responsabile di un adempimento annuale.
 
 I tool `modifica_*` accettano un parametro `patch`: un oggetto con SOLO i campi da cambiare (viene
 fatto un merge, non una sostituzione del record intero).
@@ -140,3 +140,7 @@ browser con il gestionale aperto non c'è nessun posto sicuro dove eseguire una 
 tool fallisce chiaramente invece di provare a scrivere direttamente sui dati con una logica
 riscritta a parte in Node (che rischierebbe di creare clienti/scadenze incoerenti con quello che
 l'app si aspetta).
+
+## Altre IA (ChatGPT, Gemini, Mistral, Perplexity…): endpoint HTTP
+
+`server-http.js` espone gli stessi tool via MCP Streamable HTTP (porta 8423, solo 127.0.0.1) con chiave segreta in `token-ia.txt` (auto-generata, nel .gitignore). Parte da solo con `server.js`, oppure a mano: `node server-http.js`. Test: `node test-http.mjs`. Guida completa: `../Documenti-Prisma/GUIDA-COLLEGARE-CHATGPT-GEMINI-E-ALTRE-IA.md`.

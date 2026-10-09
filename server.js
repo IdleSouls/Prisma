@@ -1582,6 +1582,28 @@ function gestisciRichiesta(req, res) {
     return;
   }
 
+  // Collegamento delle IA via URL (ChatGPT, Gemini...): dice se il server MCP HTTP è attivo e dà il
+  // token. Solo da questo PC (loopback): il token è l'unica chiave d'accesso ai dati dello studio.
+  if (url === '/api/ia-collegamento' && req.method === 'GET') {
+    const ip = String((req.socket && req.socket.remoteAddress) || '');
+    if (!/^(::1|127\.0\.0\.1|::ffff:127\.0\.0\.1)$/.test(ip)) { res.writeHead(403, { 'Content-Type': 'application/json' }); res.end('{"ok":false,"errore":"Disponibile solo da questo PC."}'); return; }
+    statoMcpHttp((attivo) => {
+      let token = '';
+      try { token = fs.readFileSync(FILE_TOKEN_IA, 'utf8').trim(); } catch (e) {}
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify({ ok: true, attivo, porta: PORTA_MCP_HTTP, token }));
+    });
+    return;
+  }
+  if (url === '/api/ia-nuovo-token' && req.method === 'POST') {
+    const ip = String((req.socket && req.socket.remoteAddress) || '');
+    if (!/^(::1|127\.0\.0\.1|::ffff:127\.0\.0\.1)$/.test(ip)) { res.writeHead(403); res.end(); return; }
+    try { fs.unlinkSync(FILE_TOKEN_IA); } catch (e) {}
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end('{"ok":true,"nota":"Chiudi e riapri Prisma per generare il nuovo token."}');
+    return;
+  }
+
   if (url === '/api/mcp-vista' && req.method === 'POST') {
     leggiCorpoRichiesta(req, (corpo) => {
       try {
@@ -2274,6 +2296,33 @@ function gestisciRichiesta(req, res) {
         res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ ok: false, errore: err.message }));
       }
+    });
+    return;
+  }
+
+  // Procedura guidata "accesso esterno": dice se ngrok è installato e permette di salvarne il token
+  // senza aprire un terminale. Il token è validato (solo caratteri alfanumerici/underscore) e passato
+  // come argomento (execFile, niente shell): non si può iniettare nessun comando.
+  if (url === '/api/ngrok-stato' && req.method === 'GET') {
+    execFile('ngrok', ['version'], { timeout: 6000, windowsHide: true }, (err, stdout) => {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ ok: true, installato: !err, versione: err ? '' : String(stdout || '').trim() }));
+    });
+    return;
+  }
+  if (url === '/api/ngrok-authtoken' && req.method === 'POST') {
+    leggiCorpoRichiesta(req, (corpo) => {
+      let token = '';
+      try { token = String((JSON.parse(corpo || '{}')).token || '').trim(); } catch (err) { /* resta vuoto */ }
+      if (!/^[A-Za-z0-9_]{20,120}$/.test(token)) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, errore: 'Il token non sembra valido: copialo per intero dalla pagina "Your Authtoken" di ngrok.' }));
+        return;
+      }
+      execFile('ngrok', ['config', 'add-authtoken', token], { timeout: 15000, windowsHide: true }, (err) => {
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify(err ? { ok: false, errore: 'ngrok non è installato (o non è nel PATH) su questo PC: completa prima il passo di installazione.' } : { ok: true }));
+      });
     });
     return;
   }
@@ -3257,7 +3306,32 @@ server.listen(PORTA, '0.0.0.0', () => {
   // L'app desktop Electron (Prisma.exe) apre già la sua finestra: imposta questa variabile
   // prima di avviare il server per evitare che se ne apra anche una seconda col browser.
   if (!process.env.PRISMA_SKIP_AUTOOPEN) apriBrowser('http://localhost:' + PORTA + '/');
+  avviaMcpHttp();
 });
+
+/* Server MCP via HTTP per ChatGPT, Gemini e altre IA (mcp-server/server-http.js, porta 8423, solo
+   su questo PC). Si avvia da solo se Node e le dipendenze di mcp-server sono presenti; se manca
+   qualcosa non succede nulla e le IA via URL restano semplicemente spente (Claude Desktop non
+   dipende da questo). */
+const PORTA_MCP_HTTP = 8423;
+const FILE_TOKEN_IA = path.join(CARTELLA_MCP_SERVER, 'token-ia.txt');
+function avviaMcpHttp() {
+  try {
+    if (!fs.existsSync(path.join(CARTELLA_MCP_SERVER, 'node_modules')) || !fs.existsSync(path.join(CARTELLA_MCP_SERVER, 'server-http.js'))) return;
+    const eseguibile = È_SEA ? 'node' : process.execPath;
+    const figlio = spawn(eseguibile, [path.join(CARTELLA_MCP_SERVER, 'server-http.js')], {
+      cwd: CARTELLA_MCP_SERVER, detached: true, stdio: 'ignore', windowsHide: true,
+      env: Object.assign({}, process.env, { GESTIONALE_SERVER_URL: 'http://localhost:' + PORTA, PRISMA_MCP_HTTP_PORT: String(PORTA_MCP_HTTP) })
+    });
+    figlio.on('error', (e) => scriviLog('MCP HTTP non avviato: ' + e.message));
+    figlio.unref();
+  } catch (err) { scriviLog('MCP HTTP non avviato: ' + err.message); }
+}
+function statoMcpHttp(callback) {
+  const r = http.get({ host: '127.0.0.1', port: PORTA_MCP_HTTP, path: '/salute', timeout: 1500 }, (resp) => { resp.resume(); callback(resp.statusCode === 200); });
+  r.on('timeout', () => r.destroy(new Error('timeout')));
+  r.on('error', () => callback(false));
+}
 
 server.on('error', (err) => {
   scriviLog('ERRORE AVVIO SERVER: ' + (err && err.stack ? err.stack : err));

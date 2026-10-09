@@ -1,8 +1,6 @@
-<!doctype html>
-<html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Prisma</title>
 <meta name="description" content="Prisma è il cruscotto operativo dello studio professionale: scadenze, adempimenti a fasi, attività e clienti in un unico ambiente. 50 euro al mese, tutto incluso.">
-<link rel="icon" href="img/favicon.png">
+<link rel="icon" href="{{FAVICON}}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Manrope:wght@400;500;600;700&display=swap">
@@ -51,7 +49,7 @@ p{margin:0}
 
 /* HERO */
 .hero{position:relative;min-height:100svh;display:flex;align-items:center;padding:120px 0 90px;overflow:hidden;isolation:isolate}
-.hero .bg{position:absolute;inset:-4% -2%;background:url(img/hero.jpg) 60% 45%/cover no-repeat;z-index:-2;animation:drift 22s ease-in-out infinite alternate;will-change:transform}
+.hero .bg{position:absolute;inset:-4% -2%;background:url({{HERO}}) 60% 45%/cover no-repeat;z-index:-2;animation:drift 22s ease-in-out infinite alternate;will-change:transform}
 @keyframes drift{from{transform:scale(1.04) translate3d(0,0,0)}to{transform:scale(1.12) translate3d(-1.5%,1%,0)}}
 .hero::before{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(90deg,rgba(5,9,19,.92) 0%,rgba(5,9,19,.6) 42%,rgba(5,9,19,.05) 75%),linear-gradient(0deg,var(--bg) 0%,transparent 28%)}
 .hero h1{font-size:clamp(38px,6.2vw,76px);font-weight:800;max-width:14ch}
@@ -356,10 +354,9 @@ footer .logo{font-size:17px}footer .logo img{width:26px;height:26px;border-radiu
 .pills span.r{color:#f6a3a9;border-color:rgba(244,124,132,.4)}.pills span.y{color:#f5cd78;border-color:rgba(242,190,60,.4)}.pills span.g{color:#7de3b0;border-color:rgba(60,200,130,.4)}
 </style>
 
-</head><body>
 <header class="nav" id="nav">
   <div class="wrap">
-    <a class="logo" href="#top" aria-label="Prisma, torna in cima"><img src="img/logo.png" alt="" width="34" height="34">Prisma</a>
+    <a class="logo" href="#top" aria-label="Prisma, torna in cima"><img src="{{LOGO}}" alt="" width="34" height="34">Prisma</a>
     <ul>
       <li><a href="#vedi">Schermate</a></li>
       <li><a href="#moduli">Moduli</a></li>
@@ -463,7 +460,7 @@ footer .logo{font-size:17px}footer .logo img{width:26px;height:26px;border-radiu
           <div class="wbar"><i></i><i></i><i></i><span>Prisma &middot; Studio Rossi e Associati</span></div>
           <div class="app">
             <div class="sb" id="vsb">
-              <div class="lg"><img src="img/logo.png" alt="" width="22" height="22">Prisma</div>
+              <div class="lg"><img src="{{LOGO}}" alt="" width="22" height="22">Prisma</div>
               <div class="it" data-f="0">Oggi</div>
               <div class="it" data-f="x">Il mio lavoro</div>
               <div class="gr">Scadenze</div>
@@ -760,7 +757,7 @@ footer .logo{font-size:17px}footer .logo img{width:26px;height:26px;border-radiu
 
 <footer>
   <div class="wrap">
-    <a class="logo" href="#top"><img src="img/logo.png" alt="" width="26" height="26">Prisma</a>
+    <a class="logo" href="#top"><img src="{{LOGO}}" alt="" width="26" height="26">Prisma</a>
     <span>Prodotto di <span class="ph">ragione sociale da inserire</span> · P. IVA <span class="ph">da inserire</span></span>
     <span><a href="#" onclick="return false">Privacy</a> · <a href="#" onclick="return false">Termini di licenza</a></span>
   </div>
@@ -866,5 +863,3 @@ footer .logo{font-size:17px}footer .logo img{width:26px;height:26px;border-radiu
   [].slice.call(d.querySelectorAll('.mi')).forEach(function(e){if(typeof io!=='undefined'){io.observe(e);}else{e.classList.add('in');}});
 })();
 </script>
-
-</body></html>

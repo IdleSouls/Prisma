@@ -133,20 +133,24 @@ export function creaServer(filePath, baseUrl) {
     'elenco_clienti',
     {
       title: 'Elenco clienti',
-      description: 'Elenca i clienti dello studio, con anagrafica essenziale (tipo, ATECO, regime fiscale, responsabile). Filtro opzionale per testo (ragione sociale) e per stato.',
+      description: 'Elenca i clienti dello studio, con anagrafica essenziale (tipo, ATECO, regime fiscale, periodicità IVA, responsabile, PMI/start-up innovativa, organo di controllo) e "datiMancanti" su due livelli: "gravi" (regime, periodicità IVA, responsabile, tenuta contabilità, CF/P.IVA) e "leggeri" (addebito F24, previdenza, PMI/start-up, organo di controllo, email/PEC, ATECO). Filtri opzionali: testo (ragione sociale), stato e "daCompletare" per vedere solo i clienti con anagrafica incompleta.',
       inputSchema: {
         query: z.string().optional().describe('Testo da cercare nella ragione sociale (parziale, senza distinzione tra maiuscole/minuscole).'),
         soloAttivi: z.boolean().optional().describe('Se true (default), esclude i clienti cessati.'),
+        daCompletare: z.enum(['gravi', 'tutti']).optional().describe('"gravi" = solo clienti a cui mancano dati importanti (alert rosso); "tutti" = anche quelli con soli dati utili mancanti (alert giallo).'),
       },
     },
-    async ({ query, soloAttivi }) => {
+    async ({ query, soloAttivi, daCompletare }) => {
       const { vista } = caricaVista(filePath);
       let elenco = vista.clienti;
       if (soloAttivi !== false) elenco = elenco.filter(c => c.stato !== 'cessato');
       if (query) { const q = normalizza(query); elenco = elenco.filter(c => normalizza(c.ragioneSociale).includes(q)); }
+      if (daCompletare) elenco = elenco.filter(c => c.datiMancanti && (c.datiMancanti.gravi.length || (daCompletare === 'tutti' && c.datiMancanti.leggeri.length)));
       return testoJson(elenco.map(c => ({
         id: c.id, ragioneSociale: c.ragioneSociale, tipo: c.tipo, atecoCodici: c.atecoCodici,
-        stato: c.stato, regimeFiscale: c.regimeFiscale, responsabileStudio: c.responsabileStudio,
+        stato: c.stato, regimeFiscale: c.regimeFiscale, periodicitaIva: c.periodicitaIva, responsabileStudio: c.responsabileStudio,
+        pmiInnovativa: c.pmiInnovativa, startupInnovativa: c.startupInnovativa, organoControllo: c.organoControllo,
+        datiMancanti: c.datiMancanti,
       })));
     }
   );
@@ -325,8 +329,13 @@ export function creaServer(filePath, baseUrl) {
         partitaIva: z.string().optional(),
         atecoCodici: z.array(z.string()).optional(),
         settore: z.string().optional(),
-        regimeFiscale: z.string().optional(),
+        regimeFiscale: z.string().optional().describe('Se non lo conosci NON inventarlo: lascialo vuoto, il cliente resterà "da completare" (alert rosso).'),
+        periodicitaIva: z.string().optional().describe('"Mensile", "Trimestrale" o "N.A." (forfettari). Se ignota, lascia vuoto.'),
         responsabileStudio: z.string().optional(),
+        iscrittoRegistroImprese: z.enum(['SI', 'NO']).optional().describe('Iscritto al Registro Imprese? Determina il diritto camerale delle ditte individuali (le società sono sempre iscritte).'),
+        pmiInnovativa: z.enum(['SI', 'NO']).optional().describe('Ha il requisito di PMI innovativa? Solo se noto.'),
+        startupInnovativa: z.enum(['SI', 'NO']).optional().describe('Ha il requisito di start-up innovativa? Solo se noto.'),
+        organoControllo: z.enum(['Nessuno', 'Sindaco unico', 'Collegio sindacale', 'Revisore legale', 'Società di revisione']).optional().describe('Organo di controllo (richiesto nel 770). Solo se noto.'),
         stato: z.string().optional().describe('"attivo" (default) o "cessato".'),
         note: z.string().optional(),
         altriCampi: z.record(z.unknown()).optional(),
@@ -339,7 +348,7 @@ export function creaServer(filePath, baseUrl) {
     'modifica_cliente',
     {
       title: 'Modifica cliente',
-      description: 'Aggiorna solo i campi indicati di un cliente esistente. Richiede il gestionale aperto via server.js.',
+      description: 'Aggiorna solo i campi indicati di un cliente esistente (anche pmiInnovativa/startupInnovativa "SI"|"NO", organoControllo, periodicitaIva, regimeFiscale…: compilandoli sparisce l\'alert "da completare"). Richiede il gestionale aperto via server.js.',
       inputSchema: { id: z.string(), patch: z.record(z.unknown()).describe(DESCR_PATCH_GENERICO) },
     },
     async ({ id, patch }) => testoEsitoScrittura(await inviaComando(url, 'modificaCliente', { id, patch }))
@@ -552,40 +561,35 @@ export function creaServer(filePath, baseUrl) {
     async ({ id }) => testoEsitoScrittura(await inviaComando(url, 'eliminaPreventivo', { id }))
   );
 
-  // ---------- SCADENZE E STEP DI CONTROLLO ----------
+  // ---------- SCADENZE ----------
   server.registerTool(
     'modifica_scadenza',
     {
       title: 'Modifica scadenza',
-      description: 'Aggiorna stato/importo/responsabile/nota di una scadenza periodica esistente (le scadenze si generano da sole dal catalogo adempimenti: qui si aggiorna, non si crea). Usa prima il tool scadenze per trovare l\'id. Richiede il gestionale aperto via server.js.',
-      inputSchema: { id: z.string(), patch: z.record(z.unknown()).describe(DESCR_PATCH_GENERICO + ' Campi tipici: stato, importo, responsabile, nota.') },
+      description: 'Aggiorna avanzamento/importo/responsabile/nota di una scadenza periodica esistente (le scadenze si generano da sole dal catalogo adempimenti: qui si aggiorna, non si crea). Ogni adempimento ha le sue fasi di avanzamento (es. fatture estere: Registrate, Inviate; IVA: Calcolata, F24 inviato al cliente, Addebitato dallo studio): il tool scadenze le elenca in avanzamentiPossibili. Per cambiare avanzamento imposta "stato" con uno di quei valori. L\'importo esiste solo se conImporto è vero. Usa prima il tool scadenze per trovare l\'id. Richiede il gestionale aperto via server.js.',
+      inputSchema: { id: z.string(), patch: z.record(z.unknown()).describe(DESCR_PATCH_GENERICO + ' Campi tipici: stato (una voce di avanzamentiPossibili), importo, responsabile, nota.') },
     },
     async ({ id, patch }) => testoEsitoScrittura(await inviaComando(url, 'modificaScadenza', { id, patch }))
-  );
-
-  server.registerTool(
-    'aggiorna_step_controllo',
-    {
-      title: 'Aggiorna step di controllo scadenza',
-      description: 'Segna completato/da fare uno step di controllo (Calcolato/Comunicato al cliente/Versamento predisposto/Inviato) di una scadenza periodica. Richiede il gestionale aperto via server.js.',
-      inputSchema: {
-        scadenzaId: z.string(),
-        nomeStep: z.string().describe('Es. "Calcolato", "Comunicato al cliente", "Versamento predisposto", "Inviato".'),
-        completato: z.boolean(),
-        nota: z.string().optional(),
-      },
-    },
-    async ({ scadenzaId, nomeStep, completato, nota }) => testoEsitoScrittura(await inviaComando(url, 'aggiornaStepScadenza', { scadenzaId, nomeStep, patch: pulisciUndefined({ completato, nota }) }))
   );
 
   server.registerTool(
     'aggiorna_sotto_adempimento',
     {
       title: 'Aggiorna sotto-adempimento annuale',
-      description: 'Segna lo stato di avanzamento di un sotto-adempimento (es. una fase di un bilancio o dichiarazione) dentro un adempimento annuale. Usa prima il tool adempimenti_annuali per trovare l\'id. Richiede il gestionale aperto via server.js.',
+      description: 'Segna lo stato di avanzamento di un sotto-adempimento (es. una fase di un bilancio o dichiarazione) dentro un adempimento annuale; Prisma registra chi ha spuntato la fase. Usa prima il tool adempimenti_annuali per trovare l\'id. Richiede il gestionale aperto via server.js.',
       inputSchema: { annualeId: z.string(), nomeSotto: z.string(), patch: z.record(z.unknown()).describe(DESCR_PATCH_GENERICO) },
     },
     async ({ annualeId, nomeSotto, patch }) => testoEsitoScrittura(await inviaComando(url, 'aggiornaSottoAdempimento', { annualeId, nomeSotto, patch }))
+  );
+
+  server.registerTool(
+    'modifica_adempimento_annuale',
+    {
+      title: 'Modifica adempimento annuale',
+      description: 'Aggiorna le note, la scadenza o il responsabile di un adempimento annuale (non le sue fasi: per quelle usa aggiorna_sotto_adempimento). Usa prima adempimenti_annuali per l\'id. Richiede il gestionale aperto via server.js.',
+      inputSchema: { annualeId: z.string(), patch: z.object({ nota: z.string().optional(), scadenza: z.string().optional().describe('YYYY-MM-DD'), responsabile: z.string().optional() }) },
+    },
+    async ({ annualeId, patch }) => testoEsitoScrittura(await inviaComando(url, 'modificaAdempimentoAnnuale', { annualeId, patch: pulisciUndefined(patch) }))
   );
 
   // ---------- APPUNTAMENTI / PROCEDURE / DOCUMENTI / RITENUTE / CATALOGO (audit copertura) ----------

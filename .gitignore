@@ -60,3 +60,10 @@ electron-app/payload/
 electron-app/dist-setup/
 licensing/Licenze-emesse.xlsx
 electron-app/chiave-pubblica.pem
+
+# backup chiavi (mai su GitHub)
+BACKUP-CHIAVI/
+mcp-server/token-ia.txt
+
+# Dati reali clienti (mai nel repository)
+DATI-PRIVATI/

@@ -108,8 +108,8 @@ async function main() {
 
   // ---------- Storico solleciti / Step di controllo aperti dal dettaglio scadenza: pulsante
   //            "← Indietro" per tornare al dettaglio invece di dover chiudere tutto (task #117) ----------
-  const scadConStep = window.derivati().tutteScadenze.find(s => (s.step || []).length > 0);
-  assert(scadConStep, 'precondizione test #117: nessuna scadenza demo con step di controllo trovata');
+  const scadConStep = window.derivati().tutteScadenze.find(s => (s.fasi || []).length > 0);
+  assert(scadConStep, 'precondizione test #117: nessuna scadenza demo con fasi trovata');
   window.modalDettaglioScadenza(scadConStep.id);
   await wait(20);
   assert(q('[data-action="scad-detail-apri-solleciti"]'), 'dettaglio scadenza: pulsante Storico solleciti mancante o non aggiornato alla nuova azione dedicata');
@@ -127,12 +127,12 @@ async function main() {
   assert(q('.modal [data-action="scad-detail-cambia-stato"]') && q('.modal [data-action="scad-detail-cambia-stato"]').dataset.id === scadConStep.id, 'il pulsante "← Indietro" di Storico solleciti non torna al dettaglio della scadenza di partenza');
   console.log('=== Storico solleciti dal dettaglio scadenza: "← Indietro" torna al dettaglio OK');
 
-  assert(q('[data-action="scad-detail-apri-controllo"]'), 'dettaglio scadenza: pulsante Step di controllo mancante o non aggiornato alla nuova azione dedicata');
+  assert(q('[data-action="scad-detail-apri-controllo"]'), 'dettaglio scadenza: pulsante Annotazioni mancante o non aggiornato alla nuova azione dedicata');
   click(q('[data-action="scad-detail-apri-controllo"]'));
   await wait(20);
-  assert(q('.modal h2') && q('.modal h2').textContent === 'Step di controllo', 'click su "Step di controllo" dal dettaglio non apre il modale giusto');
+  assert(q('.modal h2') && q('.modal h2').textContent === 'Annotazioni', 'click su "Annotazioni" dal dettaglio non apre il modale giusto');
   // stesso scoping di sopra: "apri-dettaglio-scadenza" è ambiguo con le righe scadenza in dashboard
-  assert(q('.modal [data-action="apri-dettaglio-scadenza"]'), 'Step di controllo aperto dal dettaglio scadenza non offre un pulsante per tornare indietro');
+  assert(q('.modal [data-action="apri-dettaglio-scadenza"]'), 'Annotazioni aperte dal dettaglio scadenza non offrono un pulsante per tornare indietro');
   click(q('.modal [data-action="apri-dettaglio-scadenza"]'));
   await wait(20);
   assert(q('.modal [data-action="scad-detail-cambia-stato"]') && q('.modal [data-action="scad-detail-cambia-stato"]').dataset.id === scadConStep.id, 'il pulsante "← Indietro" di Step di controllo non torna al dettaglio della scadenza di partenza');
@@ -190,7 +190,7 @@ async function main() {
   assert(window.getSTATE().clienti.length === nClientiPrima + 1, 'il nuovo cliente non è stato salvato');
   const nuovoCliente = window.getSTATE().clienti.find(c => c.ragioneSociale === 'Cliente Di Prova SRL');
   assert(nuovoCliente, 'nuovo cliente non trovato in STATE dopo il salvataggio');
-  assert(nuovoCliente.adempimentiAnnualiApplicabili.includes('DICH_IVA_ANNUALE'), 'DICH_IVA_ANNUALE non salvato tra gli adempimenti annuali applicabili');
+  assert(window.annualiEffettivi(nuovoCliente).includes('DICH_IVA_ANNUALE'), 'DICH_IVA_ANNUALE non salvato tra gli adempimenti annuali applicabili');
   assert(!('dichiarazioneIva' in nuovoCliente.flags), 'il flag periodico dichiarazioneIva non deve più esistere (eliminata la duplicazione col catalogo annuale)');
   console.log('=== Nuovo cliente creato da form:', nuovoCliente.ragioneSociale, '— id', nuovoCliente.id);
 
@@ -504,12 +504,13 @@ async function main() {
 
   // readiness: imposta l'importo su TUTTE le scadenze "in scadenza" e verifica che il badge KPI arrivi al 100%
   const { inScadenza: inScadPrimaReadiness } = window.classificaScadenze(window.derivati().periodiche, window.oggiISO());
-  inScadPrimaReadiness.forEach(s => window.aggiornaScadenza(s.id, { importo: 100 }));
+  const inScadConImp = inScadPrimaReadiness.filter(s => s.conImporto);
+  inScadConImp.forEach(s => window.aggiornaScadenza(s.id, { importo: 100 }));
   window.render();
   await wait(20);
-  if (inScadPrimaReadiness.length > 0) {
+  if (inScadConImp.length > 0) {
     assert(q('#content').innerHTML.includes('100%'), 'il badge di readiness non mostra 100% dopo aver impostato l\'importo su tutte le scadenze in scadenza');
-    assert(q('#content').innerHTML.includes(`${inScadPrimaReadiness.length}/${inScadPrimaReadiness.length}`), 'il badge di readiness non mostra il conteggio corretto (N/N)');
+    assert(q('#content').innerHTML.includes(`${inScadConImp.length}/${inScadConImp.length}`), 'il badge di readiness non mostra il conteggio corretto (N/N, solo scadenze con importo)');
   }
   console.log(`=== Readiness scadenze: badge KPI coerente col conteggio (${inScadPrimaReadiness.length} scadenze in scadenza) OK`);
 
@@ -628,6 +629,22 @@ async function main() {
   assert(annualeAgg.sotto[0].completato === true, 'sotto-adempimento non marcato completato');
   assert(annualeAgg.percentuale > 0, 'percentuale adempimento annuale non aggiornata dopo completamento sotto-task');
   console.log(`=== Sotto-adempimento completato: "${annualeAgg.sotto[0].nome}" — avanzamento ora ${annualeAgg.percentuale}%`);
+  // chi ha spuntato la fase viene registrato e mostrato; togliendo la spunta si azzera
+  assert(annualeAgg.sotto[0].completatoDa === window.operatoreCorrente(), `"fatto da" non registrato (atteso ${window.operatoreCorrente()}, trovato ${annualeAgg.sotto[0].completatoDa})`);
+  if (window.operatoreCorrente()) assert(q('#content').textContent.includes('fatto da') && q('#content').textContent.includes(window.operatoreCorrente()), 'il nome di chi ha spuntato la fase non compare nell\'elenco');
+  setChecked(qa(`[data-action="ann-toggle-sotto"][data-id="${idAnnuale}"]`)[0], false);
+  await wait(20);
+  assert(window.derivati().annuali.find(a => a.id === idAnnuale).sotto[0].completatoDa === null, 'togliendo la spunta "fatto da" deve azzerarsi');
+  setChecked(qa(`[data-action="ann-toggle-sotto"][data-id="${idAnnuale}"]`)[0], true);
+  await wait(20);
+  // note per adempimento annuale
+  const campoNotaAnn = q(`[data-action="ann-nota"][data-id="${idAnnuale}"]`);
+  assert(campoNotaAnn, 'campo note dell\'adempimento annuale mancante');
+  setVal(campoNotaAnn, 'Il cliente consegna i documenti a fine mese.');
+  await wait(20);
+  assert(window.derivati().annuali.find(a => a.id === idAnnuale).nota === 'Il cliente consegna i documenti a fine mese.', 'nota dell\'adempimento annuale non salvata');
+  assert(window.esportaVistaMCP().adempimentiAnnuali.find(a => a.id === idAnnuale).nota.includes('fine mese'), 'la nota annuale non compare nella vista MCP');
+  console.log('=== Adempimenti annuali: "fatto da" registrato e azzerato, note per adempimento OK');
 
   // completa tutti i sotto-adempimenti e verifica che risulti "Completato"
   // (il DOM viene ricreato ad ogni render: ri-otteniamo gli elementi freschi ad ogni giro,
@@ -933,10 +950,11 @@ async function main() {
   const overridePrimaTest = Object.assign({}, (window.getSTATE().scadenzeOverrides || {})[eventoScadenzaTest.id] || {});
   const scadenzaPrimaTest = window.derivati().tutteScadenze.find(s => s.id === eventoScadenzaTest.id);
   assert(scadenzaPrimaTest, 'scadenza di test non trovata in derivati() dopo l\'apertura del dettaglio');
-  setVal(selStatoDettaglio, 'Inviato telematicamente');
+  const faseFinaleTest = scadenzaPrimaTest.fasi[scadenzaPrimaTest.fasi.length - 1];
+  setVal(selStatoDettaglio, faseFinaleTest);
   await wait(20);
   const scadenzaDopoStato = window.derivati().tutteScadenze.find(s => s.id === eventoScadenzaTest.id);
-  assert(scadenzaDopoStato.stato === 'Inviato telematicamente', 'lo stato non è stato aggiornato dal dettaglio scadenza');
+  assert(scadenzaDopoStato.fase === faseFinaleTest && window.STATI_SCADENZA_CHIUSI.includes(scadenzaDopoStato.stato), 'lo stato non è stato aggiornato dal dettaglio scadenza');
   assert(scadenzaDopoStato.dataCompletamento === window.oggiISO(), 'passando a uno stato definitivo dal dettaglio scadenza, "Completata il" deve impostarsi in automatico');
   assert(q('#modalRoot').textContent.includes(window.fmtData(window.oggiISO())), 'il dettaglio scadenza (ancora aperto) non mostra la nuova "Completata il" senza bisogno di riaprirlo');
 
@@ -952,12 +970,12 @@ async function main() {
   const campoNotaDettaglio2 = q('[data-action="scad-cambia-nota"]');
   const campoImportoDettaglio2 = q('[data-action="scad-cambia-importo"]');
   setVal(campoNotaDettaglio2, 'Nota di prova dal dettaglio scadenza');
-  setVal(campoImportoDettaglio2, '321.50');
+  if (campoImportoDettaglio2) setVal(campoImportoDettaglio2, '321.50'); else assert(!scadenzaDopoStato.conImporto, 'una scadenza con importo deve mostrare il campo importo nel dettaglio');
   await wait(20);
   const scadenzaFinale = window.derivati().tutteScadenze.find(s => s.id === eventoScadenzaTest.id);
   assert(scadenzaFinale.responsabile === respAlternativo, 'il responsabile non è stato salvato dal dettaglio scadenza');
   assert(scadenzaFinale.nota === 'Nota di prova dal dettaglio scadenza', 'la nota non è stata salvata dal dettaglio scadenza');
-  assert(Number(scadenzaFinale.importo) === 321.50, 'l\'importo non è stato salvato dal dettaglio scadenza');
+  if (campoImportoDettaglio2) assert(Number(scadenzaFinale.importo) === 321.50, 'l\'importo non è stato salvato dal dettaglio scadenza');
 
   // pulizia: ripristina esattamente l'override precedente (scrittura diretta, non aggiornaScadenza,
   // per non far scattare di nuovo la logica automatica di "Completata il")
@@ -1331,7 +1349,7 @@ async function main() {
   const clienteComCollegata = window.getSTATE().clienti.find(c => c.ragioneSociale === 'Test Comunicazione Collegata SRL');
   assert(clienteComCollegata, 'cliente di test per comunicazione collegata non salvato');
   assert(clienteComCollegata.flags.paghe === true, 'flag paghe non salvato sul cliente di test');
-  assert((clienteComCollegata.adempimentiAnnualiApplicabili||[]).includes('DICH_IVA_ANNUALE'), 'adempimento annuale DICH_IVA_ANNUALE non salvato sul cliente di test');
+  assert(window.annualiEffettivi(clienteComCollegata).includes('DICH_IVA_ANNUALE'), 'adempimento annuale DICH_IVA_ANNUALE non salvato sul cliente di test');
 
   const opzioniCollegabili = window.adempimentiCollegabili();
   assert(opzioniCollegabili.some(a => a.valore === 'p:paghe'), 'adempimentiCollegabili non include il flag periodico "paghe"');
@@ -1432,7 +1450,7 @@ async function main() {
   assert(window.getSTATE().documenti.length === nDocPrima, 'documento di test non eliminato');
 
   // ---- Task #112: categorie base dei documenti cliente (ampliate oltre le 6 generiche iniziali) ----
-  const categorieAttese = ['Anagrafica', 'Visura camerale', 'Atto costitutivo/Statuto', 'Contratto', 'Bilancio', 'Dichiarazione fiscale', 'F24', 'Registro contabile', 'Busta paga', 'Certificazione', 'Corrispondenza Enti', 'Polizza assicurativa', 'Pratiche', 'Altro'];
+  const categorieAttese = ['Anagrafica', 'Visura camerale', 'Atto costitutivo/Statuto', 'Contratto', 'Bilancio', 'Dichiarazione fiscale', 'F24', 'Registro contabile', 'Busta paga', 'Certificazione', 'Corrispondenza Enti', 'Polizza assicurativa', 'Pratiche', 'Verbale / decisione societaria', 'Altro'];
   assert(JSON.stringify(window.CATEGORIE_DOCUMENTO) === JSON.stringify(categorieAttese), `CATEGORIE_DOCUMENTO non corrisponde all'elenco atteso, trovato: ${JSON.stringify(window.CATEGORIE_DOCUMENTO)}`);
   click(q('[data-action="nuovo-documento"]'));
   await wait(20);
@@ -1963,8 +1981,7 @@ async function main() {
       const r = window.riepilogoFpc(st().meta.responsabili[0]);
       assert(r.tot === 10 && r.obb === 10, 'riepilogo FPC errato');
       st().fpc = [];
-      click(q('[data-nav="deontologia"]')); await wait(20);
-      assert(/Accettazione incarico/.test(q('#content').textContent), 'pagina Deontologia non renderizzata');
+      assert(!q('[data-nav="deontologia"]'), 'il tab Deontologia non deve piu comparire nel menu');
       assert(window.registroIaCsv().startsWith('"Data"'), 'export registro IA errato');
       assert(st().modelliDocumento.length >= 0, 'ok');
     }
@@ -1975,6 +1992,8 @@ async function main() {
       assert(d.adempimenti.every(t => t.fasi.every(f => f.fatte <= f.tot)), 'cruscotto: fasi incoerenti');
       click(q('[data-nav="cruscotto"]')); await wait(20);
       assert(/Avanzamento adempimenti per fase/.test(q('#content').textContent || document.body.textContent), 'cruscotto non renderizzato');
+      assert(/Come si muove il portafoglio clienti/.test(q('#content').textContent) && /Entrati e usciti per tipo/.test(q('#content').textContent), 'cruscotto: mancano i grafici movimento clienti');
+      { const mv = window.movimentoClienti(d.anno); assert(mv.mesi.length === 12 && mv.nuovi === mv.mesi.reduce((t, x) => t + x.nuovi, 0), 'movimentoClienti: totale mesi incoerente'); }
     }
     // Libri sociali
     {
@@ -1985,6 +2004,25 @@ async function main() {
       window.aggiornaLibroSociale(l.id, { detenutoDa: 'Cliente' });
       assert(st().libriSociali.find(x => x.id === l.id).detenutoDa === 'Cliente', 'modifica libro non salvata');
       st().libriSociali = st().libriSociali.filter(x => x.id !== l.id);
+      // Atti da riportare nei libri: assegnazione documento, ordine per data, lacune bilancio, trascrizione
+      {
+        const cap = st().clienti.find(c => c.tipo === 'societa_capitali' && c.stato !== 'cessato') || cl;
+        const lib = window.aggiungiLibroSociale({ clienteId: cap.id, tipo: 'Libro decisioni dei soci', detenutoDa: 'Studio' });
+        const d1 = window.aggiungiDocumento({ clienteId: cap.id, categoria: 'Verbale / decisione societaria', nome: 'Verbale B', dataCaricamento: '2026-01-01' });
+        const d2 = window.aggiungiDocumento({ clienteId: cap.id, categoria: 'Verbale / decisione societaria', nome: 'Verbale A', dataCaricamento: '2026-01-02' });
+        window.assegnaAttoLibro(d1.id, { libroId: lib.id, dataAtto: '2025-06-20', tipoAtto: 'Approvazione bilancio' });
+        window.assegnaAttoLibro(d2.id, { libroId: lib.id, dataAtto: '2024-05-10', tipoAtto: 'Nomina / rinnovo cariche', trascritto: true });
+        const ord = window.attiLibroCliente(cap.id).map(x => x.nome);
+        assert(ord.indexOf('Verbale A') < ord.indexOf('Verbale B'), 'atti libri non ordinati per data');
+        assert(window.attiDaTrascrivere().some(x => x.id === d1.id) && !window.attiDaTrascrivere().some(x => x.id === d2.id), 'atti da trascrivere errati');
+        assert(Array.isArray(window.lacuneLibriCliente(cap)), 'lacune libri non calcolate');
+        assert(window.libriPrevistiCliente({ tipo: 'societa_persone' }).libri.length === 0 && window.libriPrevistiCliente({ tipo: 'societa_capitali' }).libri.length >= 2, 'libri previsti per tipo errati');
+        click(q('[data-nav="libri"]')); await wait(20);
+        q('[data-action="libri-filtro-cliente"]').value = cap.id; q('[data-action="libri-filtro-cliente"]').dispatchEvent(new window.Event('change', { bubbles: true })); await wait(20);
+        assert(/Atti da riportare nei libri/.test(q('#content').textContent) && q('[data-action="atto-nuovo"]'), 'dettaglio libri cliente non mostrato');
+        st().documenti = st().documenti.filter(x => x.id !== d1.id && x.id !== d2.id);
+        st().libriSociali = st().libriSociali.filter(x => x.id !== lib.id);
+      }
     }
     // SAL: fase pronta/in attesa e passaggio di consegne
     {
@@ -2765,6 +2803,19 @@ async function main() {
   await wait(20);
   assert(!q('.portal-fullscreen-backdrop'), 'anteprima a schermo intero non chiusa con Escape');
   console.log('=== Portale cliente: anteprima a schermo intero desktop (non più un telefono ingrandito), coerente coi dati, si aggiorna e si chiude con Escape OK');
+
+  // Con il server acceso l'anteprima deve mostrare il portale VERO (iframe su /portale/<token>),
+  // così non può mai restare indietro rispetto a portale-cliente.htm.
+  window.setHttpSyncAttivoTest(true);
+  q('[data-action="portal-schermo-intero"]').click();
+  await wait(20);
+  const ifrAnteprima = q('#portalFullscreenPhone iframe');
+  assert(ifrAnteprima && /\/portale\/[A-Za-z0-9_-]+/.test(ifrAnteprima.getAttribute('src') || ''), 'con il server acceso l\'anteprima deve incorporare il portale reale (/portale/<token>)');
+  assert(!q('#portalFullscreenPhone .pd-hero'), 'con il server acceso non deve comparire la vecchia anteprima interna');
+  window.document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await wait(20);
+  window.setHttpSyncAttivoTest(false);
+  console.log('=== Portale cliente: con server acceso l\'anteprima a schermo intero incorpora il portale reale OK');
 
   // NB: task #111 ha rimosso anche "segna come letta"/"archivia"/"ripristina" una comunicazione
   // dall'anteprima in-app — erano azioni esistenti SOLO nel mockup a telefono ora eliminato (i case
@@ -4365,7 +4416,7 @@ async function main() {
     click(q('[data-action="setup-vai"][data-imp="moduli"]'));
     await wait(20);
     assert(window.getVIEW() === 'impostazioni' && q('[data-action="conferma-moduli"]'), '#215: il passo "moduli" deve portare a Impostazioni > Moduli con il bottone di conferma');
-    assert(qa('[data-action="toggle-modulo"]').length >= 19 && q('[data-modulo="cruscotto"]') && q('[data-modulo="carico"]') && q('[data-modulo="cpb"]'), 'Moduli: devono esserci anche cruscotto, carico/proroghe, cpb');
+    assert(qa('[data-action="toggle-modulo"]').length >= 18 && q('[data-modulo="cruscotto"]') && q('[data-modulo="carico"]') && q('[data-modulo="cpb"]'), 'Moduli: devono esserci anche cruscotto, carico/proroghe, cpb');
     click(q('[data-action="moduli-tutti"][data-val="0"]'));
     assert(qa('[data-action="toggle-modulo"]:checked').length === 0 && !window.operatorePuoVedere('cruscotto'), 'Moduli: "Disattiva tutti" spegne tutto e nasconde il cruscotto');
     click(q('[data-action="moduli-tutti"][data-val="1"]'));
@@ -4490,6 +4541,36 @@ async function main() {
   await wait(20);
   assert(window.getSTATE().clienti.length === 24, 'ripristino manuale post-reset fallito'); // il cliente di prova era già stato eliminato
   console.log('=== Stato ripristinato dopo il test di reset');
+
+  // --- "Svuota tutti i dati": TRE conferme a tema Prisma (niente window.confirm nativo) ---
+  {
+    window.__forzaConfermaPrisma = true;
+    const nPrima = window.getSTATE().clienti.length;
+    const ov = () => q('#confermaPrismaOverlay');
+    click(q('[data-action="imp-sezione"][data-sezione="avanzate"]')); await wait(20);
+    click(q('[data-action="reset-tutto"]')); await wait(20);
+    assert(ov() && /1 di 3/.test(ov().textContent), 'prima conferma (1 di 3) non mostrata');
+    assert(window.getSTATE().clienti.length === nPrima, 'i dati non devono sparire prima delle tre conferme');
+    click(q('[data-action="conferma-prisma-annulla"]')); await wait(20);
+    assert(!ov() && window.getSTATE().clienti.length === nPrima, 'Annulla alla prima conferma deve lasciare tutto com\'era');
+    click(q('[data-action="reset-tutto"]')); await wait(20);
+    click(q('[data-action="conferma-prisma-ok"]')); await wait(20);
+    assert(ov() && /2 di 3/.test(ov().textContent), 'seconda conferma (2 di 3) non mostrata');
+    assert(window.getSTATE().clienti.length === nPrima, 'dopo 1 sola conferma i dati devono esserci ancora');
+    click(q('[data-action="conferma-prisma-annulla"]')); await wait(20);
+    assert(!ov() && window.getSTATE().clienti.length === nPrima, 'Annulla alla seconda conferma deve lasciare tutto com\'era');
+    click(q('[data-action="reset-tutto"]')); await wait(20);
+    click(q('[data-action="conferma-prisma-ok"]')); await wait(20);
+    click(q('[data-action="conferma-prisma-ok"]')); await wait(20);
+    assert(ov() && /3 di 3/.test(ov().textContent), 'terza conferma (3 di 3) non mostrata');
+    assert(window.getSTATE().clienti.length === nPrima, 'dopo 2 conferme i dati devono esserci ancora');
+    click(q('[data-action="conferma-prisma-ok"]')); await wait(20);
+    assert(!ov() && window.getSTATE().clienti.length === 0, 'dopo la terza conferma lo stato deve essere vuoto');
+    window.__forzaConfermaPrisma = false;
+    window.setSTATE(statoPrimaDiReset); window.salvaStato(); window.render(); await wait(20);
+    assert(window.getSTATE().clienti.length === nPrima, 'ripristino dopo il test delle 3 conferme fallito');
+    console.log('=== Svuota tutti i dati: 3 conferme a tema Prisma, Annulla in ogni passo non cancella nulla OK');
+  }
 
   // ---------- 11) Responsabili: aggiungi e rinomina ----------
   click(q('[data-action="imp-sezione"][data-sezione="team"]'));
@@ -4719,9 +4800,9 @@ async function main() {
   assert(clienteAsd.regimeFiscale === 'Forfettario L.398/91', 'cliente demo ASD non usa il nuovo regime L.398/91');
   assert(clienteAsd.flags && clienteAsd.flags.iva398 === true, 'cliente demo ASD non ha il flag periodico iva398 attivo');
   ['RENDICONTO_398', 'MODELLO_EAS', 'AFFILIAZIONE_SPORTIVA'].forEach(chiave => {
-    assert(clienteAsd.adempimentiAnnualiApplicabili.includes(chiave), `cliente demo ASD non ha l'adempimento annuale ${chiave} applicabile`);
+    assert(window.annualiEffettivi(clienteAsd).includes(chiave), `cliente demo ASD non ha l'adempimento annuale ${chiave} applicabile`);
   });
-  assert(!clienteAsd.adempimentiAnnualiApplicabili.includes('VIDIMAZIONE_LIBRI'), 'cliente demo ASD ha ancora la vidimazione libri sociali (non dovuta dalle associazioni)');
+  assert(!window.annualiEffettivi(clienteAsd).includes('VIDIMAZIONE_LIBRI'), 'cliente demo ASD ha ancora la vidimazione libri sociali (non dovuta dalle associazioni)');
   // le scadenze periodiche generate per l'ASD includono le 4 rate trimestrali IVA/IRES L.398/91
   const { tutteScadenze: scadenzeAsd, annuali: annualiAsd } = window.derivati();
   const rateAsd398 = scadenzeAsd.filter(s => s.clienteId === clienteAsd.id && s.tipo === 'Versamento IVA/IRES forfettaria L.398/91');
@@ -4751,39 +4832,42 @@ async function main() {
   await wait(20);
   setVal(q('[data-action="scad-filtro-q"]'), '');
   await wait(20);
-  assert(window.STEP_CONTROLLO_IMPOSTA.length === 4, `attesi 4 step di controllo, trovati ${window.STEP_CONTROLLO_IMPOSTA.length}`);
-  assert(window.STEP_CONTROLLO_IMPOSTA[0] === 'Calcolato' && window.STEP_CONTROLLO_IMPOSTA[3] === 'Inviato', 'ordine/nomi degli step di controllo inattesi');
   // sceglie una scadenza ancora "Da fare" (non toccata dai test precedenti su Stato) per non avere ambiguità
-  const primaScadenza = window.derivati().periodiche.find(s => s.stato === 'Da fare');
-  assert(primaScadenza, 'nessuna scadenza "Da fare" disponibile per il test degli step di controllo');
-  assert(primaScadenza.step && primaScadenza.step.length === 4 && primaScadenza.step.every(st => st.completato === false), 'step di controllo iniziali di una scadenza non azzerati correttamente');
-  const btnControllo = q(`[data-action="scad-apri-controllo"][data-id="${primaScadenza.id}"]`);
-  assert(btnControllo && btnControllo.textContent.includes('0/4'), 'badge "Controllo" iniziale non mostra 0/4');
-  click(btnControllo);
+  const primaScadenza = window.derivati().periodiche.find(s => s.stato === 'Da fare' && s.conImporto && s.fasi.length === 3);
+  assert(primaScadenza, 'nessuna scadenza "Da fare" con importo e 3 fasi disponibile per il test dell\'avanzamento');
+  assert(!primaScadenza.step, 'le scadenze periodiche non devono più avere step di controllo');
+  assert(primaScadenza.fasi.join('|') === window.FASI_F24.join('|'), 'fasi di una scadenza F24 inattese: ' + primaScadenza.fasi.join('|'));
+  // importo: presente per le scadenze che lo prevedono, assente per le altre (es. fatture estere, LIPE, Intrastat)
+  assert(q(`[data-action="scad-cambia-importo"][data-id="${primaScadenza.id}"]`), 'una scadenza con importo non mostra il campo importo');
+  const senzaImporto = window.derivati().periodiche.find(s => !s.conImporto);
+  if (senzaImporto) {
+    assert(!q(`[data-action="scad-cambia-importo"][data-id="${senzaImporto.id}"]`), 'una scadenza senza importo mostra comunque il campo importo');
+    assert(senzaImporto.fasi.length >= 2, 'le scadenze senza importo (es. fatture estere) devono avere fasi proprie');
+  }
+  const estere = window.derivati().periodiche.find(s => s.tipo === 'Invio fatture estere');
+  if (estere) assert(estere.fasi.join('|') === 'Registrate|Inviate' && estere.conImporto === false, 'fatture estere: attese fasi Registrate/Inviate e nessun importo');
+  // menu avanzamento: Da fare + fasi + Errore + Non applicabile
+  const selAvanz = q(`[data-action="scad-cambia-stato"][data-id="${primaScadenza.id}"]`);
+  assert(selAvanz && Array.from(selAvanz.options).map(o => o.value || o.textContent).join('|') === ['Da fare'].concat(primaScadenza.fasi, ['Errore', 'Non applicabile']).join('|'), 'menu avanzamento non coerente con le fasi del tipo');
+  // fase intermedia: scadenza ancora aperta; ultima fase: scadenza chiusa con data di completamento
+  setVal(selAvanz, primaScadenza.fasi[1]);
   await wait(20);
-  assert(window.document.body.textContent.includes('Step di controllo'), 'modale step di controllo non aperto');
-  const checkStep = qa('[data-action="scad-toggle-step"]');
-  assert(checkStep.length === 4, `attese 4 checkbox nel modale step di controllo, trovate ${checkStep.length}`);
-  // completa i primi due step (Calcolato, Comunicato al cliente) e verifica indipendenza reciproca e dallo Stato
-  setChecked(checkStep[0], true);
+  let scadFase = window.derivati().periodiche.find(s => s.id === primaScadenza.id);
+  assert(scadFase.fase === primaScadenza.fasi[1] && scadFase.stato === 'Calcolato', 'una fase intermedia deve lasciare la scadenza aperta');
+  assert(!scadFase.dataCompletamento, 'una fase intermedia non deve impostare la data di completamento');
+  setVal(q(`[data-action="scad-cambia-stato"][data-id="${primaScadenza.id}"]`), primaScadenza.fasi[2]);
   await wait(20);
-  setChecked(qa('[data-action="scad-toggle-step"]')[1], true); // il modale viene ri-renderizzato ad ogni toggle: ri-query necessaria
+  scadFase = window.derivati().periodiche.find(s => s.id === primaScadenza.id);
+  assert(scadFase.fase === primaScadenza.fasi[2] && window.STATI_SCADENZA_CHIUSI.includes(scadFase.stato) && !!scadFase.dataCompletamento, 'l\'ultima fase deve chiudere la scadenza e impostare la data');
+  setVal(q(`[data-action="scad-cambia-stato"][data-id="${primaScadenza.id}"]`), 'Da fare');
   await wait(20);
-  const scadenzaDopoStep = window.derivati().periodiche.find(s => s.id === primaScadenza.id);
-  assert(scadenzaDopoStep.step[0].completato === true, 'step "Calcolato" non risulta completato dopo il toggle');
-  assert(!!scadenzaDopoStep.step[0].data, 'step "Calcolato" completato ma senza data automatica');
-  assert(scadenzaDopoStep.step[1].completato === true, 'step "Comunicato al cliente" non risulta completato dopo il toggle');
-  assert(scadenzaDopoStep.step[2].completato === false && scadenzaDopoStep.step[3].completato === false, 'gli step non toccati sono stati alterati erroneamente (non sono indipendenti)');
-  assert(scadenzaDopoStep.stato === 'Da fare', 'lo Stato della scadenza è stato alterato dal semplice avanzamento degli step di controllo (devono restare indipendenti)');
-  click(q('[data-action="chiudi-modal"]'));
-  await wait(20);
-  const btnControlloDopo = q(`[data-action="scad-apri-controllo"][data-id="${primaScadenza.id}"]`);
-  assert(btnControlloDopo && btnControlloDopo.textContent.includes('2/4'), `badge "Controllo" non aggiornato a 2/4 dopo i toggle, trovato: ${btnControlloDopo && btnControlloDopo.textContent}`);
-  // pulizia: riporta gli step a zero per non alterare lo stato demo per i test successivi
-  window.getSTATE().scadenzeOverrides[primaScadenza.id] = Object.assign({}, window.getSTATE().scadenzeOverrides[primaScadenza.id], { step: {} });
+  scadFase = window.derivati().periodiche.find(s => s.id === primaScadenza.id);
+  assert(scadFase.fase === null && scadFase.stato === 'Da fare', 'tornando a "Da fare" la fase deve azzerarsi');
+  // pulizia: riporta la scadenza allo stato iniziale (dataCompletamento compresa)
+  window.getSTATE().scadenzeOverrides[primaScadenza.id] = {};
   window.salvaStato(); window.render();
   await wait(20);
-  console.log('=== Step di controllo scadenze: badge, apertura modale, toggle indipendenti tra loro e dallo Stato, persistenza OK');
+  console.log('=== Scadenze periodiche: fasi per adempimento, importo solo dove serve, fase intermedia/finale, ritorno a Da fare OK');
 
   // ---------- 11e-bis) Annotazioni datate sulla scadenza (dettagli tipo "compensazione con credito IVA") ----------
   // Stesso modale "Step di controllo": un log di note datate, distinto dal campo "nota" a riga
@@ -4861,7 +4945,7 @@ async function main() {
   // cliente in regime ordinario dichiara sempre i redditi, non solo IVA/bilancio/770/CU).
   const clientiOrdinariAttivi = window.getSTATE().clienti.filter(c => c.regimeFiscale === 'Ordinario' && c.stato !== 'cessato');
   assert(clientiOrdinariAttivi.length >= 10, `attesi almeno 10 clienti demo in regime Ordinario, trovati ${clientiOrdinariAttivi.length}`);
-  const senzaRedditiOrdinari = clientiOrdinariAttivi.filter(c => !(c.adempimentiAnnualiApplicabili || []).includes('REDDITI_ORDINARI'));
+  const senzaRedditiOrdinari = clientiOrdinariAttivi.filter(c => !window.annualiEffettivi(c).includes('REDDITI_ORDINARI'));
   assert(senzaRedditiOrdinari.length === 0, `clienti in regime Ordinario senza dichiarazione redditi tra gli adempimenti: ${senzaRedditiOrdinari.map(c=>c.ragioneSociale).join(', ')}`);
   console.log(`=== Copertura REDDITI_ORDINARI: tutti i ${clientiOrdinariAttivi.length} clienti attivi in regime Ordinario hanno la dichiarazione redditi tra gli adempimenti applicabili`);
   // Sotto-task del Bilancio scelti esplicitamente da Matteo (non i 7 step standard di
@@ -5144,11 +5228,11 @@ async function main() {
   await wait(20);
   assert(window.SCAD_SELEZIONATE.size === 2, 'riselezione delle 2 scadenze di test non riuscita prima del test bulk-stato');
 
-  setVal(q('#scadBulkStato'), 'Calcolato');
+  setVal(q('#scadBulkStato'), 'Errore');
   click(q('[data-action="scad-bulk-stato"]'));
   await wait(20);
   const dopoBulkStato = window.derivati().tutteScadenze.filter(s => idSelezionati.includes(s.id));
-  assert(dopoBulkStato.length === 2 && dopoBulkStato.every(s => s.stato === 'Calcolato'), 'il cambio di stato bulk non è stato applicato a entrambe le scadenze selezionate');
+  assert(dopoBulkStato.length === 2 && dopoBulkStato.every(s => s.stato === 'Errore'), 'il cambio di stato bulk non è stato applicato a entrambe le scadenze selezionate');
   assert(window.SCAD_SELEZIONATE.size === 0, 'la selezione dovrebbe azzerarsi dopo aver applicato un\'azione bulk');
 
   riseleziona();
@@ -5162,12 +5246,12 @@ async function main() {
 
   riseleziona();
   await wait(20);
-  const stepTest = window.STEP_CONTROLLO_IMPOSTA[0];
-  setVal(q('#scadBulkStep'), stepTest);
-  click(q('[data-action="scad-bulk-step"]'));
+  const faseTest = dopoBulkResp[0].fasi[0];
+  setVal(q('#scadBulkStato'), faseTest);
+  click(q('[data-action="scad-bulk-stato"]'));
   await wait(20);
-  const dopoBulkStep = window.derivati().tutteScadenze.filter(s => idSelezionati.includes(s.id));
-  assert(dopoBulkStep.every(s => { const st = (s.step||[]).find(x => x.nome === stepTest); return st && st.completato; }), `lo step "${stepTest}" non risulta completato su entrambe le scadenze dopo l'applicazione bulk`);
+  const dopoBulkFase = window.derivati().tutteScadenze.filter(s => idSelezionati.includes(s.id));
+  assert(dopoBulkFase.filter(s => s.fasi.includes(faseTest)).every(s => s.fase === faseTest), `la fase "${faseTest}" non risulta applicata a tutte le scadenze selezionate che la prevedono`);
 
   riseleziona();
   await wait(20);
@@ -5311,11 +5395,74 @@ async function main() {
     const importatoConDefault = window.getSTATE().clienti.find(c => c.partitaIva === '99999999992');
     assert(importatoConDefault, 'il cliente con valori enum non riconosciuti non è stato importato (dovrebbe procedere comunque con i default, non bloccare la riga)');
     assert(importatoConDefault.tipo === 'societa_capitali', `un tipo non riconosciuto dovrebbe ricadere sul default "societa_capitali", trovato "${importatoConDefault.tipo}"`);
-    assert(importatoConDefault.regimeFiscale === 'Ordinario', 'un regime fiscale non riconosciuto dovrebbe ricadere sul default "Ordinario"');
-    assert(importatoConDefault.periodicitaIva === 'N.A.', 'una periodicità IVA non riconosciuta dovrebbe ricadere sul default "N.A."');
-    assert(importatoConDefault.contabilita === 'ESTERNA', 'una tenuta contabilità non riconosciuta dovrebbe ricadere sul default "ESTERNA"');
-    assert(importatoConDefault.addebitoF24 === 'NOI', 'un addebito F24 non riconosciuto dovrebbe ricadere sul default "NOI"');
-    assert(importatoConDefault.previdenza === 'No previdenza', 'una previdenza non riconosciuta dovrebbe ricadere sul default "No previdenza"');
+    assert(importatoConDefault.regimeFiscale === '', 'un regime fiscale non riconosciuto deve restare VUOTO (cliente da completare), non un default inventato');
+    assert(importatoConDefault.periodicitaIva === '', 'una periodicità IVA non riconosciuta deve restare vuota');
+    assert(importatoConDefault.responsabileStudio === '', 'un responsabile non riconosciuto deve restare vuoto');
+    assert(importatoConDefault.contabilita === '', 'una tenuta contabilità non riconosciuta deve restare vuota');
+    assert(importatoConDefault.addebitoF24 === '', 'un addebito F24 non riconosciuto deve restare vuoto');
+    assert(importatoConDefault.previdenza === '', 'una previdenza non riconosciuta deve restare vuota');
+    // --- alert "da completare": resta finché i campi non sono compilati ---
+    {
+      const mancanti = window.campiMancantiCliente(importatoConDefault);
+      ['Regime fiscale', 'Periodicità IVA', 'Responsabile studio', 'Tenuta contabilità', 'Addebito F24', 'Organo di controllo', 'PMI innovativa (sì/no)', 'Start-up innovativa (sì/no)'].forEach(k =>
+        assert(mancanti.includes(k), `campiMancantiCliente dovrebbe segnalare "${k}", trovato: ${JSON.stringify(mancanti)}`));
+      assert(window.campiMancantiCliente(importatoValido).length === 0 || !window.campiMancantiCliente(importatoValido).includes('Regime fiscale'), 'il cliente completo non deve segnalare il regime');
+      // vista Clienti: badge + filtro
+      window.setView('clienti'); await wait(20);
+      assert(/da completare/i.test(window.document.getElementById('content').innerHTML), 'la lista clienti deve mostrare l\'avviso "da completare"');
+      // compilando i campi l'alert sparisce
+      const cc = window.getSTATE().clienti.find(c => c.id === importatoConDefault.id);
+      Object.assign(cc, { regimeFiscale: 'Ordinario', periodicitaIva: 'Trimestrale', responsabileStudio: window.getSTATE().meta.responsabili[0], contabilita: 'ESTERNA', addebitoF24: 'NOI', previdenza: 'No previdenza', pmiInnovativa: 'NO', startupInnovativa: 'NO', organoControllo: 'Nessuno', codiceFiscale: '99999999992', atecoCodici: ['62.01.00'] });
+      assert(window.campiMancantiCliente(cc).length === 0, 'compilati tutti i campi, l\'alert deve sparire: ' + JSON.stringify(window.campiMancantiCliente(cc)));
+      // due livelli: grave (rosso) vs leggero (giallo)
+      {
+        const lv = window.livelliMancantiCliente({ stato: 'attivo', tipo: 'societa_capitali', ragioneSociale: 'X', partitaIva: '1', regimeFiscale: 'Ordinario', periodicitaIva: 'Mensile', responsabileStudio: 'Matteo', contabilita: 'ESTERNA', addebitoF24: 'NOI', contatti: { email: 'a@b.it' }, atecoCodici: ['1'] });
+        assert(lv.gravi.length === 0 && lv.leggeri.length === 3, 'solo PMI/start-up/organo mancanti = 3 avvisi leggeri, nessun grave: ' + JSON.stringify(lv));
+        const lv2 = window.livelliMancantiCliente({ stato: 'attivo', tipo: 'ditta_individuale', ragioneSociale: 'Y', codiceFiscale: 'ABC', regimeFiscale: 'Forfettario', periodicitaIva: '', responsabileStudio: '', contabilita: 'ESTERNA', addebitoF24: 'NOI', previdenza: 'No previdenza', contatti: { pec: 'p@p.it' }, atecoCodici: ['1'] });
+        assert(lv2.gravi.length === 1 && lv2.gravi[0] === 'Responsabile studio', 'forfettario: periodicità IVA vuota non è grave, manca solo il responsabile: ' + JSON.stringify(lv2));
+        const lv3 = window.livelliMancantiCliente({ stato: 'attivo', tipo: 'societa_capitali', ragioneSociale: 'Z', regimeFiscale: 'Ordinario' });
+        assert(lv3.gravi.includes('Periodicità IVA') && lv3.gravi.includes('Codice fiscale / P.IVA') && lv3.gravi.includes('Tenuta contabilità'), 'ordinario senza periodicità/CF/contabilità = gravi: ' + JSON.stringify(lv3));
+        assert(window.livelliMancantiCliente({ stato: 'cessato', tipo: 'societa_capitali' }).gravi.length === 0, 'un cliente cessato non segnala nulla');
+      }
+      // adempimenti annuali AUTOMATICI per tipo+regime (770: società e semplificati sì; persone fisiche e forfettari no)
+      {
+        const mk = (tipo, regime, extra) => Object.assign({ stato: 'attivo', tipo, regimeFiscale: regime, adempimentiAnnualiApplicabili: [] }, extra || {});
+        const ha = (c, k) => window.annualiEffettivi(c).includes(k);
+        assert(ha(mk('societa_capitali', 'Ordinario'), '770') && ha(mk('societa_persone', 'Semplificato'), '770') && ha(mk('ditta_individuale', 'Semplificato'), '770'), '770: società e semplificati sì');
+        assert(!ha(mk('persona_fisica', 'Semplificato'), '770') && !ha(mk('ditta_individuale', 'Forfettario'), '770') && !ha(mk('persona_fisica', 'Forfettario'), '770'), '770: persone fisiche e forfettari no');
+        assert(ha(mk('ditta_individuale', 'Forfettario'), 'REDDITI_FORFETTARI') && !ha(mk('ditta_individuale', 'Forfettario'), 'DICH_IVA_ANNUALE'), 'forfettario: solo redditi forfettari, niente IVA');
+        assert(ha(mk('societa_capitali', 'Ordinario'), 'BILANCIO') && ha(mk('societa_capitali', 'Ordinario'), 'REDDITI_ORDINARI') && !ha(mk('societa_persone', 'Semplificato'), 'BILANCIO'), 'bilancio solo capitali/coop');
+        assert(window.annualiEffettivi(mk('societa_capitali', '')).includes('BILANCIO') && !window.annualiEffettivi(mk('societa_capitali', '')).includes('770') === false, 'senza regime: restano solo regole basate sul tipo (770 per società)');
+        assert(!ha(mk('societa_capitali', 'Ordinario', { adempimentiAnnualiEsclusi: ['770'] }), '770'), 'esclusione manuale rispettata');
+        assert(ha(mk('persona_fisica', 'Forfettario', { adempimentiAnnualiApplicabili: ['770'] }), '770'), 'aggiunta manuale rispettata');
+        assert(ha(mk('societa_persone', 'Semplificato'), 'DIRITTO_CAMERALE') && !ha(mk('ditta_individuale', 'Forfettario'), 'DIRITTO_CAMERALE') && !ha(mk('persona_fisica', 'Forfettario'), 'DIRITTO_CAMERALE'), 'diritto camerale: società sì, ditta senza iscrizione no');
+        assert(ha(mk('ditta_individuale', 'Forfettario', { iscrittoRegistroImprese: 'SI' }), 'DIRITTO_CAMERALE'), 'diritto camerale: ditta iscritta al Registro Imprese sì');
+        const nAnn = window.derivati().annuali.length;
+        assert(nAnn > 0, 'devono comparire adempimenti annuali generati in automatico');
+        const senzaData = window.derivati().annuali.filter(a => ['770', 'CU', 'BILANCIO', 'REDDITI_ORDINARI', 'REDDITI_SEMPLIFICATI', 'REDDITI_FORFETTARI', 'DICH_IVA_ANNUALE'].includes(a.tipoChiave) && !a.scadenza);
+        assert(senzaData.length === 0, 'gli adempimenti annuali standard devono avere una scadenza: ' + senzaData.slice(0, 3).map(a => a.tipoNome).join(', '));
+        const a770 = window.derivati().annuali.find(a => a.tipoChiave === '770');
+        assert(!a770 || /-10-3[01]|-11-0[1-3]/.test(a770.scadenza), '770: scadenza attesa a fine ottobre, trovata ' + (a770 && a770.scadenza));
+      }
+      // import dei nuovi campi PMI / start-up / organo
+      const rPmi = header.map(() => '');
+      const idx = k => window.COLONNE_IMPORT_CLIENTI.findIndex(c => c.chiave === k);
+      rPmi[idx('ragioneSociale')] = 'Test Pmi Srl'; rPmi[idx('pmiInnovativa')] = 'Sì'; rPmi[idx('startupInnovativa')] = 'No'; rPmi[idx('organoControllo')] = 'Collegio sindacale';
+      const rp = window.clienteDaRigaImport(rPmi, 9).cliente;
+      assert(rp.pmiInnovativa === 'SI' && rp.startupInnovativa === 'NO' && rp.organoControllo === 'Collegio sindacale', 'import PMI/start-up/organo non corretto: ' + JSON.stringify([rp.pmiInnovativa, rp.startupInnovativa, rp.organoControllo]));
+      // il modale cliente espone i nuovi campi con opzione "da indicare"
+      window.modalCliente(importatoConDefault.id); await wait(20);
+      assert(q('#fPmiInnovativa') && q('#fStartupInnovativa') && q('#fOrganoControllo'), 'mancano i campi PMI/start-up/organo di controllo nel modale cliente');
+      // caselle evidenziate: rosso = importante, giallo = utile, live mentre si compila
+      assert(!q('#fRegime').classList.contains('mancante-grave'), 'cliente completo: regime non deve essere rosso');
+      q('#fRegime').value = ''; q('#fRegime').dispatchEvent(new window.Event('change', { bubbles: true }));
+      assert(q('#fRegime').classList.contains('mancante-grave'), 'regime vuoto deve diventare rosso');
+      q('#fAteco').value = ''; q('#fAteco').dispatchEvent(new window.Event('input', { bubbles: true }));
+      assert(q('#fAteco').classList.contains('mancante-leggero') && !q('#fAteco').classList.contains('mancante-grave'), 'ATECO vuoto deve essere giallo');
+      q('#fRegime').value = 'Ordinario'; q('#fRegime').dispatchEvent(new window.Event('change', { bubbles: true }));
+      assert(!q('#fRegime').classList.contains('mancante-grave'), 'compilato il regime, il rosso deve sparire');
+      window.chiudiModal && window.chiudiModal();
+    }
 
     // clienteDaRigaImport (usato internamente da elaboraImportClienti) deve restituire un avviso
     // testuale per ogni valore fuori enum, MAI bloccare la riga: lo richiamiamo direttamente sulla
@@ -6206,12 +6353,12 @@ async function main() {
   const cardDC = q('[data-action="cat-ann-nome"][data-tipo="DIRITTO_CAMERALE"]').closest('.cat-tipo');
   assert(cardDC.textContent.includes('si calcola dalla data scelta per singolo cliente'), 'catalogo annuale: DIRITTO_CAMERALE non mostra la spiegazione "data calcolata per cliente"');
 
-  // Voce senza scadenzaDefault e senza resolver (BILANCIO): niente controlli data, spiegazione diversa (va impostata a mano).
-  click(q('[data-action="cat-ann-expand"][data-tipo="BILANCIO"]'));
+  // Voce senza scadenzaDefault e senza resolver (MODELLO_EAS): niente controlli data, spiegazione diversa (va impostata a mano).
+  click(q('[data-action="cat-ann-expand"][data-tipo="MODELLO_EAS"]'));
   await wait(20);
-  assert(!q('[data-action="cat-ann-mese"][data-tipo="BILANCIO"]'), 'catalogo annuale: BILANCIO (nessuna scadenza fissa) mostra per errore i controlli mese/giorno');
-  const cardBil = q('[data-action="cat-ann-nome"][data-tipo="BILANCIO"]').closest('.cat-tipo');
-  assert(cardBil.textContent.includes('va impostata a mano'), 'catalogo annuale: BILANCIO non mostra la spiegazione "va impostata a mano"');
+  assert(!q('[data-action="cat-ann-mese"][data-tipo="MODELLO_EAS"]'), 'catalogo annuale: MODELLO_EAS (nessuna scadenza fissa) mostra per errore i controlli mese/giorno');
+  const cardBil = q('[data-action="cat-ann-nome"][data-tipo="MODELLO_EAS"]').closest('.cat-tipo');
+  assert(cardBil.textContent.includes('va impostata a mano'), 'catalogo annuale: MODELLO_EAS non mostra la spiegazione "va impostata a mano"');
   console.log('=== Catalogo adempimenti annuali: data predefinita editabile per le voci con scadenzaDefault statica, spiegazione corretta per quelle dinamiche/manuali, modifica riflessa nelle scadenze generate OK');
 
   // ---------- 11p) Impostazioni > Team: flag "consulente" per responsabile (task #145) ----------
@@ -6606,8 +6753,13 @@ async function main() {
     const setVal = (sel, v) => { const el = q(sel); el.value = v; fire(el, 'input'); };
     click(q('[data-setup-avanti]'));
     assert(/Inserisci il nome/.test(q('#setupRoot').textContent), 'Setup: deve chiedere nome studio e master');
+    assert(/Che cos.è Prisma/.test(q('#setupRoot').textContent) && /Non è/.test(q('#setupRoot').textContent), 'Setup: la prima schermata deve spiegare cos\'è Prisma');
     setVal('[data-setup="studio"]', 'Studio Prova'); setVal('[data-setup="master"]', 'Anna Master');
     click(q('[data-setup-avanti]'));
+    click(q('[data-setup-profilo="completo"]'));
+    assert(q('[data-setup-risposta="portale"]').checked, 'Setup: profilo Completo deve spuntare tutte le risposte');
+    click(q('[data-setup-profilo="essenziale"]'));
+    assert(!q('[data-setup-risposta="portale"]').checked, 'Setup: profilo Essenziale deve azzerare le risposte');
     const cb = q('[data-setup-risposta="fatt"]'); cb.checked = true; fire(cb, 'change');
     const cb2 = q('[data-setup-risposta="squadra"]'); cb2.checked = true; fire(cb2, 'change');
     click(q('[data-setup-avanti]'));
@@ -6616,6 +6768,8 @@ async function main() {
     click(q('[data-setup-collab-aggiungi]'));
     setVal('[data-setup-collab-nome="0"]', 'Luca Collab');
     const cm = q('[data-setup-collab-modulo="0|incassi"]'); cm.checked = false; fire(cm, 'change');
+    click(q('[data-setup-avanti]'));
+    assert(/Ultimi passi/.test(q('#setupRoot').textContent) && /backup/i.test(q('#setupRoot').textContent), 'Setup: passo finale con i prossimi passi');
     click(q('[data-setup-avanti]'));
     const S = window.getSTATE();
     assert(!q('#setupRoot'), 'Setup: overlay deve chiudersi');
@@ -6655,6 +6809,80 @@ async function main() {
     }
     window.setView('dashboard');
     console.log('=== Guida "?" per tab: OK');
+  }
+  // ===== Mandatario (filtro clienti) + tema scuro =====
+  {
+    const S = window.getSTATE();
+    const c0 = S.clienti[0], c1 = S.clienti[1];
+    c0.mandatario = 'Studio Prova'; c1.mandatario = 'Dott. Verdi';
+    window.setView('clienti');
+    await wait(20);
+    assert(q('[data-action="cli-filtro-mandatario"]'), 'Mandatario: il filtro deve comparire quando almeno un cliente ha il mandatario');
+    const sel = q('[data-action="cli-filtro-mandatario"]'); sel.value = 'Dott. Verdi'; fire(sel, 'change');
+    await wait(20);
+    const righe = qa('.client-row');
+    assert(righe.length >= 1 && righe.every(r => /Mandatario Dott\. Verdi/.test(r.textContent)), 'Mandatario: il filtro deve mostrare solo i clienti con quel mandatario');
+    const sel2 = q('[data-action="cli-filtro-mandatario"]'); sel2.value = 'Studio Prova'; fire(sel2, 'change');
+    await wait(20);
+    click(q('[data-action="modifica-cliente"]'));
+    await wait(20);
+    assert(q('#fMandatario') && q('#fMandatario').value === 'Studio Prova', 'Mandatario: il modulo cliente deve mostrare il campo valorizzato');
+    click(q('[data-action="chiudi-modal"]'));
+    await wait(20);
+    c0.mandatario = ''; c1.mandatario = '';
+    const sel3 = q('[data-action="cli-filtro-mandatario"]');
+    if (sel3) { sel3.value = 'Tutti'; fire(sel3, 'change'); } else { /* nessun mandatario: filtro nascosto, ma il valore resta */ }
+    window.getSTATE(); 
+    // tema scuro
+    assert(window.temaCorrente() === 'chiaro', 'Tema: di partenza chiaro');
+    click(q('#btnTema'));
+    assert(window.document.documentElement.getAttribute('data-tema') === 'scuro' && window.temaCorrente() === 'scuro', 'Tema: il pulsante deve attivare il tema scuro');
+    click(q('#btnTema'));
+    assert(!window.document.documentElement.hasAttribute('data-tema'), 'Tema: il secondo clic deve tornare al chiaro');
+    window.setView('dashboard');
+    console.log('=== Mandatario e tema scuro: OK');
+  }
+  // ---------- Semaforo quadratura 770 ----------
+  {
+    const ST = window.getSTATE();
+    const cid = ST.clienti[0].id;
+    const nRitPrima = ST.ritenuteRighe.length, nF24Prima = ST.f24.length;
+    const A = 2031;
+    const rit = (n, imp, stato) => ST.ritenuteRighe.push({ id: 'q770r' + n, clienteId: cid, dataFattura: `${A}-03-01`, dataPagamento: `${A}-03-05`, numeroFattura: 'T' + n, percipiente: 'Test', importo: imp, statoRit: stato });
+    const f24 = (n, data, imp, pag, codice) => ST.f24.push({ id: 'q770f' + n, clienteId: cid, tipo: 'Debito', data, righe: [{ id: 'x' + n, codiceTributo: codice || '1040', importo: imp, importoPagato: pag }] });
+    assert(window.quadratura770(cid, A) === null, 'senza ritenute né F24 il semaforo 770 non deve comparire');
+    rit(1, 100, 'Da pagare');
+    let q = window.quadratura770(cid, A);
+    assert(q.stato === 'rosso' && !q.eccedenza, 'ritenute non pagate: atteso ROSSO senza !');
+    ST.ritenuteRighe.find(r => r.id === 'q770r1').statoRit = 'Pagata';
+    q = window.quadratura770(cid, A);
+    assert(q.stato === 'verde' && !q.eccedenza, 'ritenute tutte pagate, nessun F24: atteso VERDE');
+    f24(1, `${A}-04-16`, 100, 100);
+    q = window.quadratura770(cid, A);
+    assert(q.stato === 'verde' && !q.eccedenza, 'ritenute pagate e F24 coerente: atteso VERDE senza !');
+    f24(2, `${A}-04-20`, 100, 100); // versata due volte
+    q = window.quadratura770(cid, A);
+    assert(q.stato === 'verde' && q.eccedenza && Math.abs(q.differenza - 100) < 0.01, 'tutte pagate ma F24 doppio: atteso VERDE con !');
+    rit(2, 50, 'Non pagata');
+    q = window.quadratura770(cid, A);
+    assert(q.stato === 'rosso' && q.eccedenza, 'non tutte pagate con eccedenza: atteso ROSSO con !');
+    ST.ritenuteRighe = ST.ritenuteRighe.filter(r => r.id !== 'q770r2');
+    ST.f24 = ST.f24.filter(f => f.id !== 'q770f2');
+    ST.f24.find(f => f.id === 'q770f1').righe[0].importoPagato = 40;
+    q = window.quadratura770(cid, A);
+    assert(q.stato === 'giallo', 'tutte segnate pagate ma F24 inferiore al dovuto: atteso GIALLO');
+    ST.f24.find(f => f.id === 'q770f1').righe[0].codiceTributo = '6099'; // altro codice: ignorato
+    q = window.quadratura770(cid, A);
+    assert(q.stato === 'verde' && q.nF24 === 0, 'un F24 con altro codice tributo non deve contare');
+    // pannello nella vista Ritenute
+    window.setView('ritenute'); window.render(); await wait(20);
+    assert(window.document.getElementById('cardQuadratura770'), 'pannello Quadratura 770 mancante nella vista Ritenute');
+    // pulizia
+    ST.ritenuteRighe = ST.ritenuteRighe.filter(r => !String(r.id).startsWith('q770r'));
+    ST.f24 = ST.f24.filter(f => !String(f.id).startsWith('q770f'));
+    assert(ST.ritenuteRighe.length === nRitPrima && ST.f24.length === nF24Prima, 'pulizia test 770 incompleta');
+    window.setView('dashboard');
+    console.log('=== Quadratura 770: rosso / verde / verde! / rosso! / giallo e pannello OK');
   }
   console.log('\n✅ TUTTI I TEST END-TO-END PASSATI (' + errors.length + ' errori console catturati)');
   if (errors.length) {

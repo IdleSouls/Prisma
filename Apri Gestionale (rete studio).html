@@ -39,9 +39,9 @@ async function provaCollegamento() {
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 2500);
-      const risp = await fetch(url + 'api/stato', { signal: controller.signal });
+      await fetch(url + 'api/versione', { signal: controller.signal, mode: 'no-cors' });
       clearTimeout(timer);
-      if (risp.ok) { window.location.href = url; return; }
+      window.location.href = url; return; // risposta "opaca": basta sapere che il server risponde
     } catch (e) { /* provo il prossimo indirizzo */ }
   }
   spinner.style.display = 'none';
