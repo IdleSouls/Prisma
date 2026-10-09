@@ -1025,7 +1025,14 @@ function leggiDati() {
   }
 }
 
+/* Revisione dei dati condivisi: sale a ogni scrittura (da qualunque fonte: browser, comandi MCP).
+   Il browser la rimanda con la sua scrittura (X-Stato-Rev): se nel frattempo un collega ha salvato,
+   la revisione non combacia e il server risponde 409 con lo stato aggiornato, così il browser unisce
+   le due versioni invece di cancellare il lavoro dell'altro (vedi unisciRemotoConLocale in gestionale.htm).
+   Parte da Date.now() così non torna mai indietro nemmeno dopo un riavvio del server. */
+let REV_STATO = Date.now();
 function scriviDati(dati) {
+  REV_STATO++;
   const testo = JSON.stringify(cifraCredenzialiInDati(dati));
   fs.writeFileSync(FILE_DATI_TMP, testo, 'utf8');
   fs.renameSync(FILE_DATI_TMP, FILE_DATI);
@@ -1516,7 +1523,7 @@ function gestisciRichiesta(req, res) {
 
   if (url === '/api/stato' && req.method === 'GET') {
     const dati = leggiDati();
-    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'X-Stato-Rev': String(REV_STATO) });
     res.end(dati ? JSON.stringify(dati) : '{}');
     return;
   }
@@ -1525,6 +1532,16 @@ function gestisciRichiesta(req, res) {
     leggiCorpoRichiesta(req, (corpo) => {
       try {
         const dati = JSON.parse(corpo);
+        // Scrittura condizionata: se il browser dichiara su quale revisione ha lavorato e nel frattempo
+        // qualcun altro ha salvato, NON si sovrascrive: si restituisce lo stato corrente (409) e il browser
+        // unisce le modifiche. Senza intestazione (client vecchi, strumenti) si scrive come prima.
+        const revDichiarata = req.headers['x-stato-rev'];
+        if (revDichiarata && String(revDichiarata) !== String(REV_STATO)) {
+          const attuale = leggiDati();
+          res.writeHead(409, { 'Content-Type': 'application/json; charset=utf-8', 'X-Stato-Rev': String(REV_STATO) });
+          res.end(attuale ? JSON.stringify(attuale) : '{}');
+          return;
+        }
         // Snapshot PRIMA di sovrascrivere: è l'unico modo che ha server.js di accorgersi che è
         // comparsa una nuova comunicazione (non c'è un sistema eventi separato, solo questi sync
         // periodici dell'intero STATE dal browser dello studio) - serve per le notifiche push.
@@ -1533,7 +1550,7 @@ function gestisciRichiesta(req, res) {
         inviaPushNuoveComunicazioni(precedente, dati);
         const origine = req.headers['x-client-id'] || null;
         notificaClientiSSE(origine);
-        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'X-Stato-Rev': String(REV_STATO) });
         res.end('{"ok":true}');
       } catch (err) {
         console.error('[gestionale] Errore salvando i dati ricevuti:', err.message);

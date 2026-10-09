@@ -4512,7 +4512,10 @@ async function main() {
   await wait(20);
 
   // verifica che tornando all'anno originale gli stati marcati prima siano ancora lì (persistenza cross-anno)
-  const primaMarcataAncora = window.getSTATE().scadenzeOverrides[idsMarcati[0]];
+  // l'id contiene il cliente (data|cliente|nome): se un test intermedio ha eliminato proprio quel cliente (gli id sono casuali,
+  // quindi succedeva a volte), la sua scadenza non esiste più per scelta e non va contata come "stato perso"
+  const idSopravvissuto = idsMarcati.find(id => window.getSTATE().clienti.some(c => c.id === id.split('|')[1])) || idsMarcati[0];
+  const primaMarcataAncora = window.getSTATE().scadenzeOverrides[idSopravvissuto];
   assert(primaMarcataAncora && primaMarcataAncora.stato === 'Inviato telematicamente', 'stato perso dopo cambio anno avanti e indietro');
   console.log('=== Stati preservati dopo cambio anno avanti/indietro');
 
@@ -6883,6 +6886,58 @@ async function main() {
     assert(ST.ritenuteRighe.length === nRitPrima && ST.f24.length === nF24Prima, 'pulizia test 770 incompleta');
     window.setView('dashboard');
     console.log('=== Quadratura 770: rosso / verde / verde! / rosso! / giallo e pannello OK');
+
+    // ---------- 770 "nessuna ritenuta operata nell'anno" ----------
+    {
+      const a770 = window.derivati().annuali.find(a => a.tipoChiave === '770' && !a.completato);
+      assert(a770, 'serve almeno un 770 aperto per il test "non dovuto"');
+      const nAperti = window.derivati().annuali.filter(a => !a.completato).length;
+      window.aggiornaAnnualeMeta(a770.id, { nonDovuto: true, nonDovutoDa: 'Tester', nonDovutoData: '2026-10-09' });
+      const dopo = window.derivati().annuali.find(a => a.id === a770.id);
+      assert(dopo.nonDovuto && dopo.completato && dopo.percentuale === 100 && !dopo.faseCorrente, '770 non dovuto: deve risultare chiuso, 100%, senza fase corrente');
+      assert(window.derivati().annuali.filter(a => !a.completato).length === nAperti - 1, '770 non dovuto: deve uscire dagli adempimenti aperti');
+      // non vale per adempimenti che non lo prevedono
+      const bil = window.derivati().annuali.find(a => a.tipoChiave === 'BILANCIO');
+      if (bil) { window.aggiornaAnnualeMeta(bil.id, { nonDovuto: true }); assert(!window.derivati().annuali.find(a => a.id === bil.id).nonDovuto, 'il bilancio non può essere "non dovuto"'); window.aggiornaAnnualeMeta(bil.id, { nonDovuto: false }); }
+      // UI: spunta nella vista, poi disattivazione
+      window.setView('annuali'); window.render(); await wait(20);
+      window.aggiornaAnnualeMeta(a770.id, { nonDovuto: false, nonDovutoDa: null, nonDovutoData: null });
+      const ripr = window.derivati().annuali.find(a => a.id === a770.id);
+      assert(!ripr.nonDovuto && !ripr.completato, '770: togliendo "non dovuto" torna aperto');
+      window.setView('dashboard');
+      console.log('=== 770 "nessuna ritenuta operata": chiuso/non dovuto, solo 770 e CU, reversibile OK');
+    }
+
+    // ---------- Unione delle modifiche tra postazioni (tre vie) ----------
+    {
+      const base = { clienti: [{ id: 'c1', nome: 'Uno', tel: '1' }, { id: 'c2', nome: 'Due' }], annualiOverrides: { 'A|1|770': { sotto: { 'Raccolta': { completato: false }, 'Invio': { completato: false } } } }, meta: { responsabili: ['Matteo', 'Sabrina'] }, note: ['x'] };
+      const clona = (o) => JSON.parse(JSON.stringify(o));
+      // Matteo spunta "Invio", Sabrina spunta "Raccolta" e aggiunge un cliente: nessuno dei due deve sparire
+      const mio = clona(base); mio.annualiOverrides['A|1|770'].sotto['Invio'] = { completato: true, completatoDa: 'Matteo' }; mio.clienti.push({ id: 'c3', nome: 'Tre-Matteo' });
+      const loro = clona(base); loro.annualiOverrides['A|1|770'].sotto['Raccolta'] = { completato: true, completatoDa: 'Sabrina' }; loro.clienti.push({ id: 'c4', nome: 'Quattro-Sabrina' }); loro.clienti[0].tel = '999';
+      const unito = window.applicaDiffStato(clona(loro), window.diffStato(base, mio));
+      const so = unito.annualiOverrides['A|1|770'].sotto;
+      assert(so['Raccolta'].completato && so['Raccolta'].completatoDa === 'Sabrina', 'unione: la spunta di Sabrina è andata persa');
+      assert(so['Invio'].completato && so['Invio'].completatoDa === 'Matteo', 'unione: la spunta di Matteo è andata persa');
+      assert(unito.clienti.map(c => c.id).sort().join() === 'c1,c2,c3,c4', 'unione: i clienti aggiunti da entrambi devono esserci tutti');
+      assert(unito.clienti.find(c => c.id === 'c1').tel === '999', 'unione: la modifica di Sabrina al telefono deve restare (Matteo non l\'ha toccato)');
+      // stesso campo: vince chi salva dopo (la mia)
+      const mio2 = clona(base); mio2.clienti[0].nome = 'Uno-Matteo'; const loro2 = clona(base); loro2.clienti[0].nome = 'Uno-Sabrina';
+      assert(window.applicaDiffStato(clona(loro2), window.diffStato(base, mio2)).clienti[0].nome === 'Uno-Matteo', 'unione: sullo stesso campo vince chi salva dopo');
+      // cancellazione mia, modifica sua: la cancellazione resta
+      const mio3 = clona(base); mio3.clienti = mio3.clienti.filter(c => c.id !== 'c2'); const loro3 = clona(base); loro3.clienti[1].nome = 'Due-mod';
+      assert(!window.applicaDiffStato(clona(loro3), window.diffStato(base, mio3)).clienti.some(c => c.id === 'c2'), 'unione: la cancellazione deve restare');
+      // modifica mia a un elemento che il collega ha cancellato: non si resuscita
+      const mio4 = clona(base); mio4.clienti[1].nome = 'Due-mia'; const loro4 = clona(base); loro4.clienti = loro4.clienti.filter(c => c.id !== 'c2');
+      assert(!window.applicaDiffStato(clona(loro4), window.diffStato(base, mio4)).clienti.some(c => c.id === 'c2'), 'unione: un elemento cancellato dal collega non deve riapparire');
+      // nessuna modifica = nessun diff; elenco semplice sostituito per intero
+      assert(window.diffStato(base, clona(base)) === undefined, 'diff di due stati uguali deve essere vuoto');
+      const mio5 = clona(base); mio5.note = ['x', 'y']; assert(window.applicaDiffStato(clona(base), window.diffStato(base, mio5)).note.length === 2, 'elenco semplice: va sostituito');
+      // elenco vuoto → con elementi, mentre il collega ne ha aggiunto un altro
+      const b6 = { righe: [] }; const m6 = { righe: [{ id: 'r1' }] }; const l6 = { righe: [{ id: 'r2' }] };
+      assert(window.applicaDiffStato(clona(l6), window.diffStato(b6, m6)).righe.length === 2, 'unione: elenchi vuoti che crescono in parallelo');
+      console.log('=== Unione modifiche tra postazioni (tre vie) OK');
+    }
   }
   console.log('\n✅ TUTTI I TEST END-TO-END PASSATI (' + errors.length + ' errori console catturati)');
   if (errors.length) {

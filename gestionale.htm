@@ -1543,6 +1543,8 @@ const REGOLE_ANNUALI_AUTO = {
   'FONDI_MUTUALISTICI': c => c.tipo === 'cooperativa',
   'BILANCIO_SOCIALE': c => c.tipo === 'impresa_sociale',
 };
+/* Adempimenti che possono risultare "non dovuti" in un dato anno: senza ritenute operate non c'è 770 né CU. */
+const ADEMPIMENTI_NON_DOVUTO_POSSIBILE = ['770', 'CU'];
 function annualeAutomatico(c, chiave) {
   const r = REGOLE_ANNUALI_AUTO[chiave];
   return !!(r && c && r(c));
@@ -1578,8 +1580,12 @@ function generaAdempimentiAnnuali(clienti, anno, vecchie) {
          finché ce n'è una precedente aperta. Serve a chi lavora a valle (es. predisposizione fascicolo di
          bilancio) per sapere quando può partire, e a chi sta a monte per sapere chi aspetta. */
       let primaAperta = -1;
-      sotto.forEach((x, i) => { if (!x.completato && primaAperta < 0) primaAperta = i; x.fase = x.completato ? 'completata' : (i === primaAperta ? 'pronta' : 'attesa'); });
+      if (salvato && salvato.nonDovuto && ADEMPIMENTI_NON_DOVUTO_POSSIBILE.includes(def.chiave)) primaAperta = -2;
+      sotto.forEach((x, i) => { if (!x.completato && primaAperta === -1) primaAperta = i; x.fase = x.completato ? 'completata' : (i === primaAperta ? 'pronta' : 'attesa'); });
       const nCompletati = sotto.filter(s => s.completato).length;
+      /* "Non dovuto" (es. 770/CU senza ritenute operate nell'anno): l'adempimento resta in elenco come traccia
+         della verifica fatta, ma conta come chiuso e non genera lavoro. */
+      const nonDovuto = !!(salvato && salvato.nonDovuto) && ADEMPIMENTI_NON_DOVUTO_POSSIBILE.includes(def.chiave);
       const resolverDinamico = SCADENZA_DINAMICA_ANNUALE[def.chiave];
       const scadenzaOrig = def.scadenzaDefault ? dataScadenza(anno, def.scadenzaDefault.m, def.scadenzaDefault.g)
         : (resolverDinamico ? resolverDinamico(cliente, anno) : null);
@@ -1591,8 +1597,9 @@ function generaAdempimentiAnnuali(clienti, anno, vecchie) {
         nota: (salvato && salvato.nota) || '',
         sotto,
         faseCorrente: primaAperta >= 0 ? { idx: primaAperta, nome: sotto[primaAperta].nome, responsabile: sotto[primaAperta].responsabile } : null,
-        percentuale: sotto.length ? Math.round((nCompletati / sotto.length) * 100) : 0,
-        completato: sotto.length > 0 && nCompletati === sotto.length,
+        percentuale: nonDovuto ? 100 : (sotto.length ? Math.round((nCompletati / sotto.length) * 100) : 0),
+        completato: nonDovuto || (sotto.length > 0 && nCompletati === sotto.length),
+        nonDovuto, nonDovutoDa: nonDovuto ? (salvato.nonDovutoDa || null) : null, nonDovutoData: nonDovuto ? (salvato.nonDovutoData || null) : null,
       });
     }
   }
@@ -2192,16 +2199,112 @@ function salvaStato() {
         sull'hardware dello studio.
    La pagina capisce da sola quale dei due usare (o nessuno) in base a dove è aperta: non serve
    nessuna configurazione manuale, lo stesso identico file funziona in tutti e tre i contesti.
-   Limite onesto da conoscere, valido per ENTRAMBI i modi condivisi: è un solo documento condiviso
-   con scrittura "ultimo vince", non un merge campo per campo — se due persone modificano la stessa
-   scheda nello stesso istante, l'una può sovrascrivere l'altra (motivo per cui il salvataggio è
-   raggruppato/debounced: vedi pianificaSalvataggioCondiviso). Non è un editing collaborativo in
-   tempo reale campo per campo. */
+   Server locale: le modifiche di postazioni diverse vengono UNITE (revisione + unione a tre vie, vedi
+   "UNIONE DELLE MODIFICHE" qui sotto): si perde un'azione solo se due persone cambiano esattamente lo
+   stesso campo nello stesso momento. Modalità claude.ai (Artifact): resta "ultimo vince" sull'intero
+   documento. Non è editing collaborativo in tempo reale campo per campo. */
 const DB_DOC_PATH = 'studio/state';
 let DB_REF = null;
 let DB_SALVATAGGIO_TIMER = null;
 let DB_STATO_REMOTO_PENDENTE = null;
 let HTTP_SYNC_ATTIVO = false;
+
+/* ---- UNIONE DELLE MODIFICHE TRA POSTAZIONI (tre vie: base / mia versione / versione del server) ----
+   Prima ogni postazione riscriveva l'INTERO archivio e vinceva l'ultima: se Sabrina e Matteo spuntavano due
+   passaggi diversi nello stesso istante, uno dei due spariva. Ora ogni postazione ricorda l'ultima versione
+   condivisa che ha visto (BASE_STATE). Quando salva, il server controlla la "revisione": se un collega ha
+   salvato nel frattempo risponde 409 con la sua versione, e qui si calcola cosa ho cambiato IO rispetto alla
+   base (diffStato) e lo si riapplica sopra la versione del collega (applicaDiffStato). Si perde qualcosa
+   solo se due persone cambiano ESATTAMENTE lo stesso campo (vince chi salva dopo). Gli elenchi di oggetti con
+   "id" (clienti, task, scadenze, righe...) si uniscono per id; gli oggetti campo per campo. */
+let HTTP_REV = null;          // revisione del server su cui si basa BASE_STATE
+let BASE_STATE = null;        // ultima versione condivisa nota (oggetto)
+let BASE_JSON = null;         // la stessa, come testo (confronto veloce "non ho cambiato nulla")
+let SALVA_HTTP_IN_CORSO = false;
+let SALVA_HTTP_RIPETI = false;
+let HTTP_REV_PENDENTE = null;
+let RENDER_DOPO_UNIONE = false;
+const _eObj = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
+const _clona = (x) => (x === undefined ? undefined : JSON.parse(JSON.stringify(x)));
+function _elencoConId(a) { // elenco di oggetti con id testuale univoco (anche vuoto)
+  if (!Array.isArray(a)) return false;
+  const visti = new Set();
+  for (const e of a) { if (!_eObj(e) || typeof e.id !== 'string' || visti.has(e.id)) return false; visti.add(e.id); }
+  return true;
+}
+/* Cosa è cambiato per passare da a a b. Restituisce undefined se sono uguali. */
+function diffStato(a, b) {
+  if (a === b) return undefined;
+  if (_eObj(a) && _eObj(b)) {
+    const set = {}, sub = {}, del = [];
+    let n = 0;
+    for (const k of Object.keys(b)) {
+      if (!(k in a)) { set[k] = b[k]; n++; }
+      else { const d = diffStato(a[k], b[k]); if (d !== undefined) { sub[k] = d; n++; } }
+    }
+    for (const k of Object.keys(a)) if (!(k in b)) { del.push(k); n++; }
+    return n ? { t: 'o', set, sub, del } : undefined;
+  }
+  if (_elencoConId(a) && _elencoConId(b) && (a.length || b.length)) {
+    const ma = new Map(a.map(e => [e.id, e])), mb = new Map(b.map(e => [e.id, e]));
+    const add = [], sub = {}, del = [];
+    let n = 0;
+    for (const e of b) {
+      if (!ma.has(e.id)) { add.push(e); n++; }
+      else { const d = diffStato(ma.get(e.id), e); if (d !== undefined) { sub[e.id] = d; n++; } }
+    }
+    for (const e of a) if (!mb.has(e.id)) { del.push(e.id); n++; }
+    return n ? { t: 'a', add, sub, del } : undefined;
+  }
+  if (JSON.stringify(a) === JSON.stringify(b)) return undefined;
+  return { t: 'v', v: b };
+}
+/* Applica a "dest" (la versione di un collega) le modifiche calcolate da diffStato. Restituisce il risultato. */
+function applicaDiffStato(dest, p) {
+  if (p === undefined) return dest;
+  if (p.t === 'v') return _clona(p.v);
+  if (p.t === 'o') {
+    if (!_eObj(dest)) return dest; // il collega l'ha tolto o trasformato: la sua versione prevale
+    for (const k of Object.keys(p.set)) dest[k] = _clona(p.set[k]);
+    for (const k of p.del) delete dest[k];
+    for (const k of Object.keys(p.sub)) if (k in dest) dest[k] = applicaDiffStato(dest[k], p.sub[k]);
+    return dest;
+  }
+  if (p.t === 'a') {
+    if (!Array.isArray(dest)) return dest;
+    const idx = new Map(); dest.forEach((e, i) => { if (_eObj(e)) idx.set(e.id, i); });
+    for (const id of Object.keys(p.sub)) if (idx.has(id)) dest[idx.get(id)] = applicaDiffStato(dest[idx.get(id)], p.sub[id]);
+    let out = dest;
+    if (p.del.length) { const del = new Set(p.del); out = out.filter(e => !(_eObj(e) && del.has(e.id))); }
+    const presenti = new Set(out.filter(_eObj).map(e => e.id));
+    for (const e of p.add) if (!presenti.has(e.id)) out.push(_clona(e));
+    return out;
+  }
+  return dest;
+}
+function impostaBaseCondivisa(rev) {
+  try { BASE_JSON = JSON.stringify(STATE); BASE_STATE = JSON.parse(BASE_JSON); } catch (e) { BASE_STATE = null; BASE_JSON = null; }
+  if (rev) HTTP_REV = rev;
+}
+/* Ho modifiche non ancora salvate sul server? */
+function haModificheNonCondivise() {
+  if (!BASE_STATE) return false;
+  if (JSON.stringify(STATE) === BASE_JSON) return false;
+  return diffStato(BASE_STATE, STATE) !== undefined;
+}
+/* Mette insieme la versione del server (già normalizzata) con le mie modifiche non ancora salvate.
+   Restituisce true se ci sono modifiche mie da (ri)salvare. */
+function unisciRemotoConLocale(remotoNorm, rev) {
+  let mie;
+  if (BASE_STATE && JSON.stringify(STATE) !== BASE_JSON) mie = diffStato(BASE_STATE, STATE);
+  let nuovo = remotoNorm;
+  if (mie !== undefined) nuovo = applicaDiffStato(_clona(remotoNorm), mie);
+  STATE = nuovo;
+  try { localStorage.setItem(LS_KEY, JSON.stringify(STATE)); } catch (e) { /* già segnalato da salvaStato in altre occasioni */ }
+  BASE_JSON = JSON.stringify(remotoNorm); BASE_STATE = JSON.parse(BASE_JSON);
+  if (rev) HTTP_REV = rev;
+  return mie !== undefined;
+}
 const HTTP_CLIENT_ID = 'client_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
 
 /* -------------------- "Chi sei" (task #98): identità locale, NON un vero login --------------------
@@ -2601,13 +2704,21 @@ function impostaBadgeSync(testo, titolo) {
    andrebbe perso nel re-render. */
 function applicaStatoRemotoSeLibero() {
   if (!DB_STATO_REMOTO_PENDENTE) return;
+  if (HTTP_SYNC_ATTIVO && SALVA_HTTP_IN_CORSO) return; // si riprova a fine salvataggio
   const el = document.activeElement;
   const eraChatTesto = el && el.id === 'chatTesto';
   if (staModificandoQualcosa() && !eraChatTesto) return;
   const bozzaChat = eraChatTesto ? { valore: el.value, inizio: el.selectionStart, fine: el.selectionEnd } : null;
   const remoto = DB_STATO_REMOTO_PENDENTE;
   DB_STATO_REMOTO_PENDENTE = null;
-  STATE = normalizzaStatoCaricato(remoto);
+  if (HTTP_SYNC_ATTIVO && BASE_STATE) {
+    // le mie modifiche non ancora salvate non si perdono: si riapplicano sopra la versione del collega
+    const daRisalvare = unisciRemotoConLocale(normalizzaStatoCaricato(remoto), HTTP_REV_PENDENTE);
+    HTTP_REV_PENDENTE = null;
+    if (daRisalvare) pianificaSalvataggioCondiviso();
+  } else {
+    STATE = normalizzaStatoCaricato(remoto);
+  }
   render();
   if (bozzaChat) {
     const nuovoEl = document.getElementById('chatTesto');
@@ -2638,15 +2749,49 @@ function pianificaSalvataggioCondiviso() {
         impostaBadgeSync('🟠 Sync in errore', 'Scrittura sui dati condivisi non riuscita. I dati restano comunque salvati in locale su questo dispositivo.');
       });
     } else if (HTTP_SYNC_ATTIVO) {
-      fetch('/api/stato', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Client-Id': HTTP_CLIENT_ID }, body: JSON.stringify(STATE) })
-        .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); impostaBadgeSync('🟢 Sincronizzato (rete locale)', 'Dati condivisi con lo studio via server locale, aggiornati.'); })
-        .catch(err => {
-          console.error('Sync via server locale: scrittura non riuscita', err);
-          impostaBadgeSync('🟠 Sync in errore', 'Scrittura sul server locale non riuscita. Verifica che il server (server.js) sia ancora acceso. I dati restano comunque salvati in locale su questo dispositivo.');
-        });
+      salvaHttpConUnione();
       aggiornaVistaMCPInTempoReale();
     }
   }, 800);
+}
+
+/* Salvataggio sul server locale con unione delle modifiche (vedi il blocco "UNIONE DELLE MODIFICHE" sopra).
+   Un salvataggio alla volta; se il server dice che un collega ha salvato nel frattempo (409) si unisce e si riprova. */
+async function salvaHttpConUnione() {
+  if (SALVA_HTTP_IN_CORSO) { SALVA_HTTP_RIPETI = true; return; }
+  SALVA_HTTP_IN_CORSO = true;
+  let riuscito = false, ereditatoDaAltri = false;
+  try {
+    for (let tentativo = 0; tentativo < 6 && !riuscito; tentativo++) {
+      const corpo = JSON.stringify(STATE);
+      const intestazioni = { 'Content-Type': 'application/json', 'X-Client-Id': HTTP_CLIENT_ID };
+      if (HTTP_REV) intestazioni['X-Stato-Rev'] = HTTP_REV;
+      const r = await fetch('/api/stato', { method: 'POST', headers: intestazioni, body: corpo });
+      if (r.status === 409) {
+        const remoto = await r.json();
+        if (remoto && Array.isArray(remoto.clienti)) { unisciRemotoConLocale(normalizzaStatoCaricato(remoto), r.headers.get('X-Stato-Rev')); ereditatoDaAltri = true; }
+        else HTTP_REV = r.headers.get('X-Stato-Rev');
+        continue;
+      }
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      HTTP_REV = r.headers.get('X-Stato-Rev') || HTTP_REV;
+      BASE_JSON = corpo; BASE_STATE = JSON.parse(corpo);
+      riuscito = true;
+    }
+    if (!riuscito) throw new Error('troppi conflitti consecutivi');
+    impostaBadgeSync('🟢 Sincronizzato (rete locale)', 'Dati condivisi con lo studio via server locale, aggiornati.');
+    if (ereditatoDaAltri) {
+      if (typeof staModificandoQualcosa === 'function' && !staModificandoQualcosa()) { render(); toast('🔄 Modifiche di un collega unite alle tue.'); }
+      else RENDER_DOPO_UNIONE = true; // si sta scrivendo in un campo: il render arriva al blur
+    }
+  } catch (err) {
+    console.error('Sync via server locale: scrittura non riuscita', err);
+    impostaBadgeSync('🟠 Sync in errore', 'Scrittura sul server locale non riuscita. Verifica che il server (server.js) sia ancora acceso. I dati restano comunque salvati in locale su questo dispositivo.');
+  } finally {
+    SALVA_HTTP_IN_CORSO = false;
+    if (SALVA_HTTP_RIPETI) { SALVA_HTTP_RIPETI = false; pianificaSalvataggioCondiviso(); }
+    else if (DB_STATO_REMOTO_PENDENTE) setTimeout(applicaStatoRemotoSeLibero, 50);
+  }
 }
 
 /* Tiene aggiornata "in tempo reale" (nei limiti del debounce di pianificaSalvataggioCondiviso, quindi
@@ -2724,8 +2869,10 @@ async function inizializzaSyncViaServerLocale() {
   }
   if (!risp || !risp.ok) return;
   const remoto = await risp.json().catch(() => null);
+  const revIniziale = risp.headers.get('X-Stato-Rev');
   if (remoto && typeof remoto === 'object' && Array.isArray(remoto.clienti)) {
     STATE = normalizzaStatoCaricato(remoto);
+    impostaBaseCondivisa(revIniziale);
     render();
     // Il popup "chi sei" a init() ha ragionato sui responsabili di default/locali, non ancora su
     // quelli veri appena arrivati dal sync - si ricontrolla ora che STATE è quello giusto (es. un
@@ -2735,7 +2882,8 @@ async function inizializzaSyncViaServerLocale() {
     eventualeSelettoreOperatore();
   } else {
     // primo avvio del server: lo stato locale attuale diventa la base di partenza condivisa
-    await fetch('/api/stato', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Client-Id': HTTP_CLIENT_ID }, body: JSON.stringify(STATE) });
+    const rPrimo = await fetch('/api/stato', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Client-Id': HTTP_CLIENT_ID }, body: JSON.stringify(STATE) });
+    impostaBaseCondivisa(rPrimo.headers.get('X-Stato-Rev') || revIniziale);
   }
   HTTP_SYNC_ATTIVO = true;
   impostaBadgeSync('🟢 Sincronizzato (rete locale)', 'Dati condivisi con lo studio via server locale, aggiornati.');
@@ -2762,7 +2910,7 @@ async function inizializzaSyncViaServerLocale() {
       if (dati && dati.tipo === 'riavvioSubito') { avviaFaseFinaleRiavvio(); return; }
       if (dati && dati.tipo === 'riavvioAnnullato') { gestisciRiavvioAnnullato(dati.da); return; }
       if (dati && dati.origine === HTTP_CLIENT_ID) return; // eco della propria scrittura: già applicata in locale
-      fetch('/api/stato').then(r => r.json()).then(remoto => {
+      fetch('/api/stato').then(r => { HTTP_REV_PENDENTE = r.headers.get('X-Stato-Rev'); return r.json(); }).then(remoto => {
         if (remoto && Array.isArray(remoto.clienti)) {
           DB_STATO_REMOTO_PENDENTE = remoto;
           applicaStatoRemotoSeLibero();
@@ -6881,7 +7029,7 @@ function renderAnnuali() {
         ${a.tipoChiave === '770' ? (() => { const q770 = quadratura770(a.clienteId, a.anno - 1); return q770 ? `<div title="Quadratura ritenute operate nel ${a.anno - 1}">${semaforo770Html(q770)}</div>` : ''; })() : ''}
         <div style="width:140px;"><div class="progress"><div style="width:${a.percentuale}%"></div></div></div>
         <div style="width:40px;text-align:right;font-weight:700;">${a.percentuale}%</div>
-        ${a.completato?'<span class="badge stato-inviato-telematicamente">Completato</span>':'<span class="badge stato-da-fare">In corso</span>'}
+        ${a.nonDovuto?'<span class="badge info" title="Segnato come non dovuto">Non dovuto</span>':a.completato?'<span class="badge stato-inviato-telematicamente">Completato</span>':'<span class="badge stato-da-fare">In corso</span>'}
         <span style="width:16px;text-align:center;color:var(--text-mut);">${expanded?'▾':'▸'}</span>
       </div>
       ${expanded ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
@@ -6893,8 +7041,17 @@ function renderAnnuali() {
           </select></div>
         </div>
         <div class="field" style="margin-bottom:10px;"><label>Note sull'adempimento</label><textarea data-action="ann-nota" data-id="${a.id}" placeholder="Appunti utili su questo adempimento (accordi col cliente, particolarità, cosa ricordare l'anno prossimo)..." style="width:100%;min-height:54px;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12.5px;resize:vertical;">${escapeHtml(a.nota||'')}</textarea></div>
+        ${ADEMPIMENTI_NON_DOVUTO_POSSIBILE.includes(a.tipoChiave) ? (() => {
+          const q = quadratura770(a.clienteId, a.anno - 1);
+          const conflitto = a.nonDovuto && q && q.dovuto > 0;
+          return `<label class="checkline" style="display:block;margin:2px 0 10px;"><input type="checkbox" data-action="ann-non-dovuto" data-id="${a.id}" ${a.nonDovuto?'checked':''}> <b>Nessuna ritenuta operata nel ${a.anno - 1}</b> — ${escapeHtml(a.tipoNome)} non dovuto</label>`
+            + (a.nonDovuto && (a.nonDovutoDa || a.nonDovutoData) ? `<div class="helptext" style="margin:-6px 0 10px;">Segnato${a.nonDovutoDa ? ' da <b>' + escapeHtml(a.nonDovutoDa) + '</b>' : ''}${a.nonDovutoData ? ' il ' + fmtData(a.nonDovutoData) : ''}.</div>` : '')
+            + (conflitto ? `<div style="margin:0 0 10px;padding:8px 10px;border-left:4px solid var(--rosso);background:var(--rosso-bg);border-radius:6px;font-size:12.5px;">⚠ In Prisma risultano ritenute per ${q.dovuto.toLocaleString('it-IT', { minimumFractionDigits: 2 })} € nel ${a.anno - 1}: controlla prima di considerare l'adempimento non dovuto.</div>` : '');
+        })() : ''}
+        <div style="${a.nonDovuto ? 'opacity:.45;pointer-events:none;' : ''}">
         <div style="font-size:11.5px;font-weight:700;color:var(--text-mut);text-transform:uppercase;margin-bottom:4px;">Sotto-adempimenti (${a.sotto.filter(s=>s.completato).length}/${a.sotto.length})</div>
         ${sottoHtml}
+        </div>
       </div>` : ''}
     </div>`;
   }).join('');
@@ -18474,6 +18631,11 @@ function onChangeDelegato(e) {
     case 'ann-filtro-tipo': ANN_FILTRO.tipo = el.value; resetPagina('annuali'); render(); break;
     case 'ann-filtro-resp': ANN_FILTRO.resp = el.value; resetPagina('annuali'); render(); break;
     case 'ann-filtro-stato': ANN_FILTRO.stato = el.value; resetPagina('annuali'); render(); break;
+    case 'ann-non-dovuto': {
+      if (el.checked) aggiornaAnnualeMeta(id, { nonDovuto: true, nonDovutoDa: operatoreCorrente() || null, nonDovutoData: oggiISO() });
+      else aggiornaAnnualeMeta(id, { nonDovuto: false, nonDovutoDa: null, nonDovutoData: null });
+      render(); break;
+    }
     case 'ann-scadenza': aggiornaAnnualeMeta(id, { scadenza: el.value || null }); render(); break;
     case 'ann-resp': aggiornaAnnualeMeta(id, { responsabile: el.value }); render(); break;
     case 'ann-toggle-sotto': case 'ann-data-sotto': case 'ann-resp-sotto': {
@@ -19357,6 +19519,7 @@ function init() {
   // quando/se il backend condiviso si connette (blur non "bubbla": serve la fase di cattura).
   document.addEventListener('blur', () => {
     if (DB_STATO_REMOTO_PENDENTE) setTimeout(applicaStatoRemotoSeLibero, 50);
+    if (RENDER_DOPO_UNIONE) setTimeout(() => { if (!staModificandoQualcosa()) { RENDER_DOPO_UNIONE = false; render(); toast('🔄 Modifiche di un collega unite alle tue.'); } }, 50);
   }, true);
   render();
   if (!avviaSetupSeServe()) eventualeSelettoreOperatore(); // primo avvio: questionario; altrimenti task #98: chiede "chi sei" solo se serve (2+ responsabili, non ancora scelto su questo PC)
@@ -19998,6 +20161,12 @@ window.clienteDaRigaImport = clienteDaRigaImport;
 window.campiMancantiCliente = campiMancantiCliente;
 window.livelliMancantiCliente = livelliMancantiCliente;
 window.confermaAzione = confermaAzione;
+window.diffStato = diffStato;
+window.applicaDiffStato = applicaDiffStato;
+window.unisciRemotoConLocale = unisciRemotoConLocale;
+window.impostaBaseCondivisa = impostaBaseCondivisa;
+window.haModificheNonCondivise = haModificheNonCondivise;
+window.aggiornaAnnualeMeta = aggiornaAnnualeMeta;
 window.modalBenvenutoDopoSetup = modalBenvenutoDopoSetup;
 window.passiSetupStudio = passiSetupStudio;
 window.annualiEffettivi = annualiEffettivi;
