@@ -10656,6 +10656,7 @@ function modalDettaglioTaskTeam(taskId) {
   </div>`;
   document.getElementById('modalRoot').innerHTML = html;
 }
+let TASK_BOZZA = null; // campi compilati nel modale task mentre si guarda la procedura collegata
 function modalTaskTeam(taskId, presetClienteId) {
   const editing = !!taskId;
   const t = editing ? STATE.taskTeam.find(x => x.id === taskId) : {
@@ -10727,6 +10728,11 @@ function modalTaskTeam(taskId, presetClienteId) {
     </div>
   </div>`;
   document.getElementById('modalRoot').innerHTML = html;
+  // ritorno dalla vista della procedura: si rimettono i campi come li aveva lasciati l'utente
+  if (TASK_BOZZA && TASK_BOZZA.ripristina && TASK_BOZZA.id === (taskId || null)) {
+    Object.keys(TASK_BOZZA.campi).forEach(k => { const f = document.getElementById(k); if (f) f.value = TASK_BOZZA.campi[k]; });
+  }
+  TASK_BOZZA = null;
 }
 
 function aggiungiTaskTeam(t) {
@@ -17430,7 +17436,11 @@ function onClickDelegatoInterno(e) {
     case 'guida-leggi': apriGuida(id); break;
     case 'procedura-indietro':
       if (el.dataset.app) apriModalAppuntamento(el.dataset.app);
-      else if (el.dataset.task) modalTaskTeam(el.dataset.task);
+      else if (el.dataset.task) {
+        const nuovo = el.dataset.task === '__nuovo__';
+        if (TASK_BOZZA && TASK_BOZZA.id === (nuovo ? null : el.dataset.task)) TASK_BOZZA.ripristina = true;
+        modalTaskTeam(nuovo ? null : el.dataset.task);
+      }
       else chiudiModal();
       break;
     case 'modifica-procedura': modalProceduraInterna(id); break;
@@ -17754,7 +17764,11 @@ function onClickDelegatoInterno(e) {
       const sel = h('tProcedura');
       const pid = sel ? sel.value : '';
       if (!pid) { toast('Seleziona prima una procedura.', true); return; }
-      modalDettaglioProcedura(pid, id ? { task: id } : null);
+      // si salva la bozza di ciò che è stato compilato: il task (nuovo o in modifica) non è ancora salvato
+      // e tornando "Indietro" deve ritrovarsi com'era, non vuoto o con i dati vecchi
+      TASK_BOZZA = { id: id || null, campi: {} };
+      ['tTitolo', 'tAssegnato', 'tCliente', 'tScadenza', 'tStato', 'tProcedura', 'tNoteCompletamento', 'tNuovaNota'].forEach(k => { const f = h(k); if (f) TASK_BOZZA.campi[k] = f.value; });
+      modalDettaglioProcedura(pid, { task: id || '__nuovo__' });
       break;
     }
     case 'task-aggiungi-nota': {
@@ -20296,6 +20310,7 @@ window.clienteDaRigaImport = clienteDaRigaImport;
 window.campiMancantiCliente = campiMancantiCliente;
 window.livelliMancantiCliente = livelliMancantiCliente;
 window.confermaAzione = confermaAzione;
+window.modalTaskTeam = modalTaskTeam;
 window.modalitaSviluppatore = modalitaSviluppatore;
 window.impostaModalitaSviluppatore = impostaModalitaSviluppatore;
 window.staModificandoQualcosa = staModificandoQualcosa;

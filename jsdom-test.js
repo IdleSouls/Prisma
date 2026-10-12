@@ -6976,6 +6976,24 @@ async function main() {
       window.impostaModalitaSviluppatore(false); window.setView('dashboard');
       console.log('=== Impostazioni raggruppate (Master, IA, Assistenza, Sviluppatore) OK');
     }
+
+    // ---------- Task: dalla procedura collegata si torna al task senza perdere ciò che si è scritto ----------
+    {
+      const qq = (sel) => window.document.querySelector(sel);
+      const proc = window.getSTATE().procedureInterne.find(p => p.attivo);
+      assert(proc, 'serve una procedura attiva per il test');
+      window.modalTaskTeam(null); await wait(20);
+      setVal(qq('#tTitolo'), 'Task di prova bozza'); setVal(qq('#tScadenza'), '2026-12-01'); setVal(qq('#tProcedura'), proc.id);
+      click(qq('[data-action="task-vedi-procedura-selezionata"]')); await wait(20);
+      assert(qq('[data-action="procedura-indietro"]'), 'dalla procedura di un task NUOVO deve esserci "← Indietro"');
+      click(qq('[data-action="procedura-indietro"]')); await wait(20);
+      assert(qq('#tTitolo').value === 'Task di prova bozza' && qq('#tScadenza').value === '2026-12-01' && qq('#tProcedura').value === proc.id, 'tornando indietro la bozza del task deve essere ripristinata');
+      click(qq('[data-action="chiudi-modal"]')); await wait(20);
+      window.modalTaskTeam(null); await wait(20);
+      assert(qq('#tTitolo').value === '', 'una nuova apertura del modale non deve riprendere la vecchia bozza');
+      click(qq('[data-action="chiudi-modal"]')); await wait(20);
+      console.log('=== Task: bozza ripristinata dopo aver guardato la procedura OK');
+    }
   }
   console.log('\n✅ TUTTI I TEST END-TO-END PASSATI (' + errors.length + ' errori console catturati)');
   if (errors.length) {
