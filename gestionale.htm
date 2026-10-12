@@ -395,6 +395,8 @@ table.d-tabella th{background:#eef2fa;font-weight:700;}
 .sd-v{font-size:13.5px;font-weight:600;overflow-wrap:anywhere;user-select:text;}
 .sd-v.vuoto{font-weight:400;color:var(--text-mut);}
 .sd-v.vuoto.grave{color:var(--rosso);font-weight:600;}
+.tag-maestro{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.04em;line-height:1;padding:3px 7px;border-radius:999px;background:var(--blu-light);color:var(--blu-mid);vertical-align:middle;white-space:nowrap;}
+html[data-tema="scuro"] .tag-maestro{background:#22304D;color:#8FB0FF;}
 .mancante-grave{border-color:var(--rosso) !important;background:var(--rosso-bg) !important;box-shadow:0 0 0 1px var(--rosso);}
 .mancante-leggero{border-color:var(--giallo) !important;background:var(--giallo-bg) !important;box-shadow:0 0 0 1px var(--giallo);}
 .conferma-chiusura-overlay{position:fixed;inset:0;background:rgba(20,26,36,.35);display:flex;align-items:center;justify-content:center;z-index:200;padding:20px;}
@@ -2676,7 +2678,7 @@ function aggiornaBadgeOperatore() {
   // "mittente" con cui si sta usando il gestionale), non solo nel badge della voce di menu Chat -
   // così si nota anche stando su un'altra vista (es. Scadenze), senza dover aprire la sidebar.
   const nonLetti = nome ? chatTotaleNonLetti() : 0;
-  el.innerHTML = (nome ? ('👤 ' + escapeHtml(nome) + ((esisteMaster() && ruoloOperatore(nome) === 'master') ? ' <span style="font-size:10.5px;opacity:.7;font-weight:500;">maestro</span>' : '')) : '👤 Chi sei?') + (nonLetti ? ` <span class="nav-badge" style="position:static;margin-left:4px;">${nonLetti}</span>` : '');
+  el.innerHTML = '<span style="display:inline-flex;align-items:center;gap:6px;">' + (nome ? ('👤 ' + escapeHtml(nome) + ((esisteMaster() && ruoloOperatore(nome) === 'master') ? ' <span class="tag-maestro">Maestro</span>' : '')) : '👤 Chi sei?') + (nonLetti ? ` <span class="nav-badge" style="position:static;margin-left:4px;">${nonLetti}</span>` : '') + '</span>';
   el.title = nome
     ? (nonLetti ? `${nonLetti} messagg${nonLetti===1?'io':'i'} non lett${nonLetti===1?'o':'i'} in chat. Clicca sul tuo nome per cambiare operatore, o apri Chat interna dal menu.` : `Stai usando il gestionale come ${nome}. Clicca per cambiare.`)
     : 'Scegli chi sta usando questo PC (solo per sapere chi ha fatto cosa, nessuna restrizione).';
@@ -2706,7 +2708,7 @@ function modalSelettoreOperatore() {
       <div style="display:flex;flex-direction:column;gap:8px;margin:14px 0;">
         ${STATE.meta.responsabili.map(r => `<button class="btn" data-action="operatore-scegli" data-nome="${escapeHtml(r)}" style="text-align:left;display:flex;align-items:center;gap:8px;">
           <span class="chat-pallino ${operatoreOnline(r)?'online':'offline'}" style="position:static;flex:none;" title="${operatoreOnline(r)?'Online adesso':'Offline'}"></span>
-          ${escapeHtml(r)}${(esisteMaster() && ruoloOperatore(r) === 'master') ? ' <span class="helptext" style="font-size:11px;">· maestro</span>' : ''}${responsabileHaPassword(r) ? ' 🔒' : ''}
+          ${escapeHtml(r)}${(esisteMaster() && ruoloOperatore(r) === 'master') ? ' <span class="tag-maestro">Maestro</span>' : ''}${responsabileHaPassword(r) ? ' 🔒' : ''}
         </button>`).join('')}
       </div>
       <div class="modal-actions"><button class="btn" data-action="chiudi-modal">Non ora</button></div>
