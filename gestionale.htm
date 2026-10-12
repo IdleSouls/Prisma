@@ -387,6 +387,14 @@ table.d-tabella th{background:#eef2fa;font-weight:700;}
    nativo - che ruba il focus di sistema e non lo restituisce al campo che si stava compilando - con
    questo overlay in stile Prisma. z-index sopra .modal-backdrop (50) apposta: resta sopra al modal
    sottostante, che intanto non viene mai toccato (niente furto di focus, niente dati persi). */
+.scheda-dati{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border);}
+.sd-titolo{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--text-mut);margin-bottom:6px;}
+.sd-griglia{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;}
+.sd{display:flex;flex-direction:column;min-width:0;}
+.sd-l{font-size:11px;color:var(--text-mut);}
+.sd-v{font-size:13.5px;font-weight:600;overflow-wrap:anywhere;user-select:text;}
+.sd-v.vuoto{font-weight:400;color:var(--text-mut);}
+.sd-v.vuoto.grave{color:var(--rosso);font-weight:600;}
 .mancante-grave{border-color:var(--rosso) !important;background:var(--rosso-bg) !important;box-shadow:0 0 0 1px var(--rosso);}
 .mancante-leggero{border-color:var(--giallo) !important;background:var(--giallo-bg) !important;box-shadow:0 0 0 1px var(--giallo);}
 .conferma-chiusura-overlay{position:fixed;inset:0;background:rgba(20,26,36,.35);display:flex;align-items:center;justify-content:center;z-index:200;padding:20px;}
@@ -2470,8 +2478,23 @@ let FINESTRA_HA_FOCUS = true;
      task #202): vedi commento su FINESTRA_HA_FOCUS sopra.
    Non copre i casi con logica ad hoc più fine (es. applicaStatoRemotoSeLibero fa un'eccezione per
    #chatTesto): quei punti mantengono il proprio controllo aggiuntivo oltre a questo. */
+/* Testo selezionato col mouse (es. un codice fiscale o un indirizzo da copiare): un re-render in
+   background lo deselezionerebbe a metà. Finché c'è una selezione non vuota dentro la pagina gli
+   aggiornamenti automatici (presenza, dati dei colleghi) aspettano. Tetto di 90 secondi dall'ultimo
+   cambio di selezione, per non lasciare i dati fermi se qualcuno dimentica il testo selezionato. */
+let ULTIMA_SELEZIONE_TS = 0;
+function haSelezioneTestoAttiva() {
+  try {
+    const sel = window.getSelection && window.getSelection();
+    if (!sel || sel.isCollapsed || !sel.rangeCount) return false;
+    const n = sel.anchorNode;
+    if (!n || !document.body.contains(n)) return false;
+    return (Date.now() - ULTIMA_SELEZIONE_TS) < 90000;
+  } catch (e) { return false; }
+}
 function staModificandoQualcosa() {
   if (!FINESTRA_HA_FOCUS) return true;
+  if (haSelezioneTestoAttiva()) return true;
   const el = document.activeElement;
   const inCampo = el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') && document.body.contains(el);
   if (inCampo) return true;
@@ -2487,7 +2510,9 @@ function avviaPollingPresenza() {
     if (!HTTP_SYNC_ATTIVO) return;
     fetch('/api/presenza').then(r => r.json()).then(d => {
       if (!d || !d.ok) return;
+      const presenzaPrima = JSON.stringify(PRESENZA_ONLINE);
       PRESENZA_ONLINE = d.online || {};
+      if (JSON.stringify(PRESENZA_ONLINE) === presenzaPrima) return; // niente di nuovo: nessun re-render (deselezionava il testo ogni 4 secondi)
       // BUG CRITICO (segnalato da Matteo: testo che si cancella da solo in comunicazioni/chat/
       // credenziali): questo giro passa ogni 8 secondi, sempre, in background. Un render() qui
       // senza controllo ricostruisce TUTTO il DOM incluso qualunque modulo aperto in quel momento -
@@ -5668,13 +5693,9 @@ function renderSchedaCliente() {
       <div>
         <div style="font-size:19px;font-weight:800;">${escapeHtml(cliente.ragioneSociale)} ${cliente.stato==='cessato'?'<span class="badge cessato">CESSATO</span>':''}${cliente.stato==='potenziale'?'<span class="badge info">POTENZIALE</span>':''}${contabilitaDaTerzi(cliente)?' <span class="badge" title="Contabilità tenuta da terzi">contab. terzi</span>':''}</div>
         ${(() => { const l = livelliMancantiCliente(cliente); if (!l.gravi.length && !l.leggeri.length) return ''; const g = l.gravi.length > 0; return `<div style="margin-top:6px;padding:8px 10px;border-left:4px solid ${g?'var(--rosso)':'var(--giallo)'};background:${g?'var(--rosso-bg)':'var(--giallo-bg)'};border-radius:6px;font-size:13px;">${g?'⚠':'ℹ'} <strong>Anagrafica da completare</strong>${l.gravi.length ? ` — importanti: <strong>${l.gravi.map(escapeHtml).join(', ')}</strong>` : ''}${l.leggeri.length ? ` — utili: ${l.leggeri.map(escapeHtml).join(', ')}` : ''}. <button class="btn small" data-action="modifica-cliente" data-id="${cliente.id}">Completa ora</button></div>`; })()}
-        <div class="helptext" style="margin-top:4px;">${escapeHtml(cliente.regimeFiscale||'—')} · ${escapeHtml(labelTipoCliente(cliente.tipo))}${cliente.partitaIva?' · P.IVA '+escapeHtml(cliente.partitaIva):''}${cliente.codiceFiscale?' · CF '+escapeHtml(cliente.codiceFiscale):''}</div>
-        <div class="helptext" style="margin-top:2px;">Resp. studio: ${escapeHtml(cliente.responsabileStudio||'—')}${cliente.settore?' · Settore '+escapeHtml(cliente.settore):''}${cliente.annoIngresso?' · Cliente dal '+cliente.annoIngresso:''}</div>
-        ${(cliente.atecoCodici||[]).length ? `<div class="helptext" style="margin-top:2px;">ATECO: ${(cliente.atecoCodici||[]).map(a=>escapeHtml(a)).join(', ')}</div>` : ''}
         ${cliente.stato==='cessato' ? `<div class="helptext" style="margin-top:2px;color:var(--rosso);">Cessato${cliente.dataCessazione?' il '+fmtData(cliente.dataCessazione):''}${cliente.motivoCessazione?' · '+escapeHtml(cliente.motivoCessazione):''}</div>` : ''}
         ${(() => { const ce = annualiCedutiCliente(cliente.id); const aperti = derivati().annuali.filter(a => a.clienteId === cliente.id && !a.completato); return cliente.stato==='cessato' ? `<div class="helptext" style="margin-top:2px;">${ce.length ? 'Ceduti al nuovo commercialista: ' + ce.map(x => escapeHtml(x.nome) + ' ' + x.anno).join(', ') : 'Nessun adempimento ceduto'}${aperti.length ? ' · <strong>Ancora in carico allo studio:</strong> ' + aperti.map(a => escapeHtml(a.tipoNome)).join(', ') : ''}</div>` : ''; })()}
         <div style="margin-top:6px;">${cliente.stato==='cessato' ? `<button class="btn small" data-action="riattiva-cliente" data-id="${cliente.id}">Riattiva cliente</button>` : (cliente.stato==='attivo' ? `<button class="btn small" data-action="cessa-cliente-apri" data-id="${cliente.id}">Cessa cliente…</button>` : '')} ${cliente.stato==='attivo' ? `<button class="btn small" data-action="report-mensile-apri" data-cliente="${cliente.id}">Report mensile…</button>` : ''}</div>
-        ${(contatti.email||contatti.telefono||contatti.pec) ? `<div class="helptext" style="margin-top:2px;">${contatti.email?escapeHtml(contatti.email):''}${contatti.telefono?' · '+escapeHtml(contatti.telefono):''}${contatti.pec?' · PEC '+escapeHtml(contatti.pec):''}</div>` : ''}
       </div>
       <div style="display:flex;gap:22px;">
         <div style="text-align:right;">
@@ -5689,6 +5710,41 @@ function renderSchedaCliente() {
         </div>
       </div>
     </div>
+    ${(() => {
+      const v = (x, vuotoGrave) => (x === undefined || x === null || x === '') ? `<span class="sd-v vuoto${vuotoGrave ? ' grave' : ''}">${vuotoGrave ? 'da indicare' : '—'}</span>` : `<span class="sd-v">${x}</span>`;
+      const cella = (l, x, g) => `<div class="sd"><span class="sd-l">${l}</span>${v(x, g)}</div>`;
+      const yn = (x) => x === 'SI' ? 'Sì' : (x === 'NO' ? 'No' : '');
+      const societa = TIPI_SOCIETA.includes(cliente.tipo);
+      const ateco = (cliente.atecoCodici || []).map(a => escapeHtml(a)).join(', ');
+      const grp = (titolo, celle) => `<div class="sd-gruppo"><div class="sd-titolo">${titolo}</div><div class="sd-griglia">${celle.join('')}</div></div>`;
+      return `<div class="scheda-dati">`
+        + grp('Anagrafica fiscale', [
+            cella('Tipo', escapeHtml(labelTipoCliente(cliente.tipo))),
+            cella('Regime fiscale', escapeHtml(cliente.regimeFiscale || ''), true),
+            cella('Partita IVA', escapeHtml(cliente.partitaIva || '')),
+            cella('Codice fiscale', escapeHtml(cliente.codiceFiscale || '')),
+            cella('ATECO', ateco),
+            cella('Settore', escapeHtml(cliente.settore || '')),
+          ].concat(societa ? [
+            cella('PMI innovativa', yn(cliente.pmiInnovativa), !cliente.pmiInnovativa),
+            cella('Start-up innovativa', yn(cliente.startupInnovativa), !cliente.startupInnovativa),
+            cella('Organo di controllo', escapeHtml(cliente.organoControllo || ''), !cliente.organoControllo),
+          ] : []))
+        + grp('Gestione nello studio', [
+            cella('Responsabile', escapeHtml(cliente.responsabileStudio || ''), true),
+            cella('Cliente dal', cliente.annoIngresso ? String(cliente.annoIngresso) : ''),
+            cella('Contabilità', escapeHtml(({ ESTERNA: 'Tenuta dallo studio', INTERNA: 'Da terzi' })[cliente.contabilita] || cliente.contabilita || ''), true),
+            cella('Periodicità IVA', escapeHtml(cliente.periodicitaIva || ''), true),
+            cella('Previdenza', escapeHtml(cliente.previdenza || '')),
+            cella('Addebito F24', escapeHtml(({ NOI: 'Studio', CLIENTE: 'Cliente', 'NOI/CLIENTE': 'Studio o cliente' })[cliente.addebitoF24] || cliente.addebitoF24 || '')),
+          ])
+        + grp('Contatti', [
+            cella('Email', contatti.email ? `<a href="mailto:${escapeHtml(contatti.email)}">${escapeHtml(contatti.email)}</a>` : ''),
+            cella('Telefono', escapeHtml(contatti.telefono || '')),
+            cella('PEC', escapeHtml(contatti.pec || '')),
+          ])
+        + `</div>`;
+    })()}
   </div>`;
 
   const { tutteScadenze, annuali } = derivati();
@@ -6027,13 +6083,20 @@ function modalCliente(clienteId) {
         </fieldset>
 
         <fieldset>
-          <legend>PMI / start-up innovative e organo di controllo</legend>
+          <legend>PMI e start-up innovative (se hanno il requisito)</legend>
           <div class="grid3">
-            <div class="field"><label>PMI innovativa (requisito)</label><select id="fPmiInnovativa">${vuoto(c.pmiInnovativa)}<option value="SI" ${c.pmiInnovativa==='SI'?'selected':''}>Sì, ha il requisito</option><option value="NO" ${c.pmiInnovativa==='NO'?'selected':''}>No</option></select></div>
-            <div class="field"><label>Start-up innovativa (requisito)</label><select id="fStartupInnovativa">${vuoto(c.startupInnovativa)}<option value="SI" ${c.startupInnovativa==='SI'?'selected':''}>Sì, ha il requisito</option><option value="NO" ${c.startupInnovativa==='NO'?'selected':''}>No</option></select></div>
+            <div class="field"><label>PMI innovativa</label><select id="fPmiInnovativa">${vuoto(c.pmiInnovativa)}<option value="SI" ${c.pmiInnovativa==='SI'?'selected':''}>Sì, ha il requisito</option><option value="NO" ${c.pmiInnovativa==='NO'?'selected':''}>No</option></select></div>
+            <div class="field"><label>Start-up innovativa</label><select id="fStartupInnovativa">${vuoto(c.startupInnovativa)}<option value="SI" ${c.startupInnovativa==='SI'?'selected':''}>Sì, ha il requisito</option><option value="NO" ${c.startupInnovativa==='NO'?'selected':''}>No</option></select></div>
+          </div>
+          <div class="helptext">Richiesti per le società (di capitali, cooperative, imprese sociali). Finché non sono indicati il cliente resta "da completare".</div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Organo di controllo</legend>
+          <div class="grid3">
             <div class="field"><label>Organo di controllo</label><select id="fOrganoControllo">${vuoto(c.organoControllo)}${OPZIONI_ORGANO_CONTROLLO.map(o=>`<option ${c.organoControllo===o?'selected':''}>${o}</option>`).join('')}</select></div>
           </div>
-          <div class="helptext">Richiesti per le società (di capitali, cooperative, imprese sociali): servono ad esempio per il quadro del 770. Finché non sono indicati il cliente resta "da completare".</div>
+          <div class="helptext">Vale per qualunque società, anche se non è PMI o start-up innovativa: serve ad esempio per il quadro del 770. Finché non è indicato il cliente resta "da completare".</div>
         </fieldset>
 
         <fieldset>
@@ -16727,6 +16790,16 @@ function onClickDelegato(e) {
 function onClickDelegatoInterno(e) {
   const el = e.target.closest('[data-action]');
   if (!el) return;
+  /* Trascinare il mouse per selezionare del testo dentro una riga/card cliccabile (es. per copiare un
+     codice fiscale dall'elenco clienti) NON deve aprire la scheda: il click di fine trascinamento
+     arriva comunque all'elemento. Con testo selezionato dentro l'elemento, il click si ignora
+     (pulsanti e campi restano sempre cliccabili). */
+  if (!/^(BUTTON|A|INPUT|SELECT|TEXTAREA|LABEL)$/.test(el.tagName) && !e.target.closest('button, a, input, select, textarea, label')) {
+    try {
+      const sel = window.getSelection && window.getSelection();
+      if (sel && !sel.isCollapsed && String(sel).trim() && el.contains(sel.anchorNode)) return;
+    } catch (err) { /* nessuna selezione: si prosegue */ }
+  }
   const action = el.dataset.action;
   const id = el.dataset.id;
 
@@ -19517,6 +19590,13 @@ function init() {
   // applicaStatoRemotoSeLibero) appena si smette di scrivere in un qualsiasi campo — registrato
   // qui e non dentro inizializzaSyncCondiviso() perché deve esistere comunque, a prescindere da
   // quando/se il backend condiviso si connette (blur non "bubbla": serve la fase di cattura).
+  document.addEventListener('selectionchange', () => {
+    const sel = window.getSelection && window.getSelection();
+    if (sel && !sel.isCollapsed) { ULTIMA_SELEZIONE_TS = Date.now(); return; }
+    // selezione finita: si recuperano gli aggiornamenti rimasti in coda mentre si copiava il testo
+    if (DB_STATO_REMOTO_PENDENTE) setTimeout(applicaStatoRemotoSeLibero, 200);
+    if (RENDER_DOPO_UNIONE) setTimeout(() => { if (!staModificandoQualcosa()) { RENDER_DOPO_UNIONE = false; render(); } }, 200);
+  });
   document.addEventListener('blur', () => {
     if (DB_STATO_REMOTO_PENDENTE) setTimeout(applicaStatoRemotoSeLibero, 50);
     if (RENDER_DOPO_UNIONE) setTimeout(() => { if (!staModificandoQualcosa()) { RENDER_DOPO_UNIONE = false; render(); toast('🔄 Modifiche di un collega unite alle tue.'); } }, 50);
@@ -20161,6 +20241,7 @@ window.clienteDaRigaImport = clienteDaRigaImport;
 window.campiMancantiCliente = campiMancantiCliente;
 window.livelliMancantiCliente = livelliMancantiCliente;
 window.confermaAzione = confermaAzione;
+window.staModificandoQualcosa = staModificandoQualcosa;
 window.diffStato = diffStato;
 window.applicaDiffStato = applicaDiffStato;
 window.unisciRemotoConLocale = unisciRemotoConLocale;

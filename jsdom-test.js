@@ -6938,6 +6938,23 @@ async function main() {
       assert(window.applicaDiffStato(clona(l6), window.diffStato(b6, m6)).righe.length === 2, 'unione: elenchi vuoti che crescono in parallelo');
       console.log('=== Unione modifiche tra postazioni (tre vie) OK');
     }
+
+    // ---------- Selezione del testo: gli aggiornamenti in background aspettano ----------
+    {
+      window.setView('clienti'); window.render(); await wait(20);
+      const cella = window.document.querySelector('#content td, #content .name, #content div');
+      const r = window.document.createRange(); r.selectNodeContents(cella);
+      const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+      window.document.dispatchEvent(new window.Event('selectionchange'));
+      if (String(sel).trim()) assert(window.staModificandoQualcosa(), 'con testo selezionato gli aggiornamenti automatici devono aspettare');
+      sel.removeAllRanges(); window.document.dispatchEvent(new window.Event('selectionchange'));
+      assert(!window.staModificandoQualcosa(), 'senza selezione né campi attivi gli aggiornamenti possono procedere');
+      // scheda cliente: riepilogo a gruppi
+      window.setView('schedacliente'); window.render(); await wait(20);
+      assert(window.document.querySelectorAll('#content .scheda-dati .sd').length >= 12, 'scheda cliente: riepilogo dati a gruppi mancante');
+      window.setView('dashboard');
+      console.log('=== Selezione testo non interrotta dagli aggiornamenti; scheda cliente con riepilogo a gruppi OK');
+    }
   }
   console.log('\n✅ TUTTI I TEST END-TO-END PASSATI (' + errors.length + ' errori console catturati)');
   if (errors.length) {
