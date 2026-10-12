@@ -7117,6 +7117,38 @@ async function main() {
       D.getElementById('modalRoot').innerHTML = '';
       console.log('=== Modello lettera: impaginazione Word, round trip editor, stampa OK');
     }
+
+    // ---------- Libri sociali: un solo libro per cliente, verbali da stampare ----------
+    {
+      const ST = window.getSTATE(); const D = window.document;
+      // migrazione: più libri dello stesso cliente -> uno solo, con gli atti riportati sulla sezione
+      const cap = ST.clienti.find(c => c.stato !== 'cessato' && c.tipo === 'societa_capitali') || ST.clienti[0];
+      const mig = { libriSociali: [{ id: 'l1', clienteId: cap.id, tipo: 'Libro soci', detenutoDa: 'Cliente', ultimaStampa: '2024-01-01', ultimaPagina: 5 }, { id: 'l2', clienteId: cap.id, tipo: 'Libro verbali CdA', detenutoDa: 'Studio', ultimaStampa: '2025-02-02', ultimaPagina: 9 }], documenti: [{ id: 'd1', clienteId: cap.id, libroId: 'l2' }] };
+      window.unisciLibriSociali(mig);
+      assert(mig.libriSociali.length === 1 && mig.libriSociali[0].detenutoDa === 'Studio' && mig.libriSociali[0].ultimaPagina === 9, 'libri uniti in uno solo');
+      assert(mig.documenti[0].libroId === 'l1' && mig.documenti[0].sezioneLibro === 'Libro degli amministratori', 'atti riportati sulla sezione');
+      // verbali da stampare: task con spunta chiuso -> compare solo se libri dello studio
+      const lib = window.aggiungiLibroSociale({ clienteId: cap.id, detenutoDa: 'Studio' });
+      assert(lib.tipo === 'Libri sociali', 'libro senza tipo');
+      window.aggiungiTaskTeam({ titolo: 'Variazione sede TEST', assegnatoA: ST.meta.responsabili[0], clienteId: cap.id, stampaVerbale: true, stampaSezione: 'Libro decisioni dei soci', stato: 'Da fare', creatoIl: '2026-10-01' });
+      const tk = ST.taskTeam[ST.taskTeam.length - 1];
+      assert(!window.stampeLibriDaFare().some(x => x.key === 'task-' + tk.id), 'finché il task è aperto non c\'è nulla da stampare');
+      window.aggiornaTaskTeam(tk.id, { stato: 'Fatto' });
+      const voce = window.stampeLibriDaFare().find(x => x.key === 'task-' + tk.id);
+      assert(voce && voce.sezione === 'Libro decisioni dei soci' && voce.clienteId === cap.id, 'task chiuso -> verbale da stampare');
+      window.aggiornaLibroSociale(lib.id, { detenutoDa: 'Cliente' });
+      assert(!window.stampeLibriDaFare().some(x => x.key === 'task-' + tk.id), 'libri non dello studio: nessun alert');
+      window.aggiornaLibroSociale(lib.id, { detenutoDa: 'Studio' });
+      window.setView('libri'); window.render(); await wait(20);
+      assert(/Verbali da stampare nei libri/.test(D.querySelector('#content').textContent) && D.querySelector('[data-action="stampa-libro-segna"]'), 'sezione verbali da stampare visibile');
+      const cb = D.querySelector('[data-action="stampa-libro-segna"][data-key="task-' + tk.id + '"]'); assert(cb, 'checkbox stampato');
+      cb.checked = true; cb.dispatchEvent(new window.Event('change', { bubbles: true })); await wait(20);
+      assert(!window.stampeLibriDaFare().some(x => x.key === 'task-' + tk.id), 'segnato come stampato');
+      assert(!D.querySelector('#content').innerHTML.includes('id="libTipo"') && !D.querySelector('[data-action="libri-filtro-tipo"]'), 'niente più tipo di libro');
+      ST.taskTeam = ST.taskTeam.filter(x => x.id !== tk.id); ST.libriSociali = ST.libriSociali.filter(x => x.id !== lib.id); ST.stampeLibriFatte = {};
+      window.setView('dashboard');
+      console.log('=== Libri sociali: libro unico per cliente, verbali da stampare automatici (task) OK');
+    }
   }
   console.log('\n✅ TUTTI I TEST END-TO-END PASSATI (' + errors.length + ' errori console catturati)');
   if (errors.length) {

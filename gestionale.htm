@@ -2031,6 +2031,9 @@ function statoIniziale() {
     attivitaFatturabili: [],
     /* Libri sociali dei clienti: quali libri, chi li detiene, ultima stampa e ultima pagina. */
     libriSociali: [],
+    /* Verbali/atti da stampare nei libri sociali: voci manuali (stampeLibri) + data di stampa delle voci automatiche (stampeLibriFatte[chiave]). */
+    stampeLibri: [],
+    stampeLibriFatte: {},
     /* Deontologia: check-list accettazione incarico per cliente, formazione continua, impegni di riservatezza. */
     accettazioni: {},
     /* Proroghe massive di scadenze (decreti), tracker concordato preventivo biennale per cliente. */
@@ -2188,6 +2191,9 @@ function normalizzaStatoCaricato(parsed) {
   migraDocumentiContabiliConti(stato);
   migraNoteTaskTeam(stato);
   migraCampiCredenziali(stato);
+  unisciLibriSociali(stato);
+  if (!Array.isArray(stato.stampeLibri)) stato.stampeLibri = [];
+  if (!stato.stampeLibriFatte || typeof stato.stampeLibriFatte !== 'object') stato.stampeLibriFatte = {};
   /* Una tantum: il modello "in stile lettera" (copia del Word dello studio) compare da solo tra i modelli. */
   if (stato.meta && !stato.meta.modelloLetteraV2 && Array.isArray(stato.modelliDocumento)) {
     stato.meta.modelloLetteraV2 = true;
@@ -8972,8 +8978,105 @@ function modalSegnaFatturate(clienteId, ids) {
    utilizzata, vidimazione. Solo promemoria organizzativo: la tenuta resta a norma di legge (art. 2421 ss. c.c.). */
 const TIPI_LIBRO_SOCIALE = ['Libro soci', 'Libro verbali assemblee', 'Libro decisioni dei soci', 'Libro verbali CdA', 'Libro decisioni degli amministratori', 'Libro verbali collegio sindacale', 'Libro obbligazioni', 'Libro adunanze (altro)'];
 const DETENTORI_LIBRO = ['Studio', 'Cliente', 'Altro'];
+/* I libri di un cliente stanno sempre insieme (un solo "libro sociale" per cliente, senza tipo): al suo interno ci sono
+   queste sezioni, ognuna con ciò che ci va stampato. */
+const SEZIONI_LIBRO = ['Libro soci', 'Libro degli amministratori', 'Libro decisioni dei soci', 'Libro organo di controllo'];
+const CONTENUTO_SEZIONI = {
+  'Libro soci': 'Elenco dei soci, da stampare aggiornato quando cambia la compagine.',
+  'Libro degli amministratori': 'Ogni verbale del CdA / decisione degli amministratori.',
+  'Libro decisioni dei soci': "Atto costitutivo all'inizio, poi ogni verbale / decisione dei soci (compresa l'approvazione del bilancio).",
+  'Libro organo di controllo': "Ogni verbale dell'organo di controllo, se nominato.",
+};
+function sezioneDaTipoVecchio(tipo) {
+  const t = String(tipo || '').toLowerCase();
+  if (/collegio|controllo|sindac/.test(t)) return 'Libro organo di controllo';
+  if (/amministrator|cda/.test(t)) return 'Libro degli amministratori';
+  if (/soci/.test(t) && !/decision|verbal|assemble/.test(t)) return 'Libro soci';
+  return 'Libro decisioni dei soci';
+}
+/* Una sola scheda libro per cliente: unisce quelle esistenti (una per tipo) e riporta gli atti sulla sezione giusta. */
+function unisciLibriSociali(stato) {
+  const lista = Array.isArray(stato.libriSociali) ? stato.libriSociali : [];
+  const perCliente = new Map();
+  lista.forEach(l => { if (!perCliente.has(l.clienteId)) perCliente.set(l.clienteId, []); perCliente.get(l.clienteId).push(l); });
+  const nuovi = []; const rimappa = {}; const tipoVecchio = {};
+  perCliente.forEach(gruppo => {
+    const base = gruppo[0];
+    gruppo.forEach(l => { rimappa[l.id] = base.id; tipoVecchio[l.id] = l.tipo; });
+    if (gruppo.length > 1) {
+      const max = (k) => gruppo.map(l => l[k]).filter(v => v != null && v !== '').sort().pop();
+      base.detenutoDa = gruppo.some(l => l.detenutoDa === 'Studio') ? 'Studio' : base.detenutoDa;
+      base.detentoreNote = gruppo.map(l => l.detentoreNote).filter(Boolean)[0] || '';
+      base.ultimaStampa = max('ultimaStampa') || null; base.ultimaPagina = max('ultimaPagina') != null ? Number(max('ultimaPagina')) : null; base.vidimazione = max('vidimazione') || null;
+      base.note = Array.from(new Set(gruppo.map(l => l.note).filter(Boolean))).join(' · ');
+    }
+    base.tipo = 'Libri sociali';
+    nuovi.push(base);
+  });
+  if (lista.some(l => l.tipo !== 'Libri sociali')) {
+    (stato.documenti || []).forEach(d => {
+      if (d.libroId && rimappa[d.libroId]) { if (!d.sezioneLibro) d.sezioneLibro = sezioneDaTipoVecchio(tipoVecchio[d.libroId]); d.libroId = rimappa[d.libroId]; }
+    });
+  }
+  stato.libriSociali = nuovi;
+}
+function libroDelCliente(clienteId) { return (STATE.libriSociali || []).find(l => l.clienteId === clienteId) || null; }
+/* Verbali/atti da stampare nei libri, in ordine cronologico. Automatici: bilancio approvato (pratica "Bilancio/Verbale assemblea"
+   completata) e task con la spunta "stampa verbale" chiusi; entrambi solo se i libri sono gestiti dallo studio. */
+function stampeLibriTutte() {
+  const out = [];
+  const fatte = STATE.stampeLibriFatte || {};
+  const gestiti = (cid) => { const l = libroDelCliente(cid); return !!l && l.detenutoDa === 'Studio'; };
+  const cl = (cid) => { const c = clienteById(cid); return !!c && clienteAttivo(c); };
+  try {
+    derivati().annuali.forEach(a => {
+      if (a.tipoChiave !== 'BILANCIO' || !a.completato || !gestiti(a.clienteId) || !cl(a.clienteId)) return;
+      const date = (a.sotto || []).map(x => x.data).filter(Boolean).sort();
+      const key = `bil-${a.clienteId}-${a.anno}`;
+      out.push({ key, clienteId: a.clienteId, sezione: 'Libro decisioni dei soci', descrizione: `Verbale di approvazione del bilancio ${a.anno}`, data: date.length ? date[date.length - 1] : oggiISO(), origine: 'Pratica bilancio completata', stampatoIl: fatte[key] || null });
+    });
+  } catch (e) { /* derivati non disponibile in contesti parziali */ }
+  (STATE.taskTeam || []).forEach(t => {
+    if (!t.stampaVerbale || t.stato !== 'Fatto' || !t.clienteId || !gestiti(t.clienteId) || !cl(t.clienteId)) return;
+    const key = `task-${t.id}`;
+    out.push({ key, clienteId: t.clienteId, sezione: t.stampaSezione || 'Libro decisioni dei soci', descrizione: `Verbale: ${t.titolo}`, data: t.fattoIl || t.scadenza || t.creatoIl || oggiISO(), origine: 'Task completato', stampatoIl: fatte[key] || null });
+  });
+  (STATE.stampeLibri || []).forEach(m => out.push({ key: `man-${m.id}`, manualeId: m.id, clienteId: m.clienteId, sezione: m.sezione, descrizione: m.descrizione, data: m.data || m.creatoIl, origine: 'Inserito a mano', stampatoIl: m.stampatoIl || null }));
+  return out.sort((a, b) => String(a.data).localeCompare(String(b.data)));
+}
+function stampeLibriDaFare() { return stampeLibriTutte().filter(x => !x.stampatoIl); }
+function segnaStampaLibro(key, fatta) {
+  const data = fatta ? oggiISO() : null;
+  if (key.startsWith('man-')) { const m = (STATE.stampeLibri || []).find(x => x.id === key.slice(4)); if (m) m.stampatoIl = data; }
+  else { if (!STATE.stampeLibriFatte) STATE.stampeLibriFatte = {}; if (data) STATE.stampeLibriFatte[key] = data; else delete STATE.stampeLibriFatte[key]; }
+  salvaStato();
+}
+function htmlStampeLibri(clienteId) {
+  const tutte = stampeLibriTutte().filter(x => !clienteId || x.clienteId === clienteId);
+  const da = tutte.filter(x => !x.stampatoIl);
+  const fatteRecenti = tutte.filter(x => x.stampatoIl).sort((a, b) => b.stampatoIl.localeCompare(a.stampatoIl)).slice(0, 5);
+  const riga = (x) => `<tr><td style="white-space:nowrap;">${fmtData(x.data)}</td>${clienteId ? '' : `<td>${escapeHtml(nomeCliente(x.clienteId))}</td>`}<td>${escapeHtml(x.sezione)}</td><td>${escapeHtml(x.descrizione)} <span class="helptext">· ${escapeHtml(x.origine)}</span></td>
+    <td style="white-space:nowrap;"><label class="checkline"><input type="checkbox" data-action="stampa-libro-segna" data-key="${escapeHtml(x.key)}" ${x.stampatoIl ? 'checked' : ''}> ${x.stampatoIl ? 'Stampato il ' + fmtData(x.stampatoIl) : 'Da stampare'}</label>${x.manualeId ? ` <button class="btn small danger" data-action="stampa-libro-elimina" data-id="${x.manualeId}">✕</button>` : ''}</td></tr>`;
+  const testa = `<thead><tr><th>Data</th>${clienteId ? '' : '<th>Cliente</th>'}<th>Sezione del libro</th><th>Cosa stampare</th><th></th></tr></thead>`;
+  return `<div class="card" ${da.length ? 'style="border-left:4px solid var(--arancio,#d97706);"' : ''}><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;"><div class="section-title" style="margin:0;">Verbali da stampare nei libri <span class="cnt">${da.length}</span></div><button class="btn" data-action="stampa-libro-nuova" data-cliente="${clienteId || ''}">+ Da stampare</button></div>
+    <div class="helptext" style="margin:4px 0 8px;">In ordine cronologico. Compaiono da soli quando una pratica di bilancio viene completata o un task con la spunta "stampa verbale" viene chiuso, per le società i cui libri sono tenuti dallo studio.</div>
+    ${da.length ? `<table class="compact">${testa}<tbody>${da.map(riga).join('')}</tbody></table>` : '<div class="helptext">Niente da stampare.</div>'}
+    ${fatteRecenti.length ? `<details style="margin-top:8px;"><summary class="helptext" style="cursor:pointer;">Ultime stampate</summary><table class="compact" style="margin-top:6px;">${testa}<tbody>${fatteRecenti.map(riga).join('')}</tbody></table></details>` : ''}</div>`;
+}
+function modalStampaLibro(clienteId) {
+  const clienti = STATE.clienti.filter(c => clienteAttivo(c)).sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale));
+  h('modalRoot').innerHTML = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop"><div class="modal" style="max-width:520px;">
+    <div style="display:flex;justify-content:space-between;"><h2>Da stampare nei libri</h2><button class="icon-x" data-action="chiudi-modal">✕</button></div>
+    <div class="grid2">
+      <div class="field full" style="grid-column:1/-1;"><label>Cliente *</label><select id="slCliente">${clienti.map(c => `<option value="${c.id}" ${c.id === clienteId ? 'selected' : ''}>${escapeHtml(c.ragioneSociale)}</option>`).join('')}</select></div>
+      <div class="field"><label>Sezione del libro</label><select id="slSezione">${SEZIONI_LIBRO.map(x => `<option ${x === 'Libro decisioni dei soci' ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
+      <div class="field"><label>Data dell'atto</label><input type="date" id="slData" value="${oggiISO()}"></div>
+      <div class="field full" style="grid-column:1/-1;"><label>Cosa stampare *</label><input id="slDescr" placeholder="es. Verbale assemblea di nomina amministratore"></div>
+    </div>
+    <div class="modal-actions"><button class="btn" data-action="chiudi-modal">Annulla</button><button class="btn primary" data-action="stampa-libro-salva">Aggiungi</button></div></div></div>`;
+}
 function aggiungiLibroSociale(d) {
-  const l = Object.assign({ id: uid('lib'), clienteId: null, tipo: TIPI_LIBRO_SOCIALE[0], detenutoDa: 'Studio', detentoreNote: '', ultimaStampa: null, ultimaPagina: null, vidimazione: null, note: '', creatoIl: oggiISO() }, d);
+  const l = Object.assign({ id: uid('lib'), clienteId: null, tipo: 'Libri sociali', detenutoDa: 'Studio', detentoreNote: '', ultimaStampa: null, ultimaPagina: null, vidimazione: null, note: '', creatoIl: oggiISO() }, d);
   l.ultimaPagina = (l.ultimaPagina === '' || l.ultimaPagina == null) ? null : Number(l.ultimaPagina);
   if (!STATE.libriSociali) STATE.libriSociali = [];
   STATE.libriSociali.push(l);
@@ -9034,14 +9137,14 @@ function attiDaTrascrivere() {
 function assegnaAttoLibro(docId, dati) {
   const d = (STATE.documenti || []).find(x => x.id === docId);
   if (!d) return null;
-  Object.assign(d, { libroId: dati.libroId, dataAtto: dati.dataAtto, tipoAtto: dati.tipoAtto || 'Altro', pagine: dati.pagine || '', trascritto: !!dati.trascritto, trascrittoIl: dati.trascritto ? (d.trascrittoIl || oggiISO()) : null });
+  Object.assign(d, { libroId: dati.libroId, sezioneLibro: dati.sezioneLibro || d.sezioneLibro || 'Libro decisioni dei soci', dataAtto: dati.dataAtto, tipoAtto: dati.tipoAtto || 'Altro', pagine: dati.pagine || '', trascritto: !!dati.trascritto, trascrittoIl: dati.trascritto ? (d.trascrittoIl || oggiISO()) : null });
   salvaStato();
   return d;
 }
 function scollegaAttoLibro(docId) {
   const d = (STATE.documenti || []).find(x => x.id === docId);
   if (!d) return;
-  ['libroId', 'dataAtto', 'tipoAtto', 'pagine', 'trascritto', 'trascrittoIl'].forEach(k => { delete d[k]; });
+  ['libroId', 'sezioneLibro', 'dataAtto', 'tipoAtto', 'pagine', 'trascritto', 'trascrittoIl'].forEach(k => { delete d[k]; });
   salvaStato();
 }
 function lacuneLibriCliente(c) {
@@ -9066,7 +9169,7 @@ function modalAttoLibro(docId) {
   const libri = (STATE.libriSociali || []).filter(l => l.clienteId === clienteId);
   if (!libri.length) { toast('Registra prima almeno un libro per questo cliente (+ Aggiungi libro).'); return; }
   const liberi = (STATE.documenti || []).filter(d => d.clienteId === clienteId && !d.libroId);
-  const v = ed || { libroId: libri[0].id, dataAtto: '', tipoAtto: TIPI_ATTO_LIBRO[0], pagine: '', trascritto: false };
+  const v = ed || { libroId: libri[0].id, sezioneLibro: 'Libro decisioni dei soci', dataAtto: '', tipoAtto: TIPI_ATTO_LIBRO[0], pagine: '', trascritto: false };
   const selDoc = ed ? '' : `<div class="field full" style="grid-column:1/-1;"><label>Documento</label><select id="atDoc"><option value="">— nuovo file da caricare —</option>${liberi.map(d => `<option value="${d.id}">${escapeHtml(d.nome)}${d.categoria ? ' (' + escapeHtml(d.categoria) + ')' : ''}</option>`).join('')}</select></div>
         ${HTTP_SYNC_ATTIVO ? `<div class="field full" style="grid-column:1/-1;"><label>Nuovo file (se non scegli un documento già caricato)</label><input type="file" id="atFile"></div>` : ''}
         <div class="field full" style="grid-column:1/-1;"><label>Nome del documento (per un nuovo file)</label><input id="atNome" placeholder="es. Verbale assemblea approvazione bilancio 2025"></div>`;
@@ -9074,7 +9177,7 @@ function modalAttoLibro(docId) {
     <div style="display:flex;justify-content:space-between;align-items:flex-start;"><div><h2>${ed ? 'Modifica atto' : 'Atto da riportare nel libro'}</h2><div class="modal-sub">${escapeHtml(nomeCliente(clienteId))}</div></div><button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button></div>
     <form id="formAtto" onsubmit="return false;"><div class="grid2">
       ${selDoc}
-      <div class="field"><label>Libro *</label><select id="atLibro">${libri.map(l => `<option value="${l.id}" ${v.libroId === l.id ? 'selected' : ''}>${escapeHtml(l.tipo)}</option>`).join('')}</select></div>
+      <div class="field"><label>Sezione del libro *</label><select id="atLibro">${SEZIONI_LIBRO.map(x => `<option ${v.sezioneLibro === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
       <div class="field"><label>Data dell'atto *</label><input type="date" id="atData" value="${escapeHtml(v.dataAtto || '')}"></div>
       <div class="field"><label>Tipo di atto</label><select id="atTipo">${TIPI_ATTO_LIBRO.map(t => `<option ${v.tipoAtto === t ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
       <div class="field"><label>Pagine nel libro</label><input id="atPagine" value="${escapeHtml(v.pagine || '')}" placeholder="es. 12-14"></div>
@@ -9089,7 +9192,7 @@ function dettaglioLibriCliente(c) {
   const lacune = lacuneLibriCliente(c);
   const atti = attiLibroCliente(c.id);
   const base = documentiBaseSocieta(c.id);
-  const libriPrev = prev.libri.length ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0;">${prev.libri.map(n => { const ok = mieiLibri.some(l => l.tipo === n); return `<span class="badge ${ok ? 'ok' : ''}" style="${ok ? '' : 'background:var(--giallo-bg,#fff4d6);color:#8a5a00;'}">${ok ? '✓' : '○'} ${escapeHtml(n)}</span>`; }).join('')}</div>` : '';
+  const libriPrev = prev.libri.length ? `<div style="margin:8px 0;">${SEZIONI_LIBRO.filter(x => x !== 'Libro organo di controllo' || prev.libri.some(n => /collegio|controllo/i.test(n))).map(x => `<div style="padding:6px 0;border-bottom:1px solid var(--border);"><b>${escapeHtml(x)}</b> <span class="helptext">— ${escapeHtml(CONTENUTO_SEZIONI[x])}${x === 'Libro soci' ? ' Soci in anagrafica: ' + sociDiCliente(c.id).length + '.' : ''}</span></div>`).join('')}</div>` : '';
   const daAss = baseDaAssegnare(c.id);
   const haCostitutivo = (STATE.documenti || []).some(d => d.clienteId === c.id && d.categoria === CAT_ATTO_COSTITUTIVO);
   const righeApertura = (daAss.length ? daAss.map(d => `<tr style="background:var(--giallo-bg,#fff8e1);"><td>—</td><td colspan="2">Apertura del libro: atto costitutivo / statuto</td>
@@ -9099,12 +9202,12 @@ function dettaglioLibriCliente(c) {
   const baseAltri = base.filter(d => d.categoria !== CAT_ATTO_COSTITUTIVO);
   const righeBase = baseAltri.length ? baseAltri.map(d =>`<tr><td>${escapeHtml(d.nome)}</td><td>${escapeHtml(d.categoria)}</td><td>${d.dataCaricamento ? fmtData(d.dataCaricamento) : '—'}</td><td>${d.filePercorso ? `<a href="${linkScaricaFileReale(d.filePercorso)}" target="_blank">📎 apri</a>` : ''}</td></tr>`).join('') : '<tr><td colspan="4" class="helptext">Nessun documento di base caricato. Caricalo da Documenti con categoria "Atto costitutivo/Statuto" o "Visura camerale".</td></tr>';
   const righeAtti = atti.length ? atti.map(d => { const l = (STATE.libriSociali || []).find(x => x.id === d.libroId); return `<tr>
-      <td style="white-space:nowrap;">${d.dataAtto ? fmtData(d.dataAtto) : '—'}</td><td>${escapeHtml(l ? l.tipo : '—')}</td><td>${escapeHtml(d.tipoAtto || '')}</td>
+      <td style="white-space:nowrap;">${d.dataAtto ? fmtData(d.dataAtto) : '—'}</td><td>${escapeHtml(d.sezioneLibro || '—')}</td><td>${escapeHtml(d.tipoAtto || '')}</td>
       <td>${escapeHtml(d.nome)} ${d.filePercorso ? `<a href="${linkScaricaFileReale(d.filePercorso)}" target="_blank">📎</a>` : ''}</td><td>${escapeHtml(d.pagine || '—')}</td>
       <td><label class="checkline"><input type="checkbox" data-action="atto-trascritto" data-id="${d.id}" ${d.trascritto ? 'checked' : ''}> ${d.trascritto ? 'Trascritto' + (d.trascrittoIl ? ' il ' + fmtData(d.trascrittoIl) : '') : 'Da trascrivere'}</label></td>
       <td style="white-space:nowrap;"><button class="btn small" data-action="atto-modifica" data-id="${d.id}">Modifica</button> <button class="btn small danger" data-action="atto-scollega" data-id="${d.id}" title="Toglie l'atto dal libro, il documento resta in Documenti">Scollega</button></td>
     </tr>`; }).join('') : `<tr><td colspan="7" class="helptext">Nessun atto collegato ai libri. Usa "+ Atto da riportare" per caricare un verbale o assegnare un documento già presente.</td></tr>`;
-  return `<div class="card"><div class="section-title">Libri previsti per ${escapeHtml(c.ragioneSociale)} — ${escapeHtml(prev.titolo)}</div>${libriPrev}<div class="helptext">${escapeHtml(prev.note)} <em>Promemoria organizzativo: verifica sempre statuto e norme.</em></div></div>
+  return `<div class="card"><div class="section-title">Cosa va nei libri di ${escapeHtml(c.ragioneSociale)} — ${escapeHtml(prev.titolo)}</div>${libriPrev}<div class="helptext">${escapeHtml(prev.note)} <em>Promemoria organizzativo: verifica sempre statuto e norme.</em></div></div>
   ${lacune.length ? `<div class="card" style="border-left:4px solid var(--arancio,#d97706);"><div class="section-title">Cosa potrebbe mancare</div><ul style="margin:6px 0 0 18px;line-height:1.6;">${lacune.map(x => `<li>${escapeHtml(x)}</li>`).join('')}</ul></div>` : ''}
   <div class="card"><div class="section-title">Altri documenti della società <span class="helptext" style="font-weight:400;">· visura e simili, si conservano nel fascicolo (atto costitutivo e statuto sono il primo atto dell'elenco sotto)</span></div>
     <table class="compact"><thead><tr><th>Documento</th><th>Categoria</th><th>Caricato il</th><th></th></tr></thead><tbody>${righeBase}</tbody></table></div>
@@ -9114,7 +9217,7 @@ function dettaglioLibriCliente(c) {
 function sezioneAttiGlobale() {
   const da = attiDaTrascrivere();
   if (!da.length) return '';
-  return `<div class="card"><div class="section-title">Atti ancora da trascrivere <span class="cnt">${da.length}</span></div><table class="compact"><thead><tr><th>Data atto</th><th>Cliente</th><th>Libro</th><th>Tipo</th><th>Documento</th></tr></thead><tbody>${da.slice(0, 50).map(d => { const l = (STATE.libriSociali || []).find(x => x.id === d.libroId); return `<tr><td style="white-space:nowrap;">${d.dataAtto ? fmtData(d.dataAtto) : '—'}</td><td>${escapeHtml(nomeCliente(d.clienteId))}</td><td>${escapeHtml(l ? l.tipo : '—')}</td><td>${escapeHtml(d.tipoAtto || '')}</td><td>${escapeHtml(d.nome)}</td></tr>`; }).join('')}</tbody></table></div>`;
+  return `<div class="card"><div class="section-title">Atti ancora da trascrivere <span class="cnt">${da.length}</span></div><table class="compact"><thead><tr><th>Data atto</th><th>Cliente</th><th>Libro</th><th>Tipo</th><th>Documento</th></tr></thead><tbody>${da.slice(0, 50).map(d => { const l = (STATE.libriSociali || []).find(x => x.id === d.libroId); return `<tr><td style="white-space:nowrap;">${d.dataAtto ? fmtData(d.dataAtto) : '—'}</td><td>${escapeHtml(nomeCliente(d.clienteId))}</td><td>${escapeHtml(d.sezioneLibro || '—')}</td><td>${escapeHtml(d.tipoAtto || '')}</td><td>${escapeHtml(d.nome)}</td></tr>`; }).join('')}</tbody></table></div>`;
 }
 let LIBRI_FILTRO = { cliente: 'Tutti', tipo: 'Tutti', detentore: 'Tutti' };
 function renderLibriSociali() {
@@ -9122,7 +9225,8 @@ function renderLibriSociali() {
   const oggi = oggiISO();
   const vecchi = tutti.filter(l => l.ultimaStampa && giorniTra(l.ultimaStampa, oggi) > 365).length;
   const mancanti = STATE.clienti.filter(c => clienteAttivo(c) && /srl|spa|sapa|cooperativa|societ/i.test(String(c.tipo || '')) && !tutti.some(l => l.clienteId === c.id)).length;
-  const kpi = `<div class="kpi-grid" style="grid-template-columns:repeat(5,1fr);">
+  const kpi = `<div class="kpi-grid" style="grid-template-columns:repeat(6,1fr);">
+    <div class="kpi scaduti"><div class="n">${stampeLibriDaFare().length}</div><div class="l">VERBALI DA STAMPARE</div></div>
     <div class="kpi completati"><div class="n">${tutti.length}</div><div class="l">LIBRI REGISTRATI</div></div>
     <div class="kpi futuri"><div class="n">${tutti.filter(l => l.detenutoDa === 'Studio').length}</div><div class="l">DETENUTI DALLO STUDIO</div></div>
     <div class="kpi inscadenza"><div class="n">${vecchi}</div><div class="l">ULTIMA STAMPA > 1 ANNO</div></div>
@@ -9131,20 +9235,18 @@ function renderLibriSociali() {
   </div>`;
   let lista = tutti.slice();
   if (LIBRI_FILTRO.cliente !== 'Tutti') lista = lista.filter(l => l.clienteId === LIBRI_FILTRO.cliente);
-  if (LIBRI_FILTRO.tipo !== 'Tutti') lista = lista.filter(l => l.tipo === LIBRI_FILTRO.tipo);
   if (LIBRI_FILTRO.detentore !== 'Tutti') lista = lista.filter(l => l.detenutoDa === LIBRI_FILTRO.detentore);
-  lista.sort((a, b) => nomeCliente(a.clienteId).localeCompare(nomeCliente(b.clienteId)) || a.tipo.localeCompare(b.tipo));
+  lista.sort((a, b) => nomeCliente(a.clienteId).localeCompare(nomeCliente(b.clienteId)));
   const toolbar = `<div class="toolbar">
     <div class="field"><label>Cliente</label><select data-action="libri-filtro-cliente"><option value="Tutti">Tutti</option>${STATE.clienti.slice().sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale)).map(c => `<option value="${c.id}" ${LIBRI_FILTRO.cliente === c.id ? 'selected' : ''}>${escapeHtml(c.ragioneSociale)}</option>`).join('')}</select></div>
-    <div class="field"><label>Libro</label><select data-action="libri-filtro-tipo"><option value="Tutti">Tutti</option>${TIPI_LIBRO_SOCIALE.map(t => `<option ${LIBRI_FILTRO.tipo === t ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
     <div class="field"><label>Detenuto da</label><select data-action="libri-filtro-detentore"><option value="Tutti">Tutti</option>${DETENTORI_LIBRO.map(t => `<option ${LIBRI_FILTRO.detentore === t ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
     <div class="field" style="margin-left:auto;"><label>&nbsp;</label><button class="btn primary" data-action="libro-nuovo">+ Aggiungi libro</button></div>
   </div>`;
   if (STATE.clienti.length === 0) return `<div class="card"><div class="empty"><div class="big">Aggiungi prima un cliente</div></div></div>`;
-  if (!tutti.length) return kpi + toolbar + `<div class="card"><div class="empty"><div class="big">Nessun libro registrato</div>Per ogni società indica quali libri sociali ha, chi li conserva e quando sono stati stampati l'ultima volta.</div></div>` + (LIBRI_FILTRO.cliente !== 'Tutti' && clienteById(LIBRI_FILTRO.cliente) ? dettaglioLibriCliente(clienteById(LIBRI_FILTRO.cliente)) : '');
-  if (!lista.length) return kpi + toolbar + `<div class="card"><div class="empty">Nessun libro corrisponde ai filtri.</div></div>` + (LIBRI_FILTRO.cliente !== 'Tutti' && clienteById(LIBRI_FILTRO.cliente) ? dettaglioLibriCliente(clienteById(LIBRI_FILTRO.cliente)) : '');
+  if (!tutti.length) return kpi + toolbar + htmlStampeLibri(LIBRI_FILTRO.cliente !== 'Tutti' ? LIBRI_FILTRO.cliente : null) + `<div class="card"><div class="empty"><div class="big">Nessun libro registrato</div>Per ogni società indica quali libri sociali ha, chi li conserva e quando sono stati stampati l'ultima volta.</div></div>` + (LIBRI_FILTRO.cliente !== 'Tutti' && clienteById(LIBRI_FILTRO.cliente) ? dettaglioLibriCliente(clienteById(LIBRI_FILTRO.cliente)) : '');
+  if (!lista.length) return kpi + toolbar + htmlStampeLibri(LIBRI_FILTRO.cliente !== 'Tutti' ? LIBRI_FILTRO.cliente : null) + `<div class="card"><div class="empty">Nessun libro corrisponde ai filtri.</div></div>` + (LIBRI_FILTRO.cliente !== 'Tutti' && clienteById(LIBRI_FILTRO.cliente) ? dettaglioLibriCliente(clienteById(LIBRI_FILTRO.cliente)) : '');
   const righe = lista.map(l => `<tr>
-    <td>${escapeHtml(nomeCliente(l.clienteId))}</td><td>${escapeHtml(l.tipo)}</td>
+    <td>${escapeHtml(nomeCliente(l.clienteId))}</td>
     <td><span class="badge ${l.detenutoDa === 'Studio' ? 'stato-da-fare' : 'info'}">${escapeHtml(l.detenutoDa)}</span>${l.detentoreNote ? ` <span class="helptext">${escapeHtml(l.detentoreNote)}</span>` : ''}</td>
     <td style="white-space:nowrap;">${l.ultimaStampa ? fmtData(l.ultimaStampa) : '—'}</td><td>${l.ultimaPagina != null ? l.ultimaPagina : '—'}</td>
     <td style="white-space:nowrap;">${l.vidimazione ? fmtData(l.vidimazione) : '—'}</td>
@@ -9152,11 +9254,11 @@ function renderLibriSociali() {
   </tr>`).join('');
   const clSel = LIBRI_FILTRO.cliente !== 'Tutti' ? clienteById(LIBRI_FILTRO.cliente) : null;
   const extra = clSel ? dettaglioLibriCliente(clSel) : sezioneAttiGlobale();
-  return kpi + toolbar + `<div class="card"><table class="tbl"><thead><tr><th>Cliente</th><th>Libro</th><th>Detenuto da</th><th>Ultima stampa</th><th>Ultima pagina</th><th>Vidimazione</th><th></th></tr></thead><tbody>${righe}</tbody></table></div>` + extra;
+  return kpi + toolbar + htmlStampeLibri(clSel ? clSel.id : null) + `<div class="card"><table class="tbl"><thead><tr><th>Cliente</th><th>Detenuto da</th><th>Ultima stampa</th><th>Ultima pagina</th><th>Vidimazione</th><th></th></tr></thead><tbody>${righe}</tbody></table></div>` + extra;
 }
 function modalLibroSociale(id) {
   const ed = id ? (STATE.libriSociali || []).find(x => x.id === id) : null;
-  const v = ed || { clienteId: LIBRI_FILTRO.cliente !== 'Tutti' ? LIBRI_FILTRO.cliente : (STATE.clienti[0] || {}).id, tipo: TIPI_LIBRO_SOCIALE[0], detenutoDa: 'Studio', detentoreNote: '', ultimaStampa: '', ultimaPagina: '', vidimazione: '', note: '' };
+  const v = ed || { clienteId: LIBRI_FILTRO.cliente !== 'Tutti' ? LIBRI_FILTRO.cliente : (STATE.clienti[0] || {}).id, tipo: 'Libri sociali', detenutoDa: 'Studio', detentoreNote: '', ultimaStampa: '', ultimaPagina: '', vidimazione: '', note: '' };
   document.getElementById('modalRoot').innerHTML = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
     <div class="modal" style="max-width:540px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;">
@@ -9165,7 +9267,6 @@ function modalLibroSociale(id) {
       </div>
       <form id="formLibro" onsubmit="return false;"><div class="grid2">
         <div class="field full" style="grid-column:1/-1;"><label>Cliente *</label><select id="libCliente">${STATE.clienti.slice().sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale)).map(c => `<option value="${c.id}" ${v.clienteId === c.id ? 'selected' : ''}>${escapeHtml(c.ragioneSociale)}</option>`).join('')}</select></div>
-        <div class="field"><label>Libro</label><select id="libTipo">${TIPI_LIBRO_SOCIALE.map(t => `<option ${v.tipo === t ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
         <div class="field"><label>Detenuto da</label><select id="libDetenuto">${DETENTORI_LIBRO.map(t => `<option ${v.detenutoDa === t ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
         <div class="field full" style="grid-column:1/-1;"><label>Dove si trova / note sul detentore</label><input id="libDetNote" value="${escapeHtml(v.detentoreNote || '')}" placeholder="es. armadio sala riunioni, sede legale…"></div>
         <div class="field"><label>Ultima stampa</label><input type="date" id="libStampa" value="${escapeHtml(v.ultimaStampa || '')}"></div>
@@ -10855,7 +10956,7 @@ function modalTaskTeam(taskId, presetClienteId) {
   const editing = !!taskId;
   const t = editing ? STATE.taskTeam.find(x => x.id === taskId) : {
     id: uid('task'), titolo: '', clienteId: presetClienteId || null, assegnatoA: STATE.meta.responsabili[0] || '',
-    scadenza: null, noteStorico: [], stato: 'Da fare', creatoIl: oggiISO(), procedureId: null, descrizione: '',
+    scadenza: null, noteStorico: [], stato: 'Da fare', creatoIl: oggiISO(), procedureId: null, descrizione: '', stampaVerbale: false, stampaSezione: 'Libro decisioni dei soci',
   };
   if (editing && !t) { toast('Task non trovato.'); return; }
   if (editing) segnaTaskTeamVisto(t.id); // aprire il task è già "vederlo" - spegne pallino/banner
@@ -10909,6 +11010,8 @@ function modalTaskTeam(taskId, presetClienteId) {
           </select></div>
           <div class="field"><label>Scadenza (opzionale)</label><input type="date" id="tScadenza" value="${t.scadenza||''}"></div>
           <div class="field"><label>Stato</label><select id="tStato">${STATI_TASK_TEAM.map(s=>`<option ${t.stato===s?'selected':''}>${s}</option>`).join('')}</select></div>
+          <div class="field full" style="grid-column:1/-1;"><label class="checkline" style="display:flex;gap:8px;align-items:center;"><input type="checkbox" id="tStampaVerbale" ${t.stampaVerbale ? 'checked' : ''}> A fine pratica va stampato un verbale nei libri sociali</label>
+            <div class="helptext" style="margin-top:4px;">Quando il task passa a "Fatto" compare tra i verbali da stampare in Libri sociali (se i libri del cliente sono tenuti dallo studio). Sezione del libro: <select id="tStampaSezione" style="font-size:12px;">${SEZIONI_LIBRO.map(x => `<option ${(t.stampaSezione || 'Libro decisioni dei soci') === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div></div>
           ${campoProcedura}
           ${campoNoteCompletamento}
           ${sezioneNote}
@@ -10982,6 +11085,7 @@ function aggiornaTaskTeam(id, patch) {
     }
   }
   Object.assign(t, patch);
+  if ('stato' in patch) { if (t.stato === 'Fatto') { if (!t.fattoIl) t.fattoIl = oggiISO(); } else delete t.fattoIl; }
   // stessa difesa di aggiungiTaskTeam: un patch esterno che tocca "stato" con un valore non tra i
   // 3 riconosciuti lo renderebbe invisibile nel kanban pur restando contato nei KPI.
   if ('stato' in patch && !STATI_TASK_TEAM.includes(t.stato)) t.stato = STATI_TASK_TEAM[0];
@@ -17822,6 +17926,13 @@ function onClickDelegatoInterno(e) {
       salvaStato(); chiudiModal(); render(); break;
     }
     case 'deon-riserv-elimina': STATE.impegniRiservatezza = STATE.impegniRiservatezza.filter(x => x.id !== id); salvaStato(); render(); break;
+    case 'stampa-libro-nuova': modalStampaLibro(el.dataset.cliente || (LIBRI_FILTRO.cliente !== 'Tutti' ? LIBRI_FILTRO.cliente : null)); break;
+    case 'stampa-libro-salva': {
+      const descrizione = h('slDescr').value.trim(); if (!descrizione) { toast('Scrivi cosa va stampato.', true); break; }
+      STATE.stampeLibri.push({ id: uid('stl'), clienteId: h('slCliente').value, sezione: h('slSezione').value, descrizione, data: h('slData').value || oggiISO(), creatoIl: oggiISO(), stampatoIl: null });
+      salvaStato(); chiudiModal(); render(); toast('Aggiunto ai verbali da stampare.'); break;
+    }
+    case 'stampa-libro-elimina': STATE.stampeLibri = (STATE.stampeLibri || []).filter(x => x.id !== el.dataset.id); salvaStato(); render(); break;
     case 'libro-nuovo': modalLibroSociale(null); break;
     case 'libro-modifica': modalLibroSociale(id); break;
     case 'libro-elimina': if (confermaAzione('Eliminare questo libro dal registro?')) { eliminaLibroSociale(id); render(); } break;
@@ -17830,7 +17941,7 @@ function onClickDelegatoInterno(e) {
     case 'atto-scollega': if (confermaAzione('Togliere questo atto dal libro? Il documento resta in Documenti.')) { scollegaAttoLibro(id); render(); } break;
     case 'atto-salva': {
       const clienteId = el.dataset.cliente;
-      const dati = { libroId: h('atLibro').value, dataAtto: h('atData').value, tipoAtto: h('atTipo').value, pagine: h('atPagine').value.trim(), trascritto: h('atTrascr').checked };
+      const dati = { libroId: (libroDelCliente(clienteId) || {}).id, sezioneLibro: h('atLibro').value, dataAtto: h('atData').value, tipoAtto: h('atTipo').value, pagine: h('atPagine').value.trim(), trascritto: h('atTrascr').checked };
       if (!dati.dataAtto) { toast('Indica la data dell\'atto: serve per metterlo in ordine nel libro.'); return; }
       if (id) { assegnaAttoLibro(id, dati); chiudiModal(); render(); toast('Atto aggiornato.'); break; }
       const docSel = h('atDoc') ? h('atDoc').value : '';
@@ -17846,8 +17957,9 @@ function onClickDelegatoInterno(e) {
       break;
     }
     case 'libro-salva': {
-      const dati = { clienteId: h('libCliente').value, tipo: h('libTipo').value, detenutoDa: h('libDetenuto').value, detentoreNote: h('libDetNote').value.trim(), ultimaStampa: h('libStampa').value || null, ultimaPagina: h('libPagina').value, vidimazione: h('libVidim').value || null, note: h('libNote').value.trim() };
+      const dati = { clienteId: h('libCliente').value, tipo: 'Libri sociali', detenutoDa: h('libDetenuto').value, detentoreNote: h('libDetNote').value.trim(), ultimaStampa: h('libStampa').value || null, ultimaPagina: h('libPagina').value, vidimazione: h('libVidim').value || null, note: h('libNote').value.trim() };
       if (!dati.clienteId) { toast('Scegli il cliente.'); return; }
+      if (!id && libroDelCliente(dati.clienteId)) { toast('Questo cliente ha già i suoi libri: modifica quelli esistenti.', true); return; }
       if (id) aggiornaLibroSociale(id, dati); else aggiungiLibroSociale(dati);
       chiudiModal(); render(); toast('Libro salvato.');
       break;
@@ -18004,21 +18116,23 @@ function onClickDelegatoInterno(e) {
       const stato = h('tStato').value;
       const procedureId = h('tProcedura').value || null;
       const descrizione = h('tDescrizione').value || '';
+      const stampaVerbale = !!h('tStampaVerbale').checked, stampaSezione = h('tStampaSezione').value;
       if (!titolo || !assegnatoA) { toast('Inserisci almeno titolo e assegnatario.'); return; }
       if (editing) {
         // Le note (storico) in modifica si gestiscono SOLO con "Aggiungi nota" (append immediato,
         // vedi sotto): qui non tocchiamo noteStorico, così Salva non può mai sovrascrivere/perdere
         // lo storico. procedureId e descrizione invece sono campi "semplici" (task #155),
         // sovrascrivibili come titolo/scadenza/stato.
-        aggiornaTaskTeam(id, { titolo, assegnatoA, clienteId, scadenza, stato, procedureId, descrizione });
+        aggiornaTaskTeam(id, { titolo, assegnatoA, clienteId, scadenza, stato, procedureId, descrizione, stampaVerbale, stampaSezione });
       } else {
         // In creazione l'unica nota possibile è quella "iniziale" nel campo tNuovaNota: diventa la
         // prima voce dello storico, attribuita a chi sta creando il task in questo momento.
         const notaIniziale = (h('tNuovaNota').value || '').trim();
         const noteStorico = notaIniziale ? [{ id: uid('nota'), testo: notaIniziale, autore: operatoreCorrente() || null, data: oggiISO() }] : [];
-        aggiungiTaskTeam({ titolo, assegnatoA, clienteId, scadenza, stato, noteStorico, procedureId, descrizione, creatoIl: oggiISO() });
+        aggiungiTaskTeam({ titolo, assegnatoA, clienteId, scadenza, stato, noteStorico, procedureId, descrizione, stampaVerbale, stampaSezione, creatoIl: oggiISO() });
       }
       chiudiModal(); render(); toast(editing ? 'Task aggiornato.' : 'Task creato.');
+      if (stampaVerbale && stato === 'Fatto') toast('Verbale da stampare: lo trovi in Libri sociali.');
       break;
     }
     case 'task-nota-modifica': NOTA_IN_MODIFICA = { taskId: id, notaId: el.dataset.nota }; riapriTaskConBozza(id); break;
@@ -18926,6 +19040,7 @@ function onChangeDelegato(e) {
     case 'atto-trascritto': { const d = (STATE.documenti || []).find(x => x.id === el.dataset.id); if (d) { d.trascritto = el.checked; d.trascrittoIl = el.checked ? oggiISO() : null; salvaStato(); render(); } break; }
     case 'libri-filtro-cliente': LIBRI_FILTRO.cliente = el.value; render(); break;
     case 'libri-filtro-tipo': LIBRI_FILTRO.tipo = el.value; render(); break;
+    case 'stampa-libro-segna': segnaStampaLibro(el.dataset.key, el.checked); render(); break;
     case 'libri-filtro-detentore': LIBRI_FILTRO.detentore = el.value; render(); break;
     case 'fatt-filtro-cliente': FATT_FILTRO.cliente = el.value; render(); break;
     case 'fatt-filtro-vista': FATT_FILTRO.vista = el.value; render(); break;
@@ -19107,7 +19222,7 @@ function onChangeDelegato(e) {
     case 'task-filtro-assegnato': TASK_FILTRO.assegnato = el.value; STATI_TASK_TEAM.forEach(s=>resetPagina('taskteam-'+s)); render(); break;
     case 'task-filtro-cliente': TASK_FILTRO.cliente = el.value; STATI_TASK_TEAM.forEach(s=>resetPagina('taskteam-'+s)); render(); break;
     case 'task-filtro-mostra-fatti': TASK_FILTRO.mostraFatti = el.checked; STATI_TASK_TEAM.forEach(s=>resetPagina('taskteam-'+s)); render(); break;
-    case 'task-cambia-stato': aggiornaTaskTeam(id, { stato: el.value }); render(); break;
+    case 'task-cambia-stato': aggiornaTaskTeam(id, { stato: el.value }); render(); { const tt = STATE.taskTeam.find(x => x.id === id); if (tt && tt.stato === 'Fatto' && tt.stampaVerbale) toast('Verbale da stampare: lo trovi in Libri sociali.'); } break;
 
     case 'chat-rif-filtro-tipo': CHAT_RIF_FILTRO_TIPO = el.value; aggiornaRisultatiRiferimentoChat(); break;
     case 'com-filtro-cliente': COM_FILTRO.cliente = el.value; resetPagina('comunicazioni'); render(); break;
@@ -20665,7 +20780,7 @@ window.generaRtfDaTesto = generaRtfDaTesto;
 window.escapeRtf = escapeRtf;
 window.testoElencoAttivita = testoElencoAttivita;
 window.creaPreventivoDaModello = creaPreventivoDaModello;
-window.testoModuliPreventivo = testoModuliPreventivo; window.modalPreventivo = modalPreventivo;
+window.testoModuliPreventivo = testoModuliPreventivo; window.stampeLibriTutte = stampeLibriTutte; window.stampeLibriDaFare = stampeLibriDaFare; window.unisciLibriSociali = unisciLibriSociali; window.libroDelCliente = libroDelCliente; window.modalPreventivo = modalPreventivo;
 window.testoDocumentoToHtml = testoDocumentoToHtml; window.editorDocumentoToTesto = editorDocumentoToTesto; window.documentoStampaHtml = documentoStampaHtml;
 
 init();
