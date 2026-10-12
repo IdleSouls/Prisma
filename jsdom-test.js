@@ -60,7 +60,8 @@ async function main() {
   // ---------- 1) Vai in Impostazioni e carica i dati di esempio ----------
   click(q('[data-nav="impostazioni"]'));
   await wait(20);
-  click(q('[data-action="imp-sezione"][data-sezione="avanzate"]')); // task Matteo: Impostazioni ora è divisa in sezioni/categorie
+  window.impostaModalitaSviluppatore(true); window.render(); await wait(20); // "Dati di esempio" sta nella sezione Sviluppatore
+  click(q('[data-action="imp-sezione"][data-sezione="sviluppatore"]'));
   await wait(20);
   click(q('[data-action="carica-demo"]'));
   await wait(20);
@@ -4530,7 +4531,7 @@ async function main() {
 
   const statoPrimaDiReset = JSON.parse(JSON.stringify(window.getSTATE()));
   // reset e verifica stato vuoto
-  click(q('[data-action="imp-sezione"][data-sezione="avanzate"]'));
+  click(q('[data-action="imp-sezione"][data-sezione="gestione"]'));
   await wait(20);
   click(q('[data-action="reset-tutto"]'));
   await wait(20);
@@ -4550,7 +4551,7 @@ async function main() {
     window.__forzaConfermaPrisma = true;
     const nPrima = window.getSTATE().clienti.length;
     const ov = () => q('#confermaPrismaOverlay');
-    click(q('[data-action="imp-sezione"][data-sezione="avanzate"]')); await wait(20);
+    click(q('[data-action="imp-sezione"][data-sezione="gestione"]')); await wait(20);
     click(q('[data-action="reset-tutto"]')); await wait(20);
     assert(ov() && /1 di 3/.test(ov().textContent), 'prima conferma (1 di 3) non mostrata');
     assert(window.getSTATE().clienti.length === nPrima, 'i dati non devono sparire prima delle tre conferme');
@@ -6954,6 +6955,26 @@ async function main() {
       assert(window.document.querySelectorAll('#content .scheda-dati .sd').length >= 12, 'scheda cliente: riepilogo dati a gruppi mancante');
       window.setView('dashboard');
       console.log('=== Selezione testo non interrotta dagli aggiornamenti; scheda cliente con riepilogo a gruppi OK');
+    }
+
+    // ---------- Impostazioni raggruppate: master / sviluppatore ----------
+    {
+      window.setView('impostazioni'); window.render(); await wait(20);
+      const qq = (sel) => window.document.querySelector(sel);
+      const ids = () => qa('[data-action="imp-sezione"]').map(b => b.dataset.sezione);
+      window.impostaModalitaSviluppatore(false); window.render(); await wait(20);
+      assert(!ids().includes('sviluppatore'), 'senza modalità sviluppatore il tab Sviluppatore non deve comparire');
+      for (const id of ['studio', 'catalogo', 'dati', 'team', 'moduli', 'ia', 'assistenza', 'gestione']) assert(ids().includes(id), 'tab impostazioni mancante: ' + id);
+      window.impostaModalitaSviluppatore(true); window.render(); await wait(20);
+      assert(ids().includes('sviluppatore'), 'con modalità sviluppatore il tab Sviluppatore deve comparire');
+      for (const [sez, azione] of [['sviluppatore', 'carica-demo'], ['sviluppatore', 'esporta-mcp'], ['gestione', 'reset-tutto'], ['ia', 'toggle-mcp-conferma'], ['ia', 'ia-collegamento'], ['assistenza', 'verifica-aggiornamenti']]) {
+        click(qq(`[data-action="imp-sezione"][data-sezione="${sez}"]`)); await wait(20);
+        if (azione !== 'verifica-aggiornamenti') assert(qq(`[data-action="${azione}"]`), `${azione} dovrebbe stare nel tab ${sez}`);
+      }
+      click(qq('[data-action="imp-sezione"][data-sezione="studio"]')); await wait(20);
+      assert(!qq('[data-action="reset-tutto"]') && !qq('[data-action="carica-demo"]'), 'reset e demo non devono stare nel tab Studio');
+      window.impostaModalitaSviluppatore(false); window.setView('dashboard');
+      console.log('=== Impostazioni raggruppate (Master, IA, Assistenza, Sviluppatore) OK');
     }
   }
   console.log('\n✅ TUTTI I TEST END-TO-END PASSATI (' + errors.length + ' errori console catturati)');

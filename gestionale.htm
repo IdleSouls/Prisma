@@ -1981,7 +1981,7 @@ function statoIniziale() {
     // false per tutte le installazioni (nuove e già esistenti, visto che un salvataggio vecchio
     // senza questo campo legge undefined, falsy comunque) - il tab resta nel codice e i dati già
     // inseriti restano intatti, solo nascosto dal menu finché non lo si riattiva da Impostazioni >
-    // Avanzate. Vedi operatorePuoVedere() e renderImpostazioniAvanzate().
+    // Avanzate. Vedi operatorePuoVedere() e renderImpostazioniSviluppatore().
     meta: { versione: 2, studioNome: 'Studio', responsabili: ['Matteo', 'Sabrina'], consulenti: ['Matteo'], ruoli: {}, tabConsentiti: {}, iscrizione: '', indirizzoStudio: '', cfStudio: '', citta: 'Vicenza', anniExtra: [], logoStudio: '', logoPosizione: 'sinistra', contabilitaAttiva: false },
     annoCorrente: annoOggi,
     clienti: [],
@@ -3085,7 +3085,7 @@ const AZIONI_MCP = {
 };
 
 /* Registro delle azioni di Claude (task #210): ogni comando MCP ricevuto - eseguito, rifiutato o
-   fallito - viene registrato (ultimi 300) e consultabile da Impostazioni > Avanzate. In modalità
+   fallito - viene registrato (ultimi 300) e consultabile da Impostazioni › Intelligenza artificiale. In modalità
    "chiedi conferma" (STATE.meta.mcpChiediConferma) ogni azione richiede un OK esplicito. */
 const ETICHETTE_AZIONE_MCP = { creaCliente: 'Crea cliente', modificaCliente: 'Modifica cliente', eliminaCliente: 'Elimina cliente', creaTask: 'Crea task', modificaTask: 'Modifica task', eliminaTask: 'Elimina task', creaComunicazione: 'Crea comunicazione', modificaComunicazione: 'Modifica comunicazione', eliminaComunicazione: 'Elimina comunicazione' };
 function etichettaAzioneMCP(azione) {
@@ -4946,7 +4946,7 @@ function operatorePuoVedere(tabId) {
   if (!tabAttivoPerModuli(tabId)) return false;
   // Task #176 (Matteo: "rimuovere/sospendere tab Contabilità"): controllo centrale, prima di quello
   // per ruolo - vale per TUTTI gli operatori, admin compreso, finché non si riattiva la sezione da
-  // Impostazioni > Avanzate. Qui e non altrove perché operatorePuoVedere è già il punto unico usato
+  // Impostazioni › Sviluppatore. Qui e non altrove perché operatorePuoVedere è già il punto unico usato
   // da renderNav, setView e render (vedi task #156) per decidere se una sezione è raggiungibile.
   if (tabId === 'contabilita' && !STATE.meta.contabilitaAttiva) return false;
   const consentiti = tabConsentitiOperatore(OPERATORE);
@@ -5815,7 +5815,7 @@ function renderSchedaCliente() {
   const statoContab = statoAggiornamentoDocumenti(cliente.id);
   // Task #176: tab sospeso di default - niente scorciatoia verso una sezione che
   // operatorePuoVedere() bloccherebbe comunque. I dati (statoAggiornamentoDocumenti) restano
-  // intatti e la card torna a comparire da sola se/quando si riattiva da Impostazioni > Avanzate.
+  // intatti e la card torna a comparire da sola se/quando si riattiva da Impostazioni › Sviluppatore.
   const sezContab = STATE.meta.contabilitaAttiva ? `<div class="card">
     <div class="section-title">Contabilità</div>
     ${statoContab.length ? `<div class="kpi-grid" style="grid-template-columns:repeat(auto-fill, minmax(160px,1fr));">
@@ -10309,6 +10309,7 @@ function inserisciRiferimentoChat(tipo, id, label) {
 // riapre sempre sull'elenco contatti, mai su una conversazione specifica, quando si torna sulla vista.
 let CHAT_CON = null;
 let IMP_SEZIONE = 'studio';
+let IMP_TAP_VERSIONE = 0, IMP_TAP_TS = 0;
 function renderChat() {
   const io = operatoreCorrente();
   if (!io) {
@@ -15842,15 +15843,18 @@ function modalCredenziale(id) {
   renderCampiCredenzialeModal();
 }
 
+/* Impostazioni raggruppate per argomento. "master" = solo utenti master; "dev" = solo con la modalità
+   sviluppatore attiva su questo PC (vedi modalitaSviluppatore). */
 const IMP_SEZIONI = [
   { id: 'studio', label: 'Studio' },
-  { id: 'moduli', label: 'Moduli' },
-  { id: 'team', label: 'Team & accessi' },
+  { id: 'catalogo', label: 'Scadenzario & catalogo' },
   { id: 'dati', label: 'Dati & backup' },
-  { id: 'catalogo', label: 'Catalogo & aggiornamenti' },
-  { id: 'guide', label: 'Guide' },
-  { id: 'avanzate', label: 'Avanzate' },
-  { id: 'gestione', label: 'Gestione studio' },
+  { id: 'team', label: 'Team & accessi', master: true },
+  { id: 'moduli', label: 'Moduli', master: true },
+  { id: 'ia', label: 'Intelligenza artificiale', master: true },
+  { id: 'assistenza', label: 'Aggiornamenti & assistenza', master: true },
+  { id: 'gestione', label: '🔒 Master', master: true },
+  { id: 'sviluppatore', label: '🛠 Sviluppatore', dev: true },
 ];
 const GUIDE_STUDIO = [
   { id: 'guida-ia-di-studio', titolo: "Guida per l'IA di studio", descrizione: "Allegala alla tua IA (Claude o altra) e scrivile «Aiutami a installare e configurare Prisma»: contiene installazione, moduli, utenti, portale clienti e collegamento MCP." },
@@ -15909,7 +15913,8 @@ function renderImpostazioniStudio() {
     </div>
     <button class="btn primary small" style="margin-top:10px;" data-action="salva-studio-nome">Salva</button>
   </div>
-  ${cardLogoStudio()}`;
+  ${cardLogoStudio()}
+  <div class="helptext" style="text-align:center;margin-top:18px;user-select:none;cursor:default;" data-action="imp-versione-tap">Prisma · software per studi professionali</div>`;
 }
 
 // Task #161 (richiesta Matteo: "possibilità di inserire il logo dello studio oppure determinare
@@ -16072,8 +16077,7 @@ function renderImpostazioniDati() {
   </div>
 
   ${cardBackupAutomatici()}
-  ${cardBackupEsterno()}
-  ${cardBackupPiattaforma()}`;
+  ${cardBackupEsterno()}`;
 }
 
 /* Cessazione di un cliente (task #233): data, motivo, tipo di rapporto restano sul record per le statistiche
@@ -16151,7 +16155,6 @@ function renderCardContabTerzi() {
 }
 function renderImpostazioniCatalogo() {
   return `
-  ${cardAggiornamentiELog()}
   ${renderCatalogoPeriodico()}
   ${renderCatalogoAnnuale()}
   ${renderCardContabTerzi()}
@@ -16159,30 +16162,19 @@ function renderImpostazioniCatalogo() {
   ${renderCatalogoAttivitaStudio()}`;
 }
 
-function renderImpostazioniAvanzate() {
+/* Intelligenza artificiale (master): collegamento di Claude/ChatGPT/Gemini, registro e conferma delle azioni, guida. */
+function renderImpostazioniIA() {
   return `
   <div class="card">
-    <div class="section-title">Sezione Contabilità</div>
-    <div class="helptext" style="margin-bottom:10px;">Task #176 (Matteo: "rimuovere/sospendere tab Contabilità"): il tab è sospeso di default e non compare più nel menu laterale né nella scheda cliente. I dati già inseriti (documenti, movimenti, fatture contabili) restano tutti salvati e intatti - riattivando la sezione tornano visibili esattamente come prima.</div>
-    <label style="display:flex;align-items:center;gap:8px;font-weight:400;"><input type="checkbox" id="impContabilitaAttiva" data-action="toggle-contabilita-attiva" ${STATE.meta.contabilitaAttiva?'checked':''}> Mostra il tab Contabilità nel menu</label>
-  </div>
-
-  <div class="card">
-    <div class="section-title">Vista per MCP locale (Claude)</div>
-    <div class="helptext" style="margin-bottom:12px;">Esporta scadenze già classificate, stato contabilità per cliente, ultimo bilancio e task/comunicazioni aperti in un unico file JSON, pensato per essere letto da un server MCP locale collegato a Claude Desktop (vedi <code>mcp-server/README.md</code>). Salva il file scaricato come <code>gestionale-mcp.json</code> nella cartella del server, sovrascrivendo il precedente, ogni volta che vuoi aggiornare i dati che Claude può vedere.</div>
-    <button class="btn primary" data-action="esporta-mcp">⬇ Esporta per MCP (JSON)</button>
-  </div>
-
-  <div class="card">
     <div class="section-title">Collega altre IA (ChatGPT, Gemini e altre)</div>
-    <div class="helptext" style="margin-bottom:12px;">Oltre a Claude, Prisma si collega a ChatGPT, Gemini e a qualunque assistente che supporti il protocollo MCP. Le azioni passano dallo stesso registro e dalla stessa conferma di Claude (vedi sotto). Qui trovi l'indirizzo e la chiave di collegamento; le guide passo passo sono nella cartella <code>Documenti-Prisma</code> (GUIDA-COLLEGARE-CHATGPT-GEMINI).</div>
+    <div class="helptext" style="margin-bottom:12px;">Oltre a Claude, Prisma si collega a ChatGPT, Gemini e a qualunque assistente che supporti il protocollo MCP. Le azioni passano dallo stesso registro e dalla stessa conferma di Claude.</div>
     <button class="btn primary" data-action="ia-collegamento">🔗 Mostra i dati di collegamento</button>
   </div>
 
   <div class="card">
-    <div class="section-title">Azioni di Claude (registro e conferma)</div>
-    <div class="helptext" style="margin-bottom:10px;">Tutto ciò che Claude fa in Prisma tramite MCP viene registrato qui. Se attivi la conferma, ogni azione di Claude compare in una finestra e parte solo dopo il tuo OK.</div>
-    <label style="display:flex;align-items:center;gap:8px;font-weight:400;margin-bottom:12px;"><input type="checkbox" data-action="toggle-mcp-conferma" ${STATE.meta.mcpChiediConferma ? 'checked' : ''}> Chiedi la mia conferma prima di ogni azione di Claude</label>
+    <div class="section-title">Azioni dell'IA (registro e conferma)</div>
+    <div class="helptext" style="margin-bottom:10px;">Tutto ciò che Claude fa in Prisma tramite MCP viene registrato qui. Se attivi la conferma, ogni azione compare in una finestra e parte solo dopo il tuo OK.</div>
+    <label style="display:flex;align-items:center;gap:8px;font-weight:400;margin-bottom:12px;"><input type="checkbox" data-action="toggle-mcp-conferma" ${STATE.meta.mcpChiediConferma ? 'checked' : ''}> Chiedi la mia conferma prima di ogni azione dell'IA</label>
     ${(STATE.auditMcp || []).length ? `<table class="compact"><thead><tr><th>Quando</th><th>Azione</th><th>Esito</th><th>Dettagli</th></tr></thead><tbody>
       ${(STATE.auditMcp || []).slice(-40).reverse().map(a => `<tr>
         <td style="white-space:nowrap;">${fmtDataOra(a.data)}</td>
@@ -16192,13 +16184,54 @@ function renderImpostazioniAvanzate() {
       </tr>`).join('')}</tbody></table>` : '<div class="helptext">Nessuna azione registrata finora.</div>'}
   </div>
 
+  ${renderImpostazioniGuide()}`;
+}
+
+/* Aggiornamenti e assistenza (master): versione, log, riavvio del server, assistenza remota. */
+function renderImpostazioniAssistenza() {
+  return cardAggiornamentiELog();
+}
+
+/* Sviluppatore: strumenti che servono solo a chi sviluppa Prisma (visibile solo con la modalità sviluppatore). */
+function renderImpostazioniSviluppatore() {
+  const dimensione = new Blob([JSON.stringify(STATE)]).size;
+  return `
   <div class="card">
-    <div class="section-title">Dati di esempio / reset</div>
-    <div class="helptext" style="margin-bottom:12px;">Solo per provare l'app: carica clienti di esempio con un anno fiscale simulato, oppure svuota tutto.</div>
-    <div style="display:flex;gap:10px;">
-      <button class="btn" data-action="carica-demo">Carica dati di esempio</button>
-      <button class="btn danger" data-action="reset-tutto">Svuota tutti i dati</button>
-    </div>
+    <div class="section-title">Modalità sviluppatore</div>
+    <div class="helptext" style="margin-bottom:10px;">Attiva solo su questo PC: gli studi clienti non vedono questa sezione. Per nasconderla, disattivala qui o tocca di nuovo 7 volte la riga della versione in Studio.</div>
+    <button class="btn small" data-action="dev-disattiva">Disattiva modalità sviluppatore</button>
+  </div>
+
+  <div class="card">
+    <div class="section-title">Dati di esempio</div>
+    <div class="helptext" style="margin-bottom:12px;">Per provare l'app: carica clienti di esempio con un anno fiscale simulato. <b>Sostituisce i dati attuali.</b> Per svuotare tutto c'è «Zona pericolosa» nella sezione Master.</div>
+    <button class="btn" data-action="carica-demo">Carica dati di esempio</button>
+  </div>
+
+  <div class="card">
+    <div class="section-title">Vista per MCP locale (file di esportazione)</div>
+    <div class="helptext" style="margin-bottom:12px;">Esporta scadenze già classificate, stato contabilità per cliente, ultimo bilancio e task/comunicazioni aperti in un unico file JSON per il server MCP locale (con il server acceso l'aggiornamento è automatico).</div>
+    <button class="btn primary" data-action="esporta-mcp">⬇ Esporta per MCP (JSON)</button>
+  </div>
+
+  ${cardBackupPiattaforma()}
+
+  <div class="card">
+    <div class="section-title">Sezione Contabilità (sospesa)</div>
+    <div class="helptext" style="margin-bottom:10px;">Il tab è sospeso di default e non compare nel menu né nella scheda cliente. I dati già inseriti non vengono toccati.</div>
+    <label style="display:flex;align-items:center;gap:8px;font-weight:400;"><input type="checkbox" id="impContabilitaAttiva" data-action="toggle-contabilita-attiva" ${STATE.meta.contabilitaAttiva?'checked':''}> Mostra la sezione Contabilità</label>
+  </div>
+
+  <div class="card">
+    <div class="section-title">Informazioni tecniche</div>
+    <table class="compact"><tbody>
+      <tr><td>Sincronizzazione</td><td>${HTTP_SYNC_ATTIVO ? 'server locale (unione modifiche attiva)' : (DB_REF ? 'claude.ai (ultimo vince)' : 'solo questo browser')}</td></tr>
+      <tr><td>Revisione dati sul server</td><td><code>${escapeHtml(String(HTTP_REV || '—'))}</code></td></tr>
+      <tr><td>Modifiche non ancora condivise</td><td>${haModificheNonCondivise() ? 'sì' : 'no'}</td></tr>
+      <tr><td>ID di questa postazione</td><td><code>${escapeHtml(HTTP_CLIENT_ID)}</code></td></tr>
+      <tr><td>Operatore</td><td>${escapeHtml(operatoreCorrente() || '—')}</td></tr>
+      <tr><td>Dimensione dei dati</td><td>~${(dimensione/1024).toFixed(1)} KB · ${STATE.clienti.length} clienti</td></tr>
+    </tbody></table>
   </div>`;
 }
 
@@ -16210,8 +16243,9 @@ function renderImpostazioni() {
     case 'team': contenuto = renderImpostazioniTeam(); break;
     case 'dati': contenuto = renderImpostazioniDati(); break;
     case 'catalogo': contenuto = renderImpostazioniCatalogo(); break;
-    case 'guide': contenuto = renderImpostazioniGuide(); break;
-    case 'avanzate': contenuto = renderImpostazioniAvanzate(); break;
+    case 'ia': contenuto = renderImpostazioniIA(); break;
+    case 'assistenza': contenuto = renderImpostazioniAssistenza(); break;
+    case 'sviluppatore': contenuto = renderImpostazioniSviluppatore(); break;
     case 'gestione': contenuto = renderImpostazioniGestione(); break;
     case 'studio':
     default: contenuto = renderImpostazioniStudio(); break;
@@ -18363,6 +18397,12 @@ function onClickDelegatoInterno(e) {
       break;
     case 'ripristina-backup-piattaforma': ripristinaBackupPiattaforma(el.dataset.timestamp); break;
     case 'esporta-mcp': esportaMCP(); break;
+    case 'imp-versione-tap': {
+      IMP_TAP_VERSIONE = (Date.now() - IMP_TAP_TS > 2500) ? 1 : IMP_TAP_VERSIONE + 1; IMP_TAP_TS = Date.now();
+      if (IMP_TAP_VERSIONE >= 7) { IMP_TAP_VERSIONE = 0; const on = !modalitaSviluppatore(); impostaModalitaSviluppatore(on); toast(on ? 'Modalità sviluppatore attivata su questo PC.' : 'Modalità sviluppatore disattivata.'); render(); }
+      break;
+    }
+    case 'dev-disattiva': impostaModalitaSviluppatore(false); IMP_SEZIONE = 'studio'; toast('Modalità sviluppatore disattivata.'); render(); break;
     case 'ia-collegamento': apriModalIaCollegamento(); break;
     case 'ia-copia': { const i = document.getElementById(el.dataset.src); if (i && i.value) copiaTestoNegliAppunti(i.value, 'Copiato negli appunti.'); else toast('Niente da copiare.'); break; }
     case 'ia-nuovo-token': nuovoTokenIa(); break;
@@ -19767,9 +19807,18 @@ function operatoreMaster() {
   if (!OPERATORE) return true; // nessun operatore scelto: nessuna restrizione (vedi operatorePuoVedere)
   return ruoloOperatore(OPERATORE) === 'master';
 }
-const IMP_SEZIONI_MASTER = ['moduli', 'team', 'avanzate', 'gestione'];
+/* Modalità sviluppatore: preferenza di QUESTO PC (localStorage, mai sincronizzata né nei backup), così
+   i clienti non vedono mai gli strumenti di sviluppo. Si attiva toccando 7 volte la riga della versione
+   in fondo a Impostazioni › Studio. */
+const LS_KEY_SVILUPPATORE = 'prismaModalitaSviluppatore_v1';
+function modalitaSviluppatore() {
+  try { return typeof localStorage !== 'undefined' && localStorage.getItem(LS_KEY_SVILUPPATORE) === '1'; } catch (e) { return false; }
+}
+function impostaModalitaSviluppatore(on) {
+  try { if (on) localStorage.setItem(LS_KEY_SVILUPPATORE, '1'); else localStorage.removeItem(LS_KEY_SVILUPPATORE); } catch (e) { /* storage bloccato */ }
+}
 function impSezioniVisibili() {
-  return IMP_SEZIONI.filter(s => !IMP_SEZIONI_MASTER.includes(s.id) || operatoreMaster());
+  return IMP_SEZIONI.filter(s => (!s.master || operatoreMaster()) && (!s.dev || modalitaSviluppatore()));
 }
 // Tab "di nucleo": quelli che non appartengono a nessun modulo (sempre attivi per tutti).
 function tabNucleo() {
@@ -19803,7 +19852,13 @@ function renderImpostazioniGestione() {
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
       <button class="btn" data-action="imp-sezione" data-sezione="moduli">Moduli dello studio</button>
       <button class="btn" data-action="imp-sezione" data-sezione="team">Utenze e permessi</button>
+      <button class="btn" data-action="imp-sezione" data-sezione="dati">Backup</button>
     </div>
+  </div>
+  <div class="card" style="border-color:var(--rosso);">
+    <div class="section-title" style="color:var(--rosso);">Zona pericolosa</div>
+    <div class="helptext" style="margin-bottom:12px;">Cancella tutti i dati dello studio (clienti, scadenze, documenti, comunicazioni…). Servono tre conferme. Fai prima un backup da «Dati & backup».</div>
+    <button class="btn danger" data-action="reset-tutto">Svuota tutti i dati</button>
   </div>`;
 }
 
@@ -20241,6 +20296,8 @@ window.clienteDaRigaImport = clienteDaRigaImport;
 window.campiMancantiCliente = campiMancantiCliente;
 window.livelliMancantiCliente = livelliMancantiCliente;
 window.confermaAzione = confermaAzione;
+window.modalitaSviluppatore = modalitaSviluppatore;
+window.impostaModalitaSviluppatore = impostaModalitaSviluppatore;
 window.staModificandoQualcosa = staModificandoQualcosa;
 window.diffStato = diffStato;
 window.applicaDiffStato = applicaDiffStato;
