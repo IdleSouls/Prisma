@@ -29,7 +29,7 @@ Prisma si installa **per studio**: ogni studio ha la propria copia e i propri da
 
 1. Esegui **`Installa-Prisma.exe`** sul PC che farà da "server dello studio" (quello che resta acceso in orario di lavoro). Si installa da solo, crea il collegamento sul Desktop e apre Prisma. Se Windows mostra "PC protetto": *Ulteriori informazioni → Esegui comunque* (il file non è firmato). Se chiede di consentire l'accesso in rete, **consenti** (serve ai colleghi).
 2. **Attivazione:** Prisma si apre su "Attiva Prisma" con il **codice macchina**. Copialo e mandalo a chi ti ha fornito Prisma; riceverai un file **`license.json`**: trascinalo nella schermata (o "Scegli il file…") e Prisma parte. Se cambi PC serve una nuova licenza.
-3. **Questionario di primo avvio:** nome dello studio e del master, poche domande su cosa serve, moduli proposti, poi i collaboratori con i moduli di ciascuno. Il master è l'unico che vede in Impostazioni Moduli, Team & accessi, Avanzate e Gestione studio (licenza).
+3. **Questionario di primo avvio:** nome dello studio e dell’utenza maestro, poche domande su cosa serve, moduli proposti, poi i collaboratori con i moduli di ciascuno. L’utenza maestro è l'unico che vede in Impostazioni Moduli, Team & accessi, Avanzate e Gestione studio (licenza).
 4. Per i colleghi sulla stessa rete: aprire nel browser `http://IP-DEL-PC:8420` (l'IP si trova con `ipconfig`).
 
 I file dell'app e i dati stanno in `C:\Users\<nome>\Prisma`: non vanno toccati a mano.
@@ -50,13 +50,13 @@ La schermata **"Il mio lavoro"** mostra una checklist "Metti a punto Prisma" che
 **Impostazioni → Studio.** Inserisci nome, indirizzo, città, logo. Il nome compare anche nel portale dei clienti.
 
 ### 3.2 Moduli
-Si scelgono già nel questionario di primo avvio; poi **Impostazioni → Moduli** (solo master). Spegni ciò che lo studio non userà (es. Antiriciclaggio, Bilanci e KPI, Chat). I moduli spenti spariscono dal menu per tutti, e i dati non si perdono. Alla fine premi **"Conferma la scelta"**.
+Si scelgono già nel questionario di primo avvio; poi **Impostazioni → Moduli** (solo utenza maestro). Spegni ciò che lo studio non userà (es. Antiriciclaggio, Bilanci e KPI, Chat). I moduli spenti spariscono dal menu per tutti, e i dati non si perdono. Alla fine premi **"Conferma la scelta"**.
 Consiglio: per uno studio piccolo basta partire da Scadenze, Clienti, Task, Comunicazioni/Portale, Preventivi. Il resto si accende quando serve.
 
 ### 3.3 Collaboratori, ruoli e permessi
-**Impostazioni → Team & accessi → Responsabili dello studio** (solo master; i primi collaboratori si creano già nel questionario).
+**Impostazioni → Squadra e accessi → Responsabili dello studio** (solo utenza maestro; i primi collaboratori si creano già nel questionario).
 - "+ Aggiungi responsabile" per ogni collega.
-- Ruolo **Master** = come Admin più gestione di moduli, utenze e licenza. Ruolo **Admin** = vede tutto. Ruolo **Limitato** = vede solo le sezioni spuntate (la Dashboard c'è sempre).
+- Ruolo **Maestro** = come Admin più gestione di moduli, utenze e licenza. Ruolo **Admin** = vede tutto. Ruolo **Limitato** = vede solo le sezioni spuntate (la Dashboard c'è sempre).
 - Spunta **"Consulente"** per chi riceve appuntamenti dalla segreteria.
 - Ogni PC, la prima volta, chiede "Chi sta usando questo PC?": ognuno sceglie il proprio nome.
 - Password dei responsabili: nella stessa pagina, card "Password". Falle impostare all'utente, non a te.
@@ -67,14 +67,14 @@ Consiglio: per uno studio piccolo basta partire da Scadenze, Clienti, Task, Comu
 - Per ogni cliente verifica i flag fiscali (forma giuridica, regime IVA, periodicità): da questi Prisma genera da solo le scadenze corrette.
 
 ### 3.5 Scadenze e adempimenti
-Dopo aver inserito i clienti, apri **Scadenze periodiche** e **Adempimenti annuali**: sono già generati. Controlla a campione 2–3 clienti con l'utente. Il catalogo si personalizza in **Impostazioni → Catalogo & aggiornamenti**.
+Dopo aver inserito i clienti, apri **Scadenze periodiche** e **Adempimenti annuali**: sono già generati. Controlla a campione 2–3 clienti con l'utente. Il catalogo si personalizza in **Impostazioni → Scadenzario e catalogo**.
 
 ### 3.6 Portale clienti (opzionale, modulo "Portale")
 Il portale è la pagina dove il cliente vede comunicazioni, scadenze, documenti e andamento. Serve un accesso da internet:
 
 1. Crea un account gratuito su **ngrok.com**, installa ngrok sul PC server e fai l'`authtoken` (comando mostrato da ngrok). Chiedi all'utente di farlo lui: il token non va incollato in chat.
 2. Su ngrok crea il **dominio statico gratuito** (uno solo sul piano free).
-3. In Prisma: **Impostazioni → Team & accessi → Accesso esterno (ngrok)**. Segui i tre blocchi numerati: 1 collegamento a internet, 2 collaboratori (accesso con utente/password), 3 clienti.
+3. In Prisma: **Impostazioni → Squadra e accessi → Accesso esterno (ngrok)**. Segui i tre blocchi numerati: 1 collegamento a internet, 2 collaboratori (accesso con utente/password), 3 clienti.
 4. Sempre lì, blocco "Clienti": scegli un cliente dal menu a tendina, **copia il link** e gestisci l'eventuale password di accesso di quel cliente.
 5. Il link si invia al cliente (email/WhatsApp). Il cliente può **installarlo come app**: pulsante ⤓ in alto a destra nel portale (su iPhone: Condividi → "Aggiungi alla schermata Home") e attivare le notifiche con la campanella 🔕→🔔.
 
@@ -84,7 +84,7 @@ Note per te: la notifica push mostra solo "Hai 1 nuova comunicazione", mai il co
 Menu **Modelli documenti**: testi per preventivi, mandati e documenti antiriciclaggio. Fai personalizzare logo e intestazione, poi prova a generare un preventivo di prova.
 
 ### 3.8 Backup e aggiornamenti
-**Impostazioni → Dati & backup:** Prisma fa copie automatiche di dati e programma. Insegna all'utente a (1) scaricare un backup completo, (2) dove sono le copie, (3) come ripristinare. **Copia esterna:** sempre in Impostazioni → Dati & backup, imposta una cartella su un altro disco/NAS/cloud sincronizzato (card "Copia esterna dei backup"): è la protezione contro la rottura del disco del PC server. Lì c'è anche "Recupera documenti mancanti". **Impostazioni → Catalogo & aggiornamenti:** controlla e applica aggiornamenti (sempre con backup prima).
+**Impostazioni → Dati e backup:** Prisma fa copie automatiche di dati e programma. Insegna all'utente a (1) scaricare un backup completo, (2) dove sono le copie, (3) come ripristinare. **Copia esterna:** sempre in Impostazioni → Dati e backup, imposta una cartella su un altro disco/NAS/cloud sincronizzato (card "Copia esterna dei backup"): è la protezione contro la rottura del disco del PC server. Lì c'è anche "Recupera documenti mancanti". **Impostazioni → Scadenzario e catalogo:** controlla e applica aggiornamenti (sempre con backup prima).
 
 ---
 
@@ -102,7 +102,7 @@ Menu **Modelli documenti**: testi per preventivi, mandati e documenti antiricicl
 - *"Non vedo più un tab."* → Impostazioni → Moduli (modulo spento) oppure ruolo Limitato: controlla i permessi in Team & accessi.
 - *"Il cliente non riceve la notifica."* → Deve aver installato il portale e attivato la campanella; su iPhone serve iOS 16.4+ e il portale aggiunto alla Home.
 - *"Il link del portale non funziona più."* → ngrok non è attivo: controlla il blocco 1 in Accesso esterno; se serve, riavvio di Prisma. Log in `logs/ngrok-8421.log` e `.err`.
-- *"Ho cancellato un dato per sbaglio."* → Impostazioni → Dati & backup: ripristina l'ultimo punto precedente.
+- *"Ho cancellato un dato per sbaglio."* → Impostazioni → Dati e backup: ripristina l'ultimo punto precedente.
 - *"Posso usarlo su più PC?"* → Sì, dalla stessa rete (indirizzo del server) o dall'accesso esterno per i collaboratori, con utente e password.
 
 Quando non sai la risposta, chiedi all'utente una descrizione o uno screenshot della schermata e ragionate insieme.

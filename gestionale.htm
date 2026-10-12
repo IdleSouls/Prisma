@@ -15843,17 +15843,17 @@ function modalCredenziale(id) {
   renderCampiCredenzialeModal();
 }
 
-/* Impostazioni raggruppate per argomento. "master" = solo utenti master; "dev" = solo con la modalità
+/* Impostazioni raggruppate per argomento. "master" = solo utenze maestro; "dev" = solo con la modalità
    sviluppatore attiva su questo PC (vedi modalitaSviluppatore). */
 const IMP_SEZIONI = [
   { id: 'studio', label: 'Studio' },
-  { id: 'catalogo', label: 'Scadenzario & catalogo' },
-  { id: 'dati', label: 'Dati & backup' },
-  { id: 'team', label: 'Team & accessi', master: true },
+  { id: 'catalogo', label: 'Scadenzario e catalogo', master: true },
+  { id: 'dati', label: 'Dati e backup', master: true },
+  { id: 'team', label: 'Squadra e accessi', master: true },
   { id: 'moduli', label: 'Moduli', master: true },
   { id: 'ia', label: 'Intelligenza artificiale', master: true },
-  { id: 'assistenza', label: 'Aggiornamenti & assistenza', master: true },
-  { id: 'gestione', label: '🔒 Master', master: true },
+  { id: 'assistenza', label: 'Aggiornamenti e assistenza', master: true },
+  { id: 'gestione', label: '🔒 Maestro', master: true },
   { id: 'sviluppatore', label: '🛠 Sviluppatore', dev: true },
 ];
 const GUIDE_STUDIO = [
@@ -15997,7 +15997,7 @@ function rigaResponsabileConRuolo(r, i) {
         <input type="checkbox" data-action="toggle-consulente" data-idx="${i}" ${(STATE.meta.consulenti||[]).includes(r)?'checked':''}> Consulente
       </label>
       <select data-action="cambia-ruolo-responsabile" data-resp="${escapeHtml(r)}" title="Ruolo di accesso" style="border:1px solid var(--border);border-radius:6px;padding:5px 7px;">
-        <option value="master" ${ruolo==='master'?'selected':''}>Master — gestisce moduli, utenze e licenza</option>
+        <option value="master" ${ruolo==='master'?'selected':''}>Maestro — gestisce moduli, utenze, dati e licenza</option>
         <option value="admin" ${ruolo==='admin'?'selected':''}>Admin — accesso completo</option>
         <option value="limitato" ${ruolo==='limitato'?'selected':''}>Limitato — solo alcune sezioni</option>
       </select>
@@ -16204,7 +16204,7 @@ function renderImpostazioniSviluppatore() {
 
   <div class="card">
     <div class="section-title">Dati di esempio</div>
-    <div class="helptext" style="margin-bottom:12px;">Per provare l'app: carica clienti di esempio con un anno fiscale simulato. <b>Sostituisce i dati attuali.</b> Per svuotare tutto c'è «Zona pericolosa» nella sezione Master.</div>
+    <div class="helptext" style="margin-bottom:12px;">Per provare l'app: carica clienti di esempio con un anno fiscale simulato. <b>Sostituisce i dati attuali.</b> Per svuotare tutto c'è «Zona pericolosa» nella sezione Maestro.</div>
     <button class="btn" data-action="carica-demo">Carica dati di esempio</button>
   </div>
 
@@ -18617,7 +18617,7 @@ function onChangeDelegato(e) {
       const resp = el.dataset.resp;
       if (!STATE.meta.ruoli) STATE.meta.ruoli = {};
       if (ruoloOperatore(resp) === 'master' && el.value !== 'master' && (STATE.meta.responsabili || []).filter(r => ruoloOperatore(r) === 'master').length <= 1) {
-        toast('Deve esserci almeno un utente master.'); render(); break;
+        toast('Deve esserci almeno un\'utenza maestro.'); render(); break;
       }
       if (el.value === 'admin') delete STATE.meta.ruoli[resp]; // 'admin' è il default implicito, non serve salvarlo
       else STATE.meta.ruoli[resp] = el.value === 'master' ? 'master' : 'limitato';
@@ -19848,7 +19848,7 @@ function renderImpostazioniGestione() {
   </div>
   <div class="card">
     <div class="section-title">Gestione dello studio</div>
-    <div class="helptext" style="margin-bottom:12px;">Quest'area è visibile solo agli utenti master. Moduli attivi: ${nMod} su ${MODULI.length}. Utenze: ${(STATE.meta.responsabili || []).length}.</div>
+    <div class="helptext" style="margin-bottom:12px;">Quest'area è visibile solo alle utenze maestro. Moduli attivi: ${nMod} su ${MODULI.length}. Utenze: ${(STATE.meta.responsabili || []).length}.</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
       <button class="btn" data-action="imp-sezione" data-sezione="moduli">Moduli dello studio</button>
       <button class="btn" data-action="imp-sezione" data-sezione="team">Utenze e permessi</button>
@@ -19857,7 +19857,7 @@ function renderImpostazioniGestione() {
   </div>
   <div class="card" style="border-color:var(--rosso);">
     <div class="section-title" style="color:var(--rosso);">Zona pericolosa</div>
-    <div class="helptext" style="margin-bottom:12px;">Cancella tutti i dati dello studio (clienti, scadenze, documenti, comunicazioni…). Servono tre conferme. Fai prima un backup da «Dati & backup».</div>
+    <div class="helptext" style="margin-bottom:12px;">Cancella tutti i dati dello studio (clienti, scadenze, documenti, comunicazioni…). Servono tre conferme. Fai prima un backup da «Dati e backup».</div>
     <button class="btn danger" data-action="reset-tutto">Svuota tutti i dati</button>
   </div>`;
 }
@@ -19915,8 +19915,8 @@ function renderSetup() {
       <div style="background:var(--bg,#f4f6f9);border-radius:10px;padding:14px 16px;margin-bottom:16px;line-height:1.55;"><strong>Che cos'è Prisma.</strong> È il cruscotto operativo di uno studio di commercialisti: raccoglie in un unico posto scadenze, adempimenti a fasi, attività dei collaboratori e clienti, così sai sempre cosa scade, chi se ne occupa e a che punto è. <strong>Non è</strong> un software di contabilità né di fatturazione: affianca quelli che già usate. I dati restano sul computer dello studio.</div>
       <div class="helptext" style="margin-bottom:18px;">Servono pochi minuti: ti chiedo il nome dello studio, cosa vi serve e chi lavorerà con te. Dopo potrai cambiare tutto dalle Impostazioni.</div>
       <div class="field"><label>Nome dello studio</label><input type="text" data-setup="studio" value="${escapeHtml(SETUP.studio)}" placeholder="es. Studio Rossi"></div>
-      <div class="field"><label>Il tuo nome (sarai l'utente master dello studio)</label><input type="text" data-setup="master" value="${escapeHtml(SETUP.master)}" placeholder="es. Mario Rossi"></div>
-      <div class="helptext">Il master gestisce moduli, utenze e licenza. Gli altri collaboratori useranno Prisma con i moduli che sceglierai per loro.</div>`;
+      <div class="field"><label>Il tuo nome (sarai l'utenza maestro dello studio)</label><input type="text" data-setup="master" value="${escapeHtml(SETUP.master)}" placeholder="es. Mario Rossi"></div>
+      <div class="helptext">L'utenza maestro gestisce moduli, utenze, catalogo, backup e licenza. Gli altri collaboratori useranno Prisma con i moduli che sceglierai per loro.</div>`;
   } else if (SETUP.step === 2) {
     corpo = `<h2 style="margin:0 0 6px;">Cosa vi serve?</h2>
       <div class="helptext" style="margin-bottom:12px;">Scegli un punto di partenza, poi aggiusta le risposte qui sotto. Sempre inclusi: scadenzario, adempimenti annuali, dashboard "Oggi", clienti e documenti.</div>
@@ -19934,7 +19934,7 @@ function renderSetup() {
         <li><strong>Importa i clienti</strong> da Excel (Clienti › Importa).</li>
         <li><strong>Imposta il backup su un secondo disco</strong> (Impostazioni › Backup): i dati stanno solo su questo computer.</li>
         <li><strong>Accesso da fuori studio</strong>, solo se serve ai collaboratori o ai clienti: Impostazioni › Accesso esterno › Procedura guidata.</li>
-        <li><strong>Usa una password lunga</strong> per l'utente master e per i collaboratori che si collegano da remoto.</li>
+        <li><strong>Usa una password lunga</strong> per l'utenza maestro e per i collaboratori che si collegano da remoto.</li>
       </ol>`;
   } else {
     const righe = SETUP.collab.map((c, i) => `<div style="border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px;">
