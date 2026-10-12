@@ -3064,7 +3064,24 @@ const AZIONI_MCP = {
   eliminaCliente: (p) => { if (!clienteById(p.id)) throw new Error('Cliente non trovato: ' + p.id); eliminaCliente(p.id); return { eliminato: true }; },
 
   creaTask: (p) => { aggiungiTaskTeam(p); return { creato: true }; },
-  modificaTask: (p) => { if (!STATE.taskTeam.find(t => t.id === p.id)) throw new Error('Task non trovato: ' + p.id); aggiornaTaskTeam(p.id, p.patch || {}); return { aggiornato: true }; },
+  modificaTask: (p) => {
+    if (!STATE.taskTeam.find(t => t.id === p.id)) throw new Error('Task non trovato: ' + p.id);
+    const patch = Object.assign({}, p.patch || {});
+    // Le note NON si sostituiscono con una patch (perderebbero storico e autori): "note" accoda una nota operativa, "noteStorico" si ignora.
+    const nuovaNota = typeof patch.note === 'string' ? patch.note : null;
+    delete patch.note; delete patch.noteStorico; delete patch.noteEliminate;
+    if (Object.keys(patch).length) aggiornaTaskTeam(p.id, patch);
+    if (nuovaNota && nuovaNota.trim()) aggiungiNotaTaskTeam(p.id, nuovaNota);
+    return { aggiornato: true };
+  },
+  aggiungiNotaTask: (p) => { const n = aggiungiNotaTaskTeam(p.id, p.testo); if (!n) throw new Error('Task non trovato o nota vuota: ' + p.id); return { notaId: n.id }; },
+  modificaNotaTask: (p) => {
+    const t = STATE.taskTeam.find(x => x.id === p.id); if (!t) throw new Error('Task non trovato: ' + p.id);
+    const n = (t.noteStorico || []).find(x => x.id === p.notaId); if (!n) throw new Error('Nota non trovata: ' + p.notaId + ' (usa task_aperti per vedere gli id delle note)');
+    const testo = String(p.testo || '').trim(); if (!testo) throw new Error('Testo della nota vuoto.');
+    if (testo !== n.testo) { n.modifiche = (n.modifiche || []).concat([{ testo: n.testo, data: new Date().toISOString(), autore: 'Assistente IA (MCP)' }]); n.testo = testo; salvaStato(); }
+    return { aggiornato: true };
+  },
   eliminaTask: (p) => { if (!STATE.taskTeam.find(t => t.id === p.id)) throw new Error('Task non trovato: ' + p.id); eliminaTaskTeam(p.id); return { eliminato: true }; },
 
   creaComunicazione: (p) => { aggiungiComunicazione(p); return { creata: true }; },
@@ -3142,7 +3159,7 @@ const AZIONI_MCP = {
 /* Registro delle azioni di Claude (task #210): ogni comando MCP ricevuto - eseguito, rifiutato o
    fallito - viene registrato (ultimi 300) e consultabile da Impostazioni › Intelligenza artificiale. In modalità
    "chiedi conferma" (STATE.meta.mcpChiediConferma) ogni azione richiede un OK esplicito. */
-const ETICHETTE_AZIONE_MCP = { creaCliente: 'Crea cliente', modificaCliente: 'Modifica cliente', eliminaCliente: 'Elimina cliente', creaTask: 'Crea task', modificaTask: 'Modifica task', eliminaTask: 'Elimina task', creaComunicazione: 'Crea comunicazione', modificaComunicazione: 'Modifica comunicazione', eliminaComunicazione: 'Elimina comunicazione' };
+const ETICHETTE_AZIONE_MCP = { creaCliente: 'Crea cliente', modificaCliente: 'Modifica cliente', eliminaCliente: 'Elimina cliente', creaTask: 'Crea task', modificaTask: 'Modifica task', aggiungiNotaTask: 'Aggiungi nota a un task', modificaNotaTask: 'Modifica nota di un task', eliminaTask: 'Elimina task', creaComunicazione: 'Crea comunicazione', modificaComunicazione: 'Modifica comunicazione', eliminaComunicazione: 'Elimina comunicazione' };
 function etichettaAzioneMCP(azione) {
   if (ETICHETTE_AZIONE_MCP[azione]) return ETICHETTE_AZIONE_MCP[azione];
   const t = String(azione || '').replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
@@ -19572,7 +19589,8 @@ function esportaVistaMCP() {
 
   const taskApertiOut = STATE.taskTeam.filter(t => t.stato !== 'Fatto').map(t => ({
     id: t.id, titolo: t.titolo, clienteId: t.clienteId, cliente: t.clienteId ? nomeCliente(t.clienteId) : null,
-    assegnatoA: t.assegnatoA, stato: t.stato, scadenza: t.scadenza || null,
+    assegnatoA: t.assegnatoA, stato: t.stato, scadenza: t.scadenza || null, descrizione: t.descrizione || '', stampaVerbale: !!t.stampaVerbale,
+    note: (t.noteStorico || []).map(n => ({ id: n.id, autore: n.autore || null, data: n.data, testo: n.testo, modificata: (n.modifiche || []).length > 0 })),
   }));
 
   const comRecentiOut = STATE.comunicazioni.slice().sort((a,b)=>b.data.localeCompare(a.data)).slice(0,30).map(c => ({

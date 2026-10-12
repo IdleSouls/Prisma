@@ -387,10 +387,30 @@ export function creaServer(filePath, baseUrl) {
     'modifica_task',
     {
       title: 'Modifica task team',
-      description: 'Aggiorna solo i campi indicati di un task (es. stato, assegnatoA). Richiede il gestionale aperto via server.js.',
+      description: 'Aggiorna solo i campi indicati di un task (es. stato, assegnatoA, descrizione, scadenza). Per le note usa aggiungi_nota_task / modifica_nota_task (un campo "note" nella patch accoda una nuova nota). Richiede il gestionale aperto via server.js.',
       inputSchema: { id: z.string(), patch: z.record(z.unknown()).describe(DESCR_PATCH_GENERICO) },
     },
     async ({ id, patch }) => testoEsitoScrittura(await inviaComando(url, 'modificaTask', { id, patch }))
+  );
+
+  server.registerTool(
+    'aggiungi_nota_task',
+    {
+      title: 'Aggiungi nota operativa a un task',
+      description: 'Accoda una nota operativa allo storico di un task (resta autore e data; non sostituisce le note esistenti). Richiede il gestionale aperto via server.js.',
+      inputSchema: { id: z.string().describe('Id del task (vedi task_aperti).'), testo: z.string().min(1) },
+    },
+    async ({ id, testo }) => testoEsitoScrittura(await inviaComando(url, 'aggiungiNotaTask', { id, testo }))
+  );
+
+  server.registerTool(
+    'modifica_nota_task',
+    {
+      title: 'Modifica una nota operativa di un task',
+      description: 'Riscrive il testo di una nota esistente: la versione precedente resta nello storico della nota. Gli id delle note si leggono con task_aperti (campo note). Richiede il gestionale aperto via server.js.',
+      inputSchema: { id: z.string().describe('Id del task.'), notaId: z.string(), testo: z.string().min(1) },
+    },
+    async ({ id, notaId, testo }) => testoEsitoScrittura(await inviaComando(url, 'modificaNotaTask', { id, notaId, testo }))
   );
 
   server.registerTool(
