@@ -10588,6 +10588,61 @@ function renderTaskTeam() {
    il dataCompletamento sui sotto-adempimenti/step di controllo registra "quando" senza permettere di
    "correggere" il passato. Così una pratica lunga (magari passata di mano tra Matteo e Sabrina) porta
    con sé tutta la sua storia, non solo l'ultimo appunto rimasto. */
+/* ---- Note dei task: modifica ed eliminazione ----
+   Modifica: SOLO chi ha scritto la nota; la versione precedente resta in "modifiche" (chi, quando, testo di
+   prima), visibile dalla nota. Eliminazione: chi l'ha scritta o l'utenza maestro; resta traccia in noteEliminate.
+   Con un solo responsabile nello studio (nessuna distinzione tra persone) è tutto consentito. */
+let NOTA_IN_MODIFICA = null; // { taskId, notaId }
+function puoModificareNotaTask(n) {
+  if ((STATE.meta.responsabili || []).length < 2) return true;
+  const io = operatoreCorrente();
+  if (!n.autore) return !io;
+  return !!io && io === n.autore;
+}
+function puoEliminareNotaTask(n) { return puoModificareNotaTask(n) || (!!operatoreCorrente() && operatoreMaster()); }
+function modificaNotaTaskTeam(taskId, notaId, nuovoTesto) {
+  const t = STATE.taskTeam.find(x => x.id === taskId); if (!t) return false;
+  const n = (t.noteStorico || []).find(x => x.id === notaId); if (!n) return false;
+  const testo = String(nuovoTesto || '').trim();
+  if (!testo || testo === n.testo) return false;
+  if (!puoModificareNotaTask(n)) return false;
+  n.modifiche = (n.modifiche || []).concat([{ testo: n.testo, data: new Date().toISOString(), autore: operatoreCorrente() || null }]);
+  n.testo = testo;
+  salvaStato();
+  return true;
+}
+function eliminaNotaTaskTeam(taskId, notaId) {
+  const t = STATE.taskTeam.find(x => x.id === taskId); if (!t) return false;
+  const n = (t.noteStorico || []).find(x => x.id === notaId); if (!n || !puoEliminareNotaTask(n)) return false;
+  t.noteStorico = t.noteStorico.filter(x => x.id !== notaId);
+  t.noteEliminate = (t.noteEliminate || []).concat([{ id: n.id, testo: n.testo, autore: n.autore || null, data: n.data, eliminataDa: operatoreCorrente() || null, eliminataIl: new Date().toISOString() }]);
+  salvaStato();
+  return true;
+}
+/* HTML di una nota. conAzioni = pulsanti Modifica/Elimina (solo nel modale di modifica del task). */
+function htmlNotaTask(n, taskId, conAzioni) {
+  const inModifica = conAzioni && NOTA_IN_MODIFICA && NOTA_IN_MODIFICA.taskId === taskId && NOTA_IN_MODIFICA.notaId === n.id;
+  const storico = (n.modifiche || []).length
+    ? `<details style="margin-top:3px;"><summary class="helptext" style="cursor:pointer;">✎ modificata ${n.modifiche.length === 1 ? '1 volta' : n.modifiche.length + ' volte'} (ultima: ${escapeHtml(n.modifiche[n.modifiche.length - 1].autore || '—')}, ${fmtDataOra(n.modifiche[n.modifiche.length - 1].data)})</summary>
+        ${n.modifiche.slice().reverse().map(m => `<div class="helptext" style="margin:4px 0 0 10px;padding-left:8px;border-left:2px solid var(--border);"><b>${escapeHtml(m.autore || '—')}</b> · ${fmtDataOra(m.data)} — versione precedente:<div style="white-space:pre-wrap;">${escapeHtml(m.testo)}</div></div>`).join('')}
+      </details>` : '';
+  const azioni = (conAzioni && !inModifica)
+    ? `<span style="float:right;display:inline-flex;gap:4px;">
+        ${puoModificareNotaTask(n) ? `<button type="button" class="btn small ghost" data-action="task-nota-modifica" data-id="${taskId}" data-nota="${n.id}" title="Modifica questa nota">✎ Modifica</button>` : ''}
+        ${puoEliminareNotaTask(n) ? `<button type="button" class="btn small ghost" style="color:var(--rosso);" data-action="task-nota-elimina" data-id="${taskId}" data-nota="${n.id}" title="Elimina questa nota">🗑</button>` : ''}
+      </span>` : '';
+  const corpo = inModifica
+    ? `<textarea id="tNotaModifica" style="width:100%;min-height:60px;">${escapeHtml(n.testo)}</textarea>
+       <div style="margin-top:6px;display:flex;gap:6px;"><button type="button" class="btn small primary" data-action="task-nota-modifica-salva" data-id="${taskId}" data-nota="${n.id}">Salva nota</button><button type="button" class="btn small" data-action="task-nota-modifica-annulla" data-id="${taskId}">Annulla</button></div>`
+    : `<div style="font-size:12.5px;white-space:pre-wrap;line-height:1.4;">${escapeHtml(n.testo)}</div>`;
+  return `<div style="padding:5px 0;border-bottom:1px solid var(--border);"><div style="font-size:10.5px;font-weight:700;color:var(--text-mut);text-transform:uppercase;margin-bottom:2px;">${escapeHtml(n.autore || '—')} · ${fmtData(n.data)}${azioni}</div>${corpo}${storico}</div>`;
+}
+/* Riapre il modale del task mantenendo quello che si stava compilando (escluse le chiavi indicate). */
+function riapriTaskConBozza(taskId, escludi) {
+  TASK_BOZZA = { id: taskId || null, campi: {}, ripristina: true };
+  ['tTitolo', 'tAssegnato', 'tCliente', 'tScadenza', 'tStato', 'tProcedura', 'tNoteCompletamento', 'tNuovaNota'].forEach(k => { if ((escludi || []).includes(k)) return; const f = document.getElementById(k); if (f) TASK_BOZZA.campi[k] = f.value; });
+  modalTaskTeam(taskId);
+}
 function aggiungiNotaTaskTeam(taskId, testo) {
   const t = STATE.taskTeam.find(x => x.id === taskId);
   const testoPulito = (testo || '').trim();
@@ -10612,7 +10667,7 @@ function modalDettaglioTaskTeam(taskId) {
   const noteStorico = t.noteStorico || [];
   const ritardo = taskInRitardo(t);
   const sezioneNote = noteStorico.length
-    ? `<div style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px 10px;">${noteStorico.map(n => `<div style="padding:5px 0;border-bottom:1px solid var(--border);"><div style="font-size:10.5px;font-weight:700;color:var(--text-mut);text-transform:uppercase;margin-bottom:2px;">${escapeHtml(n.autore || '—')} · ${fmtData(n.data)}</div><div style="font-size:12.5px;white-space:pre-wrap;line-height:1.4;">${escapeHtml(n.testo)}</div></div>`).join('')}</div>`
+    ? `<div style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px 10px;">${noteStorico.map(n => htmlNotaTask(n, t.id, false)).join('')}</div>`
     : `<div class="helptext">Nessuna nota ancora su questo task.</div>`;
   // Task #155: pannello di riferimento con l'anteprima della procedura collegata (nome, categoria,
   // contenuto, checklist documenti) - non solo un link, proprio "una linea guida su cosa fare" senza
@@ -10645,7 +10700,7 @@ function modalDettaglioTaskTeam(taskId) {
       </div>
       ${panelProcedura}
       ${panelNoteCompletamento}
-      <label style="font-size:11px;font-weight:700;color:var(--text-mut);text-transform:uppercase;letter-spacing:.02em;">Note<span class="cnt">${noteStorico.length}</span></label>
+      <label style="font-size:11px;font-weight:700;color:var(--text-mut);text-transform:uppercase;letter-spacing:.02em;">Note</label>
       <div style="margin-top:6px;">${sezioneNote}</div>
       <div class="modal-actions">
         ${t.clienteId ? `<button class="btn small" data-action="apri-cliente" data-id="${t.clienteId}" style="margin-right:auto;">Apri scheda cliente</button>` : ''}
@@ -10656,8 +10711,9 @@ function modalDettaglioTaskTeam(taskId) {
   </div>`;
   document.getElementById('modalRoot').innerHTML = html;
 }
-let TASK_BOZZA = null; // campi compilati nel modale task mentre si guarda la procedura collegata
+let TASK_BOZZA = null; // campi compilati nel modale task mentre si guarda la procedura collegata (o si modifica una nota)
 function modalTaskTeam(taskId, presetClienteId) {
+  if (!(TASK_BOZZA && TASK_BOZZA.ripristina)) NOTA_IN_MODIFICA = null;
   const editing = !!taskId;
   const t = editing ? STATE.taskTeam.find(x => x.id === taskId) : {
     id: uid('task'), titolo: '', clienteId: presetClienteId || null, assegnatoA: STATE.meta.responsabili[0] || '',
@@ -10671,9 +10727,9 @@ function modalTaskTeam(taskId, presetClienteId) {
   // una nuova, che con "Aggiungi nota" si accoda subito senza chiudere il modale (come modalDettaglioScadenza).
   const sezioneNote = editing
     ? `<div class="field full" style="grid-column:1/-1;">
-        <label>Note<span class="cnt">${noteStorico.length}</span></label>
+        <label>Note</label>
         ${noteStorico.length
-          ? `<div style="max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:8px;">${noteStorico.map(n => `<div style="padding:5px 0;border-bottom:1px solid var(--border);"><div style="font-size:10.5px;font-weight:700;color:var(--text-mut);text-transform:uppercase;margin-bottom:2px;">${escapeHtml(n.autore || '—')} · ${fmtData(n.data)}</div><div style="font-size:12.5px;white-space:pre-wrap;line-height:1.4;">${escapeHtml(n.testo)}</div></div>`).join('')}</div>`
+          ? `<div style="max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:8px;">${noteStorico.map(n => htmlNotaTask(n, t.id, true)).join('')}</div>`
           : `<div class="helptext" style="margin-bottom:8px;">Nessuna nota ancora su questo task.</div>`}
         <textarea id="tNuovaNota" style="width:100%;min-height:50px;" placeholder="Scrivi una nuova nota..."></textarea>
         <button type="button" class="btn small" style="margin-top:6px;" data-action="task-aggiungi-nota" data-id="${t.id}">Aggiungi nota</button>
@@ -17760,6 +17816,17 @@ function onClickDelegatoInterno(e) {
       chiudiModal(); render(); toast(editing ? 'Task aggiornato.' : 'Task creato.');
       break;
     }
+    case 'task-nota-modifica': NOTA_IN_MODIFICA = { taskId: id, notaId: el.dataset.nota }; riapriTaskConBozza(id); break;
+    case 'task-nota-modifica-annulla': NOTA_IN_MODIFICA = null; riapriTaskConBozza(id); break;
+    case 'task-nota-modifica-salva': {
+      const ok = modificaNotaTaskTeam(id, el.dataset.nota, (h('tNotaModifica') || {}).value);
+      NOTA_IN_MODIFICA = null; render(); riapriTaskConBozza(id);
+      toast(ok ? 'Nota modificata (la versione precedente resta nello storico).' : 'Nessuna modifica alla nota.');
+      break;
+    }
+    case 'task-nota-elimina':
+      if (confermaAzione('Eliminare questa nota?')) { eliminaNotaTaskTeam(id, el.dataset.nota); render(); riapriTaskConBozza(id); toast('Nota eliminata.'); }
+      break;
     case 'task-vedi-procedura-selezionata': {
       const sel = h('tProcedura');
       const pid = sel ? sel.value : '';
@@ -17777,7 +17844,7 @@ function onClickDelegatoInterno(e) {
       if (!testo.trim()) { toast('Scrivi qualcosa prima di aggiungere la nota.', true); return; }
       aggiungiNotaTaskTeam(id, testo);
       render();
-      modalTaskTeam(id); // riapre il modale sullo stesso task: mostra la nota appena aggiunta e libera il campo
+      riapriTaskConBozza(id, ['tNuovaNota']); // riapre il modale sullo stesso task: mostra la nota appena aggiunta, libera il campo e non perde le altre modifiche in corso
       toast('Nota aggiunta.');
       break;
     }
@@ -20310,6 +20377,9 @@ window.clienteDaRigaImport = clienteDaRigaImport;
 window.campiMancantiCliente = campiMancantiCliente;
 window.livelliMancantiCliente = livelliMancantiCliente;
 window.confermaAzione = confermaAzione;
+window.modificaNotaTaskTeam = modificaNotaTaskTeam;
+window.eliminaNotaTaskTeam = eliminaNotaTaskTeam;
+window.aggiungiNotaTaskTeam = aggiungiNotaTaskTeam;
 window.modalTaskTeam = modalTaskTeam;
 window.modalitaSviluppatore = modalitaSviluppatore;
 window.impostaModalitaSviluppatore = impostaModalitaSviluppatore;

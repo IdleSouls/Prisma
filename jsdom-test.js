@@ -6994,6 +6994,37 @@ async function main() {
       click(qq('[data-action="chiudi-modal"]')); await wait(20);
       console.log('=== Task: bozza ripristinata dopo aver guardato la procedura OK');
     }
+
+    // ---------- Note dei task: modifica solo dell'autore, con storico; eliminazione ----------
+    {
+      const qq = (sel) => window.document.querySelector(sel);
+      const ST = window.getSTATE();
+      const [A, B] = ST.meta.responsabili;
+      assert(A && B, 'servono due responsabili per il test delle note');
+      window.impostaOperatore(A);
+      window.aggiungiTaskTeam({ titolo: 'Task note test', assegnatoA: A, clienteId: null, scadenza: null, stato: 'Da fare', creatoIl: '2026-10-12' });
+      const task = ST.taskTeam[ST.taskTeam.length - 1];
+      const nota = window.aggiungiNotaTaskTeam(task.id, 'Prima versione');
+      window.impostaOperatore(B);
+      assert(!window.modificaNotaTaskTeam(task.id, nota.id, 'Hackerata'), 'un altro utente non può modificare la nota');
+      window.modalTaskTeam(task.id); await wait(20);
+      assert(!qq('[data-action="task-nota-modifica"]'), 'a chi non è l\'autore non va mostrato "Modifica"');
+      assert(!/Note\d/.test(qq('#formTaskTeam').textContent.replace(/\s+/g, '')), 'accanto a "Note" non deve esserci il numero totale');
+      window.impostaOperatore(A);
+      window.modalTaskTeam(task.id); await wait(20);
+      click(qq('[data-action="task-nota-modifica"]')); await wait(20);
+      setVal(qq('#tNotaModifica'), 'Seconda versione');
+      click(qq('[data-action="task-nota-modifica-salva"]')); await wait(20);
+      const n2 = window.getSTATE().taskTeam.find(x => x.id === task.id).noteStorico[0];
+      assert(n2.testo === 'Seconda versione' && n2.modifiche.length === 1 && n2.modifiche[0].testo === 'Prima versione' && n2.modifiche[0].autore === A, 'lo storico delle modifiche deve conservare la versione precedente e chi ha modificato');
+      assert(/modificata 1 volta/.test(qq('#formTaskTeam').textContent), 'la nota deve mostrare che è stata modificata');
+      click(qq('[data-action="task-nota-elimina"]')); await wait(20);
+      assert(window.getSTATE().taskTeam.find(x => x.id === task.id).noteStorico.length === 0, 'l\'autore deve poter eliminare la propria nota');
+      assert(window.getSTATE().taskTeam.find(x => x.id === task.id).noteEliminate.length === 1, 'resta traccia della nota eliminata');
+      ST.taskTeam = ST.taskTeam.filter(x => x.id !== task.id);
+      window.impostaOperatore(null); window.setView('dashboard');
+      console.log('=== Note task: modifica solo autore con storico, eliminazione con traccia OK');
+    }
   }
   console.log('\n✅ TUTTI I TEST END-TO-END PASSATI (' + errors.length + ' errori console catturati)');
   if (errors.length) {
