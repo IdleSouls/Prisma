@@ -100,9 +100,37 @@ const descrConferma = (cosa) => `Deve essere esattamente true. Prima di chiamare
    test-server.mjs per InMemoryTransport) decidere come esporlo.
    baseUrl: indirizzo di server.js per il ponte di scrittura (default http://localhost:8420,
    la PORTA definita lì - sovrascrivibile con GESTIONALE_SERVER_URL se cambia). */
+const SOGLIA_TOKEN_PREDEFINITA = 6000;
 export function creaServer(filePath, baseUrl) {
   const url = baseUrl || 'http://localhost:8420';
   const server = new McpServer({ name: 'gestionale-studio', version: '1.0.0' });
+
+  /* FRENO ANTI-SPRECO DI TOKEN: ogni tool di LETTURA il cui risultato supera la soglia non lo restituisce, ma risponde con un
+     avviso (quanto è grande, come restringerlo) e chiede di avere dall'utente una conferma esplicita; solo richiamando il tool con
+     confermaGrande:true si ottiene il dato completo. Soglia in token (stima: 1 token ~ 4 caratteri), regolabile con la variabile
+     d'ambiente PRISMA_SOGLIA_TOKEN (0 = freno disattivato). */
+  const sogliaToken = process.env.PRISMA_SOGLIA_TOKEN !== undefined ? Number(process.env.PRISMA_SOGLIA_TOKEN) : SOGLIA_TOKEN_PREDEFINITA;
+  const registraOriginale = server.registerTool.bind(server);
+  server.registerTool = (nome, config, handler) => {
+    const eScrittura = /^(crea|modifica|elimina|aggiungi|aggiorna|salva|imposta|registra|segna|accetta|sollecita)_/.test(nome);
+    if (eScrittura || !(sogliaToken > 0)) return registraOriginale(nome, config, handler);
+    const filtri = Object.keys(config.inputSchema || {});
+    const cfg = Object.assign({}, config, { inputSchema: Object.assign({}, config.inputSchema || {}, {
+      confermaGrande: z.boolean().optional().describe('Solo dopo che l\'utente ha confermato in chat di volere un risultato molto grande (vedi l\'avviso del tool). Non impostarlo a true di tua iniziativa.'),
+    }) });
+    return registraOriginale(nome, cfg, async (args, extra) => {
+      const { confermaGrande, ...resto } = args || {};
+      const risultato = await handler(resto, extra);
+      if (confermaGrande === true) return risultato;
+      const caratteri = (risultato && risultato.content ? risultato.content : []).reduce((t, c) => t + (c.text ? c.text.length : 0), 0);
+      const tokenStimati = Math.round(caratteri / 4);
+      if (tokenStimati <= sogliaToken) return risultato;
+      return { content: [{ type: 'text', text:
+        `⚠ Risultato molto grande: circa ${tokenStimati.toLocaleString('it-IT')} token (soglia di sicurezza ${sogliaToken.toLocaleString('it-IT')}). Non lo restituisco per non consumare token inutilmente.\n` +
+        `Cosa fare: 1) restringi la richiesta con i filtri di "${nome}"${filtri.length ? ' (' + filtri.join(', ') + ')' : ''} e richiamalo; ` +
+        `2) se serve davvero il risultato completo, CHIEDI all'utente in chat una conferma esplicita ("Sono circa ${tokenStimati.toLocaleString('it-IT')} token, procedo?") e solo dopo richiama "${nome}" con confermaGrande:true. Non confermare mai da solo.` }] };
+    });
+  };
 
   server.registerTool(
     'stato_generale',

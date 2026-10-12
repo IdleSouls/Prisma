@@ -1,0 +1,26 @@
+// Test del freno anti-spreco di token: i risultati molto grandi chiedono una conferma esplicita.
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { fileURLToPath } from 'node:url';
+import { creaServer } from './tools.js';
+let fail = 0; const assert = (c, m) => { if (!c) { fail++; console.error('❌', m); } };
+const filePath = fileURLToPath(new URL('./gestionale-mcp.json', import.meta.url));
+const server = creaServer(filePath);
+const [ct, st] = InMemoryTransport.createLinkedPair();
+const client = new Client({ name: 't', version: '1' });
+await Promise.all([server.connect(st), client.connect(ct)]);
+const tools = (await client.listTools()).tools;
+const el = tools.find(t => t.name === 'elenco_clienti');
+assert(el.inputSchema.properties.confermaGrande, 'i tool di lettura espongono confermaGrande');
+assert(!tools.find(t => t.name === 'crea_cliente').inputSchema.properties.confermaGrande, 'le scritture non hanno confermaGrande');
+const grande = await client.callTool({ name: 'elenco_clienti', arguments: { soloAttivi: false } });
+assert(/Risultato molto grande/.test(grande.content[0].text) && grande.content[0].text.length < 1500, 'senza filtri: avviso breve invece dei dati');
+assert(/confermaGrande:true/.test(grande.content[0].text), 'l\'avviso spiega come procedere');
+const completo = await client.callTool({ name: 'elenco_clienti', arguments: { soloAttivi: false, confermaGrande: true } });
+assert(completo.content[0].text.length > 50000 && JSON.parse(completo.content[0].text).length > 50, 'con conferma: dati completi');
+const piccolo = await client.callTool({ name: 'elenco_clienti', arguments: { query: 'rossi' } });
+assert(!/Risultato molto grande/.test(piccolo.content[0].text), 'richiesta piccola: nessun avviso');
+const stato = await client.callTool({ name: 'stato_generale', arguments: {} });
+assert(JSON.parse(stato.content[0].text).clientiAttivi > 0, 'stato_generale invariato');
+console.log(fail ? 'FALLITO' : '✅ freno token OK', '- tool:', tools.length);
+process.exit(fail ? 1 : 0);
