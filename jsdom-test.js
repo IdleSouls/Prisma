@@ -7149,6 +7149,31 @@ async function main() {
       window.setView('dashboard');
       console.log('=== Libri sociali: libro unico per cliente, verbali da stampare automatici (task) OK');
     }
+
+    // ---------- Anagrafica associazioni: dati RUNTS solo per le associazioni ----------
+    {
+      const ST = window.getSTATE(); const D = window.document;
+      const as = ST.clienti.find(c => c.tipo === 'associazione' && c.stato !== 'cessato');
+      const so = ST.clienti.find(c => c.tipo === 'societa_capitali' && c.stato !== 'cessato');
+      assert(as && so, 'servono un\'associazione e una società');
+      as.associazione = { runts: 'Iscritta', sezioneRunts: 'APS', repertorioRunts: '12345', delegaRunts: 'Presente' };
+      window.setView('clienti'); window.render(); await wait(20);
+      window.modalCliente ? window.modalCliente(as.id) : null;
+      const apri = (id) => { const b = D.querySelector('[data-action="modifica-cliente"][data-id="' + id + '"]'); if (b) b.click(); };
+      apri(as.id); await wait(30);
+      const fs = D.getElementById('fsAssociazione');
+      assert(fs && fs.style.display !== 'none' && D.getElementById('fAssRepertorio').value === '12345' && D.getElementById('fAssRunts').value === 'Iscritta', 'sezione associazione compilata nel form');
+      const tipo = D.getElementById('fTipo'); tipo.value = 'societa_capitali'; tipo.dispatchEvent(new window.Event('change', { bubbles: true })); await wait(20);
+      assert(D.getElementById('fsAssociazione').style.display === 'none', 'sezione nascosta se non è un\'associazione');
+      tipo.value = 'associazione'; tipo.dispatchEvent(new window.Event('change', { bubbles: true })); await wait(20);
+      assert(D.getElementById('fsAssociazione').style.display !== 'none', 'sezione di nuovo visibile');
+      D.getElementById('fAssRepertorio').value = '999';
+      D.querySelector('[data-action="salva-cliente"]').click(); await wait(40);
+      assert(window.clienteById(as.id).associazione.repertorioRunts === '999' && window.clienteById(as.id).associazione.runts === 'Iscritta', 'dati associazione salvati');
+      delete as.associazione;
+      window.setView('dashboard');
+      console.log('=== Anagrafica associazioni: sezione RUNTS solo per le associazioni, salvataggio OK');
+    }
   }
   console.log('\n✅ TUTTI I TEST END-TO-END PASSATI (' + errors.length + ' errori console catturati)');
   if (errors.length) {

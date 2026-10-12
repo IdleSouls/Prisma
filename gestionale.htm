@@ -922,6 +922,12 @@ const PERIODICITA_FATTURAZIONE = ['Mensile', 'Trimestrale', 'Semestrale', 'Annua
 /* Cliente "operativo": genera scadenze, compare negli elenchi di lavoro. Esclusi i cessati e i
    potenziali clienti (hanno solo un preventivo, non ancora accettato). */
 function clienteAttivo(c) { return !!c && c.stato !== 'cessato' && c.stato !== 'potenziale'; }
+/* Dati specifici delle associazioni (cliente.associazione): compaiono solo se il tipo di cliente è "Associazione". */
+const ASSOC_PERSONALITA = ['Non riconosciuta', 'Riconosciuta', 'Da verificare'];
+const ASSOC_RUNTS = ['Iscritta', 'In lavorazione', 'Non iscritta', 'Da verificare'];
+const ASSOC_DELEGA = ['Presente', 'Mancante', 'Da verificare', 'Non necessaria'];
+const ASSOC_RASD = ['Iscritta', 'Non iscritta', 'Da verificare', 'Non applicabile'];
+function datiAssociazione(c) { return Object.assign({ personalita: '', qualifica: '', runts: '', sezioneRunts: '', repertorioRunts: '', delegaRunts: '', rasd: '', daFare: '' }, (c && c.associazione) || {}); }
 function contabilitaDaTerzi(c) { return !!c && c.contabilita === 'INTERNA'; }
 /* Cosa cambia per i clienti la cui contabilità NON è tenuta dallo studio (task #235): quali scadenze
    periodiche lo studio non gestisce e quali fasi hanno gli adempimenti annuali (es. non c'è la
@@ -5807,6 +5813,15 @@ function renderSchedaCliente() {
             cella('Start-up innovativa', yn(cliente.startupInnovativa), !cliente.startupInnovativa),
             cella('Organo di controllo', escapeHtml(cliente.organoControllo || ''), !cliente.organoControllo),
           ] : []))
+        + (cliente.tipo === 'associazione' ? (() => { const a = datiAssociazione(cliente); return grp('Associazione', [
+            cella('Qualifica', escapeHtml(a.qualifica || '')),
+            cella('Personalità giuridica', escapeHtml(a.personalita || ''), !a.personalita),
+            cella('Iscrizione RUNTS', escapeHtml(a.runts || ''), !a.runts),
+            cella('Sezione RUNTS', escapeHtml(a.sezioneRunts || '')),
+            cella('N. repertorio RUNTS', escapeHtml(a.repertorioRunts || '')),
+            cella('Delega RUNTS allo studio', escapeHtml(a.delegaRunts || ''), a.runts === 'Iscritta' && !a.delegaRunts),
+            cella('Registro sportivo (RASD)', escapeHtml(a.rasd || '')),
+          ].concat(a.daFare ? [`<div class="sd" style="grid-column:1/-1;"><span class="sd-l">Cosa fare adesso</span><span class="sd-v" style="white-space:pre-wrap;">${escapeHtml(a.daFare)}</span></div>`] : [])); })() : '')
         + grp('Gestione nello studio', [
             cella('Responsabile', escapeHtml(cliente.responsabileStudio || ''), true),
             cella('Cliente dal', cliente.annoIngresso ? String(cliente.annoIngresso) : ''),
@@ -6106,7 +6121,7 @@ function modalCliente(clienteId) {
         <fieldset>
           <legend>Dati identificativi</legend>
           <div class="grid3">
-            <div class="field"><label>Tipo</label><select id="fTipo">${TIPI_CLIENTE.map(t=>`<option value="${t.v}" ${c.tipo===t.v?'selected':''}>${t.l}</option>`).join('')}</select></div>
+            <div class="field"><label>Tipo</label><select id="fTipo" data-action="cli-tipo-cambia">${TIPI_CLIENTE.map(t=>`<option value="${t.v}" ${c.tipo===t.v?'selected':''}>${t.l}</option>`).join('')}</select></div>
             <div class="field full" style="grid-column:span 2;"><label>Ragione sociale / Nome *</label><input id="fRagioneSociale" required value="${escapeHtml(c.ragioneSociale)}"></div>
             <div class="field"><label>Codice fiscale</label><input id="fCodiceFiscale" value="${escapeHtml(c.codiceFiscale)}"></div>
             <div class="field"><label>Partita IVA</label><input id="fPartitaIva" value="${escapeHtml(c.partitaIva)}"></div>
@@ -6166,6 +6181,21 @@ function modalCliente(clienteId) {
             <div class="field"><label>Start-up innovativa</label><select id="fStartupInnovativa">${vuoto(c.startupInnovativa)}<option value="SI" ${c.startupInnovativa==='SI'?'selected':''}>Sì, ha il requisito</option><option value="NO" ${c.startupInnovativa==='NO'?'selected':''}>No</option></select></div>
           </div>
           <div class="helptext">Richiesti per le società (di capitali, cooperative, imprese sociali). Finché non sono indicati il cliente resta "da completare".</div>
+        </fieldset>
+
+        <fieldset id="fsAssociazione" style="${c.tipo === 'associazione' ? '' : 'display:none;'}">
+          <legend>Dati dell'associazione</legend>
+          ${(() => { const a = datiAssociazione(c); const sel = (id, lista, val) => `<select id="${id}"><option value="">—</option>${lista.map(o => `<option ${val === o ? 'selected' : ''}>${o}</option>`).join('')}</select>`; return `<div class="grid3">
+            <div class="field"><label>Qualifica dell'ente</label><input id="fAssQualifica" value="${escapeHtml(a.qualifica)}" placeholder="es. APS, ETS, ASD"></div>
+            <div class="field"><label>Personalità giuridica</label>${sel('fAssPersonalita', ASSOC_PERSONALITA, a.personalita)}</div>
+            <div class="field"><label>Iscrizione al RUNTS</label>${sel('fAssRunts', ASSOC_RUNTS, a.runts)}</div>
+            <div class="field"><label>Sezione RUNTS</label><input id="fAssSezione" value="${escapeHtml(a.sezioneRunts)}" placeholder="es. APS, Altri ETS"></div>
+            <div class="field"><label>Numero di repertorio RUNTS</label><input id="fAssRepertorio" value="${escapeHtml(a.repertorioRunts)}"></div>
+            <div class="field"><label>Delega RUNTS allo studio</label>${sel('fAssDelega', ASSOC_DELEGA, a.delegaRunts)}</div>
+            <div class="field"><label>Registro sportivo (RASD)</label>${sel('fAssRasd', ASSOC_RASD, a.rasd)}</div>
+            <div class="field" style="grid-column:1/-1;"><label>Cosa fare adesso / documenti da recuperare</label><textarea id="fAssDaFare" rows="3" style="width:100%;">${escapeHtml(a.daFare)}</textarea></div>
+          </div>`; })()}
+          <div class="helptext">Compare solo per le associazioni. La delega RUNTS serve per operare sul registro per conto dell'ente.</div>
         </fieldset>
 
         <fieldset>
@@ -6274,6 +6304,9 @@ function leggiFormCliente(id, editing) {
     startupInnovativa: document.getElementById('fStartupInnovativa').value,
     organoControllo: document.getElementById('fOrganoControllo').value,
     iscrittoRegistroImprese: document.getElementById('fIscrittoRI').value,
+    associazione: document.getElementById('fTipo').value === 'associazione' && document.getElementById('fAssRunts')
+      ? { qualifica: document.getElementById('fAssQualifica').value.trim(), personalita: document.getElementById('fAssPersonalita').value, runts: document.getElementById('fAssRunts').value, sezioneRunts: document.getElementById('fAssSezione').value.trim(), repertorioRunts: document.getElementById('fAssRepertorio').value.trim(), delegaRunts: document.getElementById('fAssDelega').value, rasd: document.getElementById('fAssRasd').value, daFare: document.getElementById('fAssDaFare').value.trim() }
+      : (editing && clienteById(id) ? clienteById(id).associazione : undefined),
     contatti: {
       email: document.getElementById('fEmail').value.trim(),
       emailAmministrazione: document.getElementById('fEmailAmm').value.trim(),
@@ -19239,6 +19272,7 @@ function onChangeDelegato(e) {
     case 'task-filtro-assegnato': TASK_FILTRO.assegnato = el.value; STATI_TASK_TEAM.forEach(s=>resetPagina('taskteam-'+s)); render(); break;
     case 'task-filtro-cliente': TASK_FILTRO.cliente = el.value; STATI_TASK_TEAM.forEach(s=>resetPagina('taskteam-'+s)); render(); break;
     case 'task-filtro-mostra-fatti': TASK_FILTRO.mostraFatti = el.checked; STATI_TASK_TEAM.forEach(s=>resetPagina('taskteam-'+s)); render(); break;
+    case 'cli-tipo-cambia': { const fs = document.getElementById('fsAssociazione'); if (fs) fs.style.display = el.value === 'associazione' ? '' : 'none'; break; }
     case 'task-cambia-stato': aggiornaTaskTeam(id, { stato: el.value }); render(); { const tt = STATE.taskTeam.find(x => x.id === id); if (tt && tt.stato === 'Fatto' && tt.stampaVerbale) toast('Verbale da stampare: lo trovi in Libri sociali.'); } break;
 
     case 'chat-rif-filtro-tipo': CHAT_RIF_FILTRO_TIPO = el.value; aggiornaRisultatiRiferimentoChat(); break;
@@ -19581,7 +19615,9 @@ function esportaVistaMCP() {
       id: c.id, ragioneSociale: c.ragioneSociale, tipo: labelTipoCliente(c.tipo), atecoCodici: c.atecoCodici || [],
       stato: c.stato, regimeFiscale: c.regimeFiscale || '', responsabileStudio: c.responsabileStudio || '',
       periodicitaIva: c.periodicitaIva || '', previdenza: c.previdenza || '', tenutaContabilita: c.contabilita || '', addebitoF24: c.addebitoF24 || '',
+      codiceFiscale: c.codiceFiscale || '', partitaIva: c.partitaIva || '',
       pmiInnovativa: c.pmiInnovativa || '', startupInnovativa: c.startupInnovativa || '', organoControllo: c.organoControllo || '',
+      ...(c.tipo === 'associazione' ? { associazione: datiAssociazione(c) } : {}),
       datiMancanti: livelliMancantiCliente(c),
       contabilita: contab, avvisiCoerenzaContabile: verificaCoerenzaContabile(c.id), ultimoBilancio,
     };
@@ -20798,7 +20834,7 @@ window.generaRtfDaTesto = generaRtfDaTesto;
 window.escapeRtf = escapeRtf;
 window.testoElencoAttivita = testoElencoAttivita;
 window.creaPreventivoDaModello = creaPreventivoDaModello;
-window.testoModuliPreventivo = testoModuliPreventivo; window.stampeLibriTutte = stampeLibriTutte; window.stampeLibriDaFare = stampeLibriDaFare; window.unisciLibriSociali = unisciLibriSociali; window.libroDelCliente = libroDelCliente; window.modalPreventivo = modalPreventivo;
+window.datiAssociazione = datiAssociazione; window.testoModuliPreventivo = testoModuliPreventivo; window.stampeLibriTutte = stampeLibriTutte; window.stampeLibriDaFare = stampeLibriDaFare; window.unisciLibriSociali = unisciLibriSociali; window.libroDelCliente = libroDelCliente; window.modalPreventivo = modalPreventivo;
 window.testoDocumentoToHtml = testoDocumentoToHtml; window.editorDocumentoToTesto = editorDocumentoToTesto; window.documentoStampaHtml = documentoStampaHtml;
 
 init();
