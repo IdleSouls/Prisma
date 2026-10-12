@@ -2021,6 +2021,7 @@ function statoIniziale() {
     soci: [],
     credenziali: [],
     catalogoAttivitaStudio: catalogoAttivitaStudioDefault(),
+    moduliPreventivo: moduliPreventivoDefault(),
     chatMessaggi: [],
     /* Appuntamenti con clienti creati dal calendario (task #140): eventi puntuali, distinti dalle
        scadenze fiscali/adempimenti che restano generate dal motore scadenze esistente. */
@@ -2059,6 +2060,25 @@ function statoIniziale() {
    (basta il preventivo, come chiarito da Matteo — mai duplicare inutilmente il documento). Seed di
    partenza pensato per uno studio di commercialista: modificabile/ampliabile liberamente in
    Impostazioni, non è un elenco chiuso. */
+/* MODULI DEI PREVENTIVI: il preventivo ha un solo modello (la lettera dello studio); le diverse tipologie di incarico
+   sono "moduli" con le loro attività (titolo + descrizione) che si inseriscono nel testo scegliendoli alla creazione. */
+function moduliPreventivoDefault() {
+  return [{ id: uid('modp'), nome: 'Costituzione associazione', oggetto: "costituzione dell'Associazione", richiesta: "la costituzione dell'associazione", compenso: null, attivo: true, attivita: [
+    { titolo: 'Assistenza per la redazione dello Statuto', descrizione: "consulenza e supporto nella redazione dello statuto dell'associazione, garantendo la conformità alla normativa vigente e la tutela degli interessi dell'associazione" },
+    { titolo: 'Pratica di attribuzione del codice fiscale', descrizione: "predisposizione e presentazione della documentazione necessaria per l'attribuzione del codice fiscale all'associazione presso l'Agenzia delle Entrate" },
+    { titolo: 'Registrazione dello Statuto', descrizione: "predisposizione e presentazione della documentazione necessaria per la registrazione dell'atto costitutivo e dello statuto presso l'Agenzia delle Entrate" },
+    { titolo: 'Iscrizione al RUNTS', descrizione: "predisposizione e presentazione della documentazione necessaria per l'iscrizione dell'associazione al Registro Unico Nazionale del Terzo Settore (RUNTS)" },
+  ] }];
+}
+/* Testo dei moduli scelti: elenco a) b) c) (le lettere continuano tra più moduli), oggetto e frase della richiesta. */
+function testoModuliPreventivo(moduli) {
+  const voci = [];
+  moduli.forEach(m => (m.attivita || []).forEach(a => voci.push(a)));
+  const elenco = voci.map((a, i) => `${String.fromCharCode(97 + i)}) **${a.titolo}:** ${a.descrizione || ''}${i === voci.length - 1 ? ';' : ';'}`.replace(/ ;$/, ';')).join('\n');
+  const unisci = (arr) => arr.length <= 1 ? (arr[0] || '') : arr.slice(0, -1).join(', ') + ' e ' + arr[arr.length - 1];
+  const tot = moduli.reduce((s, m) => s + (Number(m.compenso) || 0), 0);
+  return { elenco, oggetto: unisci(moduli.map(m => m.oggetto).filter(Boolean)), richiesta: unisci(moduli.map(m => m.richiesta).filter(Boolean)), compenso: moduli.some(m => m.compenso != null && m.compenso !== '') ? tot : null };
+}
 function catalogoAttivitaStudioDefault() {
   const mk = (nome, prezzo, richiedeMandato, descrizione) => ({ id: uid('att'), nome, prezzo, richiedeMandato, descrizione: descrizione || '' });
   return [
@@ -2169,10 +2189,16 @@ function normalizzaStatoCaricato(parsed) {
   migraNoteTaskTeam(stato);
   migraCampiCredenziali(stato);
   /* Una tantum: il modello "in stile lettera" (copia del Word dello studio) compare da solo tra i modelli. */
-  if (stato.meta && !stato.meta.modelloLetteraV1 && Array.isArray(stato.modelliDocumento)) {
-    stato.meta.modelloLetteraV1 = true;
-    modelliBaseStrutturati().filter(m => m.stile === 'lettera' && !stato.modelliDocumento.some(x => x.nome === m.nome)).forEach(m => stato.modelliDocumento.push(m));
+  if (stato.meta && !stato.meta.modelloLetteraV2 && Array.isArray(stato.modelliDocumento)) {
+    stato.meta.modelloLetteraV2 = true;
+    const nuovo = modelliBaseStrutturati().find(m => m.stile === 'lettera');
+    const vecchio = stato.modelliDocumento.find(x => x.nome === 'Preventivo – Costituzione associazione (lettera)' || x.nome === nuovo.nome);
+    if (vecchio) { vecchio.nome = nuovo.nome; vecchio.corpo = nuovo.corpo; vecchio.stile = 'lettera'; vecchio.predefinito = true; vecchio.attivo = true; }
+    else stato.modelliDocumento.push(Object.assign(nuovo, { predefinito: true }));
+    // Tutti i preventivi hanno lo stesso modello: i vecchi modelli di preventivo restano (per i documenti già emessi) ma non si propongono più.
+    stato.modelliDocumento.forEach(m => { if (m.categoria === 'Preventivo' && m.nome !== nuovo.nome) { m.attivo = false; m.predefinito = false; } });
   }
+  if (stato && !Array.isArray(stato.moduliPreventivo)) stato.moduliPreventivo = moduliPreventivoDefault();
   return stato;
 }
 
@@ -8275,7 +8301,7 @@ function modelliBaseStrutturati() {
   return [
     /* Copia della struttura del Word dello studio (preventivo costituzione associazione): destinatario rientrato,
        data, oggetto, saluto, introduzione giustificata, elenco a) b) c) con titolo in grassetto, corrispettivo, formula di chiusura. */
-    mk('Preventivo', 'Preventivo – Costituzione associazione (lettera)', `|> {{appellativo}}
+    mk('Preventivo', 'Preventivo', `|> {{appellativo}}
 |> **{{cliente.ragioneSociale}}**
 
 
@@ -8287,10 +8313,7 @@ function modelliBaseStrutturati() {
 
 Gentile {{saluto}},
 <>> riscontriamo la Vostra cortese richiesta di formulazione di una proposta per {{richiesta}}, riportando di seguito la descrizione delle attività oggetto del preventivo e necessarie per il corretto assolvimento degli adempimenti richiesti dalle norme vigenti:
-a) **Assistenza per la redazione dello Statuto:** consulenza e supporto nella redazione dello statuto dell'associazione, garantendo la conformità alla normativa vigente e la tutela degli interessi dell'associazione;
-b) **Pratica di attribuzione del codice fiscale:** predisposizione e presentazione della documentazione necessaria per l'attribuzione del codice fiscale all'associazione presso l'Agenzia delle Entrate;
-c) **Registrazione dello Statuto:** predisposizione e presentazione della documentazione necessaria per la registrazione dell'atto costitutivo e dello statuto presso l'Agenzia delle Entrate;
-d) **Iscrizione al RUNTS:** predisposizione e presentazione della documentazione necessaria per l'iscrizione dell'associazione al Registro Unico Nazionale del Terzo Settore (RUNTS);
+{{elencoModuli}}
 
 <> Il corrispettivo per le attività oggetto dell'incarico ammonta a {{importo}} euro.
 
@@ -8425,7 +8448,7 @@ function aggiungiModelliBaseStrutturati() {
 }
 function renderModelliDocumento() {
   const modelli = STATE.modelliDocumento;
-  const intro = `<div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:10px;flex-wrap:wrap;"><button class="btn" data-action="modelli-base-strutturati" title="Aggiunge un preventivo a voci e una lettera di incarico completi di tabella compensi, polizza, recesso, privacy">+ Aggiungi modelli base strutturati</button><button class="btn primary" data-action="nuovo-modello">+ Nuovo modello</button></div>`;
+  const intro = `<div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:10px;flex-wrap:wrap;"><button class="btn" data-action="setup-vai" data-imp="studio" data-nav="impostazioni" title="Carica il logo e imposta il piè di pagina che compaiono nei documenti">🖼 Logo e piè di pagina</button><button class="btn" data-action="modelli-base-strutturati" title="Aggiunge un preventivo a voci e una lettera di incarico completi di tabella compensi, polizza, recesso, privacy">+ Aggiungi modelli base strutturati</button><button class="btn primary" data-action="nuovo-modello">+ Nuovo modello</button></div>`;
   if (modelli.length === 0) {
     return intro + `<div class="card"><div class="empty"><div class="big">Nessun modello ancora</div>Crea un modello per Preventivi, Mandati o documenti Antiriciclaggio: scrivi il testo con segnaposto {{così}}. Quelli automatici (dati cliente/studio/data) si compilano da soli, gli altri diventano campi da compilare a ogni documento.</div></div>`;
   }
@@ -8433,13 +8456,10 @@ function renderModelliDocumento() {
   const gruppi = categorie.map(cat => {
     const modelliCat = modelli.filter(m => m.categoria === cat).sort((a,b) => (b.predefinito?1:0) - (a.predefinito?1:0) || a.nome.localeCompare(b.nome));
     const righe = modelliCat.map(m => {
-      const nCampi = placeholderPersonalizzatiModello(m.corpo).length;
-      const anteprima = testoDocumentoSenzaMarcatura(m.corpo).replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g, (x, k) => '[' + etichettaCampoDocumento(k) + ']').replace(/\s+/g, ' ').trim();
       return `<div class="card" style="margin-bottom:8px;">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;">
           <div>
             <div style="font-weight:600;">${escapeHtml(m.nome)} ${m.predefinito?'<span class="badge stato-inviato-telematicamente">Predefinito</span>':''} ${!m.attivo?'<span class="badge stato-errore">Disattivato</span>':''}</div>
-            <div class="helptext" style="margin-top:4px;">${nCampi} campo${nCampi===1?'':'i'} personalizzato${nCampi===1?'':'i'} da compilare alla creazione · ${escapeHtml(anteprima.slice(0,140))}${anteprima.length>140?'…':''}</div>
           </div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;">
             <button class="btn small" data-action="modifica-modello" data-id="${m.id}">Modifica</button>
@@ -8451,7 +8471,31 @@ function renderModelliDocumento() {
     }).join('');
     return `<div class="section-title" style="margin-top:18px;">${escapeHtml(cat)}${categoriaEAml(cat) ? ' <span class="helptext" style="font-weight:400;">— compare nel fascicolo Antiriciclaggio del cliente</span>' : ''}</div>${righe}`;
   }).join('');
-  return intro + gruppi;
+  return intro + gruppi + renderModuliPreventivo();
+}
+function renderModuliPreventivo() {
+  const moduli = STATE.moduliPreventivo || [];
+  const righe = moduli.map(m => `<div class="card" style="margin-bottom:8px;"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+    <div><div style="font-weight:600;">${escapeHtml(m.nome)}</div></div>
+    <div style="display:flex;gap:6px;"><button class="btn small" data-action="modulo-prev-modifica" data-id="${m.id}">Modifica</button><button class="btn small" data-action="modulo-prev-duplica" data-id="${m.id}">Duplica</button><button class="btn small danger" data-action="modulo-prev-elimina" data-id="${m.id}">Elimina</button></div></div></div>`).join('');
+  return `<div style="display:flex;justify-content:space-between;align-items:center;margin-top:26px;"><div class="section-title" style="margin:0;">Moduli dei preventivi</div><button class="btn primary" data-action="modulo-prev-nuovo">+ Nuovo modulo</button></div>
+    <div class="helptext" style="margin:4px 0 10px;">Tutti i preventivi usano lo stesso modello. Ogni modulo è una tipologia di incarico (es. costituzione associazione): scegli uno o più moduli quando crei il preventivo e le loro attività entrano nel testo.</div>
+    ${righe || '<div class="card"><div class="empty">Nessun modulo ancora.</div></div>'}`;
+}
+function modalModuloPreventivo(id) {
+  const m = id ? (STATE.moduliPreventivo || []).find(x => x.id === id) : null;
+  const att = m ? m.attivita.map(a => a.titolo + (a.descrizione ? ': ' + a.descrizione : '')).join('\n') : '';
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop"><div class="modal" style="max-width:680px;">
+    <div style="display:flex;justify-content:space-between;"><h2>${m ? 'Modifica modulo' : 'Nuovo modulo'}</h2><button class="icon-x" data-action="chiudi-modal">✕</button></div>
+    <div class="grid2">
+      <div class="field full" style="grid-column:1/-1;"><label>Nome del modulo *</label><input id="mpNome" value="${escapeHtml(m ? m.nome : '')}" placeholder="es. Costituzione associazione"></div>
+      <div class="field full" style="grid-column:1/-1;"><label>Oggetto del preventivo (dopo "proposta di")</label><input id="mpOggetto" value="${escapeHtml(m ? m.oggetto : '')}" placeholder="es. costituzione dell'Associazione"></div>
+      <div class="field full" style="grid-column:1/-1;"><label>Frase della richiesta (dopo "formulazione di una proposta per")</label><input id="mpRichiesta" value="${escapeHtml(m ? m.richiesta : '')}" placeholder="es. la costituzione dell'associazione"></div>
+      <div class="field"><label>Compenso suggerito (€, opzionale)</label><input type="number" step="0.01" id="mpCompenso" value="${m && m.compenso != null ? m.compenso : ''}"></div>
+    </div>
+    <div class="field full" style="margin-top:8px;"><label>Attività (una per riga: <b>Titolo: descrizione</b>)</label><textarea id="mpAttivita" rows="9" style="width:100%;">${escapeHtml(att)}</textarea></div>
+    <div class="helptext">Nel preventivo diventano le voci a) b) c) con il titolo in grassetto.</div>
+    <div class="modal-actions"><button class="btn" data-action="chiudi-modal">Annulla</button><button class="btn primary" data-action="modulo-prev-salva" data-id="${m ? m.id : ''}">Salva</button></div></div></div>`;
 }
 
 /* Un solo modale per creare E modificare, stesso pattern di modalPreventivo/modalF24. La
@@ -9890,6 +9934,12 @@ function modalPreventivo(id, clienteIdCorrente, soloAml, modelloIdForzato, clien
       }).join('')}
     </div>${editing ? '<div class="helptext" style="margin-top:4px;">Attività non modificabili dopo la creazione: elimina e ricrea il documento se servono cambiarle.</div>' : ''}` : '';
 
+  const moduliDisp = (STATE.moduliPreventivo || []).filter(m => m.attivo !== false);
+  const sezioneModuli = (!soloAml && !editing && moduliDisp.length && campiPersonalizzati.includes('elencoModuli')) ? `<div class="section-title" style="margin-top:14px;">Moduli del preventivo</div>
+    <div class="helptext" style="margin-bottom:6px;">Scegli una o più tipologie di incarico: le loro attività, l'oggetto e il compenso suggerito entrano nel testo (restano modificabili).</div>
+    <div style="display:flex;flex-direction:column;gap:6px;border:1px solid var(--border);border-radius:8px;padding:10px 12px;">
+      ${moduliDisp.map(m => `<label style="display:flex;align-items:center;gap:8px;font-weight:400;"><input type="checkbox" data-action="prev-toggle-modulo" data-modulo-prev data-id="${m.id}"><span style="flex:1;">${escapeHtml(m.nome)}</span><span style="color:var(--text-mut);">${m.compenso != null ? fmtEuro(m.compenso) : ''}</span></label>`).join('')}
+    </div>` : '';
   const html = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
     <div class="modal" data-contesto-aml="${soloAml?'1':'0'}" data-cliente-bloccato="${clienteBloccato?'1':'0'}" data-cliente-attuale="${clienteCorrenteId||''}" style="max-width:600px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;">
@@ -9906,6 +9956,7 @@ function modalPreventivo(id, clienteIdCorrente, soloAml, modelloIdForzato, clien
           <div class="field"><label>Valido fino al (opzionale)</label><input type="date" id="pValidoFino" value="${editing&&editing.validoFino?editing.validoFino:''}"></div>
           <div class="field"><label>Stato</label><select id="pStato">${statiPerCategoriaDocumento(modello?modello.categoria:'').map(s=>`<option ${(editing?editing.stato:'Bozza')===s?'selected':''}>${s}</option>`).join('')}</select></div>
         </div>
+        ${sezioneModuli}
         ${sezioneAttivita}
         ${campiHtml ? `<div class="section-title" style="margin-top:14px;">Campi del modello</div><div class="grid2">${campiHtml}</div>` : ''}
         <div class="field full" style="grid-column:1/-1;margin-top:10px;"><label>Note interne (opzionale, non incluse nel documento)</label><textarea id="pNote" style="min-height:50px;">${editing?escapeHtml(editing.note||''):''}</textarea></div>
@@ -16103,7 +16154,7 @@ function cardLogoStudio() {
   const posizione = STATE.meta.logoPosizione || 'sinistra';
   return `<div class="card">
     <div class="section-title">Logo e piè di pagina dei documenti</div>
-    <div class="helptext" style="margin-bottom:10px;">Usato nel foglio stampabile "Riepilogo appuntamento" (Calendario). Consigliata un'immagine PNG/JPG non troppo grande.</div>
+    <div class="helptext" style="margin-bottom:10px;">Il logo compare in alto in preventivi, mandati e documenti stampati o esportati, e nel riepilogo appuntamento. Consigliata un'immagine PNG/JPG non troppo grande.</div>
     <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;">
       <div>
         ${logo ? `<img src="${logo}" alt="Logo studio" style="max-width:160px;max-height:90px;border:1px solid var(--border);border-radius:6px;padding:4px;background:#fff;display:block;margin-bottom:8px;">` : `<div class="helptext" style="margin-bottom:8px;">Nessun logo caricato.</div>`}
@@ -17428,6 +17479,25 @@ function onClickDelegatoInterno(e) {
       break;
     // Task #215: bottoni della checklist di avvio in "Oggi". "manuale" = passo senza un dato che lo
     // dimostri (es. team): si considera fatto nel momento in cui l'utente ci va.
+    case 'modulo-prev-nuovo': modalModuloPreventivo(null); break;
+    case 'modulo-prev-modifica': modalModuloPreventivo(el.dataset.id); break;
+    case 'modulo-prev-duplica': {
+      const m = (STATE.moduliPreventivo || []).find(x => x.id === el.dataset.id); if (!m) break;
+      STATE.moduliPreventivo.push(Object.assign(JSON.parse(JSON.stringify(m)), { id: uid('modp'), nome: m.nome + ' (copia)' })); salvaStato(); render(); break;
+    }
+    case 'modulo-prev-elimina':
+      if (confermaAzione('Eliminare questo modulo? I preventivi già creati non cambiano.')) { STATE.moduliPreventivo = (STATE.moduliPreventivo || []).filter(x => x.id !== el.dataset.id); salvaStato(); render(); }
+      break;
+    case 'modulo-prev-salva': {
+      const nome = h('mpNome').value.trim(); if (!nome) { toast('Il nome è obbligatorio.', true); break; }
+      const attivita = h('mpAttivita').value.split('\n').map(r => r.trim()).filter(Boolean).map(r => { const i = r.indexOf(':'); return i < 0 ? { titolo: r, descrizione: '' } : { titolo: r.slice(0, i).trim(), descrizione: r.slice(i + 1).trim() }; });
+      const cp = h('mpCompenso').value;
+      const dati = { nome, oggetto: h('mpOggetto').value.trim(), richiesta: h('mpRichiesta').value.trim(), compenso: cp === '' ? null : Number(cp), attivita, attivo: true };
+      const lista = STATE.moduliPreventivo = STATE.moduliPreventivo || [];
+      const esistente = el.dataset.id ? lista.find(x => x.id === el.dataset.id) : null;
+      if (esistente) Object.assign(esistente, dati); else lista.push(Object.assign({ id: uid('modp') }, dati));
+      salvaStato(); document.getElementById('modalRoot').innerHTML = ''; render(); toast('Modulo salvato.'); break;
+    }
     case 'setup-vai':
       if (el.dataset.imp) IMP_SEZIONE = el.dataset.imp;
       if (el.dataset.manuale === 'team') { STATE.meta.teamConfermato = true; salvaStato(); }
@@ -18892,6 +18962,15 @@ function onChangeDelegato(e) {
     // compila anche l'elenco voci — niente render() qui: siamo dentro un form aperto, un redraw
     // completo lo butterebbe via (stesso motivo per cui altri toggle di modale, es. c-f24-toggle,
     // manipolano il DOM direttamente invece di richiamare render()).
+    case 'prev-toggle-modulo': {
+      const scelti = Array.from(document.querySelectorAll('[data-modulo-prev]:checked')).map(c => (STATE.moduliPreventivo || []).find(x => x.id === c.dataset.id)).filter(Boolean);
+      const t = testoModuliPreventivo(scelti);
+      const campo = (k) => document.querySelector('[data-campo-custom][data-chiave="' + k + '"]');
+      if (campo('elencoModuli')) campo('elencoModuli').value = t.elenco;
+      if (campo('richiesta')) campo('richiesta').value = t.richiesta;
+      if (scelti.length) { h('pOggetto').value = t.oggetto; if (t.compenso != null) h('pImporto').value = t.compenso.toFixed(2); }
+      break;
+    }
     case 'prev-toggle-attivita': {
       const scelte = Array.from(document.querySelectorAll('[data-attivita-catalogo]:checked')).map(c => ({
         id: c.dataset.id, nome: c.dataset.nome,
@@ -20586,6 +20665,7 @@ window.generaRtfDaTesto = generaRtfDaTesto;
 window.escapeRtf = escapeRtf;
 window.testoElencoAttivita = testoElencoAttivita;
 window.creaPreventivoDaModello = creaPreventivoDaModello;
+window.testoModuliPreventivo = testoModuliPreventivo; window.modalPreventivo = modalPreventivo;
 window.testoDocumentoToHtml = testoDocumentoToHtml; window.editorDocumentoToTesto = editorDocumentoToTesto; window.documentoStampaHtml = documentoStampaHtml;
 
 init();

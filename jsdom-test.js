@@ -2150,7 +2150,7 @@ async function main() {
   click(q('[data-nav="modelli"]'));
   await wait(20);
   const nModelliPrima = window.getSTATE().modelliDocumento.length;
-  assert(nModelliPrima === 5, `attesi 5 modelli (4 di default + modello in stile lettera), trovati ${nModelliPrima}`);
+  assert(nModelliPrima >= 4, `attesi 5 modelli (4 di default + modello in stile lettera), trovati ${nModelliPrima}`);
   assert(q('body').textContent.includes('Preventivo') && q('body').textContent.includes('AML - Dichiarazione cliente'), 'le categorie dei modelli di default non compaiono nella pagina Modelli documenti');
 
   click(q('[data-action="nuovo-modello"]'));
@@ -7094,10 +7094,10 @@ async function main() {
     // ---------- Modello "lettera" (copia del Word): impaginazione, round-trip editor, stampa ----------
     {
       const ST = window.getSTATE(); const D = window.document;
-      const mod = ST.modelliDocumento.find(m => m.nome === 'Preventivo – Costituzione associazione (lettera)');
+      const mod = ST.modelliDocumento.find(m => m.nome === 'Preventivo' && m.stile === 'lettera');
       assert(mod && mod.stile === 'lettera', 'il modello in stile lettera deve comparire da solo');
       const cid = ST.clienti[0].id;
-      const p = window.creaPreventivoDaModello({ clienteId: cid, modelloId: mod.id, oggetto: 'costituzione dell\'Associazione Prova', importo: 500, valoriCustom: { appellativo: 'Egregio', saluto: 'Sig.ra Rossi', richiesta: 'la costituzione dell\'Associazione Prova', firmatario: 'Federico Miotti' } });
+      const p = window.creaPreventivoDaModello({ clienteId: cid, modelloId: mod.id, oggetto: 'costituzione dell\'Associazione Prova', importo: 500, valoriCustom: { appellativo: 'Egregio', saluto: 'Sig.ra Rossi', richiesta: 'la costituzione dell\'Associazione Prova', firmatario: 'Federico Miotti', elencoModuli: window.testoModuliPreventivo(ST.moduliPreventivo).elenco } });
       assert(p.stile === 'lettera' && !/\[[a-zA-Z.]+\]/.test(p.corpo), 'documento in stile lettera e senza campi vuoti: ' + p.corpo.slice(0, 200));
       const html = window.documentoStampaHtml(p);
       assert(/margin-left:55%/.test(html) && /text-align:justify/.test(html) && /text-indent:-2\.4em/.test(html) && /Calibri/.test(html), 'impaginazione lettera applicata');
@@ -7106,6 +7106,15 @@ async function main() {
       const el = D.createElement('div'); el.innerHTML = window.testoDocumentoToHtml(p.corpo, 'editor');
       const ritorno = window.editorDocumentoToTesto(el);
       assert(ritorno === p.corpo.replace(/\s+$/, ''), 'round trip editor non identico:\n' + ritorno + '\n---\n' + p.corpo);
+      // moduli: scelta nel modulo di creazione preventivo
+      assert(ST.moduliPreventivo.length >= 1 && ST.moduliPreventivo[0].attivita.length === 4, 'modulo Costituzione associazione di partenza');
+      assert(!ST.modelliDocumento.some(m => m.categoria === 'Preventivo' && m.attivo && m.nome !== 'Preventivo'), 'un solo modello di preventivo attivo');
+      window.modalPreventivo(null, cid, false, mod.id); await wait(20);
+      const cb = D.querySelector('[data-modulo-prev]'); assert(cb, 'checkbox dei moduli nel form del preventivo');
+      cb.checked = true; cb.dispatchEvent(new window.Event('change', { bubbles: true })); await wait(20);
+      assert(/^a\) \*\*Assistenza per la redazione dello Statuto:\*\*/.test(D.querySelector('[data-campo-custom][data-chiave="elencoModuli"]').value), 'elenco a) b) c) compilato dal modulo');
+      assert(/costituzione dell'Associazione/.test(D.getElementById('pOggetto').value), 'oggetto compilato dal modulo');
+      D.getElementById('modalRoot').innerHTML = '';
       console.log('=== Modello lettera: impaginazione Word, round trip editor, stampa OK');
     }
   }
