@@ -16109,11 +16109,11 @@ function riattivaCliente(id) {
 function modalCessazioneCliente(id) {
   const c = clienteById(id); if (!c) return;
   document.getElementById('modalRoot').innerHTML = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
-    <div class="modal" style="max-width:460px;">
+    <div class="modal" style="max-width:640px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;"><div><h2>Cessa cliente</h2><div class="modal-sub">${escapeHtml(c.ragioneSociale)}</div></div><button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button></div>
       <div class="grid2">
         <div class="field"><label>Data cessazione</label><input id="cessData" type="date" value="${oggiISO()}"></div>
-        <div class="field"><label>Motivo</label><select id="cessMotivo">${MOTIVI_CESSAZIONE.map(m => `<option>${escapeHtml(m)}</option>`).join('')}</select></div>
+        <div class="field full" style="grid-column:1/-1;"><label>Motivo</label><select id="cessMotivo" style="width:100%;">${MOTIVI_CESSAZIONE.map(m => `<option>${escapeHtml(m)}</option>`).join('')}</select></div>
         <div class="field full" style="grid-column:1/-1;"><label>Note</label><input id="cessNota" placeholder="facoltative"></div>
       </div>
       ${(() => {
