@@ -10785,6 +10785,36 @@ const COLORI_STATO_TASK = {
   'Fatto': { c: 'var(--verde)', bg: 'var(--verde-bg)' },
 };
 const STATI_TASK_CON_MOTIVO = ['In attesa', 'Bloccata'];
+let MOTIVO_IN_MODIFICA = null; // id del task il cui motivo (attesa/blocco) si sta riscrivendo
+/* Motivo di "In attesa" / "Bloccata": si scrive, si CONFERMA (pulsante o Invio) e resta nello storico del task come le note
+   (chi, quando, versioni precedenti se viene modificato, quando è stato risolto). */
+function confermaMotivoStatoTask(id, testo) {
+  const t = STATE.taskTeam.find(x => x.id === id); if (!t || !STATI_TASK_CON_MOTIVO.includes(t.stato)) return false;
+  const motivo = String(testo || '').trim(); if (!motivo) return false;
+  if (!Array.isArray(t.storicoStati)) t.storicoStati = [];
+  const voce = t.motivoVoceId ? t.storicoStati.find(v => v.id === t.motivoVoceId) : null;
+  if (voce) {
+    if (voce.motivo !== motivo) { voce.modifiche = (voce.modifiche || []).concat([{ testo: voce.motivo, data: new Date().toISOString(), autore: operatoreCorrente() || null }]); voce.motivo = motivo; }
+  } else {
+    const nuova = { id: uid('stato'), stato: t.stato, motivo, autore: operatoreCorrente() || null, data: new Date().toISOString(), modifiche: [], chiusoIl: null };
+    t.storicoStati.push(nuova); t.motivoVoceId = nuova.id;
+  }
+  t.motivoStato = motivo; t.motivoConfermato = true;
+  if (MOTIVO_IN_MODIFICA === id) MOTIVO_IN_MODIFICA = null;
+  salvaStato();
+  return true;
+}
+function htmlStoricoStatiTask(t) {
+  const v = (t.storicoStati || []).slice().reverse();
+  if (!v.length) return '';
+  const col = (st) => COLORI_STATO_TASK[st] || COLORI_STATO_TASK['Da fare'];
+  return `<div class="field full" style="grid-column:1/-1;margin-top:10px;"><label>Storico attese e blocchi</label>
+    <div style="max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:6px 10px;">${v.map(x => `<div style="padding:5px 0;border-bottom:1px solid var(--border);">
+      <div style="font-size:10.5px;font-weight:700;text-transform:uppercase;margin-bottom:2px;"><span style="color:${col(x.stato).c};">${escapeHtml(x.stato)}</span> · ${escapeHtml(x.autore || '—')} · ${fmtDataOra(x.data)}${x.chiusoIl ? ` · <span style="color:var(--verde);">risolta il ${fmtData(x.chiusoIl)}</span>` : ' · <span style="color:' + col(x.stato).c + ';">in corso</span>'}</div>
+      <div style="font-size:12.5px;white-space:pre-wrap;">${escapeHtml(x.motivo)}</div>
+      ${(x.modifiche || []).length ? `<details style="margin-top:3px;"><summary class="helptext" style="cursor:pointer;">✎ modificato ${x.modifiche.length === 1 ? '1 volta' : x.modifiche.length + ' volte'}</summary>${x.modifiche.slice().reverse().map(m => `<div class="helptext" style="margin:4px 0 0 10px;padding-left:8px;border-left:2px solid var(--border);"><b>${escapeHtml(m.autore || '—')}</b> · ${fmtDataOra(m.data)} — versione precedente:<div style="white-space:pre-wrap;">${escapeHtml(m.testo)}</div></div>`).join('')}</details>` : ''}
+    </div>`).join('')}</div></div>`;
+}
 let TASK_FILTRO = { assegnato: 'Tutti', cliente: 'Tutti', mostraFatti: true, stato: 'Tutti' };
 
 function taskInRitardo(t) {
@@ -10866,10 +10896,17 @@ function renderTaskTeam() {
     const col = COLORI_STATO_TASK[t.stato] || COLORI_STATO_TASK['Da fare'];
     const conMotivo = STATI_TASK_CON_MOTIVO.includes(t.stato);
     const giorniStato = conMotivo && t.statoDal ? giorniTra(t.statoDal, oggiISO()) : null;
-    const boxMotivo = conMotivo ? `<div class="task-motivo" style="background:${col.bg};color:${col.c};">
-        <b>${t.stato === 'Bloccata' ? '⛔ Bloccata' : '⏳ In attesa'}${giorniStato != null && giorniStato > 0 ? ' da ' + giorniStato + (giorniStato === 1 ? ' giorno' : ' giorni') : ''}</b>
-        <input type="text" data-action="task-motivo" data-id="${t.id}" value="${escapeHtml(t.motivoStato || '')}" placeholder="${t.stato === 'Bloccata' ? 'Perché è bloccata? (es. errore da risolvere)' : 'In attesa di… (es. documenti dal cliente)'}">
-      </div>` : '';
+    const inMod = conMotivo && (!t.motivoConfermato || MOTIVO_IN_MODIFICA === t.id);
+    const titoloMotivo = `<b>${t.stato === 'Bloccata' ? '⛔ Bloccata' : '⏳ In attesa'}${giorniStato != null && giorniStato > 0 ? ' da ' + giorniStato + (giorniStato === 1 ? ' giorno' : ' giorni') : ''}</b>`;
+    const boxMotivo = !conMotivo ? '' : (inMod
+      ? `<div class="task-motivo" style="background:${col.bg};color:${col.c};">${titoloMotivo}
+        <div style="display:flex;gap:6px;"><input type="text" id="motivo_${t.id}" data-action="task-motivo" data-id="${t.id}" value="${escapeHtml(t.motivoStato || '')}" placeholder="${t.stato === 'Bloccata' ? 'Perché è bloccata? (es. errore da risolvere)' : 'In attesa di… (es. documenti dal cliente)'}" style="flex:1;min-width:0;">
+        <button type="button" class="btn small primary" data-action="task-motivo-conferma" data-id="${t.id}" title="Conferma (o premi Invio)">✓ Conferma</button>${MOTIVO_IN_MODIFICA === t.id ? `<button type="button" class="btn small" data-action="task-motivo-annulla" data-id="${t.id}">Annulla</button>` : ''}</div>
+      </div>`
+      : `<div class="task-motivo" style="background:${col.bg};color:${col.c};">${titoloMotivo}
+        <div style="display:flex;gap:6px;align-items:flex-start;"><div style="flex:1;white-space:pre-wrap;color:var(--text);font-size:12.5px;">${escapeHtml(t.motivoStato || '')}</div>
+        <button type="button" class="btn small" data-action="task-motivo-modifica" data-id="${t.id}">✎ Modifica</button></div>
+      </div>`);
     return `<div class="task-card" style="border-left:4px solid ${col.c};${t.stato === 'Fatto' ? 'opacity:.78;' : ''}">
       <div class="titolo" style="cursor:pointer;" data-action="apri-dettaglio-task-team" data-id="${t.id}" title="Visualizza (senza modificare)">${escapeHtml(t.titolo)}</div>
       <div class="meta">
@@ -11022,6 +11059,7 @@ function modalDettaglioTaskTeam(taskId) {
       ${panelNoteCompletamento}
       <label style="font-size:11px;font-weight:700;color:var(--text-mut);text-transform:uppercase;letter-spacing:.02em;">Note operative</label>
       <div style="margin-top:6px;">${sezioneNote}</div>
+      ${htmlStoricoStatiTask(t)}
       <div class="modal-actions">
         ${t.clienteId ? `<button class="btn small" data-action="apri-cliente" data-id="${t.clienteId}" style="margin-right:auto;">Apri scheda cliente</button>` : ''}
         <button class="btn" data-action="chiudi-modal">Chiudi</button>
@@ -11091,7 +11129,7 @@ function modalTaskTeam(taskId, presetClienteId) {
           </select></div>
           <div class="field"><label>Scadenza (opzionale)</label><input type="date" id="tScadenza" value="${t.scadenza||''}"></div>
           <div class="field"><label>Stato</label><select id="tStato">${STATI_TASK_TEAM.map(s=>`<option ${t.stato===s?'selected':''}>${s}</option>`).join('')}</select></div>
-          <div class="field full" style="grid-column:1/-1;"><label>Motivo (se è "In attesa" o "Bloccata")</label><input id="tMotivoStato" value="${escapeHtml(t.motivoStato || '')}" placeholder="es. in attesa dei documenti dal cliente / bloccata per errore da risolvere"></div>
+          ${editing ? htmlStoricoStatiTask(t) : ''}
           <div class="field full" style="grid-column:1/-1;"><label class="checkline" style="display:flex;gap:8px;align-items:center;"><input type="checkbox" id="tStampaVerbale" ${t.stampaVerbale ? 'checked' : ''}> A fine pratica va stampato un verbale nei libri sociali</label>
             <div class="helptext" style="margin-top:4px;">Quando il task passa a "Fatto" compare tra i verbali da stampare in Libri sociali (se i libri del cliente sono tenuti dallo studio). Sezione del libro: <select id="tStampaSezione" style="font-size:12px;">${SEZIONI_LIBRO.map(x => `<option ${(t.stampaSezione || 'Libro decisioni dei soci') === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div></div>
           ${campoProcedura}
@@ -11169,7 +11207,13 @@ function aggiornaTaskTeam(id, patch) {
   const statoPrima = t.stato;
   Object.assign(t, patch);
   if ('stato' in patch) { if (t.stato === 'Fatto') { if (!t.fattoIl) t.fattoIl = oggiISO(); } else delete t.fattoIl; }
-  if ('stato' in patch && patch.stato !== statoPrima) { t.statoDal = oggiISO(); if (!STATI_TASK_CON_MOTIVO.includes(t.stato) && !('motivoStato' in patch)) delete t.motivoStato; }
+  if ('stato' in patch && patch.stato !== statoPrima) {
+    t.statoDal = oggiISO();
+    const voce = t.motivoVoceId && (t.storicoStati || []).find(v => v.id === t.motivoVoceId);
+    if (voce && !voce.chiusoIl) voce.chiusoIl = oggiISO();
+    delete t.motivoStato; delete t.motivoConfermato; delete t.motivoVoceId;
+    if (MOTIVO_IN_MODIFICA === id) MOTIVO_IN_MODIFICA = null;
+  }
   // stessa difesa di aggiungiTaskTeam: un patch esterno che tocca "stato" con un valore non tra i
   // 3 riconosciuti lo renderebbe invisibile nel kanban pur restando contato nei KPI.
   if ('stato' in patch && !STATI_TASK_TEAM.includes(t.stato)) t.stato = STATI_TASK_TEAM[0];
@@ -17668,6 +17712,9 @@ function onClickDelegatoInterno(e) {
     // Task #215: bottoni della checklist di avvio in "Oggi". "manuale" = passo senza un dato che lo
     // dimostri (es. team): si considera fatto nel momento in cui l'utente ci va.
     case 'task-filtro-stato': TASK_FILTRO.stato = TASK_FILTRO.stato === el.dataset.stato ? 'Tutti' : el.dataset.stato; STATI_TASK_TEAM.forEach(s=>resetPagina('taskteam-'+s)); render(); break;
+    case 'task-motivo-conferma': { const inp = document.getElementById('motivo_' + id); if (!confermaMotivoStatoTask(id, inp ? inp.value : '')) { toast('Scrivi il motivo prima di confermare.', true); break; } render(); toast('Motivo confermato e salvato nello storico del task.'); break; }
+    case 'task-motivo-modifica': MOTIVO_IN_MODIFICA = id; render(); { const inp = document.getElementById('motivo_' + id); if (inp) inp.focus(); } break;
+    case 'task-motivo-annulla': MOTIVO_IN_MODIFICA = null; render(); break;
     case 'modulo-prev-nuovo': modalModuloPreventivo(null); break;
     case 'modulo-prev-modifica': modalModuloPreventivo(el.dataset.id); break;
     case 'modulo-prev-duplica': {
@@ -18208,13 +18255,13 @@ function onClickDelegatoInterno(e) {
         // vedi sotto): qui non tocchiamo noteStorico, così Salva non può mai sovrascrivere/perdere
         // lo storico. procedureId e descrizione invece sono campi "semplici" (task #155),
         // sovrascrivibili come titolo/scadenza/stato.
-        aggiornaTaskTeam(id, { titolo, assegnatoA, clienteId, scadenza, stato, procedureId, descrizione, stampaVerbale, stampaSezione, motivoStato: (h('tMotivoStato').value || '').trim() });
+        aggiornaTaskTeam(id, { titolo, assegnatoA, clienteId, scadenza, stato, procedureId, descrizione, stampaVerbale, stampaSezione});
       } else {
         // In creazione l'unica nota possibile è quella "iniziale" nel campo tNuovaNota: diventa la
         // prima voce dello storico, attribuita a chi sta creando il task in questo momento.
         const notaIniziale = (h('tNuovaNota').value || '').trim();
         const noteStorico = notaIniziale ? [{ id: uid('nota'), testo: notaIniziale, autore: operatoreCorrente() || null, data: oggiISO() }] : [];
-        aggiungiTaskTeam({ titolo, assegnatoA, clienteId, scadenza, stato, noteStorico, procedureId, descrizione, stampaVerbale, stampaSezione, motivoStato: (h('tMotivoStato').value || '').trim(), statoDal: oggiISO(), creatoIl: oggiISO() });
+        aggiungiTaskTeam({ titolo, assegnatoA, clienteId, scadenza, stato, noteStorico, procedureId, descrizione, stampaVerbale, stampaSezione, statoDal: oggiISO(), creatoIl: oggiISO() });
       }
       chiudiModal(); render(); toast(editing ? 'Task aggiornato.' : 'Task creato.');
       if (stampaVerbale && stato === 'Fatto') toast('Verbale da stampare: lo trovi in Libri sociali.');
@@ -19307,7 +19354,6 @@ function onChangeDelegato(e) {
     case 'task-filtro-assegnato': TASK_FILTRO.assegnato = el.value; STATI_TASK_TEAM.forEach(s=>resetPagina('taskteam-'+s)); render(); break;
     case 'task-filtro-cliente': TASK_FILTRO.cliente = el.value; STATI_TASK_TEAM.forEach(s=>resetPagina('taskteam-'+s)); render(); break;
     case 'task-filtro-stato': TASK_FILTRO.stato = TASK_FILTRO.stato === el.dataset.stato ? 'Tutti' : el.dataset.stato; STATI_TASK_TEAM.forEach(s=>resetPagina('taskteam-'+s)); render(); break;
-    case 'task-motivo': aggiornaTaskTeam(id, { motivoStato: el.value.trim() }); break;
     case 'task-filtro-mostra-fatti': TASK_FILTRO.mostraFatti = el.checked; STATI_TASK_TEAM.forEach(s=>resetPagina('taskteam-'+s)); render(); break;
     case 'cli-tipo-cambia': { const fs = document.getElementById('fsAssociazione'); if (fs) fs.style.display = el.value === 'associazione' ? '' : 'none'; break; }
     case 'task-cambia-stato': aggiornaTaskTeam(id, { stato: el.value }); render(); { const tt = STATE.taskTeam.find(x => x.id === id); if (tt && tt.stato === 'Fatto' && tt.stampaVerbale) toast('Verbale da stampare: lo trovi in Libri sociali.'); } break;
@@ -19662,7 +19708,7 @@ function esportaVistaMCP() {
 
   const taskApertiOut = STATE.taskTeam.filter(t => t.stato !== 'Fatto').map(t => ({
     id: t.id, titolo: t.titolo, clienteId: t.clienteId, cliente: t.clienteId ? nomeCliente(t.clienteId) : null,
-    assegnatoA: t.assegnatoA, stato: t.stato, motivoStato: t.motivoStato || '', scadenza: t.scadenza || null, descrizione: t.descrizione || '', stampaVerbale: !!t.stampaVerbale,
+    assegnatoA: t.assegnatoA, stato: t.stato, motivoStato: t.motivoStato || '', storicoStati: (t.storicoStati || []).map(v => ({ stato: v.stato, motivo: v.motivo, autore: v.autore, data: v.data, risoltaIl: v.chiusoIl })), scadenza: t.scadenza || null, descrizione: t.descrizione || '', stampaVerbale: !!t.stampaVerbale,
     note: (t.noteStorico || []).map(n => ({ id: n.id, autore: n.autore || null, data: n.data, testo: n.testo, modificata: (n.modifiche || []).length > 0 })),
   }));
 
@@ -20157,6 +20203,12 @@ function init() {
     if (e.key === 'Escape' && h('modalRoot').children.length) { chiediPrimaDiChiudereModal(); return; }
     // Invio invia il messaggio in chat (Maiusc+Invio va a capo normalmente) - task Matteo: "nella
     // chat se premo invio non manda il messaggio, facciamo in modo di si invece".
+    if (e.target && e.target.matches && e.target.matches('input[data-action="task-motivo"]') && e.key === 'Enter') {
+      e.preventDefault();
+      const btn = document.querySelector('[data-action="task-motivo-conferma"][data-id="' + e.target.dataset.id + '"]');
+      if (btn) btn.click();
+      return;
+    }
     if (e.target && e.target.id === 'chatTesto' && e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       const btn = document.querySelector('[data-action="chat-invia"]');

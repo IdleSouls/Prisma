@@ -7180,7 +7180,7 @@ async function main() {
       const ST = window.getSTATE(); const D = window.document;
       window.aggiungiTaskTeam({ titolo: 'Pratica bloccata TEST', assegnatoA: ST.meta.responsabili[0], stato: 'Da fare', creatoIl: '2026-10-01' });
       const tk = ST.taskTeam[ST.taskTeam.length - 1];
-      window.aggiornaTaskTeam(tk.id, { stato: 'Bloccata', motivoStato: 'Errore da risolvere' });
+      window.aggiornaTaskTeam(tk.id, { stato: 'Bloccata' });
       assert(tk.stato === 'Bloccata' && tk.statoDal, 'stato Bloccata con data di inizio');
       window.setView('taskteam'); window.render(); await wait(20);
       setVal(D.querySelector('[data-action="task-filtro-assegnato"]'), 'Tutti'); await wait(20);
@@ -7188,13 +7188,21 @@ async function main() {
       const c = D.querySelector('#content');
       assert(D.querySelectorAll('.task-tessera').length === 6, 'sei tessere di riepilogo (5 stati + in ritardo)');
       assert(D.querySelectorAll('.task-col').length === 5, 'cinque colonne');
-      assert(/Errore da risolvere/.test(c.innerHTML) && D.querySelector('[data-action="task-motivo"][data-id="' + tk.id + '"]'), 'motivo del blocco visibile sulla card');
+      assert(D.querySelector('[data-action="task-motivo"][data-id="' + tk.id + '"]') && D.querySelector('[data-action="task-motivo-conferma"][data-id="' + tk.id + '"]'), 'campo motivo con pulsante Conferma finché non è confermato');
+      D.getElementById('motivo_' + tk.id).value = 'Errore da risolvere';
+      D.getElementById('motivo_' + tk.id).dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await wait(30);
+      assert(tk.motivoConfermato && tk.motivoStato === 'Errore da risolvere' && tk.storicoStati.length === 1, 'Invio conferma il motivo e lo salva nello storico');
+      assert(!D.querySelector('[data-action="task-motivo"][data-id="' + tk.id + '"]') && D.querySelector('[data-action="task-motivo-modifica"][data-id="' + tk.id + '"]') && /Errore da risolvere/.test(D.querySelector('#content').innerHTML), 'da confermato: testo + pulsante Modifica');
+      click(D.querySelector('[data-action="task-motivo-modifica"][data-id="' + tk.id + '"]')); await wait(20);
+      D.getElementById('motivo_' + tk.id).value = 'Errore risolto a metà';
+      click(D.querySelector('[data-action="task-motivo-conferma"][data-id="' + tk.id + '"]')); await wait(20);
+      assert(tk.storicoStati.length === 1 && tk.storicoStati[0].modifiche.length === 1 && tk.storicoStati[0].modifiche[0].testo === 'Errore da risolvere', 'la modifica conserva la versione precedente');
       click(D.querySelector('.task-tessera[data-stato="Bloccata"]')); await wait(20);
       assert(D.querySelectorAll('.task-col').length === 1 && /Pratica bloccata TEST/.test(D.querySelector('#content').textContent), 'la tessera filtra su un solo stato');
       click(D.querySelector('.task-tessera[data-stato="Bloccata"]')); await wait(20);
       assert(D.querySelectorAll('.task-col').length === 5, 'secondo tocco: tutti gli stati');
       window.aggiornaTaskTeam(tk.id, { stato: 'In corso' });
-      assert(tk.motivoStato === undefined, 'il motivo si azzera uscendo da attesa/bloccata');
+      assert(tk.motivoStato === undefined && tk.storicoStati.length === 1 && tk.storicoStati[0].chiusoIl, 'uscendo dal blocco il motivo corrente si azzera ma resta nello storico, segnato come risolto');
       ST.taskTeam = ST.taskTeam.filter(x => x.id !== tk.id); window.setView('dashboard');
       console.log('=== Task: In attesa/Bloccata, tessere e barra di riepilogo, motivo OK');
     }
