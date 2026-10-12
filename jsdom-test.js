@@ -1880,7 +1880,8 @@ async function main() {
     assert(conIva > 0, 'cliente a contabilità dello studio con IVA mensile deve avere scadenze IVA');
     window.clienteById(id).contabilita = 'INTERNA';
     const senzaIva = window.derivati().periodiche.filter(s => s.clienteId === id && /Liquidazione IVA/.test(s.tipo)).length;
-    assert(senzaIva === 0, 'cliente con contabilità da terzi non deve avere le liquidazioni IVA dello studio');
+    assert(senzaIva > 0, 'anche con contabilità da terzi l\'IVA la gestisce lo studio: le liquidazioni devono esserci');
+    { const cfgT = window.configContabTerzi(); assert(cfgT.periodiciEsclusi.length === 0, 'di partenza nessuna scadenza periodica è esclusa per i clienti da terzi'); }
     window.clienteById(id).adempimentiAnnualiApplicabili = Array.from(new Set((window.clienteById(id).adempimentiAnnualiApplicabili || []).concat(['BILANCIO'])));
     const bil = window.derivati().annuali.find(a => a.clienteId === id && a.tipoChiave === 'BILANCIO');
     assert(bil && bil.sotto[0].nome.startsWith('Richiesta contabilità') && !bil.sotto.some(x => /Chiusura contabile/.test(x.nome)), 'fasi del bilancio per contabilità da terzi non applicate: ' + JSON.stringify(bil && bil.sotto.map(x => x.nome)));

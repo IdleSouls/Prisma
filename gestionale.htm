@@ -926,7 +926,7 @@ function contabilitaDaTerzi(c) { return !!c && c.contabilita === 'INTERNA'; }
    periodiche lo studio non gestisce e quali fasi hanno gli adempimenti annuali (es. non c'è la
    "chiusura contabile": si aspettano i dati dal terzo). Impostazioni > Catalogo. */
 const CONTAB_TERZI_DEFAULT = {
-  periodiciEsclusi: ['ivaMensile', 'ivaTrimestrale', 'accontoIva', 'lipe', 'intrastatMensile', 'intrastatTrimestrale', 'bolloFattElett', 'fattureEstere', 'oss', 'iva398'],
+  periodiciEsclusi: [], /* l'IVA e gli adempimenti fiscali restano sempre a carico dello studio anche se la contabilità è di terzi */
   sotto: {
     BILANCIO: ['Richiesta contabilità/bilancio provvisorio al terzo', 'Ricezione contabilità chiusa', 'Verifica dati ricevuti', 'Calcolo imposte', 'Condivisione con il cliente', 'Predisposizione pratica', 'Deposito'],
     REDDITI_ORDINARI: ['Richiesta dati contabili al terzo', 'Ricezione e verifica dati', 'Calcolo imposte dovute', 'Predisposizione dichiarazione', 'Comunicazione importi dovuti al cliente', 'Predisposizione F24 di versamento', 'Invio telematico dichiarazione', 'Consegna copia al cliente'],
@@ -936,7 +936,12 @@ const CONTAB_TERZI_DEFAULT = {
 };
 function configContabTerzi() {
   const c = STATE && STATE.meta && STATE.meta.contabTerzi;
-  return c ? { periodiciEsclusi: c.periodiciEsclusi || [], sotto: c.sotto || {} } : JSON.parse(JSON.stringify(CONTAB_TERZI_DEFAULT));
+  if (!c) return JSON.parse(JSON.stringify(CONTAB_TERZI_DEFAULT));
+  /* Vecchio valore di partenza (escludeva tutta l'IVA): l'IVA la gestiamo comunque noi, quindi lo si considera non scelto */
+  const VECCHIO = ['ivaMensile', 'ivaTrimestrale', 'accontoIva', 'lipe', 'intrastatMensile', 'intrastatTrimestrale', 'bolloFattElett', 'fattureEstere', 'oss', 'iva398'];
+  let esclusi = c.periodiciEsclusi || [];
+  if (c.v !== 2 && esclusi.length === VECCHIO.length && VECCHIO.every(k => esclusi.includes(k))) esclusi = [];
+  return { v: 2, periodiciEsclusi: esclusi, sotto: c.sotto || {} };
 }
 function salvaConfigContabTerzi(cfg) { STATE.meta.contabTerzi = cfg; salvaStato(); }
 // Unica lista di previdenze, condivisa dal form cliente e dall'import da Excel/CSV, così le due
