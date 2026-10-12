@@ -7025,6 +7025,25 @@ async function main() {
       window.impostaOperatore(null); window.setView('dashboard');
       console.log('=== Note task: modifica solo autore con storico, eliminazione con traccia OK');
     }
+
+    // ---------- Task: descrizione generica nell'elenco (non l'ultima nota) + migrazione da "note di completamento" ----------
+    {
+      const ST = window.getSTATE();
+      const mig = { taskTeam: [{ id: 'tm1', titolo: 'Vecchio', noteCompletamento: 'Testo vecchio campo', noteStorico: [] }] };
+      window.migraNoteTaskTeam(mig);
+      assert(mig.taskTeam[0].descrizione === 'Testo vecchio campo' && mig.taskTeam[0].noteCompletamento === undefined, 'le vecchie note di completamento devono diventare descrizione');
+      window.aggiungiTaskTeam({ titolo: 'Task descrizione test', assegnatoA: ST.meta.responsabili[0], descrizione: 'DESCRIZIONE-GENERICA', stato: 'Da fare', creatoIl: '2026-10-12' });
+      const tk = ST.taskTeam[ST.taskTeam.length - 1];
+      window.aggiungiNotaTaskTeam(tk.id, 'NOTA-OPERATIVA-XYZ');
+      window.setView('taskteam'); window.render(); await wait(20);
+      setVal(window.document.querySelector('[data-action="task-filtro-assegnato"]'), 'Tutti'); await wait(20);
+      setVal(window.document.querySelector('[data-action="task-filtro-cliente"]'), 'Tutti'); await wait(20);
+      const cont = window.document.querySelector('#content').textContent;
+      assert(cont.includes('DESCRIZIONE-GENERICA'), 'l\'elenco dei task deve mostrare la descrizione');
+      assert(!cont.includes('NOTA-OPERATIVA-XYZ'), 'l\'elenco dei task non deve più mostrare l\'ultima nota');
+      ST.taskTeam = ST.taskTeam.filter(x => x.id !== tk.id); window.setView('dashboard');
+      console.log('=== Task: descrizione nell\'elenco, note operative solo nel dettaglio, migrazione OK');
+    }
   }
   console.log('\n✅ TUTTI I TEST END-TO-END PASSATI (' + errors.length + ' errori console catturati)');
   if (errors.length) {

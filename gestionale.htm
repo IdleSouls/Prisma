@@ -2114,6 +2114,11 @@ function migraNoteTaskTeam(stato) {
       migrati++;
     }
     delete t.note;
+    // "Note di completamento" è diventata la "Descrizione" generica del task (compare nell'elenco)
+    if (t.noteCompletamento !== undefined) {
+      if (t.noteCompletamento && !t.descrizione) { t.descrizione = t.noteCompletamento; migrati++; }
+      delete t.noteCompletamento;
+    }
   });
   return migrati;
 }
@@ -2671,7 +2676,7 @@ function aggiornaBadgeOperatore() {
   // "mittente" con cui si sta usando il gestionale), non solo nel badge della voce di menu Chat -
   // così si nota anche stando su un'altra vista (es. Scadenze), senza dover aprire la sidebar.
   const nonLetti = nome ? chatTotaleNonLetti() : 0;
-  el.innerHTML = (nome ? ('👤 ' + escapeHtml(nome)) : '👤 Chi sei?') + (nonLetti ? ` <span class="nav-badge" style="position:static;margin-left:4px;">${nonLetti}</span>` : '');
+  el.innerHTML = (nome ? ('👤 ' + escapeHtml(nome) + ((esisteMaster() && ruoloOperatore(nome) === 'master') ? ' <span style="font-size:10.5px;opacity:.7;font-weight:500;">maestro</span>' : '')) : '👤 Chi sei?') + (nonLetti ? ` <span class="nav-badge" style="position:static;margin-left:4px;">${nonLetti}</span>` : '');
   el.title = nome
     ? (nonLetti ? `${nonLetti} messagg${nonLetti===1?'io':'i'} non lett${nonLetti===1?'o':'i'} in chat. Clicca sul tuo nome per cambiare operatore, o apri Chat interna dal menu.` : `Stai usando il gestionale come ${nome}. Clicca per cambiare.`)
     : 'Scegli chi sta usando questo PC (solo per sapere chi ha fatto cosa, nessuna restrizione).';
@@ -2701,7 +2706,7 @@ function modalSelettoreOperatore() {
       <div style="display:flex;flex-direction:column;gap:8px;margin:14px 0;">
         ${STATE.meta.responsabili.map(r => `<button class="btn" data-action="operatore-scegli" data-nome="${escapeHtml(r)}" style="text-align:left;display:flex;align-items:center;gap:8px;">
           <span class="chat-pallino ${operatoreOnline(r)?'online':'offline'}" style="position:static;flex:none;" title="${operatoreOnline(r)?'Online adesso':'Offline'}"></span>
-          ${escapeHtml(r)}${responsabileHaPassword(r) ? ' 🔒' : ''}
+          ${escapeHtml(r)}${(esisteMaster() && ruoloOperatore(r) === 'master') ? ' <span class="helptext" style="font-size:11px;">· maestro</span>' : ''}${responsabileHaPassword(r) ? ' 🔒' : ''}
         </button>`).join('')}
       </div>
       <div class="modal-actions"><button class="btn" data-action="chiudi-modal">Non ora</button></div>
@@ -7658,7 +7663,7 @@ function renderComunicazioniRicorrenti() {
     ${righe || '<div class="helptext">Nessun modello ricorrente configurato.</div>'}
     <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
       <button class="btn small primary" data-action="nuova-comunicazione-ricorrente">+ Nuovo modello ricorrente</button>
-      <button class="btn small" data-action="nuovo-modello-770-cf-sostituto" title="Precompila un modello annuale collegato al 770, destinatari automatici">📋 Modello pronto: richiedi CF sostituto (770)</button>
+      <button class="btn small" data-action="nuovo-modello-770-cf-sostituto" title="Precompila un modello annuale collegato al 770, destinatari automatici">📋 Modello pronto: richiedi CF consulente del lavoro (770)</button>
     </div>
   </div>`;
 }
@@ -10542,13 +10547,11 @@ function renderTaskTeam() {
 
   const cardTask = (t) => {
     const ritardo = taskInRitardo(t);
-    // Task #114: la card mostra solo un'ANTEPRIMA dell'ultima nota (non tutto lo storico, che sta
-    // nel modale) con un conteggio - così si capisce a colpo d'occhio se c'è dello storico da
-    // leggere prima di lavorare sulla pratica, senza affollare il kanban.
-    const noteStorico = t.noteStorico || [];
-    const ultimaNota = noteStorico.length ? noteStorico[noteStorico.length - 1] : null;
-    const anteprimaNota = ultimaNota
-      ? `<div class="note">${escapeHtml(ultimaNota.testo)}<div class="helptext" style="margin-top:2px;">${escapeHtml(ultimaNota.autore || '—')} · ${fmtData(ultimaNota.data)}${noteStorico.length > 1 ? ` · ${noteStorico.length} note` : ''}</div></div>`
+    // La card mostra la DESCRIZIONE del task (testo generico, uguale per tutti), non l'ultima nota: le note
+    // operative (scritte dagli utenti man mano che lavorano) stanno nel modale, qui resta solo un conteggio.
+    const nNoteOperative = (t.noteStorico || []).length;
+    const anteprimaNota = t.descrizione
+      ? `<div class="note" style="display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap;">${escapeHtml(t.descrizione)}</div>`
       : '';
     // Task #155: badge cliccabile verso la procedura collegata (se esiste ancora - una procedura
     // può essere stata eliminata dopo il collegamento, in tal caso il badge non compare).
@@ -10560,6 +10563,7 @@ function renderTaskTeam() {
         ${t.clienteId ? `<span class="badge viola">${escapeHtml(nomeCliente(t.clienteId))}</span>` : ''}
         ${proceduraCollegata ? `<span class="badge" style="cursor:pointer;" data-action="apri-procedura" data-id="${proceduraCollegata.id}" title="Apri procedura collegata">📋 ${escapeHtml(proceduraCollegata.nome)}</span>` : ''}
         ${t.scadenza ? `<span class="pill-delta ${ritardo?'scaduto':'lontano'}">${ritardo?'In ritardo — ':'Entro '}${fmtDataBreve(t.scadenza)}</span>` : ''}
+        ${nNoteOperative ? `<span class="badge" title="Note operative: ${nNoteOperative}">📝 ${nNoteOperative}</span>` : ''}
       </div>
       ${anteprimaNota}
       <div class="azioni">
@@ -10640,7 +10644,7 @@ function htmlNotaTask(n, taskId, conAzioni) {
 /* Riapre il modale del task mantenendo quello che si stava compilando (escluse le chiavi indicate). */
 function riapriTaskConBozza(taskId, escludi) {
   TASK_BOZZA = { id: taskId || null, campi: {}, ripristina: true };
-  ['tTitolo', 'tAssegnato', 'tCliente', 'tScadenza', 'tStato', 'tProcedura', 'tNoteCompletamento', 'tNuovaNota'].forEach(k => { if ((escludi || []).includes(k)) return; const f = document.getElementById(k); if (f) TASK_BOZZA.campi[k] = f.value; });
+  ['tTitolo', 'tAssegnato', 'tCliente', 'tScadenza', 'tStato', 'tProcedura', 'tDescrizione', 'tNuovaNota'].forEach(k => { if ((escludi || []).includes(k)) return; const f = document.getElementById(k); if (f) TASK_BOZZA.campi[k] = f.value; });
   modalTaskTeam(taskId);
 }
 function aggiungiNotaTaskTeam(taskId, testo) {
@@ -10668,7 +10672,7 @@ function modalDettaglioTaskTeam(taskId) {
   const ritardo = taskInRitardo(t);
   const sezioneNote = noteStorico.length
     ? `<div style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px 10px;">${noteStorico.map(n => htmlNotaTask(n, t.id, false)).join('')}</div>`
-    : `<div class="helptext">Nessuna nota ancora su questo task.</div>`;
+    : `<div class="helptext">Nessuna nota operativa ancora su questo task.</div>`;
   // Task #155: pannello di riferimento con l'anteprima della procedura collegata (nome, categoria,
   // contenuto, checklist documenti) - non solo un link, proprio "una linea guida su cosa fare" senza
   // dover aprire un secondo modale, con comunque un pulsante per aprirla per intero se serve.
@@ -10683,9 +10687,9 @@ function modalDettaglioTaskTeam(taskId) {
       </div>
       <div class="helptext" style="margin-top:6px;white-space:pre-wrap;">${escapeHtml(proceduraCollegata.contenuto.replace(/\s+/g,' ').trim().slice(0,220))}${proceduraCollegata.contenuto.length>220?'…':''}</div>
     </div>` : '';
-  const panelNoteCompletamento = t.noteCompletamento ? `<div style="margin:0 0 14px;">
-      <label style="font-size:11px;font-weight:700;color:var(--text-mut);text-transform:uppercase;letter-spacing:.02em;">Note di completamento</label>
-      <div class="helptext" style="margin-top:4px;white-space:pre-wrap;">${escapeHtml(t.noteCompletamento)}</div>
+  const panelNoteCompletamento = t.descrizione ? `<div style="margin:0 0 14px;">
+      <label style="font-size:11px;font-weight:700;color:var(--text-mut);text-transform:uppercase;letter-spacing:.02em;">Descrizione</label>
+      <div class="helptext" style="margin-top:4px;white-space:pre-wrap;">${escapeHtml(t.descrizione)}</div>
     </div>` : '';
   const html = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
     <div class="modal" style="max-width:480px;">
@@ -10700,7 +10704,7 @@ function modalDettaglioTaskTeam(taskId) {
       </div>
       ${panelProcedura}
       ${panelNoteCompletamento}
-      <label style="font-size:11px;font-weight:700;color:var(--text-mut);text-transform:uppercase;letter-spacing:.02em;">Note</label>
+      <label style="font-size:11px;font-weight:700;color:var(--text-mut);text-transform:uppercase;letter-spacing:.02em;">Note operative</label>
       <div style="margin-top:6px;">${sezioneNote}</div>
       <div class="modal-actions">
         ${t.clienteId ? `<button class="btn small" data-action="apri-cliente" data-id="${t.clienteId}" style="margin-right:auto;">Apri scheda cliente</button>` : ''}
@@ -10717,7 +10721,7 @@ function modalTaskTeam(taskId, presetClienteId) {
   const editing = !!taskId;
   const t = editing ? STATE.taskTeam.find(x => x.id === taskId) : {
     id: uid('task'), titolo: '', clienteId: presetClienteId || null, assegnatoA: STATE.meta.responsabili[0] || '',
-    scadenza: null, noteStorico: [], stato: 'Da fare', creatoIl: oggiISO(), procedureId: null, noteCompletamento: '',
+    scadenza: null, noteStorico: [], stato: 'Da fare', creatoIl: oggiISO(), procedureId: null, descrizione: '',
   };
   if (editing && !t) { toast('Task non trovato.'); return; }
   if (editing) segnaTaskTeamVisto(t.id); // aprire il task è già "vederlo" - spegne pallino/banner
@@ -10727,14 +10731,14 @@ function modalTaskTeam(taskId, presetClienteId) {
   // una nuova, che con "Aggiungi nota" si accoda subito senza chiudere il modale (come modalDettaglioScadenza).
   const sezioneNote = editing
     ? `<div class="field full" style="grid-column:1/-1;">
-        <label>Note</label>
+        <label>Note operative</label>
         ${noteStorico.length
           ? `<div style="max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:8px;">${noteStorico.map(n => htmlNotaTask(n, t.id, true)).join('')}</div>`
-          : `<div class="helptext" style="margin-bottom:8px;">Nessuna nota ancora su questo task.</div>`}
-        <textarea id="tNuovaNota" style="width:100%;min-height:50px;" placeholder="Scrivi una nuova nota..."></textarea>
+          : `<div class="helptext" style="margin-bottom:8px;">Nessuna nota operativa ancora su questo task.</div>`}
+        <textarea id="tNuovaNota" style="width:100%;min-height:50px;" placeholder="Scrivi una nuova nota operativa..."></textarea>
         <button type="button" class="btn small" style="margin-top:6px;" data-action="task-aggiungi-nota" data-id="${t.id}">Aggiungi nota</button>
       </div>`
-    : `<div class="field full" style="grid-column:1/-1;"><label>Nota iniziale (opzionale)</label><textarea id="tNuovaNota" style="width:100%;min-height:60px;"></textarea></div>`;
+    : `<div class="field full" style="grid-column:1/-1;"><label>Nota operativa iniziale (opzionale)</label><textarea id="tNuovaNota" style="width:100%;min-height:60px;"></textarea></div>`;
   // Task #155 (Matteo: "sarebbe carino anche collegare i task alle procedure così da avere un po
   // una linea guida su cosa fare o cosa è stato fatto in quel task" — confermata "opzione 1", la
   // versione semplice): un campo facoltativo che punta a una procedura interna esistente, mostrata
@@ -10754,7 +10758,7 @@ function modalTaskTeam(taskId, presetClienteId) {
     </div>
     <div class="helptext" style="margin-top:4px;">Una linea guida su cosa fare in questo task — la procedura resta invariata, qui è solo un riferimento.</div>
   </div>`;
-  const campoNoteCompletamento = `<div class="field full" style="grid-column:1/-1;"><label>Note di completamento (opzionale)</label><textarea id="tNoteCompletamento" style="width:100%;min-height:50px;" placeholder="Cosa è stato fatto, per chi rilegge in futuro...">${escapeHtml(t.noteCompletamento||'')}</textarea></div>`;
+  const campoNoteCompletamento = `<div class="field full" style="grid-column:1/-1;"><label>Descrizione (opzionale)</label><textarea id="tDescrizione" style="width:100%;min-height:60px;" placeholder="Di cosa si tratta, cosa va fatto: compare nell'elenco dei task">${escapeHtml(t.descrizione || '')}</textarea></div>`;
   const html = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
     <div class="modal" style="max-width:520px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;">
@@ -17215,8 +17219,8 @@ function onClickDelegatoInterno(e) {
     // per un'ultima revisione, il modello non viene salvato finché non si preme "Salva".
     case 'nuovo-modello-770-cf-sostituto':
       modalComunicazioneRicorrente(null, {
-        oggetto: 'Richiesta dato per il 770: codice fiscale del sostituto d\'imposta',
-        corpo: 'Per la predisposizione del modello 770 relativo ai vostri dipendenti/collaboratori abbiamo bisogno del codice fiscale del sostituto d\'imposta che gestisce le ritenute (coincide di norma con la vostra azienda; comunicatecelo comunque se diverso, ad esempio in caso di paghe gestite da terzi o di dipendenti in distacco/somministrazione). Vi chiediamo di rispondere a questo messaggio con il dato appena possibile, per non ritardare l\'invio della dichiarazione.',
+        oggetto: 'Richiesta dato per il 770: codice fiscale del consulente del lavoro',
+        corpo: 'Per la predisposizione del modello 770 abbiamo bisogno del nominativo e del codice fiscale del consulente del lavoro che gestisce le paghe e le ritenute dei vostri dipendenti/collaboratori (non il codice fiscale dell\'azienda, che abbiamo già). Se le paghe sono gestite internamente o da un altro soggetto, indicatecelo. Vi chiediamo di rispondere a questo messaggio con il dato appena possibile, per non ritardare l\'invio della dichiarazione.',
         categoria: 'Amministrativa',
         adempimentoCollegato: 'a:770',
         frequenza: 'Annuale', giorno: 1, mese: 9,
@@ -17798,20 +17802,20 @@ function onClickDelegatoInterno(e) {
       const scadenza = h('tScadenza').value || null;
       const stato = h('tStato').value;
       const procedureId = h('tProcedura').value || null;
-      const noteCompletamento = h('tNoteCompletamento').value || '';
+      const descrizione = h('tDescrizione').value || '';
       if (!titolo || !assegnatoA) { toast('Inserisci almeno titolo e assegnatario.'); return; }
       if (editing) {
         // Le note (storico) in modifica si gestiscono SOLO con "Aggiungi nota" (append immediato,
         // vedi sotto): qui non tocchiamo noteStorico, così Salva non può mai sovrascrivere/perdere
-        // lo storico. procedureId e noteCompletamento invece sono campi "semplici" (task #155),
+        // lo storico. procedureId e descrizione invece sono campi "semplici" (task #155),
         // sovrascrivibili come titolo/scadenza/stato.
-        aggiornaTaskTeam(id, { titolo, assegnatoA, clienteId, scadenza, stato, procedureId, noteCompletamento });
+        aggiornaTaskTeam(id, { titolo, assegnatoA, clienteId, scadenza, stato, procedureId, descrizione });
       } else {
         // In creazione l'unica nota possibile è quella "iniziale" nel campo tNuovaNota: diventa la
         // prima voce dello storico, attribuita a chi sta creando il task in questo momento.
         const notaIniziale = (h('tNuovaNota').value || '').trim();
         const noteStorico = notaIniziale ? [{ id: uid('nota'), testo: notaIniziale, autore: operatoreCorrente() || null, data: oggiISO() }] : [];
-        aggiungiTaskTeam({ titolo, assegnatoA, clienteId, scadenza, stato, noteStorico, procedureId, noteCompletamento, creatoIl: oggiISO() });
+        aggiungiTaskTeam({ titolo, assegnatoA, clienteId, scadenza, stato, noteStorico, procedureId, descrizione, creatoIl: oggiISO() });
       }
       chiudiModal(); render(); toast(editing ? 'Task aggiornato.' : 'Task creato.');
       break;
@@ -17834,7 +17838,7 @@ function onClickDelegatoInterno(e) {
       // si salva la bozza di ciò che è stato compilato: il task (nuovo o in modifica) non è ancora salvato
       // e tornando "Indietro" deve ritrovarsi com'era, non vuoto o con i dati vecchi
       TASK_BOZZA = { id: id || null, campi: {} };
-      ['tTitolo', 'tAssegnato', 'tCliente', 'tScadenza', 'tStato', 'tProcedura', 'tNoteCompletamento', 'tNuovaNota'].forEach(k => { const f = h(k); if (f) TASK_BOZZA.campi[k] = f.value; });
+      ['tTitolo', 'tAssegnato', 'tCliente', 'tScadenza', 'tStato', 'tProcedura', 'tDescrizione', 'tNuovaNota'].forEach(k => { const f = h(k); if (f) TASK_BOZZA.campi[k] = f.value; });
       modalDettaglioProcedura(pid, { task: id || '__nuovo__' });
       break;
     }
@@ -20377,6 +20381,7 @@ window.clienteDaRigaImport = clienteDaRigaImport;
 window.campiMancantiCliente = campiMancantiCliente;
 window.livelliMancantiCliente = livelliMancantiCliente;
 window.confermaAzione = confermaAzione;
+window.migraNoteTaskTeam = migraNoteTaskTeam;
 window.modificaNotaTaskTeam = modificaNotaTaskTeam;
 window.eliminaNotaTaskTeam = eliminaNotaTaskTeam;
 window.aggiungiNotaTaskTeam = aggiungiNotaTaskTeam;

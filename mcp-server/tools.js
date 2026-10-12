@@ -376,7 +376,8 @@ export function creaServer(filePath, baseUrl) {
         clienteId: z.string().optional(),
         scadenza: z.string().optional().describe('Data ISO (YYYY-MM-DD), opzionale.'),
         stato: z.string().optional().describe('Es. "Da fare" (default tipico), "In corso", "Fatto".'),
-        note: z.string().optional(),
+        descrizione: z.string().optional().describe('Descrizione generica del task (compare nell\'elenco dei task).'),
+        note: z.string().optional().describe('Prima nota operativa (storico di lavoro, con autore e data).'),
       },
     },
     async (campi) => testoEsitoScrittura(await inviaComando(url, 'creaTask', campi))
