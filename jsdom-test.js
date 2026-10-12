@@ -7044,6 +7044,51 @@ async function main() {
       ST.taskTeam = ST.taskTeam.filter(x => x.id !== tk.id); window.setView('dashboard');
       console.log('=== Task: descrizione nell\'elenco, note operative solo nel dettaglio, migrazione OK');
     }
+
+    // ---------- Editor fasi adempimenti annuali (catalogo + clienti da terzi) ----------
+    {
+      const ST = window.getSTATE(); const D = window.document;
+      window.impostaOperatore(null);
+      window.setView('impostazioni'); click(D.querySelector('[data-action="imp-sezione"][data-sezione="catalogo"]')); await wait(20);
+      const tipo = window.catalogoAnnualeTutti().find(t => t.chiave === 'CU');
+      assert(tipo, 'CU deve esistere nel catalogo');
+      const prima = tipo.sotto.slice();
+      const attr = '[data-target="catalogo"][data-tipo="CU"]';
+      // apri la scheda CU nel catalogo
+      const head = D.querySelector('[data-action="cat-ann-expand"][data-tipo="CU"]'); assert(head, 'riga CU nel catalogo');
+      click(head); await wait(20);
+      assert(D.querySelectorAll('[data-action="fasi-testo"]' + attr).length === prima.length, 'una riga per ogni fase');
+      // sposta giù la prima fase
+      if (prima.length > 1) {
+        click(D.querySelector('[data-action="fasi-sposta"]' + attr + '[data-idx="0"][data-dir="1"]')); await wait(20);
+        assert(window.catalogoAnnualeTutti().find(t => t.chiave === 'CU').sotto[1] === prima[0], 'la fase deve scendere di una posizione');
+      }
+      // aggiungi più fasi in una volta
+      D.getElementById('fasiNuove_catalogo_CU').value = 'Fase nuova A\nFase nuova B\n\n' + prima[0];
+      click(D.querySelector('[data-action="fasi-aggiungi"]' + attr)); await wait(20);
+      let f = window.catalogoAnnualeTutti().find(t => t.chiave === 'CU').sotto;
+      assert(f.includes('Fase nuova A') && f.includes('Fase nuova B') && f.filter(x => x === prima[0]).length === 1, 'aggiunte multiple, senza duplicati');
+      // rimuovi
+      const n = f.length;
+      click(D.querySelector('[data-action="fasi-rimuovi"]' + attr + '[data-idx="' + (n - 1) + '"]')); await wait(20);
+      assert(window.catalogoAnnualeTutti().find(t => t.chiave === 'CU').sotto.length === n - 1, 'fase rimossa');
+      // ripristino predefinite
+      click(D.querySelector('[data-action="fasi-ripristina-standard"][data-tipo="CU"]')); await wait(20);
+      const ok = D.querySelector('[data-action="conferma-ok"], .modal [data-conferma="si"], #confermaOk');
+      if (ok) { click(ok); await wait(20); }
+      // contabilità da terzi: devono comparire tutti gli adempimenti annuali attivi
+      const attivi = window.catalogoAnnualeTutti().filter(d => d.attivo !== false);
+      attivi.forEach(d => assert(D.querySelector('[data-action="fasi-terzi-expand"][data-tipo="' + d.chiave + '"]'), 'adempimento mancante nella card terzi: ' + d.chiave));
+      click(D.querySelector('[data-action="fasi-terzi-expand"][data-tipo="CU"]')); await wait(20);
+      click(D.querySelector('[data-action="fasi-terzi-personalizza"][data-tipo="CU"]')); await wait(20);
+      assert(window.configContabTerzi().sotto.CU, 'personalizzazione per terzi creata');
+      D.getElementById('fasiNuove_terzi_CU').value = 'Solo terzi';
+      click(D.querySelector('[data-action="fasi-aggiungi"][data-target="terzi"][data-tipo="CU"]')); await wait(20);
+      assert(window.configContabTerzi().sotto.CU.includes('Solo terzi'), 'fase aggiunta per i terzi');
+      assert(!window.catalogoAnnualeTutti().find(t => t.chiave === 'CU').sotto.includes('Solo terzi'), 'il catalogo standard non deve cambiare');
+      window.setView('dashboard');
+      console.log('=== Editor fasi: spostamento, aggiunta multipla, rimozione, tutti gli adempimenti per i terzi OK');
+    }
   }
   console.log('\n✅ TUTTI I TEST END-TO-END PASSATI (' + errors.length + ' errori console catturati)');
   if (errors.length) {

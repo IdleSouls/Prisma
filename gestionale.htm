@@ -395,6 +395,11 @@ table.d-tabella th{background:#eef2fa;font-weight:700;}
 .sd-v{font-size:13.5px;font-weight:600;overflow-wrap:anywhere;user-select:text;}
 .sd-v.vuoto{font-weight:400;color:var(--text-mut);}
 .sd-v.vuoto.grave{color:var(--rosso);font-weight:600;}
+.fasi-editor .fase-riga{display:flex;gap:6px;align-items:center;padding:3px 0;}
+.fasi-editor .fase-n{width:22px;text-align:right;font-size:12px;font-weight:700;color:var(--text-mut);flex:none;}
+.fasi-editor .fase-riga input{flex:1;border:1px solid var(--border);border-radius:6px;padding:6px 8px;min-width:0;}
+.fasi-editor .fase-aggiungi{display:flex;gap:8px;align-items:flex-start;margin-top:8px;}
+.fasi-editor .fase-aggiungi textarea{flex:1;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:13px;resize:vertical;}
 .tag-maestro{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.04em;line-height:1;padding:3px 7px;border-radius:999px;background:var(--blu-light);color:var(--blu-mid);vertical-align:middle;white-space:nowrap;}
 html[data-tema="scuro"] .tag-maestro{background:#22304D;color:#8FB0FF;}
 .mancante-grave{border-color:var(--rosso) !important;background:var(--rosso-bg) !important;box-shadow:0 0 0 1px var(--rosso);}
@@ -14742,6 +14747,38 @@ function salvaPrenotaAppuntamento() {
 /* -------------------- RENDER: CATALOGO SCADENZE (dentro Impostazioni) -------------------- */
 let CAT_PER_EXPANDED = new Set();
 let CAT_ANN_EXPANDED = new Set();
+let TERZI_FASI_EXPANDED = new Set();
+/* ---- EDITOR DELLE FASI (adempimenti annuali) ----
+   Un solo editor per due posti: il catalogo annuale (fasi standard) e le fasi per i clienti con contabilità
+   tenuta da terzi. Ogni fase è numerata, si sposta con ▲▼, si rinomina, si toglie; si possono incollare più
+   fasi insieme (una per riga). ATTENZIONE: una fase è riconosciuta dal suo nome, quindi rinominarla o
+   toglierla fa ripartire da zero lo stato di quella fase nelle pratiche già avviate. */
+function leggiFasiTarget(target, chiave) {
+  if (target === 'terzi') { const cfg = configContabTerzi(); return (cfg.sotto[chiave] || []).slice(); }
+  const t = trovaTipoAnnuale(chiave); return t ? t.sotto.slice() : [];
+}
+function scriviFasiTarget(target, chiave, fasi) {
+  if (target === 'terzi') { const cfg = configContabTerzi(); cfg.sotto[chiave] = fasi; salvaConfigContabTerzi(cfg); return; }
+  const t = trovaTipoAnnuale(chiave); if (t) { t.sotto = fasi; salvaStato(); }
+}
+function htmlEditorFasi(target, chiave, fasi) {
+  const attr = `data-target="${target}" data-tipo="${escapeHtml(chiave)}"`;
+  return `<div class="fasi-editor">
+    ${fasi.map((f, i) => `<div class="fase-riga">
+      <span class="fase-n">${i + 1}</span>
+      <input type="text" value="${escapeHtml(f)}" data-action="fasi-testo" ${attr} data-idx="${i}">
+      <button type="button" class="btn small ghost" data-action="fasi-sposta" ${attr} data-idx="${i}" data-dir="-1" title="Sposta su" ${i === 0 ? 'disabled' : ''}>▲</button>
+      <button type="button" class="btn small ghost" data-action="fasi-sposta" ${attr} data-idx="${i}" data-dir="1" title="Sposta giù" ${i === fasi.length - 1 ? 'disabled' : ''}>▼</button>
+      <button type="button" class="icon-x" data-action="fasi-rimuovi" ${attr} data-idx="${i}" title="Togli la fase">✕</button>
+    </div>`).join('')}
+    ${fasi.length ? '' : '<div class="helptext" style="margin:4px 0 8px;">Nessuna fase: aggiungine almeno una.</div>'}
+    <div class="fase-aggiungi">
+      <textarea id="fasiNuove_${target}_${escapeHtml(chiave)}" rows="2" placeholder="Aggiungi fasi in fondo: una per riga (puoi incollarne diverse insieme)"></textarea>
+      <button type="button" class="btn small primary" data-action="fasi-aggiungi" ${attr}>+ Aggiungi</button>
+    </div>
+    <div class="helptext" style="margin-top:6px;">Le fasi si completano nell'ordine indicato. Rinominare o togliere una fase fa ripartire da zero quella fase nelle pratiche già avviate.</div>
+  </div>`;
+}
 
 function renderCatalogoPeriodico() {
   const righe = STATE.catalogoPeriodico.map(t => {
@@ -14791,11 +14828,6 @@ function renderCatalogoPeriodico() {
 function renderCatalogoAnnuale() {
   const righe = catalogoAnnualeTutti().map(t => {
     const expanded = CAT_ANN_EXPANDED.has(t.chiave);
-    const sottoHtml = t.sotto.map((s, idx) => `
-      <div style="display:flex;gap:8px;align-items:center;padding:3px 0;">
-        <input type="text" value="${escapeHtml(s)}" data-action="cat-ann-sotto" data-tipo="${t.chiave}" data-idx="${idx}" style="flex:1;border:1px solid var(--border);border-radius:6px;padding:5px 7px;">
-        <button class="icon-x" data-action="cat-ann-rimuovi-sotto" data-tipo="${t.chiave}" data-idx="${idx}" title="Rimuovi">✕</button>
-      </div>`).join('');
     const dataHtml = t.scadenzaDefault
       ? `<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
           <select data-action="cat-ann-mese" data-tipo="${t.chiave}">
@@ -14817,9 +14849,10 @@ function renderCatalogoAnnuale() {
       </div>
       ${expanded ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
         ${dataHtml}
-        ${sottoHtml}
-        <div style="margin-top:8px;display:flex;gap:8px;">
-          <button class="btn small" data-action="cat-ann-aggiungi-sotto" data-tipo="${t.chiave}">+ Aggiungi fase</button>
+        <div style="font-size:11px;font-weight:700;color:var(--text-mut);text-transform:uppercase;margin-bottom:6px;">Fasi (${t.sotto.length})</div>
+        ${htmlEditorFasi('catalogo', t.chiave, t.sotto)}
+        <div style="margin-top:10px;display:flex;gap:8px;">
+          ${DEFAULT_CATALOGO_ANNUALE.some(d => d.chiave === t.chiave) ? `<button class="btn small" data-action="fasi-ripristina-standard" data-tipo="${t.chiave}">↺ Fasi predefinite</button>` : ''}
           ${t.personalizzato ? `<button class="btn small danger" data-action="cat-ann-elimina-tipo" data-tipo="${t.chiave}">Elimina tipo</button>` : ''}
         </div>
       </div>` : ''}
@@ -16205,10 +16238,25 @@ function renderCardContabTerzi() {
   const periodici = (STATE.catalogoPeriodico || DEFAULT_CATALOGO_PERIODICO).filter(d => d.attivo !== false);
   const esclusi = new Set(cfg.periodiciEsclusi);
   const annuali = catalogoAnnualeTutti().filter(d => d.attivo !== false);
-  const righeAnn = Object.keys(cfg.sotto).map(k => ({ k, def: annuali.find(a => a.chiave === k) })).filter(x => x.def).map(({ k, def }) => `<div class="field full" style="margin-bottom:10px;">
-      <label>${escapeHtml(def.nome)} <span class="helptext">— fasi per clienti a contabilità tenuta da terzi (una per riga)</span></label>
-      <textarea id="ctFasi_${k}" rows="${Math.max(3, cfg.sotto[k].length)}" style="width:100%;">${escapeHtml(cfg.sotto[k].join('\n'))}</textarea>
-      <button class="btn small" data-action="contab-terzi-salva-fasi" data-chiave="${k}" style="margin-top:4px;">Salva fasi</button></div>`).join('');
+  const righeAnn = annuali.map(def => {
+    const personalizzate = Object.prototype.hasOwnProperty.call(cfg.sotto, def.chiave);
+    const aperta = TERZI_FASI_EXPANDED.has(def.chiave);
+    return `<div class="cat-tipo">
+      <div class="cat-head" style="cursor:pointer;" data-action="fasi-terzi-expand" data-tipo="${escapeHtml(def.chiave)}">
+        <span style="flex:1;font-weight:700;font-size:13.5px;">${escapeHtml(def.nome)}</span>
+        ${personalizzate ? `<span class="badge info">fasi personalizzate (${cfg.sotto[def.chiave].length})</span>` : `<span class="helptext">fasi standard (${def.sotto.length})</span>`}
+        <span style="padding:2px 6px;">${aperta ? '▾' : '▸'}</span>
+      </div>
+      ${aperta ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+        ${personalizzate
+          ? `${htmlEditorFasi('terzi', def.chiave, cfg.sotto[def.chiave])}
+             <div style="margin-top:10px;"><button class="btn small" data-action="fasi-terzi-standard" data-tipo="${escapeHtml(def.chiave)}">Torna alle fasi standard</button></div>`
+          : `<div class="helptext" style="margin-bottom:8px;">I clienti con contabilità da terzi seguono le stesse fasi standard di tutti gli altri:</div>
+             <ol style="margin:0 0 10px 18px;padding:0;font-size:13px;">${def.sotto.map(f => `<li>${escapeHtml(f)}</li>`).join('')}</ol>
+             <button class="btn small primary" data-action="fasi-terzi-personalizza" data-tipo="${escapeHtml(def.chiave)}">Personalizza per i clienti da terzi</button>`}
+      </div>` : ''}
+    </div>`;
+  }).join('');
   return `<div class="card">
     <div class="section-title">Clienti con contabilità tenuta da terzi</div>
     <div class="helptext" style="margin-bottom:10px;">Per questi clienti (campo «Tenuta contabilità» nella scheda) lo studio non registra la contabilità: alcune scadenze periodiche non vanno gestite e gli adempimenti annuali hanno fasi diverse (si parte dalla richiesta dei dati al terzo, non dalla chiusura contabile). <b>Ho impostato dei valori di partenza ragionevoli: controllali e correggili in base a come lavorate davvero.</b></div>
@@ -16216,7 +16264,8 @@ function renderCardContabTerzi() {
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:4px 14px;margin-bottom:12px;">
       ${periodici.map(d => `<label class="checkline"><input type="checkbox" data-action="contab-terzi-periodico" data-id="${d.id}" ${esclusi.has(d.id) ? '' : 'checked'}> ${escapeHtml(d.nome)}</label>`).join('')}
     </div>
-    <div style="font-weight:600;margin:10px 0 6px;">Fasi degli adempimenti annuali</div>
+    <div style="font-weight:600;margin:10px 0 4px;">Fasi degli adempimenti annuali</div>
+    <div class="helptext" style="margin-bottom:8px;">Tutti gli adempimenti annuali del catalogo. Di partenza i clienti con contabilità da terzi usano le fasi standard; per quelli che lavorano in modo diverso (es. non c'è la chiusura contabile) puoi creare un elenco di fasi dedicato.</div>
     ${righeAnn}
     <button class="btn small" data-action="contab-terzi-ripristina">Ripristina valori di partenza</button>
   </div>`;
@@ -18582,6 +18631,40 @@ function onClickDelegatoInterno(e) {
       if (CAT_ANN_EXPANDED.has(el.dataset.tipo)) CAT_ANN_EXPANDED.delete(el.dataset.tipo); else CAT_ANN_EXPANDED.add(el.dataset.tipo);
       render();
       break;
+    case 'fasi-sposta': {
+      const { target, tipo } = el.dataset; const i = Number(el.dataset.idx), j = i + Number(el.dataset.dir);
+      const f = leggiFasiTarget(target, tipo); if (j < 0 || j >= f.length) break;
+      [f[i], f[j]] = [f[j], f[i]]; scriviFasiTarget(target, tipo, f); render(); break;
+    }
+    case 'fasi-rimuovi': {
+      const { target, tipo } = el.dataset; const f = leggiFasiTarget(target, tipo);
+      if (f.length <= 1) { toast('Serve almeno una fase.', true); break; }
+      f.splice(Number(el.dataset.idx), 1); scriviFasiTarget(target, tipo, f); render(); break;
+    }
+    case 'fasi-aggiungi': {
+      const { target, tipo } = el.dataset; const box = document.getElementById('fasiNuove_' + target + '_' + tipo);
+      const nuove = (box ? box.value : '').split('\n').map(x => x.trim()).filter(Boolean);
+      if (!nuove.length) { toast('Scrivi almeno una fase.', true); break; }
+      const f = leggiFasiTarget(target, tipo); let saltate = 0;
+      nuove.forEach(n => { if (f.includes(n)) saltate++; else f.push(n); });
+      scriviFasiTarget(target, tipo, f); render();
+      if (saltate) toast(saltate + (saltate === 1 ? ' fase già presente non aggiunta' : ' fasi già presenti non aggiunte') + ' (i nomi devono essere diversi).', true);
+      break;
+    }
+    case 'fasi-ripristina-standard': {
+      const def = DEFAULT_CATALOGO_ANNUALE.find(d => d.chiave === el.dataset.tipo);
+      if (def && confermaAzione('Ripristinare le fasi predefinite di questo adempimento? Le tue modifiche alle fasi andranno perse.')) { scriviFasiTarget('catalogo', def.chiave, def.sotto.slice()); render(); toast('Fasi ripristinate.'); }
+      break;
+    }
+    case 'fasi-terzi-expand': if (TERZI_FASI_EXPANDED.has(el.dataset.tipo)) TERZI_FASI_EXPANDED.delete(el.dataset.tipo); else TERZI_FASI_EXPANDED.add(el.dataset.tipo); render(); break;
+    case 'fasi-terzi-personalizza': {
+      const t = trovaTipoAnnuale(el.dataset.tipo); if (!t) break;
+      scriviFasiTarget('terzi', t.chiave, t.sotto.slice()); TERZI_FASI_EXPANDED.add(t.chiave); render(); break;
+    }
+    case 'fasi-terzi-standard': {
+      if (!confermaAzione('Tornare alle fasi standard per i clienti con contabilità da terzi?')) break;
+      const cfg = configContabTerzi(); delete cfg.sotto[el.dataset.tipo]; salvaConfigContabTerzi(cfg); render(); break;
+    }
     case 'cat-ann-aggiungi-sotto':
       aggiungiSottoAnnualeCatalogo(el.dataset.tipo);
       CAT_ANN_EXPANDED.add(el.dataset.tipo);
@@ -19136,6 +19219,13 @@ function onInputDelegato(e) {
     case 'cat-ann-mese': aggiornaScadenzaDefaultAnnuale(el.dataset.tipo, 'm', Number(el.value)); break;
     case 'cat-ann-giorno': aggiornaScadenzaDefaultAnnuale(el.dataset.tipo, 'g', Number(el.value) || 1); break;
     case 'cat-ann-sotto': aggiornaSottoAnnualeCatalogo(el.dataset.tipo, Number(el.dataset.idx), el.value); break;
+    case 'fasi-testo': {
+      const { target, tipo } = el.dataset; const i = Number(el.dataset.idx); const f = leggiFasiTarget(target, tipo);
+      const v = el.value.trim();
+      if (!v) { el.value = f[i]; toast('Il nome della fase non può essere vuoto.', true); break; }
+      if (f.some((x, k) => k !== i && x === v)) { el.value = f[i]; toast('Esiste già una fase con questo nome.', true); break; }
+      f[i] = v; scriviFasiTarget(target, tipo, f); break;
+    }
   }
 }
 // Piccola utility: dopo un render generato da un input di testo, il focus si perde (si ricrea il DOM).
@@ -20383,6 +20473,7 @@ window.clienteDaRigaImport = clienteDaRigaImport;
 window.campiMancantiCliente = campiMancantiCliente;
 window.livelliMancantiCliente = livelliMancantiCliente;
 window.confermaAzione = confermaAzione;
+window.leggiFasiTarget = leggiFasiTarget;
 window.migraNoteTaskTeam = migraNoteTaskTeam;
 window.modificaNotaTaskTeam = modificaNotaTaskTeam;
 window.eliminaNotaTaskTeam = eliminaNotaTaskTeam;
