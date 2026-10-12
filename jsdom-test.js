@@ -2138,9 +2138,9 @@ async function main() {
     // modelli base strutturati
     const nPrima = st().modelliDocumento.length;
     click(q('[data-action="modelli-base-strutturati"]')); await wait(20);
-    assert(st().modelliDocumento.length === nPrima + 3 && st().modelliDocumento.some(m => m.nome === 'Preventivo strutturato (a voci)'), 'modelli base non aggiunti');
+    const nDopo = st().modelliDocumento.length; assert(st().modelliDocumento.length >= nPrima + 3 && st().modelliDocumento.some(m => m.nome === 'Preventivo strutturato (a voci)'), 'modelli base non aggiunti');
     click(q('[data-action="modelli-base-strutturati"]')); await wait(20);
-    assert(st().modelliDocumento.length === nPrima + 3, 'i modelli base non devono duplicarsi');
+    assert(st().modelliDocumento.length === nDopo, 'i modelli base non devono duplicarsi');
     const s2 = st(); s2.modelliDocumento = s2.modelliDocumento.filter(m => !/strutturat|rinuncia/.test(m.nome)); window.setSTATE(s2);
     click(q('[data-nav="dashboard"]')); await wait(20);
     console.log('=== Modelli documenti: tabelle, immagini (editor/stampa/RTF/potatura), campi personalizzati inseribili, modelli base strutturati OK');
@@ -2150,7 +2150,7 @@ async function main() {
   click(q('[data-nav="modelli"]'));
   await wait(20);
   const nModelliPrima = window.getSTATE().modelliDocumento.length;
-  assert(nModelliPrima === 4, `attesi 4 modelli di default (seed task #127), trovati ${nModelliPrima}`);
+  assert(nModelliPrima === 5, `attesi 5 modelli (4 di default + modello in stile lettera), trovati ${nModelliPrima}`);
   assert(q('body').textContent.includes('Preventivo') && q('body').textContent.includes('AML - Dichiarazione cliente'), 'le categorie dei modelli di default non compaiono nella pagina Modelli documenti');
 
   click(q('[data-action="nuovo-modello"]'));
@@ -7089,6 +7089,24 @@ async function main() {
       assert(!window.catalogoAnnualeTutti().find(t => t.chiave === 'CU').sotto.includes('Solo terzi'), 'il catalogo standard non deve cambiare');
       window.setView('dashboard');
       console.log('=== Editor fasi: spostamento, aggiunta multipla, rimozione, tutti gli adempimenti per i terzi OK');
+    }
+
+    // ---------- Modello "lettera" (copia del Word): impaginazione, round-trip editor, stampa ----------
+    {
+      const ST = window.getSTATE(); const D = window.document;
+      const mod = ST.modelliDocumento.find(m => m.nome === 'Preventivo – Costituzione associazione (lettera)');
+      assert(mod && mod.stile === 'lettera', 'il modello in stile lettera deve comparire da solo');
+      const cid = ST.clienti[0].id;
+      const p = window.creaPreventivoDaModello({ clienteId: cid, modelloId: mod.id, oggetto: 'costituzione dell\'Associazione Prova', importo: 500, valoriCustom: { appellativo: 'Egregio', saluto: 'Sig.ra Rossi', richiesta: 'la costituzione dell\'Associazione Prova', firmatario: 'Federico Miotti' } });
+      assert(p.stile === 'lettera' && !/\[[a-zA-Z.]+\]/.test(p.corpo), 'documento in stile lettera e senza campi vuoti: ' + p.corpo.slice(0, 200));
+      const html = window.documentoStampaHtml(p);
+      assert(/margin-left:55%/.test(html) && /text-align:justify/.test(html) && /text-indent:-2\.4em/.test(html) && /Calibri/.test(html), 'impaginazione lettera applicata');
+      assert(/Con i migliori saluti/.test(html) && /500,00 euro|500 euro/.test(html), 'chiusura e corrispettivo presenti');
+      // round trip dell'editor: il testo marcato deve tornare identico
+      const el = D.createElement('div'); el.innerHTML = window.testoDocumentoToHtml(p.corpo, 'editor');
+      const ritorno = window.editorDocumentoToTesto(el);
+      assert(ritorno === p.corpo.replace(/\s+$/, ''), 'round trip editor non identico:\n' + ritorno + '\n---\n' + p.corpo);
+      console.log('=== Modello lettera: impaginazione Word, round trip editor, stampa OK');
     }
   }
   console.log('\n✅ TUTTI I TEST END-TO-END PASSATI (' + errors.length + ' errori console catturati)');

@@ -2167,6 +2167,11 @@ function normalizzaStatoCaricato(parsed) {
   migraDocumentiContabiliConti(stato);
   migraNoteTaskTeam(stato);
   migraCampiCredenziali(stato);
+  /* Una tantum: il modello "in stile lettera" (copia del Word dello studio) compare da solo tra i modelli. */
+  if (stato.meta && !stato.meta.modelloLetteraV1 && Array.isArray(stato.modelliDocumento)) {
+    stato.meta.modelloLetteraV1 = true;
+    modelliBaseStrutturati().filter(m => m.stile === 'lettera' && !stato.modelliDocumento.some(x => x.nome === m.nome)).forEach(m => stato.modelliDocumento.push(m));
+  }
   return stato;
 }
 
@@ -4101,7 +4106,10 @@ const PLACEHOLDER_AUTO_LEGENDA = [
   { chiave: 'studio.polizza', label: 'Estremi polizza RC professionale' },
   { chiave: 'data.oggi', label: 'Data odierna (gg/mm/aaaa)' },
   { chiave: 'data.luogoOggi', label: 'Luogo e data odierna (es. "Vicenza, 14/09/2026")' },
+  { chiave: 'data.luogoOggiEsteso', label: 'Luogo e data odierna per esteso (es. "Vicenza, 14 settembre 2026")' },
 ];
+const MESI_ESTESI = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno', 'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre'];
+function dataEstesa(iso) { const [y, m, g] = String(iso).split('-').map(Number); return `${g} ${MESI_ESTESI[m - 1]} ${y}`; }
 function valoriAutomaticiPlaceholder(clienteId) {
   const cliente = clienteId ? clienteById(clienteId) : null;
   const contatti = (cliente && cliente.contatti) || {};
@@ -4126,6 +4134,7 @@ function valoriAutomaticiPlaceholder(clienteId) {
     'studio.polizza': STATE.meta.polizzaRc || '',
     'data.oggi': fmtData(oggi),
     'data.luogoOggi': `${STATE.meta.citta || 'Vicenza'}, ${fmtData(oggi)}`,
+    'data.luogoOggiEsteso': `${STATE.meta.citta || 'Vicenza'}, ${dataEstesa(oggi)}`,
   };
 }
 /* Estrae, nell'ordine di prima comparsa, tutti i segnaposto {{chiave}} presenti in un testo. */
@@ -4382,6 +4391,7 @@ function creaPreventivoDaModello(dati) {
     clienteId, categoria: modello.categoria, modelloId, nomeModello: modello.nome,
     oggetto, importo: importo != null ? importo : null, dataEmissione: dataEm, validoFino: validoFino || null,
     stato: stato || 'Bozza', note: note || '', valoriCustom: valoriCustom || {}, corpo, attivitaScelte: attivitaScelte || [],
+    stile: modello.stile || undefined,
   });
 }
 /* -------------------- PRECOMPILAZIONE IMPORTI STATUTARI --------------------
@@ -8071,6 +8081,17 @@ function testoDocumentoToHtml(testo, modo) {
     if ((m = /^# (.*)$/.exec(r))) { out += '<h1>' + inlineDocumentoHtml(m[1], ed) + '</h1>'; return; }
     if ((m = /^## (.*)$/.exec(r))) { out += '<h2>' + inlineDocumentoHtml(m[1], ed) + '</h2>'; return; }
     if ((m = /^\^\^ (.*)$/.exec(r))) { out += '<div class="d-riga" style="text-align:center">' + inlineDocumentoHtml(m[1], ed) + '</div>'; return; }
+    /* Impaginazione "lettera" (copiata dal Word dello studio): "|> " blocco rientrato a destra (destinatario),
+       "<> " paragrafo giustificato, "<>> " giustificato con rientro della prima riga, "a) " voce di elenco con rientro sporgente. */
+    if ((m = /^\|> (.*)$/.exec(r))) { out += '<div class="d-riga" style="margin-left:55%">' + inlineDocumentoHtml(m[1], ed) + '</div>'; return; }
+    if ((m = /^<>> (.*)$/.exec(r))) { out += '<div class="d-riga" style="text-align:justify;text-indent:1.25cm">' + inlineDocumentoHtml(m[1], ed) + '</div>'; return; }
+    if ((m = /^<> (.*)$/.exec(r))) { out += '<div class="d-riga" style="text-align:justify">' + inlineDocumentoHtml(m[1], ed) + '</div>'; return; }
+    if ((m = /^([a-z]\)) (.*)$/.exec(r))) {
+      const stile = 'text-align:justify;padding-left:2.4em;text-indent:-2.4em';
+      out += ed ? '<div class="d-riga" data-lett="1" style="' + stile + '">' + inlineDocumentoHtml(r, true) + '</div>'
+        : '<div class="d-riga" style="' + stile + '"><span style="display:inline-block;width:2.4em;text-indent:0">' + m[1] + '</span>' + inlineDocumentoHtml(m[2], false) + '</div>';
+      return;
+    }
     if ((m = /^>> (.*)$/.exec(r))) { out += '<div class="d-riga" style="text-align:right">' + inlineDocumentoHtml(m[1], ed) + '</div>'; return; }
     if (!ed && eRigaTitoloMaiuscolo(r)) { out += '<h2>' + inlineDocumentoHtml(r.trim(), false) + '</h2>'; return; }
     out += '<div class="d-riga">' + inlineDocumentoHtml(r, ed) + '</div>';
@@ -8098,7 +8119,10 @@ function editorDocumentoToTesto(root) {
     return r;
   };
   const allineamento = (n) => {
+    if (n.getAttribute && n.getAttribute('data-lett')) return '';
+    if (n.style && n.style.marginLeft === '55%') return '|> ';
     const a = ((n.style && n.style.textAlign) || n.getAttribute('align') || '').toLowerCase();
+    if (a === 'justify') return (n.style && n.style.textIndent === '1.25cm') ? '<>> ' : '<> ';
     return a === 'center' ? '^^ ' : (a === 'right' ? '>> ' : '');
   };
   const blocco = (n) => {
@@ -8130,7 +8154,7 @@ function testoDocumentoSenzaMarcatura(testo) {
   return String(testo || '').split('\n')
     .filter(r => !IMG_RIGA_RE.test(r) && !eSep(r))
     .map(r => eTab(r) ? r.replace(/^\s*\|/, '').replace(/\|\s*$/, '').split('|').map(c => c.trim()).join('   ') : r)
-    .map(r => r.replace(/^(#{1,2} |- |\^\^ |>> )/, '').replace(/^---$/, '').replace(/\*\*([^*]+)\*\*/g, '$1').replace(/(^|[^*\w])\*([^*\n]+)\*(?![*\w])/g, '$1$2'))
+    .map(r => r.replace(/^(#{1,2} |- |\^\^ |>> |\|> |<>> |<> )/, '').replace(/^---$/, '').replace(/\*\*([^*]+)\*\*/g, '$1').replace(/(^|[^*\w])\*([^*\n]+)\*(?![*\w])/g, '$1$2'))
     .join('\n');
 }
 /* Barra strumenti + foglio + pannello campi. id: id dell'elemento editabile. */
@@ -8246,8 +8270,33 @@ function docInserisciCampo(chiave) {
    dello studio: la mette già la carta intestata in stampa/PDF. Si aggiungono con un pulsante, senza
    toccare i modelli esistenti. */
 function modelliBaseStrutturati() {
-  const mk = (categoria, nome, corpo) => ({ id: uid('mod'), categoria, nome, corpo, attivo: true, predefinito: false, creatoIl: oggiISO() });
+  const mk = (categoria, nome, corpo, stile) => ({ id: uid('mod'), categoria, nome, corpo, attivo: true, predefinito: false, creatoIl: oggiISO(), stile });
   return [
+    /* Copia della struttura del Word dello studio (preventivo costituzione associazione): destinatario rientrato,
+       data, oggetto, saluto, introduzione giustificata, elenco a) b) c) con titolo in grassetto, corrispettivo, formula di chiusura. */
+    mk('Preventivo', 'Preventivo – Costituzione associazione (lettera)', `|> {{appellativo}}
+|> **{{cliente.ragioneSociale}}**
+
+
+{{data.luogoOggiEsteso}}
+
+
+**Oggetto**: proposta di {{oggetto}}
+
+
+Gentile {{saluto}},
+<>> riscontriamo la Vostra cortese richiesta di formulazione di una proposta per {{richiesta}}, riportando di seguito la descrizione delle attività oggetto del preventivo e necessarie per il corretto assolvimento degli adempimenti richiesti dalle norme vigenti:
+a) **Assistenza per la redazione dello Statuto:** consulenza e supporto nella redazione dello statuto dell'associazione, garantendo la conformità alla normativa vigente e la tutela degli interessi dell'associazione;
+b) **Pratica di attribuzione del codice fiscale:** predisposizione e presentazione della documentazione necessaria per l'attribuzione del codice fiscale all'associazione presso l'Agenzia delle Entrate;
+c) **Registrazione dello Statuto:** predisposizione e presentazione della documentazione necessaria per la registrazione dell'atto costitutivo e dello statuto presso l'Agenzia delle Entrate;
+d) **Iscrizione al RUNTS:** predisposizione e presentazione della documentazione necessaria per l'iscrizione dell'associazione al Registro Unico Nazionale del Terzo Settore (RUNTS);
+
+<> Il corrispettivo per le attività oggetto dell'incarico ammonta a {{importo}} euro.
+
+<> Tutti gli importi devono intendersi al netto di Iva e contributo Cassa Previdenza del 4%.
+
+Con i migliori saluti
+{{firmatario}}`, 'lettera'),
     mk('Preventivo', 'Preventivo strutturato (a voci)', `>> {{data.luogoOggi}}
 
 **Spett.le**
@@ -9541,7 +9590,24 @@ function togliBloccoIntestazioneVecchio(testo) {
   const fine = righe.findIndex(r => r.trim() === '');
   return fine === -1 ? testo : righe.slice(fine + 1).join('\n');
 }
+/* Impaginazione "lettera": copia il Word dello studio (logo al centro in alto, testo Calibri 10,5 pt giustificato,
+   pie' di pagina con i recapiti). Si attiva dal modello (campo stile = 'lettera'). */
+function documentoStampaLetteraHtml(p) {
+  const m = STATE.meta;
+  const corpo = testoDocumentoToHtml(p.corpo || '', 'lettura').replace(/height:\.7em/g, 'height:1.3em'); // riga vuota = una riga intera, come nel Word
+  const testa = m.logoStudio ? `<img src="${m.logoStudio}" alt="" style="max-width:150px;max-height:70px;">` : `<div style="font-weight:700;font-size:15px;">${escapeHtml(m.studioNome || '')}</div>`;
+  const pie = (m.piePagina || [m.studioNome, [m.indirizzoStudio, m.telefonoStudio, m.emailStudio].filter(Boolean).join(' | ')].filter(Boolean).join('\n')).split('\n').map(escapeHtml).join('<br>');
+  return `<!DOCTYPE html><html><head><title>${escapeHtml(p.oggetto || p.categoria)}</title><meta charset="utf-8"><style>
+    @page{size:A4;margin:14mm 20mm 26mm;}
+    body{font-family:Calibri,Carlito,'Segoe UI',Arial,sans-serif;font-size:14px;line-height:1.3;color:#000;max-width:760px;margin:30px auto;padding:0 24px 90px;}
+    .testa{text-align:center;margin-bottom:60px;} .d-riga{min-height:0;} .campo-vuoto{background:#fff3cd;padding:0 3px;}
+    ul{margin:4px 0 4px 22px;padding:0;} hr{border:none;border-top:1px solid #c9cfdd;margin:14px 0;}
+    .pie{position:fixed;left:0;right:0;bottom:0;text-align:center;font-size:10.5px;line-height:1.35;color:#7a8394;padding:0 24px 8px;}
+    img{max-width:100%;} @media print{body{margin:0;padding:0 0 60px;max-width:none;}}
+  </style></head><body><div class="testa">${testa}</div>${corpo}<div class="pie">${pie}</div></body></html>`;
+}
 function documentoStampaHtml(p) {
+  if (p.stile === 'lettera') return documentoStampaLetteraHtml(p);
   const corpo = testoDocumentoToHtml(togliBloccoIntestazioneVecchio(p.corpo || ''), 'lettura');
   return `<!DOCTYPE html><html><head><title>${escapeHtml(p.oggetto || p.categoria)}</title><meta charset="utf-8"><style>
     @page{size:A4;margin:18mm 18mm 20mm;}
@@ -9626,6 +9692,10 @@ function generaRtfDaTesto(testo) {
     if ((m = /^- (.*)$/.exec(riga))) return `{\\pard\\fi-300\\li500 \\bullet\\tab ${inlineRtf(m[1])}\\par}`;
     if ((m = /^\^\^ (.*)$/.exec(riga))) return `{\\pard\\qc ${inlineRtf(m[1])}\\par}`;
     if ((m = /^>> (.*)$/.exec(riga))) return `{\\pard\\qr ${inlineRtf(m[1])}\\par}`;
+    if ((m = /^\|> (.*)$/.exec(riga))) return `{\\pard\\li5000 ${inlineRtf(m[1])}\\par}`;
+    if ((m = /^<>> (.*)$/.exec(riga))) return `{\\pard\\qj\\fi700 ${inlineRtf(m[1])}\\par}`;
+    if ((m = /^<> (.*)$/.exec(riga))) return `{\\pard\\qj ${inlineRtf(m[1])}\\par}`;
+    if ((m = /^([a-z]\)) (.*)$/.exec(riga))) return `{\\pard\\qj\\li500\\fi-500 ${escapeRtf(m[1])}\\tab ${inlineRtf(m[2])}\\par}`;
     if (riga.trim() === '---') return '{\\pard\\brdrb\\brdrs\\brdrw10\\par}';
     if ((m = IMG_RIGA_RE.exec(riga))) return rtfImmagine(m[1], Number(m[2]), m[3]);
     if (/^\s*\|.*\|\s*$/.test(riga)) {
@@ -16031,13 +16101,17 @@ function cardLogoStudio() {
   const logo = STATE.meta.logoStudio || '';
   const posizione = STATE.meta.logoPosizione || 'sinistra';
   return `<div class="card">
-    <div class="section-title">Logo per il riepilogo appuntamenti</div>
+    <div class="section-title">Logo e piè di pagina dei documenti</div>
     <div class="helptext" style="margin-bottom:10px;">Usato nel foglio stampabile "Riepilogo appuntamento" (Calendario). Consigliata un'immagine PNG/JPG non troppo grande.</div>
     <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;">
       <div>
         ${logo ? `<img src="${logo}" alt="Logo studio" style="max-width:160px;max-height:90px;border:1px solid var(--border);border-radius:6px;padding:4px;background:#fff;display:block;margin-bottom:8px;">` : `<div class="helptext" style="margin-bottom:8px;">Nessun logo caricato.</div>`}
         <label class="btn small" style="margin:0;">⬆ ${logo ? 'Sostituisci logo' : 'Carica logo'}<input type="file" accept="image/*" style="display:none;" data-action="carica-logo-studio"></label>
         ${logo ? `<button class="btn small ghost" style="margin-left:6px;" data-action="rimuovi-logo-studio">Rimuovi</button>` : ''}
+      </div>
+      <div class="field grow" style="min-width:260px;">
+        <label>Piè di pagina dei documenti in stile lettera (preventivi)</label>
+        <textarea rows="3" data-action="meta-pie-pagina" placeholder="Una riga per riga: nome studio, indirizzo | telefono | email, sito">${escapeHtml(STATE.meta.piePagina || '')}</textarea>
       </div>
       <div class="field" style="min-width:220px;">
         <label>Posizione nel foglio stampabile</label>
@@ -19106,6 +19180,7 @@ function onChangeDelegato(e) {
     case 'pdfd-cambia-a': PDFD_A = Number(el.value) || 1; break;
     case 'carica-logo-studio': caricaLogoStudio(el); break;
     case 'cambia-posizione-logo': STATE.meta.logoPosizione = el.value; salvaStato(); break;
+    case 'meta-pie-pagina': STATE.meta.piePagina = el.value; salvaStato(); break;
 
     case 'cat-per-con-importo': aggiornaTipoPeriodico(el.dataset.tipo, { conImporto: el.checked }); break;
     case 'cat-per-toggle-attivo': aggiornaTipoPeriodico(el.dataset.tipo, { attivo: el.checked }); render(); break;
@@ -20510,6 +20585,7 @@ window.generaRtfDaTesto = generaRtfDaTesto;
 window.escapeRtf = escapeRtf;
 window.testoElencoAttivita = testoElencoAttivita;
 window.creaPreventivoDaModello = creaPreventivoDaModello;
+window.testoDocumentoToHtml = testoDocumentoToHtml; window.editorDocumentoToTesto = editorDocumentoToTesto; window.documentoStampaHtml = documentoStampaHtml;
 
 init();
 </script>
