@@ -7174,6 +7174,30 @@ async function main() {
       window.setView('dashboard');
       console.log('=== Anagrafica associazioni: sezione RUNTS solo per le associazioni, salvataggio OK');
     }
+
+    // ---------- Task: stati In attesa / Bloccata, tessere di riepilogo, motivo ----------
+    {
+      const ST = window.getSTATE(); const D = window.document;
+      window.aggiungiTaskTeam({ titolo: 'Pratica bloccata TEST', assegnatoA: ST.meta.responsabili[0], stato: 'Da fare', creatoIl: '2026-10-01' });
+      const tk = ST.taskTeam[ST.taskTeam.length - 1];
+      window.aggiornaTaskTeam(tk.id, { stato: 'Bloccata', motivoStato: 'Errore da risolvere' });
+      assert(tk.stato === 'Bloccata' && tk.statoDal, 'stato Bloccata con data di inizio');
+      window.setView('taskteam'); window.render(); await wait(20);
+      setVal(D.querySelector('[data-action="task-filtro-assegnato"]'), 'Tutti'); await wait(20);
+      setVal(D.querySelector('[data-action="task-filtro-cliente"]'), 'Tutti'); await wait(20);
+      const c = D.querySelector('#content');
+      assert(D.querySelectorAll('.task-tessera').length === 6, 'sei tessere di riepilogo (5 stati + in ritardo)');
+      assert(D.querySelectorAll('.task-col').length === 5, 'cinque colonne');
+      assert(/Errore da risolvere/.test(c.innerHTML) && D.querySelector('[data-action="task-motivo"][data-id="' + tk.id + '"]'), 'motivo del blocco visibile sulla card');
+      click(D.querySelector('.task-tessera[data-stato="Bloccata"]')); await wait(20);
+      assert(D.querySelectorAll('.task-col').length === 1 && /Pratica bloccata TEST/.test(D.querySelector('#content').textContent), 'la tessera filtra su un solo stato');
+      click(D.querySelector('.task-tessera[data-stato="Bloccata"]')); await wait(20);
+      assert(D.querySelectorAll('.task-col').length === 5, 'secondo tocco: tutti gli stati');
+      window.aggiornaTaskTeam(tk.id, { stato: 'In corso' });
+      assert(tk.motivoStato === undefined, 'il motivo si azzera uscendo da attesa/bloccata');
+      ST.taskTeam = ST.taskTeam.filter(x => x.id !== tk.id); window.setView('dashboard');
+      console.log('=== Task: In attesa/Bloccata, tessere e barra di riepilogo, motivo OK');
+    }
   }
   console.log('\n✅ TUTTI I TEST END-TO-END PASSATI (' + errors.length + ' errori console catturati)');
   if (errors.length) {
