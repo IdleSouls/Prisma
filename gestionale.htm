@@ -3035,6 +3035,10 @@ async function inizializzaSyncViaServerLocale() {
   if (remoto && typeof remoto === 'object' && Array.isArray(remoto.clienti)) {
     STATE = normalizzaStatoCaricato(remoto);
     impostaBaseCondivisa(revIniziale);
+    // BUG (nuovo dispositivo che apre il link ngrok): init() mostra il questionario di primo avvio PRIMA che
+    // arrivi lo stato vero del server; se resta aperto e viene completato, applicaSetup() sovrascrive team,
+    // moduli e permessi dello studio. Ora che lo stato vero e' arrivato, il questionario si chiude da solo.
+    if (SETUP && ((STATE.clienti || []).length > 0 || (STATE.meta && (STATE.meta.setupCompletato || STATE.meta.moduliConfermati)))) { SETUP = null; renderSetup(); }
     render();
     // Il popup "chi sei" a init() ha ragionato sui responsabili di default/locali, non ancora su
     // quelli veri appena arrivati dal sync - si ricontrolla ora che STATE è quello giusto (es. un
@@ -16505,7 +16509,15 @@ const CATEGORIE_CREDENZIALI_SUGGERITE = ['Entratel', 'Telemaco', 'Home banking',
 function generaPasswordCasuale() {
   const alfabeto = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%&*';
   let out = '';
-  for (let i = 0; i < 16; i++) out += alfabeto[Math.floor(Math.random() * alfabeto.length)];
+  // Password vere: serve un generatore crittografico (Math.random e' prevedibile). Scarto dei valori >= soglia
+  // per evitare il bias del modulo.
+  const cr = (typeof window !== 'undefined' && window.crypto && window.crypto.getRandomValues) ? window.crypto : (typeof crypto !== 'undefined' && crypto.getRandomValues ? crypto : null);
+  const soglia = 256 - (256 % alfabeto.length);
+  while (out.length < 16) {
+    const b = new Uint8Array(32);
+    if (cr) cr.getRandomValues(b); else for (let i = 0; i < b.length; i++) b[i] = Math.floor(Math.random() * 256);
+    for (const v of b) { if (v < soglia && out.length < 16) out += alfabeto[v % alfabeto.length]; }
+  }
   return out;
 }
 
@@ -21055,6 +21067,8 @@ function onSetupClick(e) {
   renderSetup();
 }
 function applicaSetup() {
+  // Rete di sicurezza: mai riconfigurare uno studio che ha gia' dati o un setup completato.
+  if ((STATE.clienti || []).length > 0 || (STATE.meta && (STATE.meta.setupCompletato || STATE.meta.moduliConfermati))) { SETUP = null; renderSetup(); return; }
   const master = SETUP.master.trim();
   const collab = SETUP.collab.filter(c => c.nome.trim());
   const nucleo = tabNucleo();

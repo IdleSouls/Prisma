@@ -429,7 +429,7 @@ scriviLog('Avvio di Prisma...');
 const URL_MANIFESTO_AGGIORNAMENTI = 'https://raw.githubusercontent.com/IdleSouls/Prisma/main/versione.json';
 // Cambiala qui a ogni nuova versione pubblicata (deve combaciare con quella scritta nel
 // "versione.json" caricato su GitHub, altrimenti il confronto non ha senso).
-const VERSIONE_LOCALE = '1.18.0';
+const VERSIONE_LOCALE = '1.18.1';
 // Solo questi file possono essere sovrascritti da un aggiornamento - mai un nome libero/a piacere
 // del manifesto, per non correre il rischio (anche solo teorico, es. account GitHub compromesso)
 // di far scrivere un file arbitrario altrove sul PC del cliente.
@@ -1505,6 +1505,15 @@ function leggiCorpoRichiesta(req, callback) {
 // ---------------------------------------------------------------------------
 function gestisciRichiesta(req, res) {
   const url = req.url.split('?')[0];
+
+  // SICUREZZA: header di difesa su OGNI risposta. nosniff = il browser non "indovina" il tipo di un file
+  // caricato (niente HTML/JS eseguito travestito da documento); frame-ancestors/X-Frame-Options = Prisma non
+  // si puo' incorniciare in un sito esterno (clickjacking); Referrer-Policy = i link del portale (con il
+  // token nell'indirizzo) non finiscono nel referrer dei siti che il cliente apre dopo.
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Content-Security-Policy', "frame-ancestors 'self'");
+  res.setHeader('Referrer-Policy', 'no-referrer');
 
   // SICUREZZA: nessun header CORS. Prima c'era "Access-Control-Allow-Origin: *", che permetteva a
   // QUALUNQUE sito aperto nel browser di leggere i dati dello studio da questo server. La pagina di
