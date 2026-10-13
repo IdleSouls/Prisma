@@ -429,7 +429,7 @@ scriviLog('Avvio di Prisma...');
 const URL_MANIFESTO_AGGIORNAMENTI = 'https://raw.githubusercontent.com/IdleSouls/Prisma/main/versione.json';
 // Cambiala qui a ogni nuova versione pubblicata (deve combaciare con quella scritta nel
 // "versione.json" caricato su GitHub, altrimenti il confronto non ha senso).
-const VERSIONE_LOCALE = '1.19.0';
+const VERSIONE_LOCALE = '1.19.1';
 // Solo questi file possono essere sovrascritti da un aggiornamento - mai un nome libero/a piacere
 // del manifesto, per non correre il rischio (anche solo teorico, es. account GitHub compromesso)
 // di far scrivere un file arbitrario altrove sul PC del cliente.
@@ -2002,7 +2002,8 @@ function gestisciRichiesta(req, res) {
     if (url === '/api/accesso-lan' && req.method === 'GET') {
       const lista = Object.entries(CFG_LAN.dispositivi).map(([id, d]) => ({ id, nome: d.nome, ip: d.ip, creato: d.creato, ultimoUso: d.ultimoUso })).sort((a, b) => b.ultimoUso - a.ultimoUso);
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify({ ok: true, dispositivi: lista, passwordInizialeInFile: fs.existsSync(FILE_PASSWORD_LAN_INIZIALE) }));
+      const passwordChiara = CFG_LAN.passwordCifrata ? (decifraCredenziale(CFG_LAN.passwordCifrata) || null) : null;
+      res.end(JSON.stringify({ ok: true, dispositivi: lista, password: passwordChiara, passwordInizialeInFile: fs.existsSync(FILE_PASSWORD_LAN_INIZIALE) }));
       return;
     }
     if (req.method === 'POST') {
@@ -2999,12 +3000,24 @@ function generaPasswordLan() {
 }
 function impostaPasswordLan(password) {
   const salt = crypto.randomBytes(16).toString('hex');
-  CFG_LAN = { salt, hash: hashPasswordLan(password, salt), dispositivi: {} }; // cambiare password disconnette tutti i dispositivi
+  // La password si conserva anche CIFRATA (stessa chiave delle credenziali dei clienti) cosi' il titolare puo rivederla in Impostazioni.
+  CFG_LAN = { salt, hash: hashPasswordLan(password, salt), passwordCifrata: cifraCredenziale(password), dispositivi: {} }; // cambiare password disconnette tutti i dispositivi
   salvaCfgLan();
 }
 function inizializzaAccessoLan() {
   try { CFG_LAN = JSON.parse(fs.readFileSync(FILE_ACCESSO_LAN, 'utf8')); } catch (e) { CFG_LAN = null; }
-  if (CFG_LAN && CFG_LAN.salt && CFG_LAN.hash) { CFG_LAN.dispositivi = CFG_LAN.dispositivi || {}; return; }
+  if (CFG_LAN && CFG_LAN.salt && CFG_LAN.hash) {
+    CFG_LAN.dispositivi = CFG_LAN.dispositivi || {};
+    // Configurazione creata prima che la password si conservasse cifrata: se la password iniziale e' ancora nel file ed e' quella giusta, la si recupera.
+    if (!CFG_LAN.passwordCifrata) {
+      try {
+        const riga = fs.readFileSync(FILE_PASSWORD_LAN_INIZIALE, 'utf8').split(/\r?\n/)[1];
+        const cand = String(riga || '').trim();
+        if (cand && crypto.timingSafeEqual(Buffer.from(hashPasswordLan(cand, CFG_LAN.salt), 'hex'), Buffer.from(CFG_LAN.hash, 'hex'))) { CFG_LAN.passwordCifrata = cifraCredenziale(cand); salvaCfgLan(); }
+      } catch (e) { /* file assente o password gia cambiata: resta non recuperabile */ }
+    }
+    return;
+  }
   const iniziale = generaPasswordLan();
   impostaPasswordLan(iniziale);
   try { fs.writeFileSync(FILE_PASSWORD_LAN_INIZIALE, 'Password iniziale per collegare gli altri PC dello studio a Prisma (rete locale):\r\n' + iniziale + '\r\n\r\nSi inserisce una sola volta su ogni dispositivo. Puoi cambiarla da Impostazioni; dopo averla distribuita elimina questo file.\r\n', 'utf8'); } catch (e) { /* non blocca */ }

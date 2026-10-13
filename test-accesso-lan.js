@@ -36,6 +36,7 @@ let falliti = 0; const verifica = (c, m) => { if (!c) { falliti++; console.log('
   const cookie = set.split(';')[0];
   r = await chiedi('GET', '/api/stato', { remoto: true, cookie }); verifica(r.s === 200, 'dispositivo autorizzato: /api/stato accessibile');
   r = await chiedi('GET', '/api/accesso-lan', { remoto: true, cookie }); verifica(r.s === 403, 'dispositivo autorizzato NON puo gestire i dispositivi');
+  r = await chiedi('GET', '/api/accesso-lan'); verifica(JSON.parse(r.b).password === pwd, 'locale: la password si puo rivedere (conservata cifrata)'); verifica(!fs.readFileSync(path.join(dir, 'accesso-lan.json'), 'utf8').includes(pwd), 'password non in chiaro nel file di configurazione');
   r = await chiedi('GET', '/api/accesso-lan'); const lista = JSON.parse(r.b); verifica(r.s === 200 && lista.dispositivi.length === 1, 'locale: elenco dispositivi con 1 voce');
   r = await chiedi('POST', '/api/accesso-lan/revoca', { corpo: { id: lista.dispositivi[0].id } }); verifica(r.s === 200, 'revoca del dispositivo');
   r = await chiedi('GET', '/api/stato', { remoto: true, cookie }); verifica(r.s === 401, 'dispositivo revocato: di nuovo rifiutato');

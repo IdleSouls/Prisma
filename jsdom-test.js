@@ -7400,19 +7400,41 @@ async function main() {
     window.modalPasswordOperatore('Prova');
     const inp = q('#operatoreLoginPassword');
     assert(inp && /Enter/.test(inp.getAttribute('onkeydown') || ''), 'password operatore: manca la gestione del tasto Invio');
-    click(q('[data-action="chiudi-modal"]'));
+    window.chiudiModal();
     await wait(20);
     // Card "Accesso dalla rete dello studio": con il server raggiungibile mostra password e dispositivi
     window.setHttpSyncAttivoTest(true);
     const fetchOrig = window.fetch;
-    window.fetch = () => Promise.resolve({ json: () => Promise.resolve({ ok: true, dispositivi: [{ id: 'abc', nome: 'Windows - Chrome', ip: '192.168.1.9', creato: Date.now(), ultimoUso: Date.now() }], passwordInizialeInFile: true }) });
+    window.fetch = () => Promise.resolve({ json: () => Promise.resolve({ ok: true, password: "TestPwd123456", dispositivi: [{ id: "abc", nome: 'Windows - Chrome', ip: '192.168.1.9', creato: Date.now(), ultimoUso: Date.now() }], passwordInizialeInFile: true }) });
     window.resetAccessoLanTest();
     window.cardAccessoRete();
     await wait(30);
     const cardLan = window.cardAccessoRete();
-    assert(cardLan.includes('Windows - Chrome') && cardLan.includes('data-action="lan-revoca"') && cardLan.includes('lan-cambia-password') && cardLan.includes('password-accesso-rete-locale.txt'), 'card accesso rete: dispositivi/azioni mancanti');
+    assert(cardLan.includes('Windows - Chrome') && cardLan.includes('data-action="lan-revoca"') && cardLan.includes('lan-cambia-password') && cardLan.includes('password-accesso-rete-locale.txt') && cardLan.includes('lan-mostra-password') && !cardLan.includes('TestPwd123456'), 'card accesso rete: dispositivi/azioni mancanti');
     window.fetch = fetchOrig;
     window.setHttpSyncAttivoTest(false);
+    // Selezione utente obbligatoria: senza operatore la finestra non si chiude (click fuori, Esc, "Non ora")
+    {
+      const opPrima = window.operatoreCorrente();
+      assert(window.getSTATE().meta.responsabili.length >= 2, 'test selettore obbligatorio: servono 2+ responsabili');
+      window.impostaOperatore(null);
+      assert(window.operatoreObbligatorio() === true, 'senza operatore la scelta utente deve essere obbligatoria');
+      window.modalSelettoreOperatore();
+      const bd = q('#modalRoot .modal-backdrop');
+      assert(bd && bd.hasAttribute('data-obbligatorio'), 'selettore utente: manca il blocco di chiusura');
+      assert(!q('#modalRoot [data-action="chiudi-modal"]'), 'selettore utente obbligatorio: non deve esserci "Non ora"');
+      click(bd);
+      window.document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await wait(20);
+      assert(q('#modalRoot .modal-backdrop'), 'selettore utente obbligatorio: si e chiuso con click fuori / Esc');
+      window.modalPasswordOperatore('Matteo', 'Matteo e gia collegato');
+      assert(q('#modalRoot [data-action="operatore-annulla-password"]'), 'password operatore obbligatoria: manca "Scegli un altro utente"');
+      click(q('#modalRoot [data-action="operatore-annulla-password"]'));
+      assert(q('#modalRoot [data-action="operatore-scegli"]'), 'da password operatore si deve tornare al selettore');
+      window.impostaOperatore(opPrima || 'Matteo');
+      window.chiudiModal && window.chiudiModal();
+      await wait(20);
+    }
     console.log('=== Note aggiornamento a elenco + Invio nel login operatore OK');
   }
 

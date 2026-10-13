@@ -2755,7 +2755,8 @@ function impostaOperatore(nome) {
 // password, invece del prompt di conferma "soft" usato per i referenti senza password - qui non
 // c'è modo di "continuare comunque", se il nome è già in uso il login viene rifiutato dal server.
 function modalPasswordOperatore(nome, messaggioErrore) {
-  const html = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
+  const obbligatorio = operatoreObbligatorio();
+  const html = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop" ${obbligatorio ? 'data-obbligatorio="1"' : ''}>
     <div class="modal" style="max-width:340px;">
       <h2>Password di ${escapeHtml(nome)}</h2>
       <div class="modal-sub">Questo referente è protetto da una password personale.</div>
@@ -2763,7 +2764,7 @@ function modalPasswordOperatore(nome, messaggioErrore) {
         <input type="password" id="operatoreLoginPassword" autocomplete="current-password" onkeydown="if(event.key==='Enter'){event.preventDefault();var b=this.form&&this.form.querySelector('[data-action=login-operatore]');if(b)b.click();}" placeholder="Password" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 11px;box-sizing:border-box;" autofocus>
         <div style="color:var(--rosso);font-size:12.5px;margin-top:8px;min-height:16px;">${escapeHtml(messaggioErrore || '')}</div>
         <div class="modal-actions" style="margin-top:6px;">
-          <button type="button" class="btn" data-action="chiudi-modal">Annulla</button>
+          <button type="button" class="btn" data-action="${obbligatorio ? 'operatore-annulla-password' : 'chiudi-modal'}">${obbligatorio ? 'Scegli un altro utente' : 'Annulla'}</button>
           <button type="button" class="btn primary" data-action="login-operatore" data-nome="${escapeHtml(nome)}">Entra</button>
         </div>
       </form>
@@ -2829,9 +2830,12 @@ function eventualeSelettoreOperatore() {
   if (operatoreCorrente()) return;
   modalSelettoreOperatore();
 }
+// Con 2+ responsabili e nessun nome scelto non si puo usare Prisma "senza utente": ogni azione verrebbe attribuita a nessuno.
+function operatoreObbligatorio() { return STATE.meta.responsabili.length >= 2 && !operatoreCorrente(); }
 function modalSelettoreOperatore() {
   caricaResponsabiliConPassword();
-  const html = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
+  const obbligatorio = operatoreObbligatorio();
+  const html = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop" ${obbligatorio ? 'data-obbligatorio="1"' : ''}>
     <div class="modal" style="max-width:380px;">
       <h2>Chi sta usando questo PC?</h2>
       <div class="modal-sub">Serve solo per sapere chi ha risposto a un cliente o creato una comunicazione — non è un vero login: chiunque sulla rete dello studio ha comunque accesso completo, come oggi. I referenti con 🔒 hanno una password personale (vedi Impostazioni).</div>
@@ -2841,7 +2845,7 @@ function modalSelettoreOperatore() {
           ${escapeHtml(r)}${(esisteMaster() && ruoloOperatore(r) === 'master') ? ' <span class="tag-maestro">Maestro</span>' : ''}${responsabileHaPassword(r) ? ' 🔒' : ''}
         </button>`).join('')}
       </div>
-      <div class="modal-actions"><button class="btn" data-action="chiudi-modal">Non ora</button></div>
+      ${obbligatorio ? '<div class="helptext">Per entrare devi scegliere un utente.</div>' : '<div class="modal-actions"><button class="btn" data-action="chiudi-modal">Non ora</button></div>'}
     </div>
   </div>`;
   document.getElementById('modalRoot').innerHTML = html;
@@ -15901,6 +15905,7 @@ function aggiornaBottoneAccessoEsterno(tipo) {
 let ACCESSO_LAN_CACHE = null; // null = da caricare, 'errore' = non disponibile da qui, altrimenti {dispositivi, passwordInizialeInFile}
 let ACCESSO_LAN_CARICAMENTO = false;
 let ACCESSO_LAN_ESITO = null;
+let ACCESSO_LAN_VISIBILE = false;
 function caricaAccessoLan(forza) {
   if (!HTTP_SYNC_ATTIVO || ACCESSO_LAN_CARICAMENTO || (ACCESSO_LAN_CACHE !== null && !forza)) return;
   ACCESSO_LAN_CARICAMENTO = true;
@@ -15922,7 +15927,10 @@ function cardAccessoRete() {
           <div><strong>${escapeHtml(d.nome || 'Dispositivo')}</strong><div class="helptext">${escapeHtml(d.ip || '')} · autorizzato il ${fmtDataOra(d.creato)} · ultimo uso ${fmtDataOra(d.ultimoUso)}</div></div>
           <button class="btn small" data-action="lan-revoca" data-id="${escapeHtml(d.id)}">Revoca</button></div>`).join('')
       : '<div class="helptext" style="padding:8px 0;border-top:1px solid var(--border);">Nessun altro dispositivo autorizzato.</div>';
-    corpo = `${c.passwordInizialeInFile ? '<div class="helptext" style="background:var(--giallo-bg);color:var(--giallo);border-radius:8px;padding:8px 10px;margin-bottom:10px;">La password iniziale generata dal server è nel file <b>password-accesso-rete-locale.txt</b> nella cartella di Prisma. Dopo averla data ai colleghi, scegline una tua qui sotto: il file si elimina da solo.</div>' : ''}
+    const rigaPwd = c.password
+      ? `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;"><span class="helptext">Password attuale:</span><code id="lanPasswordVista" style="font-size:15px;font-weight:700;letter-spacing:.04em;background:var(--blu-light);border-radius:6px;padding:4px 10px;user-select:all;">${ACCESSO_LAN_VISIBILE ? escapeHtml(c.password) : '\u2022'.repeat(Math.min(c.password.length, 14))}</code><button class="btn small" data-action="lan-mostra-password">${ACCESSO_LAN_VISIBILE ? 'Nascondi' : 'Mostra'}</button></div>`
+      : '<div class="helptext" style="margin-bottom:12px;">La password attuale non è recuperabile (è stata impostata prima di questa funzione): scegline una nuova qui sotto e la vedrai sempre qui.</div>';
+    corpo = `${rigaPwd}${c.passwordInizialeInFile ? '<div class="helptext" style="background:var(--giallo-bg);color:var(--giallo);border-radius:8px;padding:8px 10px;margin-bottom:10px;">La password iniziale generata dal server è nel file <b>password-accesso-rete-locale.txt</b> nella cartella di Prisma. Dopo averla data ai colleghi, scegline una tua qui sotto: il file si elimina da solo.</div>' : ''}
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
         <input type="text" id="lanNuovaPassword" placeholder="Nuova password (almeno 8 caratteri)" autocomplete="off" style="flex:1;min-width:220px;border:1px solid var(--border);border-radius:8px;padding:8px 10px;" onkeydown="if(event.key==='Enter'){event.preventDefault();var b=document.querySelector('[data-action=lan-cambia-password]');if(b)b.click();}">
         <button class="btn primary small" data-action="lan-cambia-password">Cambia password</button>
@@ -17679,6 +17687,8 @@ function modalHaDatiNonSalvati() {
   return serializzaModal() !== MODAL_SNAPSHOT;
 }
 function chiediPrimaDiChiudereModal() {
+  // Selezione utente obbligatoria (nessun operatore scelto): non si chiude con un click fuori ne' con Esc.
+  if (h('modalRoot') && h('modalRoot').querySelector('[data-obbligatorio]')) return;
   if (!modalHaDatiNonSalvati()) { chiudiModal(); return; }
   mostraConfermaChiusuraModal();
 }
@@ -17832,6 +17842,7 @@ function onClickDelegatoInterno(e) {
     case 'apri-ricerca-globale': modalRicercaGlobale(); break;
     case 'apri-selettore-operatore': modalSelettoreOperatore(); break;
     case 'operatore-scegli': tentaSceltaOperatore(el.dataset.nome); break;
+    case 'operatore-annulla-password': modalSelettoreOperatore(); break;
     case 'login-operatore': eseguiLoginOperatore(el.dataset.nome); break;
     case 'apri-riferimento-chat': modalRiferimentoChat(); break;
     case 'chat-rif-scegli': inserisciRiferimentoChat(el.dataset.tipo, el.dataset.id, el.dataset.label); break;
@@ -19376,6 +19387,7 @@ function onClickDelegatoInterno(e) {
     case 'ia-collegamento': apriModalIaCollegamento(); break;
     case 'ia-copia': { const i = document.getElementById(el.dataset.src); if (i && i.value) copiaTestoNegliAppunti(i.value, 'Copiato negli appunti.'); else toast('Niente da copiare.'); break; }
     case 'ia-nuovo-token': nuovoTokenIa(); break;
+    case 'lan-mostra-password': ACCESSO_LAN_VISIBILE = !ACCESSO_LAN_VISIBILE; render(); break;
     case 'lan-cambia-password': { const v = (h('lanNuovaPassword') || {}).value || ''; azioneAccessoLan('password', { password: v }, 'Password cambiata: tutti i dispositivi dovranno rientrare con la nuova.'); break; }
     case 'lan-revoca': azioneAccessoLan('revoca', { id: el.dataset.id }, 'Dispositivo revocato.'); break;
     case 'lan-revoca-tutti': if (confirm('Disconnettere tutti i dispositivi? Dovranno rientrare con la password dello studio.')) azioneAccessoLan('revoca', { tutti: true }, 'Tutti i dispositivi sono stati disconnessi.'); break;
@@ -21442,6 +21454,9 @@ window.aggiornaAnnualeMeta = aggiornaAnnualeMeta;
 window.modalBenvenutoDopoSetup = modalBenvenutoDopoSetup;
 window.renderNoteAggiornamento = renderNoteAggiornamento;
 window.cardAccessoRete = cardAccessoRete;
+window.operatoreObbligatorio = operatoreObbligatorio;
+window.modalSelettoreOperatore = modalSelettoreOperatore;
+window.modalPasswordOperatore = modalPasswordOperatore;
 window.resetAccessoLanTest = () => { ACCESSO_LAN_CACHE = null; ACCESSO_LAN_CARICAMENTO = false; };
 window.passiSetupStudio = passiSetupStudio;
 window.annualiEffettivi = annualiEffettivi;
