@@ -1173,7 +1173,24 @@ function renderPanoramica() {
   // panelRavvedimento() spostato nel tab Scadenze (task #184, Matteo: "nella panoramica non ha
   // senso"): calcolare quanto costa regolarizzare una scadenza saltata è concettualmente parte
   // delle scadenze, non un dato di sintesi dell'azienda come il resto di questa vista.
-  return panelF24() + panelRitenute() + panelAzienda + panelCom + panelNumeri;
+  return panelPagamentiInRitardo() + panelF24() + panelRitenute() + panelAzienda + panelCom + panelNumeri;
+}
+
+// Pagamenti in ritardo: importi che lo studio ha segnato come "il cliente non può pagare". Il cliente
+// vede cosa resta da versare e da quanti giorni è scaduto, e può scrivere allo studio da qui.
+function panelPagamentiInRitardo() {
+  const lista = VISTA.pagamentiInRitardo || [];
+  if (!lista.length) return '';
+  const totale = lista.reduce((s, p) => s + (p.importo || 0), 0);
+  const righe = lista.map(p => `<div class="item">
+      <div class="t">${escapeHtml(p.nome)}</div>
+      <div class="s">Scadenza originale ${fmtData(p.data)} · <span class="pill ${p.delta.cls}">${escapeHtml(p.delta.txt)}</span>${p.importo != null ? ' · ' + fmtEuro(p.importo) : ''}</div>
+      <button class="btn-secondario" style="margin-top:8px;" data-action="chiedi-info-scadenza" data-id="${escapeHtml(p.id)}" data-nome="${escapeHtml(p.nome)}">Scrivi allo studio per regolarizzare</button>
+    </div>`).join('');
+  return `<div class="panel">${panelHeader(ICONE.documenti, 'var(--rosso-bg)', 'var(--rosso)', 'Pagamenti in ritardo', lista.length)}
+    <div class="empty" style="padding-bottom:8px;">Questi versamenti risultano non ancora pagati${totale > 0 ? ' per un totale di <b>' + fmtEuro(totale) + '</b>' : ''}. Più passa il tempo, più aumentano sanzioni e interessi: scrivici per concordare come regolarizzare (anche con ravvedimento operoso, vedi "Scadenze").</div>
+    ${righe}
+  </div>`;
 }
 
 // Una "bolla" di messaggio, usata sia per il testo iniziale della comunicazione sia per ogni

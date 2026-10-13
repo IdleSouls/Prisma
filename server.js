@@ -296,8 +296,14 @@ function avviaNgrok(porta) {
   });
 }
 const FILE_PAGINA = path.join(CARTELLA, 'gestionale.htm');
-const FILE_DATI = path.join(CARTELLA, 'dati-studio.json');
-const FILE_DATI_TMP = path.join(CARTELLA, 'dati-studio.json.tmp');
+// --- Disposizione delle cartelle ---------------------------------------------------------------
+// Installazione "a cartelle separate" (creata dall'installer: Applicazione / Dati / Documenti clienti /
+// Backup / Log) oppure "piatta" come sempre (tutto accanto a server.js: uso di Matteo e vecchie
+// installazioni). L'installer indica le cartelle con queste variabili d'ambiente; se non ci sono, ogni
+// percorso resta ESATTAMENTE quello di prima.
+const CARTELLA_DATI = process.env.PRISMA_DIR_DATI || CARTELLA; // dati-studio.json, license.json, impostazioni, chiavi
+const FILE_DATI = path.join(CARTELLA_DATI, 'dati-studio.json');
+const FILE_DATI_TMP = path.join(CARTELLA_DATI, 'dati-studio.json.tmp');
 // Vista per l'MCP locale (Claude): quando il gestionale gira via questo server (HTTP_SYNC_ATTIVO),
 // ad ogni salvataggio il browser manda anche la vista già calcolata da esportaVistaMCP() (unica
 // fonte della logica di classificazione, resta sempre e solo in gestionale.htm - vedi commento lì)
@@ -308,11 +314,11 @@ const CARTELLA_MCP_SERVER = path.join(CARTELLA, 'mcp-server');
 const FILE_MCP_VISTA = path.join(CARTELLA_MCP_SERVER, 'gestionale-mcp.json');
 const FILE_MCP_VISTA_TMP = path.join(CARTELLA_MCP_SERVER, 'gestionale-mcp.json.tmp');
 const FILE_LAUNCHER_COLLEGA = path.join(CARTELLA, 'Apri Gestionale (rete studio).html');
-const CARTELLA_DOCUMENTI = path.join(CARTELLA, 'documenti-clienti');
+const CARTELLA_DOCUMENTI = process.env.PRISMA_DIR_DOCUMENTI || path.join(CARTELLA, 'documenti-clienti');
 const FILE_PORTALE_CLIENTE = path.join(CARTELLA, 'portale-cliente.htm');
 const FILE_PORTALE_SW = path.join(CARTELLA, 'portale-sw.js'); // task PWA: service worker statico del portale
-const FILE_PUSH = path.join(CARTELLA, 'push-abbonamenti.json'); // task notifiche push: chiavi VAPID + sottoscrizioni
-const FILE_PUSH_TMP = path.join(CARTELLA, 'push-abbonamenti.json.tmp');
+const FILE_PUSH = path.join(CARTELLA_DATI, 'push-abbonamenti.json'); // task notifiche push: chiavi VAPID + sottoscrizioni
+const FILE_PUSH_TMP = path.join(CARTELLA_DATI, 'push-abbonamenti.json.tmp');
 
 // ---------------------------------------------------------------------------
 // Log su file (task #158): senza questo, un problema all'avvio (es. licenza non valida) capitato
@@ -321,7 +327,7 @@ const FILE_PUSH_TMP = path.join(CARTELLA, 'push-abbonamenti.json.tmp');
 // riga importante finisce anche qui, cosi' c'e' sempre qualcosa da guardare (o da mandare a chi
 // assiste) anche quando non c'e' nessun terminale aperto. Scrittura "best effort": se fallisce (es.
 // cartella non scrivibile) non deve mai far crashare l'app per colpa del log stesso.
-const CARTELLA_LOG = path.join(CARTELLA, 'logs');
+const CARTELLA_LOG = process.env.PRISMA_DIR_LOG || path.join(CARTELLA, 'logs');
 const FILE_LOG = path.join(CARTELLA_LOG, 'prisma.log');
 const MAX_RIGHE_LOG = 5000; // oltre questa soglia si accorcia da solo, tenendo le più recenti
 function scriviLog(riga) {
@@ -364,7 +370,7 @@ scriviLog('Avvio di Prisma...');
   const FILE_CHIAVE_PUBBLICA = path.join(CARTELLA, 'licensing', 'chiave-pubblica.pem');
   if (!process.env.PRISMA_CHIAVE_PUBBLICA && !fs.existsSync(FILE_CHIAVE_PUBBLICA)) return; // installazione non licenziata (sviluppo/uso interno) - nessun controllo
 
-  const FILE_LICENZA = path.join(CARTELLA, 'license.json');
+  const FILE_LICENZA = path.join(CARTELLA_DATI, 'license.json');
   const licensingLib = require(path.join(CARTELLA, 'licensing', 'lib.js'));
   const chiavePubblica = process.env.PRISMA_CHIAVE_PUBBLICA || fs.readFileSync(FILE_CHIAVE_PUBBLICA, 'utf8');
 
@@ -390,7 +396,7 @@ scriviLog('Avvio di Prisma...');
         const { dialog } = require('electron');
         dialog.showErrorBox('Prisma - licenza non attiva',
           messaggio + '\n\nIl codice macchina di questo computer è:\n\n' + licensingLib.calcolaFingerprint() +
-          '\n\nComunicalo a chi ti ha fornito Prisma: riceverai un file "license.json" da mettere nella cartella ' + CARTELLA + '.');
+          '\n\nComunicalo a chi ti ha fornito Prisma: riceverai un file "license.json" da mettere nella cartella ' + CARTELLA_DATI + '.');
       }
     } catch (e) { /* best effort */ }
     process.exit(1);
@@ -423,7 +429,7 @@ scriviLog('Avvio di Prisma...');
 const URL_MANIFESTO_AGGIORNAMENTI = 'https://raw.githubusercontent.com/IdleSouls/Prisma/main/versione.json';
 // Cambiala qui a ogni nuova versione pubblicata (deve combaciare con quella scritta nel
 // "versione.json" caricato su GitHub, altrimenti il confronto non ha senso).
-const VERSIONE_LOCALE = '1.17.0';
+const VERSIONE_LOCALE = '1.18.0';
 // Solo questi file possono essere sovrascritti da un aggiornamento - mai un nome libero/a piacere
 // del manifesto, per non correre il rischio (anche solo teorico, es. account GitHub compromesso)
 // di far scrivere un file arbitrario altrove sul PC del cliente.
@@ -943,7 +949,7 @@ function convertiFileConSoffice(percorsoInput, formatoDestinazione, cartellaOutp
 // campo password di ogni credenziale, appena prima di scrivere dati-studio.json e appena dopo
 // averlo letto. Se la cartella con la chiave si perde le password cifrate non sono più
 // recuperabili: è un compromesso accettato per non dover gestire una password-maestra lato utente.
-const FILE_CHIAVE_CREDENZIALI = path.join(CARTELLA, 'credenziali.key');
+const FILE_CHIAVE_CREDENZIALI = path.join(CARTELLA_DATI, 'credenziali.key');
 function chiaveCredenziali() {
   try {
     if (fs.existsSync(FILE_CHIAVE_CREDENZIALI)) {
@@ -1136,7 +1142,7 @@ function inviaPushNuoveComunicazioni(precedente, nuovo) {
 // NON resta sempre acceso (si avvia "ogni tanto"), c'è anche uno snapshot di sicurezza a ogni
 // avvio: se il PC si accende più tardi delle 8/12/16 di oggi, quell'orario non scatterebbe mai da
 // solo senza questo.
-const CARTELLA_BACKUP = path.join(CARTELLA, 'backup');
+const CARTELLA_BACKUP = process.env.PRISMA_DIR_BACKUP || path.join(CARTELLA, 'backup');
 const ORARI_BACKUP = [8, 12, 16]; // ore locali del giorno in cui si tenta uno snapshot fisso
 const GIORNI_DA_CONSERVARE_BACKUP = 30;
 let ultimaFasciaBackupFatta = null; // 'YYYY-MM-DD-<ora>' dell'ultima fascia oraria già tentata oggi
@@ -1279,14 +1285,14 @@ function specchiaCartella(origine, destinazione) {
 }
 function eseguiBackupDocumentiEConfig() {
   try {
-    const n = specchiaCartella(path.join(CARTELLA, 'documenti-clienti'), path.join(CARTELLA_BACKUP, 'documenti-clienti'));
+    const n = specchiaCartella(CARTELLA_DOCUMENTI, path.join(CARTELLA_BACKUP, 'documenti-clienti'));
     const cfg = path.join(CARTELLA_BACKUP, 'config');
     fs.mkdirSync(cfg, { recursive: true });
     // credenziali.key SOLO nella copia locale: senza la chiave le password cifrate non si recuperano
     // dopo un ripristino; NON va nella copia esterna (può essere un cloud): lì resterebbe accanto ai dati
     // cifrati e annullerebbe la cifratura. Per un ripristino da copia esterna la chiave va conservata a parte.
     for (const f of FILE_CONFIG_BACKUP.concat(['credenziali.key'])) {
-      const o = path.join(CARTELLA, f);
+      const o = path.join(f === 'package.json' ? CARTELLA : CARTELLA_DATI, f);
       if (fs.existsSync(o)) fs.copyFileSync(o, path.join(cfg, f));
     }
     if (n) console.log(`[gestionale] Backup documenti clienti: ${n} file copiati in backup/documenti-clienti`);
@@ -1301,7 +1307,7 @@ function eseguiBackupDocumentiEConfig() {
 // su un altro disco / NAS / cartella sincronizzata (OneDrive, Google Drive...) a ogni giro di backup
 // si copia lì: dati correnti + una copia al giorno (30 giorni), documenti dei clienti (specchio,
 // senza mai cancellare) e file di configurazione. La cartella si imposta da Impostazioni > Dati.
-const FILE_BACKUP_ESTERNO = path.join(CARTELLA, 'backup-esterno.json');
+const FILE_BACKUP_ESTERNO = path.join(CARTELLA_DATI, 'backup-esterno.json');
 let ULTIMO_BACKUP_ESTERNO = null; // {data, ok, errore, documenti}
 function leggiConfigBackupEsterno() {
   try { return JSON.parse(fs.readFileSync(FILE_BACKUP_ESTERNO, 'utf8')) || {}; } catch (e) { return {}; }
@@ -1322,11 +1328,11 @@ function eseguiBackupEsterno() {
         try { if (fs.statSync(path.join(dest, f)).mtimeMs < soglia) fs.unlinkSync(path.join(dest, f)); } catch (e) { /* ignora */ }
       });
     }
-    const nDoc = specchiaCartella(path.join(CARTELLA, 'documenti-clienti'), path.join(dest, 'documenti-clienti'));
+    const nDoc = specchiaCartella(CARTELLA_DOCUMENTI, path.join(dest, 'documenti-clienti'));
     const cfgDir = path.join(dest, 'config');
     fs.mkdirSync(cfgDir, { recursive: true });
     for (const f of FILE_CONFIG_BACKUP.concat(FILE_PIATTAFORMA_BACKUP)) {
-      const o = path.join(CARTELLA, f);
+      const o = path.join(FILE_PIATTAFORMA_BACKUP.includes(f) || f === 'package.json' ? CARTELLA : CARTELLA_DATI, f);
       if (fs.existsSync(o)) fs.copyFileSync(o, path.join(cfgDir, f));
     }
     ULTIMO_BACKUP_ESTERNO = { data: new Date().toISOString(), ok: true, errore: null, documenti: nDoc };
@@ -1687,7 +1693,7 @@ function gestisciRichiesta(req, res) {
       const chiavePub = chiavePubblicaLicenza();
       if (chiavePub) {
         const lib = require(path.join(CARTELLA, 'licensing', 'lib.js'));
-        const lic = JSON.parse(fs.readFileSync(path.join(CARTELLA, 'license.json'), 'utf8'));
+        const lic = JSON.parse(fs.readFileSync(path.join(CARTELLA_DATI, 'license.json'), 'utf8'));
         const esito = lib.verificaLicenza(lic, chiavePub);
         info = { richiesta: true, valida: !!esito.valida, studio: (esito.dati || lic).studio || null, scadenza: (esito.dati || lic).scadenza || null, fingerprint: lib.calcolaFingerprint(), motivo: esito.motivo || null };
       }
@@ -2948,11 +2954,11 @@ const server = http.createServer((req, res) => {
 // comunque continuare a usare solo questa porta - ngrok la raggiunge lo stesso.
 // ---------------------------------------------------------------------------
 const PORTA_ESTERNA = 8421;
-const FILE_ACCESSO_ESTERNO = path.join(CARTELLA, 'accesso-esterno.json');
+const FILE_ACCESSO_ESTERNO = path.join(CARTELLA_DATI, 'accesso-esterno.json');
 
 // Password personale opzionale per referente (vedi commento su sessioneAttivaPerNome più sopra) -
 // stesso schema di FILE_ACCESSO_ESTERNO: JSON in chiaro nella cartella dell'app, nome -> password.
-const FILE_RESPONSABILI_PASSWORD = path.join(CARTELLA, 'responsabili-password.json');
+const FILE_RESPONSABILI_PASSWORD = path.join(CARTELLA_DATI, 'responsabili-password.json');
 function leggiResponsabiliPassword() {
   try {
     const raw = fs.readFileSync(FILE_RESPONSABILI_PASSWORD, 'utf8');

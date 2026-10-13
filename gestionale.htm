@@ -71,6 +71,21 @@ input,select,textarea{font-family:inherit;font-size:14px;}
 #sidebar .navgroup.collassabile .chev{font-size:9.5px;opacity:.85;width:10px;flex:none;}
 #sidebar .navgroup.collassabile .nav-badge{margin-left:0;}
 .navgroup-items.chiuso{display:none;}
+#sidebar .nav-grip{margin-left:auto;font-size:12px;letter-spacing:-2px;opacity:.6;cursor:grab;padding:0 4px;user-select:none;}
+#sidebar .navitem[draggable="true"],#sidebar .navgroup[draggable="true"]{cursor:grab;}
+#sidebar .trascinato{opacity:.4;}
+#sidebar .drag-prima{box-shadow:inset 0 3px 0 #ffd24d;}
+#sidebar .drag-dopo{box-shadow:inset 0 -3px 0 #ffd24d;}
+#sidebar .drag-dentro{outline:2px dashed #ffd24d;outline-offset:-2px;}
+#sidebar .nav-edit-bar{margin:8px 10px;padding:10px 12px;border-radius:8px;background:rgba(255,255,255,.12);color:#fff;font-size:13px;}
+#sidebar .nav-personalizza{margin:12px 22px;font-size:12px;color:#c3d0e8;cursor:pointer;opacity:.75;}
+#sidebar .nav-personalizza:hover{opacity:1;text-decoration:underline;}
+#sidebar .navitem .nav-star{margin-left:auto;font-size:13px;line-height:1;opacity:0;color:#ffd24d;padding:0 2px;transition:opacity .12s;}
+#sidebar .navitem:hover .nav-star{opacity:.6;}
+#sidebar .navitem .nav-star.on{opacity:1;}
+#sidebar .navitem:hover .nav-star:hover{opacity:1;}
+#sidebar .navitem.active .nav-star{color:#d49b00;}
+#sidebar .navitem .nav-star ~ .nav-badge{margin-left:6px;}
 #sidebar .navitem .nav-badge{margin-left:auto;background:var(--rosso,#d33);color:#fff;font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:20px;min-width:16px;text-align:center;}
 .nav-badge{background:var(--rosso,#d33);color:#fff;font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:20px;min-width:16px;text-align:center;flex:none;}
 /* Chat interna (task Matteo) */
@@ -118,6 +133,12 @@ input,select,textarea{font-family:inherit;font-size:14px;}
 
 #main{margin-left:var(--sidebar-w);min-height:100vh;}
 #topbar{display:flex;align-items:center;justify-content:space-between;padding:16px 30px;background:#fff;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:5;}
+#topbar{flex-wrap:wrap;gap:10px 16px;}
+#topbar > div:first-child{flex:1 1 280px;min-width:0;}
+#topbar > div:last-child{flex:0 1 auto;display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap;justify-content:flex-end;margin-left:auto;}
+#topbar .btn,#topbar .field,#topbar #syncBadge{white-space:nowrap;flex:0 0 auto;}
+#topbar #syncBadge{font-size:11.5px;}
+@media (max-width:1100px){#topbar{padding:12px 18px;}#topbar #syncBadge{display:none;}#topbar .sub{display:none;}}
 #topbar h1{font-size:21px;margin:0;font-weight:800;letter-spacing:-.02em;color:var(--blu-scuro);}
 #topbar .sub{font-size:12.5px;color:var(--text-mut);margin-top:3px;font-weight:500;}
 #content{padding:26px 30px 60px 30px;}
@@ -161,6 +182,22 @@ tr.non-letta td{background:#FFF7F5;}
 tr.non-letta:hover td{background:#FCEEEA;}
 .puntino-rosso{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--rosso,#d33);vertical-align:middle;margin-right:2px;}
 
+/* Cosa si può evidenziare col mouse (richiesta Matteo): i DATI sì (celle di tabella, anagrafiche, note,
+   testi dei messaggi, campi di input: servono per copiare codici fiscali, importi, email), l'INTERFACCIA
+   no (menu laterale, barra in alto, titoli, pulsanti, schede/tab, etichette dei campi, badge e pillole,
+   intestazioni di tabella, barre degli strumenti, paginazione). Così trascinare il mouse sulla pagina
+   non colora più tutto: si seleziona solo ciò che ha senso copiare. */
+#sidebar, #topbar, #toast, h1, h2, h3, button, .btn, select, summary, th, label, legend,
+.badge, .pill, .pill-delta, .nav-badge, .section-title, .field > label, .toolbar, .imp-tabbar, .pd-nav,
+.tabbar, .navitem, .navgroup, .icon-x, .stato-badge, .modal-actions, .paginazione, .guida-tab,
+[data-action="nav"], [role="tab"], [role="button"] {
+  -webkit-user-select: none; user-select: none;
+}
+input, textarea, [contenteditable="true"], td, .sd-v, .kv .v, .helptext, pre, code, .selezionabile {
+  -webkit-user-select: text; user-select: text;
+}
+/* ... ma i controlli dentro una cella restano non selezionabili */
+td button, td .btn, td select, td .badge, td .pill-delta, td label { -webkit-user-select: none; user-select: none; }
 .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;letter-spacing:.01em;}
 .badge.stato-da-fare{background:var(--giallo-bg);color:var(--giallo);}
 .badge.stato-calcolato{background:#BDD7EE;color:var(--blu-scuro);}
@@ -168,6 +205,9 @@ tr.non-letta:hover td{background:#FCEEEA;}
 .badge.stato-comunicato-al-cliente{background:var(--viola-bg);color:var(--viola);}
 .badge.stato-errore{background:var(--rosso-bg);color:var(--rosso);}
 .badge.stato-non-applicabile{background:var(--grigio-bg);color:var(--grigio);}
+.badge.stato-cliente-non-puo-pagare{background:#FBE0CC;color:#B4531A;}
+button.importo-ok{padding:3px 8px;}
+button.importo-ok.salvato{background:var(--verde-bg);color:var(--verde);border-color:transparent;}
 .badge.regime{background:var(--blu-light);color:var(--blu-scuro);}
 .badge.cessato{background:var(--grigio-bg);color:var(--grigio);}
 .badge.attivo{background:var(--verde-bg);color:var(--verde);}
@@ -179,6 +219,7 @@ select.statoSel.stato-inviato-telematicamente{background:var(--verde-bg);color:v
 select.statoSel.stato-comunicato-al-cliente{background:var(--viola-bg);color:var(--viola);border-color:transparent;}
 select.statoSel.stato-errore{background:var(--rosso-bg);color:var(--rosso);border-color:transparent;}
 select.statoSel.stato-non-applicabile{background:var(--grigio-bg);color:var(--grigio);border-color:transparent;}
+select.statoSel.stato-cliente-non-puo-pagare{background:#FBE0CC;color:#B4531A;border-color:transparent;}
 
 .pill-delta{font-weight:700;font-size:12px;padding:2px 8px;border-radius:6px;white-space:nowrap;display:inline-block;}
 .pill-delta.scaduto{background:var(--rosso-bg);color:var(--rosso);}
@@ -724,7 +765,7 @@ html[data-tema="scuro"] .sem770 .esc{background:#ddd;color:#111;}
       <h1 id="pageTitle" style="display:inline-block;">Dashboard</h1> <button class="btn small ghost" id="btnGuidaTab" data-action="guida-tab" title="Come si usa questa sezione" style="display:none;align-items:center;justify-content:center;border-radius:50%;width:26px;height:26px;padding:0;line-height:1;font-size:13px;vertical-align:middle;position:relative;top:-2px;margin-left:8px;border:1px solid var(--border);">?</button>
       <div class="sub" id="pageSub"></div>
     </div>
-    <div style="display:flex;align-items:center;gap:10px;">
+    <div>
       <span id="syncBadge" class="helptext"></span>
       <button class="btn" id="operatoreBadge" data-action="apri-selettore-operatore" style="display:none;"></button>
       <button class="btn" id="btnTema" data-action="cambia-tema" title="Tema chiaro / scuro" aria-label="Cambia tema">🌙</button>
@@ -756,7 +797,25 @@ const MESI_COMPLETI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno',
   'Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
 const GIORNI_IT = ['Lun','Mar','Mer','Gio','Ven','Sab','Dom'];
 
-const STATI_SCADENZA = ['Da fare', 'Calcolato', 'Inviato telematicamente', 'Comunicato al cliente', 'Errore', 'Non applicabile'];
+/* "Cliente non può pagare": il cliente ha già detto/si sa che non riuscirà a versare l'importo (es.
+   società in ritardo con più versamenti IVA). Resta una scadenza APERTA (va ancora gestita, es. con
+   ravvedimento), ma con uno stato visibilmente diverso da "Da fare". */
+const STATO_NON_PUO_PAGARE = 'Cliente non può pagare';
+const STATI_SCADENZA = ['Da fare', 'Calcolato', 'Inviato telematicamente', 'Comunicato al cliente', 'Errore', STATO_NON_PUO_PAGARE, 'Non applicabile'];
+/* Importi nelle scadenze: formato italiano (1.234,56) in visualizzazione, numero in memoria. */
+function formatImportoIT(n) {
+  if (n === null || n === undefined || n === '' || isNaN(Number(n))) return '';
+  // useGrouping:'always': l'italiano di default non mette il punto sulle migliaia a 4 cifre (1234 → "1234")
+  return Number(n).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: 'always' });
+}
+function parseImportoIT(testo) {
+  let t = String(testo == null ? '' : testo).replace(/[€\s]/g, '');
+  if (t === '') return null;
+  if (t.indexOf(',') >= 0) t = t.replace(/\./g, '').replace(',', '.'); // 1.234,56 → 1234.56
+  else if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '');   // 1.234 → 1234 (punto = migliaia)
+  const n = Number(t);
+  return isNaN(n) ? NaN : Math.round(n * 100) / 100;
+}
 const STATI_SCADENZA_DEFINITIVI = ['Inviato telematicamente', 'Comunicato al cliente'];
 const STATI_SCADENZA_CHIUSI = [...STATI_SCADENZA_DEFINITIVI, 'Non applicabile'];
 const STATI_RITENUTA = ['In attesa di pagamento', 'Da pagare', 'Pagata', 'Inviata', 'Non pagata'];
@@ -809,7 +868,7 @@ function patchDaScelta(valore, fasi) {
 }
 /* Opzioni del menu di avanzamento di una scadenza: Da fare, le sue fasi, poi Errore / Non applicabile. */
 function opzioniAvanzamento(s) {
-  return ['Da fare'].concat(s.fasi || [], ['Errore', 'Non applicabile']);
+  return ['Da fare'].concat(s.fasi || [], ['Errore', STATO_NON_PUO_PAGARE, 'Non applicabile']);
 }
 
 const SOGLIA_CUMULO_RITENUTE = 100;
@@ -1378,11 +1437,15 @@ function dataScadenza(anno, meseIdx1, giorno) {
    Si applicano alle scadenze generate con quel tipo e quella data originale: la chiave/override della scadenza
    resta legata alla data originale, quindi stati e note già inseriti non si perdono. */
 function applicaProroga(dataISO, clienteId, tipoNome) {
+  /* Più proroghe sulla stessa scadenza si sommano a catena (es. saldo e I acconto: 30/06 ordinaria,
+     poi 20/07, poi 20/08): il cliente ha la data PIÙ AVANZATA tra le proroghe a cui aderisce. Chi non
+     aderisce a nessuna resta sulla data ordinaria; chi aderisce solo alla prima resta al 20/07. */
   const pr = (typeof STATE !== 'undefined' && STATE.proroghe) || [];
+  let migliore = dataISO;
   for (const p of pr) {
-    if (p.tipo === tipoNome && p.dataOriginale === dataISO && (!p.clienteIds || p.clienteIds.includes(clienteId))) return p.dataNuova;
+    if (p.tipo === tipoNome && p.dataOriginale === dataISO && (!p.clienteIds || p.clienteIds.includes(clienteId)) && p.dataNuova > migliore) migliore = p.dataNuova;
   }
-  return dataISO;
+  return migliore;
 }
 function clienteGeneraScadenze(c, anno) {
   if (!c) return false;
@@ -2210,6 +2273,7 @@ function normalizzaStatoCaricato(parsed) {
   migraNoteTaskTeam(stato);
   migraCampiCredenziali(stato);
   unisciLibriSociali(stato);
+  assicuraLibriSocieta(stato);
   if (!Array.isArray(stato.stampeLibri)) stato.stampeLibri = [];
   if (!stato.stampeLibriFatte || typeof stato.stampeLibriFatte !== 'object') stato.stampeLibriFatte = {};
   /* Una tantum: il modello "in stile lettera" (copia del Word dello studio) compare da solo tra i modelli. */
@@ -2496,8 +2560,8 @@ function caricaNavGruppiApertiLocale() {
   try {
     const raw = (typeof localStorage !== 'undefined') && localStorage.getItem(LS_KEY_NAV_APERTI);
     const arr = raw ? JSON.parse(raw) : null;
-    NAV_GRUPPI_APERTI = new Set(Array.isArray(arr) ? arr : ['Panoramica']);
-  } catch (err) { NAV_GRUPPI_APERTI = new Set(['Panoramica']); }
+    NAV_GRUPPI_APERTI = new Set(Array.isArray(arr) ? arr : ['Oggi']);
+  } catch (err) { NAV_GRUPPI_APERTI = new Set(['Oggi']); }
 }
 function salvaNavGruppiApertiLocale() {
   try {
@@ -3640,6 +3704,17 @@ function aggiornaScadenza(id, patch, fasiNote) {
   }
   STATE.scadenzeOverrides[id] = next;
   salvaStato();
+}
+/* Salva l'importo di una scadenza periodica scritto in formato italiano (1.234,56), lo riformatta nel
+   campo e segna il tasto ✓ come confermato. Senza render(): non si perde il focus. */
+function salvaImportoScadenza(id, input, conToast) {
+  const n = parseImportoIT(input.value);
+  const btn = input.parentElement && input.parentElement.querySelector('button.importo-ok');
+  if (n !== null && isNaN(n)) { toast('Importo non valido: usa cifre e virgola, es. 1.234,56', true); return; }
+  aggiornaScadenza(id, { importo: n });
+  input.value = n === null ? '' : formatImportoIT(n);
+  if (btn) btn.classList.toggle('salvato', n !== null);
+  if (conToast) toast(n === null ? 'Importo rimosso' : 'Importo confermato: € ' + formatImportoIT(n));
 }
 /* Log di annotazioni testuali e datate su una scadenza — diverso dalla "nota" (una riga sola,
    sempre in chiaro nella tabella Scadenze, si sovrascrive): qui ogni voce resta con la sua data,
@@ -4896,46 +4971,47 @@ function accessoPortalePuoVedere(accesso, sezione) {
 
 /* -------------------- 4) RENDER — shell + nav -------------------- */
 const NAV = [
-  { group: 'Panoramica', items: [
+  { group: 'Oggi', items: [
     { id: 'oggi', label: 'Il mio lavoro', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3.5" width="16" height="17" rx="2.5"/><path d="M8 9l1.8 1.8L13 7.6"/><path d="M8 15h8"/></svg>' },
     { id: 'dashboard', label: 'Dashboard', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>' },
-    { id: 'cruscotto', label: 'Cruscotto titolare', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>' },
     { id: 'calendario', label: 'Calendario', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="8" y1="2.5" x2="8" y2="6.5"/><line x1="16" y1="2.5" x2="16" y2="6.5"/></svg>' },
   ]},
-  { group: 'Anagrafiche', items: [
+  { group: 'Clienti', items: [
     { id: 'clienti', label: 'Clienti', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="3.5" cy="6" r="1.3" fill="currentColor" stroke="none"/><circle cx="3.5" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="3.5" cy="18" r="1.3" fill="currentColor" stroke="none"/></svg>' },
     { id: 'rubrica', label: 'Rubrica', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="14" height="16" rx="2"/><circle cx="10" cy="10" r="2.3"/><path d="M6.5 16c0-2 1.6-3.4 3.5-3.4s3.5 1.4 3.5 3.4"/><line x1="19" y1="8" x2="21.5" y2="8"/><line x1="19" y1="12" x2="21.5" y2="12"/><line x1="19" y1="16" x2="21.5" y2="16"/></svg>' },
     { id: 'schedacliente', label: 'Scheda cliente', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/></svg>' },
     { id: 'soci', label: 'Soci e referenti', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><path d="M3.5 20c0-3 2.5-5.2 5.5-5.2s5.5 2.2 5.5 5.2"/><circle cx="17" cy="9" r="2.4"/><path d="M14.8 14.3c2.6.3 4.7 2.3 4.7 5.2"/></svg>' },
   ]},
-  { group: 'Scadenze', items: [
+  { group: 'Adempimenti', items: [
     { id: 'scadenze', label: 'Scadenze periodiche', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/></svg>' },
-    { id: 'carico', label: 'Carico di lavoro', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16M15 4v16"/></svg>' },
-    { id: 'proroghe', label: 'Proroghe', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>' },
-    { id: 'cpb', label: 'Concordato preventivo', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>' },
-    { id: 'ritenute', label: 'Ritenute d\'acconto', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="2.3"/><circle cx="17" cy="17" r="2.3"/><line x1="18" y1="6" x2="6" y2="18"/></svg>' },
     { id: 'annuali', label: 'Adempimenti annuali', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M8 12.5l2.5 2.5 5.5-6"/></svg>' },
+    { id: 'ritenute', label: 'Ritenute d\'acconto', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="2.3"/><circle cx="17" cy="17" r="2.3"/><line x1="18" y1="6" x2="6" y2="18"/></svg>' },
     { id: 'f24', label: 'F24', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5h8l5 5v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-18a1 1 0 0 1 1-1z"/><path d="M14 2.5v5h5"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>' },
-  ]},
-  { group: 'Team', items: [
-    { id: 'taskteam', label: 'Task team', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="5" height="16" rx="1.3"/><rect x="9.5" y="4" width="5" height="10" rx="1.3"/><rect x="16" y="4" width="5" height="13" rx="1.3"/></svg>' },
-    { id: 'chat', label: 'Chat interna', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5h16a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H9l-4.5 4v-4H4a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1z"/></svg>' },
-    { id: 'procedure', label: 'Procedure interne', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3.5h6a1.5 1.5 0 0 1 1.5 1.5v14a1.5 1.5 0 0 1-1.5 1.5H9a1.5 1.5 0 0 1-1.5-1.5V5A1.5 1.5 0 0 1 9 3.5z"/><path d="M8.5 8.5h7"/><path d="M9.3 12.2l1.6 1.6 3-3.4"/></svg>' },
+    { id: 'cpb', label: 'Concordato preventivo', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>' },
   ]},
   { group: 'Relazione cliente', items: [
     { id: 'onboarding', label: 'Onboarding', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7"/><path d="M9 7h8v8"/></svg>' },
     { id: 'antiriciclaggio', label: 'Antiriciclaggio', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3.2v5.3c0 4.6-3 8.8-7 10-4-1.2-7-5.4-7-10V6.2z"/><path d="M9.2 12l2 2 3.6-4.2"/></svg>' },
     { id: 'comunicazioni', label: 'Comunicazioni', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="M3 6.5l9 6.5 9-6.5"/></svg>' },
     { id: 'documenti', label: 'Documenti', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6.5a1.5 1.5 0 0 1 1.5-1.5h4.5l2 2.5h8.5a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18z"/></svg>' },
-    { id: 'preventivi', label: 'Preventivi e mandati', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5h8l5 5v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-18a1 1 0 0 1 1-1z"/><path d="M14 2.5v5h5"/><path d="M8 12.5l2.5 2.5 5.5-6"/></svg>' },
-    { id: 'incassi', label: 'Incassi', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9v.01M18 15v.01"/></svg>' },
-    { id: 'fatturazione', label: 'Da fatturare', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h5"/></svg>' },
-  { id: 'libri', label: 'Libri sociali', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h12a3 3 0 0 1 3 3v13H7a3 3 0 0 1-3-3z"/><path d="M4 17a3 3 0 0 1 3-3h12"/></svg>' },
+    { id: 'libri', label: 'Libri sociali', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h12a3 3 0 0 1 3 3v13H7a3 3 0 0 1-3-3z"/><path d="M4 17a3 3 0 0 1 3-3h12"/></svg>' },
     { id: 'portale', label: 'Portale cliente', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2"/><line x1="3" y1="8.5" x2="21" y2="8.5"/><circle cx="6" cy="6.5" r=".6" fill="currentColor" stroke="none"/><circle cx="8.2" cy="6.5" r=".6" fill="currentColor" stroke="none"/></svg>' },
   ]},
-  { group: 'Analisi cliente', items: [
+  { group: 'Fatturazione', items: [
+    { id: 'preventivi', label: 'Preventivi e mandati', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5h8l5 5v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-18a1 1 0 0 1 1-1z"/><path d="M14 2.5v5h5"/><path d="M8 12.5l2.5 2.5 5.5-6"/></svg>' },
+    { id: 'fatturazione', label: 'Da fatturare', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h5"/></svg>' },
+    { id: 'incassi', label: 'Incassi', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9v.01M18 15v.01"/></svg>' },
+  ]},
+  { group: 'Analisi', items: [
+    { id: 'cruscotto', label: 'Cruscotto titolare', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>' },
     { id: 'bilanci', label: 'Bilanci & KPI', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="20" x2="20" y2="20"/><rect x="5" y="13" width="3.5" height="7"/><rect x="10.2" y="8" width="3.5" height="12"/><rect x="15.4" y="4" width="3.5" height="16"/></svg>' },
     { id: 'contabilita', label: 'Contabilità', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2.5" width="16" height="19" rx="2"/><line x1="7" y1="6.5" x2="17" y2="6.5"/><circle cx="7.5" cy="11" r=".9" fill="currentColor" stroke="none"/><circle cx="12" cy="11" r=".9" fill="currentColor" stroke="none"/><circle cx="16.5" cy="11" r=".9" fill="currentColor" stroke="none"/><circle cx="7.5" cy="15" r=".9" fill="currentColor" stroke="none"/><circle cx="12" cy="15" r=".9" fill="currentColor" stroke="none"/><circle cx="16.5" cy="15" r=".9" fill="currentColor" stroke="none"/><circle cx="7.5" cy="19" r=".9" fill="currentColor" stroke="none"/><circle cx="12" cy="19" r=".9" fill="currentColor" stroke="none"/><circle cx="16.5" cy="19" r=".9" fill="currentColor" stroke="none"/></svg>' },
+  ]},
+  { group: 'Squadra', items: [
+    { id: 'taskteam', label: 'Task team', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="5" height="16" rx="1.3"/><rect x="9.5" y="4" width="5" height="10" rx="1.3"/><rect x="16" y="4" width="5" height="13" rx="1.3"/></svg>' },
+    { id: 'chat', label: 'Chat interna', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5h16a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H9l-4.5 4v-4H4a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1z"/></svg>' },
+    { id: 'procedure', label: 'Procedure interne', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3.5h6a1.5 1.5 0 0 1 1.5 1.5v14a1.5 1.5 0 0 1-1.5 1.5H9a1.5 1.5 0 0 1-1.5-1.5V5A1.5 1.5 0 0 1 9 3.5z"/><path d="M8.5 8.5h7"/><path d="M9.3 12.2l1.6 1.6 3-3.4"/></svg>' },
+    { id: 'carico', label: 'Carico di lavoro', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16M15 4v16"/></svg>' },
   ]},
   { group: 'Sistema', items: [
     { id: 'modelli', label: 'Modelli documenti', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5h8l5 5v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-18a1 1 0 0 1 1-1z"/><path d="M14 2.5v5h5"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="15.5" x2="16" y2="15.5"/><line x1="8" y1="19" x2="12.5" y2="19"/></svg>' },
@@ -5061,22 +5137,136 @@ function badgeVoceNav(it) {
    diretto verso una voce dentro un gruppo chiuso. Un gruppo chiuso con notifiche non lette al suo
    interno mostra comunque un pallino/numero sull'intestazione, così un badge non sparisce solo
    perché il gruppo è collassato. */
+/* Preferiti del menu (richiesta Matteo): una stellina su ogni voce la fissa in un gruppo "Preferiti" in
+   cima alla sidebar. Per dispositivo (localStorage), come i gruppi aperti: è una comodità di
+   interfaccia, non un dato dello studio. */
+const LS_KEY_NAV_PREFERITI = 'gestionaleNavPreferiti_v1';
+let NAV_PREFERITI = null;
+/* Preferiti e layout sono PERSONALI: la chiave include l'operatore, così Matteo e Sabrina sullo stesso
+   PC (o con lo stesso browser) non si ritrovano i preferiti l'uno dell'altra. Senza operatore scelto
+   si usa una chiave "ospite" a parte. */
+let NAV_PREFERITI_DI = null;
+function chiaveNavPersonale(base) { return base + '::' + (operatoreCorrente() || '_ospite'); }
+function caricaNavPreferiti() {
+  NAV_PREFERITI_DI = operatoreCorrente() || '_ospite';
+  try {
+    const raw = (typeof localStorage !== 'undefined') && localStorage.getItem(chiaveNavPersonale(LS_KEY_NAV_PREFERITI));
+    const arr = raw ? JSON.parse(raw) : [];
+    NAV_PREFERITI = Array.isArray(arr) ? arr.filter(x => typeof x === 'string') : [];
+  } catch (err) { NAV_PREFERITI = []; }
+}
+function toggleNavPreferito(id) {
+  if (!NAV_PREFERITI || NAV_PREFERITI_DI !== (operatoreCorrente() || '_ospite')) caricaNavPreferiti();
+  const i = NAV_PREFERITI.indexOf(id);
+  if (i >= 0) NAV_PREFERITI.splice(i, 1); else NAV_PREFERITI.push(id);
+  try { if (typeof localStorage !== 'undefined') localStorage.setItem(chiaveNavPersonale(LS_KEY_NAV_PREFERITI), JSON.stringify(NAV_PREFERITI)); } catch (err) { /* solo comodità */ }
+}
+/* Menu personalizzabile (richiesta Matteo): ognuno può cambiare l'ordine dei macrogruppi e dei singoli
+   tab, e spostare un tab da un gruppo all'altro, con il drag & drop in modalità "Personalizza menu".
+   Il layout è salvato per dispositivo (localStorage). NAV resta il layout di fabbrica: voci nuove
+   introdotte da un aggiornamento compaiono da sole nel loro gruppo di default, quelle sparite si
+   ignorano, e "Ripristina" torna al layout standard. */
+const LS_KEY_NAV_LAYOUT = 'gestionaleNavLayout_v1';
+let NAV_MODIFICA = false;
+function navLayoutPersonale() {
+  try {
+    const raw = (typeof localStorage !== 'undefined') && localStorage.getItem(chiaveNavPersonale(LS_KEY_NAV_LAYOUT));
+    const arr = raw ? JSON.parse(raw) : null;
+    if (Array.isArray(arr) && arr.every(g => g && typeof g.group === 'string' && Array.isArray(g.items))) return arr;
+  } catch (err) { /* layout rovinato: si ignora */ }
+  return null;
+}
+function navEffettivo() {
+  const base = NAV.map(g => ({ group: g.group, items: g.items.slice() }));
+  const mia = navLayoutPersonale();
+  if (!mia) return base;
+  const perId = {}; base.forEach(g => g.items.forEach(it => { perId[it.id] = it; }));
+  const presenti = new Set();
+  const out = mia.map(g => ({ group: g.group, items: g.items.map(id => perId[id]).filter(it => it && !presenti.has(it.id) && presenti.add(it.id)) }));
+  // voci non presenti nel layout personale (es. aggiunte da un aggiornamento): nel gruppo di default, o in coda
+  base.forEach(g => g.items.forEach(it => {
+    if (presenti.has(it.id)) return;
+    const dest = out.find(x => x.group === g.group) || out[out.length - 1] || (out.push({ group: g.group, items: [] }), out[out.length - 1]);
+    dest.items.push(it); presenti.add(it.id);
+  }));
+  return out;
+}
+function salvaNavLayout(layout) {
+  try { if (typeof localStorage !== 'undefined') localStorage.setItem(chiaveNavPersonale(LS_KEY_NAV_LAYOUT), JSON.stringify(layout.map(g => ({ group: g.group, items: g.items.map(it => it.id) })))); } catch (err) { /* solo comodità */ }
+}
+/* Riordino con drag & drop in modalità "Personalizza menu". tipo/id = elemento trascinato ('gruppo' =
+   nome del gruppo, 'voce' = id del tab); bTipo/bId = elemento su cui si rilascia; dopo = rilascio nella
+   metà bassa del bersaglio. Una voce rilasciata su un'altra voce si inserisce prima/dopo di lei (anche in
+   un altro gruppo); rilasciata sull'intestazione di un gruppo va in cima a quel gruppo. Un gruppo
+   rilasciato su una voce si colloca prima/dopo il gruppo di quella voce. */
+function riordinaNav(tipo, id, bTipo, bId, dopo) {
+  if (!id || !bId || (tipo === bTipo && id === bId)) return false;
+  const layout = navEffettivo();
+  const gruppoDi = (voceId) => layout.findIndex(g => g.items.some(it => it.id === voceId));
+  if (tipo === 'gruppo') {
+    const da = layout.findIndex(g => g.group === id);
+    const idxBers = bTipo === 'gruppo' ? layout.findIndex(g => g.group === bId) : gruppoDi(bId);
+    if (da < 0 || idxBers < 0 || da === idxBers) return false;
+    const nomeBers = layout[idxBers].group;
+    const [g] = layout.splice(da, 1);
+    const verso = layout.findIndex(x => x.group === nomeBers);
+    layout.splice(dopo ? verso + 1 : verso, 0, g);
+  } else {
+    const da = gruppoDi(id);
+    if (da < 0) return false;
+    const k = layout[da].items.findIndex(it => it.id === id);
+    const [voce] = layout[da].items.splice(k, 1);
+    if (bTipo === 'gruppo') {
+      const gi = layout.findIndex(g => g.group === bId);
+      if (gi < 0) { layout[da].items.splice(k, 0, voce); return false; }
+      layout[gi].items.unshift(voce);
+    } else {
+      const gi = gruppoDi(bId);
+      if (gi < 0) { layout[da].items.splice(k, 0, voce); return false; }
+      const idx = layout[gi].items.findIndex(it => it.id === bId);
+      layout[gi].items.splice(dopo ? idx + 1 : idx, 0, voce);
+    }
+  }
+  salvaNavLayout(layout);
+  return true;
+}
+function ripristinaNavLayout() {
+  try { if (typeof localStorage !== 'undefined') localStorage.removeItem(chiaveNavPersonale(LS_KEY_NAV_LAYOUT)); } catch (err) { /* nulla */ }
+}
 function renderNav() {
   if (!NAV_GRUPPI_APERTI) caricaNavGruppiApertiLocale();
+  if (!NAV_PREFERITI || NAV_PREFERITI_DI !== (operatoreCorrente() || '_ospite')) caricaNavPreferiti(); // cambio operatore: ricarica i SUOI preferiti
   const nav = document.getElementById('navMenu');
   let html = '';
-  for (const g of NAV) {
+  const navCorrente = navEffettivo();
+  const grip = '<span class="nav-grip" title="Trascina per spostare">⋮⋮</span>';
+  if (NAV_MODIFICA) {
+    html += `<div class="nav-edit-bar"><div style="font-weight:700;margin-bottom:6px;">Personalizza menu</div><div style="font-size:11.5px;opacity:.85;margin-bottom:8px;">Trascina gruppi e voci per spostarli. Rilascia una voce su un altro gruppo per cambiarle gruppo.</div><button type="button" class="btn small primary" data-navedit="fine">Fine</button> <button type="button" class="btn small" data-navedit="reset">Ripristina</button></div>`;
+  }
+  const voceNav = (it, conFrecce) => {
+    const badge = badgeVoceNav(it);
+    const fav = NAV_PREFERITI.includes(it.id);
+    const destra = (NAV_MODIFICA && conFrecce) ? grip : `<span class="nav-star ${fav?'on':''}" data-star="${it.id}" title="${fav?'Togli dai preferiti':'Aggiungi ai preferiti'}">${fav?'★':'☆'}</span>`;
+    return `<div class="navitem ${VIEW===it.id?'active':''}" data-nav="${it.id}" ${(NAV_MODIFICA && conFrecce) ? `draggable="true" data-drag="voce" data-id="${it.id}"` : ''}><span class="ic">${it.ic||''}</span>${escapeHtml(it.label)}${destra}${badge ? `<span class="nav-badge">${badge}</span>` : ''}</div>`;
+  };
+  const tutteLeVoci = navCorrente.reduce((acc, g) => acc.concat(g.items), []);
+  const prefVisibili = NAV_PREFERITI.map(id => tutteLeVoci.find(it => it.id === id)).filter(it => it && operatorePuoVedere(it.id));
+  if (prefVisibili.length) {
+    html += `<div class="navgroup"><span style="flex:1;">★ Preferiti</span></div><div class="navgroup-items">${prefVisibili.map(it => voceNav(it, false)).join('')}</div>`;
+  }
+  for (const g of navCorrente) {
     // Task #156: un referente "limitato" non vede nemmeno la voce di menu delle sezioni non
     // consentite - un gruppo che finisce senza nessuna voce visibile non compare affatto (niente
     // intestazioni vuote da collassare).
     const itemsVisibili = g.items.filter(it => operatorePuoVedere(it.id));
-    if (itemsVisibili.length === 0) continue;
+    if (itemsVisibili.length === 0 && !NAV_MODIFICA) continue;
     const contieneViewCorrente = itemsVisibili.some(it => it.id === VIEW);
-    const aperto = NAV_GRUPPI_APERTI.has(g.group) || contieneViewCorrente;
+    const aperto = NAV_GRUPPI_APERTI.has(g.group) || contieneViewCorrente || NAV_MODIFICA;
     const badgeGruppo = itemsVisibili.reduce((s, it) => s + badgeVoceNav(it), 0);
-    html += `<div class="navgroup collassabile" data-action="nav-toggle-gruppo" data-gruppo="${escapeHtml(g.group)}">
+    html += `<div class="navgroup collassabile" ${NAV_MODIFICA ? `draggable="true" data-drag="gruppo" data-id="${escapeHtml(g.group)}"` : `data-action="nav-toggle-gruppo" data-gruppo="${escapeHtml(g.group)}"`}>
       <span class="chev">${aperto ? '▾' : '▸'}</span>
       <span style="flex:1;">${escapeHtml(g.group)}</span>
+      ${NAV_MODIFICA ? grip : ''}
       ${(!aperto && badgeGruppo) ? `<span class="nav-badge">${badgeGruppo}</span>` : ''}
     </div>`;
     // Le voci restano SEMPRE nel DOM (mai omesse), anche a gruppo chiuso: solo nascoste via CSS
@@ -5086,12 +5276,10 @@ function renderNav() {
     // affatto nel DOM a gruppo chiuso, quei link smetterebbero di funzionare invece di limitarsi
     // a espandere il gruppo. Un utente reale non può comunque cliccare qualcosa che non vede.
     html += `<div class="navgroup-items ${aperto ? '' : 'chiuso'}">`;
-    for (const it of itemsVisibili) {
-      const badge = badgeVoceNav(it);
-      html += `<div class="navitem ${VIEW===it.id?'active':''}" data-nav="${it.id}"><span class="ic">${it.ic||''}</span>${escapeHtml(it.label)}${badge ? `<span class="nav-badge">${badge}</span>` : ''}</div>`;
-    }
+    for (const it of itemsVisibili) html += voceNav(it, true);
     html += `</div>`;
   }
+  html += NAV_MODIFICA ? '' : `<div class="nav-personalizza" data-navedit="inizia">⚙ Personalizza menu</div>`;
   nav.innerHTML = html;
   document.getElementById('brandSub').textContent = STATE.meta.studioNome || 'Studio';
   document.getElementById('sidebarFoot').textContent = `${STATE.clienti.length} clienti · ${STATE.annoCorrente}`;
@@ -5214,7 +5402,7 @@ function renderDashboard() {
 
   const nClientiIncompleti = STATE.clienti.filter(c => campiMancantiCliente(c).length > 0).length;
   const nClientiGraviDash = nClientiGravi();
-  const avvisoIncompleti = nClientiIncompleti ? `<div class="card" style="border-left:4px solid ${nClientiGraviDash?'var(--rosso)':'var(--giallo)'};padding:10px 14px;cursor:pointer;" data-action="goto-clienti-incompleti">${nClientiGraviDash?'⚠':'ℹ'} <strong>${nClientiIncompleti} client${nClientiIncompleti===1?'e':'i'} con anagrafica da completare</strong>${nClientiGraviDash ? ` — <strong>${nClientiGraviDash} con dati importanti mancanti</strong>` : ' — solo dati utili'}. Clicca per vederli.</div>` : '';
+  const avvisoIncompleti = nClientiIncompleti ? `<div class="card" style="border-left:4px solid ${nClientiGraviDash?'var(--rosso)':'var(--giallo)'};padding:10px 14px;cursor:pointer;margin-bottom:16px;" data-action="goto-clienti-incompleti">${nClientiGraviDash?'⚠':'ℹ'} <strong>${nClientiIncompleti} client${nClientiIncompleti===1?'e':'i'} con anagrafica da completare</strong>${nClientiGraviDash ? ` — <strong>${nClientiGraviDash} con dati importanti mancanti</strong>` : ' — solo dati utili'}. Clicca per vederli.</div>` : '';
   const kpi = avvisoIncompleti + `<div class="kpi-grid">
     <div class="kpi scaduti" data-action="goto-scadenze" data-filtro="scaduti"><div class="n">${scaduti.length}</div><div class="l">SCADUTI</div></div>
     <div class="kpi inscadenza" data-action="goto-scadenze" data-filtro="inscadenza"><div class="n">${inScadenza.length}</div><div class="l">IN SCADENZA (30GG)</div></div>
@@ -5820,9 +6008,11 @@ function renderSchedaCliente() {
             cella('Codice fiscale', escapeHtml(cliente.codiceFiscale || '')),
             cella('ATECO', ateco),
             cella('Settore', escapeHtml(cliente.settore || '')),
+            cella('Dipendenti', yn(cliente.haDipendenti)),
           ].concat(societa ? [
             cella('PMI innovativa', yn(cliente.pmiInnovativa), !cliente.pmiInnovativa),
             cella('Start-up innovativa', yn(cliente.startupInnovativa), !cliente.startupInnovativa),
+            cella('Data di costituzione', cliente.dataCostituzione ? fmtData(cliente.dataCostituzione) : ''),
             cella('Organo di controllo', escapeHtml(cliente.organoControllo || ''), !cliente.organoControllo),
           ] : []))
         + (cliente.tipo === 'associazione' ? (() => { const a = datiAssociazione(cliente); return grp('Associazione', [
@@ -6116,7 +6306,7 @@ function modalCliente(clienteId) {
     periodicitaIva: 'Mensile', periodicitaIntrastat: 'N.A.', previdenza: 'No previdenza',
     flags: {}, dirittoCameraleScelta: null, versamentoImposteScelta: SCELTE_VERSAMENTO_IMPOSTE[1], adempimentiAnnualiApplicabili: [], note: '',
     settore: '', annoIngresso: new Date().getFullYear(), canaleAcquisizione: '', mandatario: '', preventivoAnnuo: '',
-    pmiInnovativa: '', startupInnovativa: '', organoControllo: '', iscrittoRegistroImprese: '',
+    pmiInnovativa: '', startupInnovativa: '', organoControllo: '', iscrittoRegistroImprese: '', haDipendenti: '', dataCostituzione: '',
   };
   const contatti = c.contatti || {};
   const vuoto = (v) => `<option value="" ${!v?'selected':''}>— da indicare —</option>`;
@@ -6183,6 +6373,7 @@ function modalCliente(clienteId) {
             <div class="field"><label>Stato cliente</label><select id="fStato"><option value="attivo" ${c.stato==='attivo'?'selected':''}>Attivo</option><option value="cessato" ${c.stato==='cessato'?'selected':''}>Cessato</option><option value="potenziale" ${c.stato==='potenziale'?'selected':''}>Potenziale (solo preventivo)</option></select></div>
             <div class="field"><label>Addebito F24</label><select id="fAddebito">${vuoto(c.addebitoF24)}${SCELTE_ADDEBITO_F24.map(o=>`<option value="${o.v}" ${c.addebitoF24===o.v?'selected':''}>${o.l}</option>`).join('')}</select></div>
             <div class="field"><label>Tenuta contabilità</label><select id="fContabilita">${vuoto(c.contabilita)}${SCELTE_CONTABILITA.map(o=>`<option value="${o.v}" ${c.contabilita===o.v?'selected':''}>${o.l}</option>`).join('')}</select></div>
+            <div class="field"><label>Ha dipendenti</label><select id="fHaDipendenti">${vuoto(c.haDipendenti)}<option value="SI" ${c.haDipendenti==='SI'?'selected':''}>Sì, ha dipendenti</option><option value="NO" ${c.haDipendenti==='NO'?'selected':''}>No, nessun dipendente</option></select></div>
           </div>
         </fieldset>
 
@@ -6213,6 +6404,7 @@ function modalCliente(clienteId) {
         <fieldset>
           <legend>Organo di controllo</legend>
           <div class="grid3">
+            <div class="field"><label>Data di costituzione</label><input type="date" id="fDataCostituzione" value="${escapeHtml(c.dataCostituzione || '')}"></div>
             <div class="field"><label>Organo di controllo</label><select id="fOrganoControllo">${vuoto(c.organoControllo)}${OPZIONI_ORGANO_CONTROLLO.map(o=>`<option ${c.organoControllo===o?'selected':''}>${o}</option>`).join('')}</select></div>
           </div>
           <div class="helptext">Vale per qualunque società, anche se non è PMI o start-up innovativa: serve ad esempio per il quadro del 770. Finché non è indicato il cliente resta "da completare".</div>
@@ -6314,6 +6506,8 @@ function leggiFormCliente(id, editing) {
     regimeFiscale: document.getElementById('fRegime').value,
     pmiInnovativa: document.getElementById('fPmiInnovativa').value,
     startupInnovativa: document.getElementById('fStartupInnovativa').value,
+    haDipendenti: (document.getElementById('fHaDipendenti') || {}).value || '',
+    dataCostituzione: (document.getElementById('fDataCostituzione') || {}).value || '',
     organoControllo: document.getElementById('fOrganoControllo').value,
     iscrittoRegistroImprese: document.getElementById('fIscrittoRI').value,
     associazione: document.getElementById('fTipo').value === 'associazione' && document.getElementById('fAssRunts')
@@ -6387,6 +6581,7 @@ const COLONNE_IMPORT_CLIENTI = [
   { intestazione: 'PMI innovativa', chiave: 'pmiInnovativa' },
   { intestazione: 'Start-up innovativa', chiave: 'startupInnovativa' },
   { intestazione: 'Organo di controllo', chiave: 'organoControllo' },
+  { intestazione: 'Ha dipendenti', chiave: 'haDipendenti' },
   { intestazione: 'Iscritto Registro Imprese', chiave: 'iscrittoRegistroImprese' },
   { intestazione: 'Mandatario', chiave: 'mandatario' },
   { intestazione: 'Anno ingresso', chiave: 'annoIngresso' },
@@ -6420,6 +6615,7 @@ const SINONIMI_IMPORT_CLIENTI = {
   pmiInnovativa: ['pmi innovativa', 'pmi'],
   startupInnovativa: ['start up innovativa', 'startup innovativa', 'startup'],
   organoControllo: ['organo di controllo', 'organo controllo', 'sindaco revisore'],
+  haDipendenti: ['ha dipendenti', 'dipendenti', 'con dipendenti'],
   iscrittoRegistroImprese: ['iscritto registro imprese', 'registro imprese', 'iscritto rea', 'iscrizione registro imprese'],
   annoIngresso: ['anno ingresso', 'anno di ingresso', 'cliente dal'],
   preventivoAnnuo: ['preventivo annuo', 'preventivo annuale', 'compenso annuo', 'preventivo annuo eur'],
@@ -6478,7 +6674,7 @@ async function scaricaTemplateClienti() {
     ['Tenuta contabilità', SCELTE_CONTABILITA.map(o => o.l).join(' | ')],
     ['Addebito F24', SCELTE_ADDEBITO_F24.map(o => o.l).join(' | ')],
     ['Previdenza', PREVIDENZE.join(' | ')],
-    ['PMI innovativa / Start-up innovativa / Iscritto Registro Imprese', 'Sì | No'],
+    ['PMI innovativa / Start-up innovativa / Iscritto Registro Imprese / Ha dipendenti', 'Sì | No'],
     ['Organo di controllo', OPZIONI_ORGANO_CONTROLLO.join(' | ')],
     ['', ''],
     ['Nota', 'Le celle vuote o con valore non riconosciuto NON vengono sostituite da un default: il campo resta vuoto e il cliente risulta "da completare" finché non lo compili. Le colonne non riconosciute vengono ignorate. Partita IVA e Codice fiscale servono anche a evitare di importare due volte lo stesso cliente.'],
@@ -6584,6 +6780,7 @@ function clienteDaRigaImport(valori, numeroRigaFile) {
   const iscrittoRegistroImprese = siNo('iscrittoRegistroImprese', 'iscrizione al Registro Imprese');
   const pmiInnovativa = siNo('pmiInnovativa', 'PMI innovativa');
   const startupInnovativa = siNo('startupInnovativa', 'start-up innovativa');
+  const haDipendenti = siNo('haDipendenti', 'ha dipendenti');
   let organoControllo = '';
   const organoInserito = get('organoControllo');
   if (organoInserito) {
@@ -6596,7 +6793,7 @@ function clienteDaRigaImport(valori, numeroRigaFile) {
   const cliente = {
     id: uid('cli'), tipo, ragioneSociale,
     codiceFiscale: get('codiceFiscale'), partitaIva: get('partitaIva'),
-    atecoCodici, naturaGiuridica: '', regimeFiscale, pmiInnovativa, startupInnovativa, organoControllo, iscrittoRegistroImprese,
+    atecoCodici, naturaGiuridica: '', regimeFiscale, pmiInnovativa, startupInnovativa, organoControllo, iscrittoRegistroImprese, haDipendenti,
     contatti: {
       email: get('email'), emailAmministrazione: '', pec: get('pec'), telefono: get('telefono'),
       indirizzo: get('indirizzo'), cap: get('cap'), localita: get('localita'), provincia: get('provincia').toUpperCase(),
@@ -6871,7 +7068,7 @@ let SCAD_SUBMODAL_DA_DETTAGLIO = false;
 function opzioniFiltroAvanzamento(lista) {
   const fasi = [];
   (lista || []).forEach(s => (s.fasi || []).forEach(f => { if (!fasi.includes(f)) fasi.push(f); }));
-  return ['Da fare'].concat(fasi, ['Errore', 'Non applicabile']);
+  return ['Da fare'].concat(fasi, ['Errore', STATO_NON_PUO_PAGARE, 'Non applicabile']);
 }
 function scadenzeFiltrate() {
   const { periodiche } = derivati();
@@ -6965,7 +7162,7 @@ function renderScadenze() {
     return `<tr class="${SCAD_SELEZIONATE.has(s.id)?'riga-selezionata':''}">
       <td><input type="checkbox" data-action="scad-toggle-sel" data-id="${s.id}" ${SCAD_SELEZIONATE.has(s.id)?'checked':''}></td>
       <td style="white-space:nowrap;">${fmtData(s.data)}</td>
-      <td>${escapeHtml(nomeCliente(s.clienteId))}</td>
+      <td style="min-width:210px;max-width:280px;" title="${escapeHtml(nomeCliente(s.clienteId))}">${escapeHtml(nomeCliente(s.clienteId))}</td>
       <td>${escapeHtml(s.nome)}</td>
       <td>${chiuso?'<span class="helptext">chiusa</span>':`<span class="pill-delta ${d.cls}">${d.txt}</span>`}</td>
       <td><select class="statoSel ${statoBadgeClass(s.stato)}" data-action="scad-cambia-stato" data-id="${s.id}">
@@ -6975,16 +7172,15 @@ function renderScadenze() {
         <option value="">—</option>
         ${STATE.meta.responsabili.map(r=>`<option ${s.responsabile===r?'selected':''}>${escapeHtml(r)}</option>`).join('')}
       </select></td>
-      <td style="min-width:160px;"><input type="text" value="${escapeHtml(s.nota)}" data-action="scad-cambia-nota" data-id="${s.id}" placeholder="nota..." style="width:100%;border:1px solid var(--border);border-radius:5px;padding:4px 6px;font-size:12px;"></td>
-      <td style="white-space:nowrap;min-width:110px;">${s.conImporto ? `<input type="number" step="0.01" value="${s.importo!=null?s.importo:''}" data-action="scad-cambia-importo" data-id="${s.id}" placeholder="€" style="width:100%;border:1px solid var(--border);border-radius:5px;padding:4px 6px;font-size:12px;">` : '<span class="helptext">—</span>'}</td>
+      <td style="white-space:nowrap;min-width:150px;">${s.conImporto ? `<span class="importo-wrap"><input type="text" inputmode="decimal" class="importo-input" value="${s.importo!=null?escapeHtml(formatImportoIT(s.importo)):''}" data-action="scad-cambia-importo" data-id="${s.id}" placeholder="€ 0,00" style="width:105px;text-align:right;border:1px solid var(--border);border-radius:5px;padding:4px 6px;font-size:12px;"> <button class="btn small importo-ok ${s.importo!=null?'salvato':''}" data-action="scad-conferma-importo" data-id="${s.id}" title="Conferma importo">✓</button></span>` : '<span class="helptext">—</span>'}</td>
       <td style="white-space:nowrap;"><button class="btn small" data-action="scad-apri-solleciti" data-id="${s.id}" title="Storico solleciti">🔔 ${nSolleciti||''}</button></td>
-      <td style="white-space:nowrap;"><button class="btn small" data-action="scad-apri-controllo" data-id="${s.id}" title="Annotazioni datate">📝 ${(s.annotazioni||[]).length||''}</button></td>
+      <td style="white-space:nowrap;"><button class="btn small" data-action="scad-apri-controllo" data-id="${s.id}" title="${escapeHtml(s.nota ? 'Nota: ' + s.nota : 'Annotazioni datate')}">📝 ${(s.annotazioni||[]).length||''}${s.nota ? ' •' : ''}</button></td>
       <td style="white-space:nowrap;">${s.dataCompletamento?fmtData(s.dataCompletamento):'—'}</td>
     </tr>`;
   }).join('');
 
   return readiness + toolbar + bulkBar + `<div class="card" style="padding:0;overflow-x:auto;">
-    <table class="compact"><thead><tr><th><input type="checkbox" data-action="scad-toggle-sel-pagina" ${tutteSelezionateInPagina?'checked':''} title="Seleziona/deseleziona tutte le righe di questa pagina"></th><th>Data</th><th>Cliente</th><th>Adempimento</th><th>Countdown</th><th>Avanzamento</th><th>Resp.</th><th>Nota</th><th>Importo</th><th>Solleciti</th><th>Annotazioni</th><th>Completata il</th></tr></thead>
+    <table class="compact"><thead><tr><th><input type="checkbox" data-action="scad-toggle-sel-pagina" ${tutteSelezionateInPagina?'checked':''} title="Seleziona/deseleziona tutte le righe di questa pagina"></th><th>Data</th><th>Cliente</th><th>Adempimento</th><th>Countdown</th><th>Avanzamento</th><th>Resp.</th><th>Importo</th><th>Solleciti</th><th>Annotazioni</th><th>Completata il</th></tr></thead>
     <tbody>${righe}</tbody></table>
   </div>` + controlliPaginazione(pag);
 }
@@ -9083,6 +9279,75 @@ function unisciLibriSociali(stato) {
   stato.libriSociali = nuovi;
 }
 function libroDelCliente(clienteId) { return (STATE.libriSociali || []).find(l => l.clienteId === clienteId) || null; }
+/* ---- Stato fisico dei libri e cosa deve esserci stampato (ott. 2026) ----
+   Per DEFAULT ogni società (di capitali / cooperativa) ha i suoi libri sociali. Per ognuna si tiene traccia di:
+   - stato fisico: "da fare" (vanno stampati e vidimati in CCIAA), "fatti e vidimati ma ancora vuoti", "in uso";
+   - cosa ci deve essere stampato: atto costitutivo, elenco soci, verbale di approvazione di ogni bilancio dalla
+     costituzione (o almeno degli ultimi due esercizi se la data non è nota) + verbali dei task/pratiche chiuse;
+   - fino a dove è già stampato (anche "pregresso", per i libri che esistono da anni). */
+const STATI_FISICI_LIBRO = [
+  { v: 'da_fare', l: 'Da fare: stampare e vidimare in CCIAA', corto: 'Da vidimare in CCIAA', cls: 'stato-da-fare' },
+  { v: 'vidimati', l: 'Fatti e vidimati, ancora vuoti', corto: 'Vidimati, vuoti', cls: 'info' },
+  { v: 'in_uso', l: 'In uso', corto: 'In uso', cls: 'stato-completato' },
+];
+function statoFisicoLibro(l) { return (l && l.statoFisico) || 'in_uso'; }
+function infoStatoFisico(v) { return STATI_FISICI_LIBRO.find(x => x.v === v) || STATI_FISICI_LIBRO[2]; }
+function societaConLibri(c) { return !!c && clienteAttivo(c) && libriPrevistiCliente(c).libri.length > 0; }
+function assicuraLibriSocieta(stato) {
+  if (!Array.isArray(stato.libriSociali)) stato.libriSociali = [];
+  (stato.clienti || []).forEach(c => {
+    if (!societaConLibri(c) || stato.libriSociali.some(l => l.clienteId === c.id)) return;
+    stato.libriSociali.push({ id: uid('lib'), clienteId: c.id, tipo: 'Libri sociali', detenutoDa: 'Studio', detentoreNote: '', statoFisico: 'in_uso', ultimaStampa: null, ultimaPagina: null, vidimazione: null, note: '', creatoIl: oggiISO(), automatico: true });
+  });
+}
+function ultimoEsercizioApprovato() {
+  const oggi = oggiISO(); const anno = Number(oggi.slice(0, 4)); const mese = Number(oggi.slice(5, 7));
+  return mese >= 7 ? anno - 1 : anno - 2; // bilancio approvato entro 120/180 giorni dalla chiusura
+}
+function etichettaStampato(v) { return v === 'pregresso' ? 'Già stampato (pregresso)' : 'Stampato il ' + fmtData(v); }
+/* Voci che DEVONO esserci stampate nei libri di una società (stampate o no). */
+function vociAttesaLibri(c) {
+  const out = [];
+  const fatte = STATE.stampeLibriFatte || {};
+  const cost = Number(String(c.dataCostituzione || '').slice(0, 4)) || 0;
+  const ult = ultimoEsercizioApprovato();
+  const ingresso = Number(String(c.dataIngresso || '').slice(0, 4)) || 0;
+  out.push({ key: `atto-${c.id}`, clienteId: c.id, esercizio: null, sezione: 'Libro decisioni dei soci', descrizione: 'Atto costitutivo e statuto', data: c.dataCostituzione || '', dataLabel: c.dataCostituzione ? fmtData(c.dataCostituzione) : 'Apertura', origine: 'Atteso: apertura del libro', stampatoIl: fatte[`atto-${c.id}`] || null });
+  if (sociDiCliente(c.id).length) out.push({ key: `soci-${c.id}`, clienteId: c.id, esercizio: null, sezione: 'Libro soci', descrizione: 'Elenco dei soci aggiornato', data: '', dataLabel: 'Aggiornato', origine: 'Atteso: soci in anagrafica', stampatoIl: fatte[`soci-${c.id}`] || null });
+  const primo = cost || (ult - 1);
+  for (let es = primo; es <= ult; es++) {
+    if (!cost && ingresso && ingresso > es + 1) continue;
+    const key = `bilesp-${c.id}-${es}`;
+    out.push({ key, clienteId: c.id, esercizio: es, sezione: 'Libro decisioni dei soci', descrizione: `Verbale di approvazione del bilancio ${es}`, data: `${es + 1}-05-30`, dataLabel: 'Esercizio ' + es, origine: 'Atteso: bilancio da approvare/approvato', stampatoIl: fatte[key] || null });
+  }
+  return out;
+}
+/* "Stampato fino a": sintesi dello stato di stampa dei libri di una società. */
+function sintesiStampaLibri(c) {
+  const voci = stampeLibriTutte().filter(x => x.clienteId === c.id && !x.key.startsWith('vid-'));
+  if (!voci.length) return '—';
+  const fatte = voci.filter(x => x.stampatoIl);
+  if (!fatte.length) return 'Nulla di stampato';
+  if (fatte.length === voci.length) return 'Tutto aggiornato';
+  const ultima = fatte[fatte.length - 1];
+  return 'Fino a: ' + (ultima.key.startsWith('atto-') ? 'atto costitutivo' : ultima.key.startsWith('soci-') ? 'elenco soci' : ultima.descrizione.replace('Verbale di approvazione del ', '').replace('Verbale: ', ''));
+}
+/* scelta: 'nulla' | 'atto' | 'es-AAAA' | 'tutto'  -> segna come già stampato ("pregresso") tutto fino a quel punto. */
+function impostaStampatoFino(clienteId, scelta) {
+  const c = clienteById(clienteId); if (!c) return;
+  if (!STATE.stampeLibriFatte) STATE.stampeLibriFatte = {};
+  vociAttesaLibri(c).forEach(v => {
+    let fatto = false;
+    if (scelta === 'tutto') fatto = true;
+    else if (scelta === 'atto') fatto = v.key.startsWith('atto-');
+    else if (/^es-\d{4}$/.test(scelta)) fatto = v.esercizio == null || v.esercizio <= Number(scelta.slice(3));
+    if (fatto) { if (!STATE.stampeLibriFatte[v.key]) STATE.stampeLibriFatte[v.key] = 'pregresso'; }
+    else delete STATE.stampeLibriFatte[v.key];
+  });
+  const l = libroDelCliente(clienteId);
+  if (l && scelta !== 'nulla' && statoFisicoLibro(l) === 'da_fare') l.statoFisico = 'in_uso';
+  salvaStato();
+}
 /* Verbali/atti da stampare nei libri, in ordine cronologico. Automatici: bilancio approvato (pratica "Bilancio/Verbale assemblea"
    completata) e task con la spunta "stampa verbale" chiusi; entrambi solo se i libri sono gestiti dallo studio. */
 function stampeLibriTutte() {
@@ -9095,7 +9360,7 @@ function stampeLibriTutte() {
       if (a.tipoChiave !== 'BILANCIO' || !a.completato || !gestiti(a.clienteId) || !cl(a.clienteId)) return;
       const date = (a.sotto || []).map(x => x.data).filter(Boolean).sort();
       const key = `bil-${a.clienteId}-${a.anno}`;
-      out.push({ key, clienteId: a.clienteId, sezione: 'Libro decisioni dei soci', descrizione: `Verbale di approvazione del bilancio ${a.anno}`, data: date.length ? date[date.length - 1] : oggiISO(), origine: 'Pratica bilancio completata', stampatoIl: fatte[key] || null });
+      out.push({ key, clienteId: a.clienteId, annoApprovazione: a.anno, sezione: 'Libro decisioni dei soci', descrizione: `Verbale di approvazione del bilancio ${a.anno - 1}`, data: date.length ? date[date.length - 1] : oggiISO(), origine: 'Pratica bilancio completata', stampatoIl: fatte[key] || null });
     });
   } catch (e) { /* derivati non disponibile in contesti parziali */ }
   (STATE.taskTeam || []).forEach(t => {
@@ -9104,11 +9369,28 @@ function stampeLibriTutte() {
     out.push({ key, clienteId: t.clienteId, sezione: t.stampaSezione || 'Libro decisioni dei soci', descrizione: `Verbale: ${t.titolo}`, data: t.fattoIl || t.scadenza || t.creatoIl || oggiISO(), origine: 'Task completato', stampatoIl: fatte[key] || null });
   });
   (STATE.stampeLibri || []).forEach(m => out.push({ key: `man-${m.id}`, manualeId: m.id, clienteId: m.clienteId, sezione: m.sezione, descrizione: m.descrizione, data: m.data || m.creatoIl, origine: 'Inserito a mano', stampatoIl: m.stampatoIl || null }));
+  // Voci attese per ogni società con libri tenuti dallo studio (default: tutte le società)
+  const approvazioniAuto = new Set(out.filter(x => x.key.startsWith('bil-')).map(x => x.clienteId + '|' + x.annoApprovazione));
+  (STATE.clienti || []).forEach(c => {
+    if (!societaConLibri(c)) return;
+    const l = libroDelCliente(c.id);
+    if (!l || l.detenutoDa !== 'Studio') return;
+    if (statoFisicoLibro(l) === 'da_fare') {
+      out.push({ key: `vid-${c.id}`, clienteId: c.id, sezione: 'Tutti i libri', descrizione: 'Stampare e vidimare i libri sociali in Camera di Commercio', data: '', dataLabel: 'Prima di tutto', origine: 'Libri non ancora fatti', stampatoIl: null });
+      return;
+    }
+    vociAttesaLibri(c).forEach(v => { if (v.esercizio != null && approvazioniAuto.has(c.id + '|' + (v.esercizio + 1))) return; out.push(v); });
+  });
   return out.sort((a, b) => String(a.data).localeCompare(String(b.data)));
 }
 function stampeLibriDaFare() { return stampeLibriTutte().filter(x => !x.stampatoIl); }
 function segnaStampaLibro(key, fatta) {
   const data = fatta ? oggiISO() : null;
+  if (key.startsWith('vid-')) { // libri vidimati in CCIAA: da "da fare" a "fatti e vidimati, vuoti"
+    const l = libroDelCliente(key.slice(4));
+    if (l && fatta) { l.statoFisico = 'vidimati'; l.vidimazione = oggiISO(); salvaStato(); }
+    return;
+  }
   if (key.startsWith('man-')) { const m = (STATE.stampeLibri || []).find(x => x.id === key.slice(4)); if (m) m.stampatoIl = data; }
   else { if (!STATE.stampeLibriFatte) STATE.stampeLibriFatte = {}; if (data) STATE.stampeLibriFatte[key] = data; else delete STATE.stampeLibriFatte[key]; }
   salvaStato();
@@ -9117,11 +9399,11 @@ function htmlStampeLibri(clienteId) {
   const tutte = stampeLibriTutte().filter(x => !clienteId || x.clienteId === clienteId);
   const da = tutte.filter(x => !x.stampatoIl);
   const fatteRecenti = tutte.filter(x => x.stampatoIl).sort((a, b) => b.stampatoIl.localeCompare(a.stampatoIl)).slice(0, 5);
-  const riga = (x) => `<tr><td style="white-space:nowrap;">${fmtData(x.data)}</td>${clienteId ? '' : `<td>${escapeHtml(nomeCliente(x.clienteId))}</td>`}<td>${escapeHtml(x.sezione)}</td><td>${escapeHtml(x.descrizione)} <span class="helptext">· ${escapeHtml(x.origine)}</span></td>
-    <td style="white-space:nowrap;"><label class="checkline"><input type="checkbox" data-action="stampa-libro-segna" data-key="${escapeHtml(x.key)}" ${x.stampatoIl ? 'checked' : ''}> ${x.stampatoIl ? 'Stampato il ' + fmtData(x.stampatoIl) : 'Da stampare'}</label>${x.manualeId ? ` <button class="btn small danger" data-action="stampa-libro-elimina" data-id="${x.manualeId}">✕</button>` : ''}</td></tr>`;
+  const riga = (x) => `<tr><td style="white-space:nowrap;">${x.dataLabel ? escapeHtml(x.dataLabel) : fmtData(x.data)}</td>${clienteId ? '' : `<td>${escapeHtml(nomeCliente(x.clienteId))}</td>`}<td>${escapeHtml(x.sezione)}</td><td>${escapeHtml(x.descrizione)} <span class="helptext">· ${escapeHtml(x.origine)}</span></td>
+    <td style="white-space:nowrap;"><label class="checkline"><input type="checkbox" data-action="stampa-libro-segna" data-key="${escapeHtml(x.key)}" ${x.stampatoIl ? 'checked' : ''}> ${x.stampatoIl ? etichettaStampato(x.stampatoIl) : (x.key.startsWith('vid-') ? 'Fatto in CCIAA' : 'Da stampare')}</label>${x.manualeId ? ` <button class="btn small danger" data-action="stampa-libro-elimina" data-id="${x.manualeId}">✕</button>` : ''}</td></tr>`;
   const testa = `<thead><tr><th>Data</th>${clienteId ? '' : '<th>Cliente</th>'}<th>Sezione del libro</th><th>Cosa stampare</th><th></th></tr></thead>`;
   return `<div class="card" ${da.length ? 'style="border-left:4px solid var(--arancio,#d97706);"' : ''}><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;"><div class="section-title" style="margin:0;">Verbali da stampare nei libri <span class="cnt">${da.length}</span></div><button class="btn" data-action="stampa-libro-nuova" data-cliente="${clienteId || ''}">+ Da stampare</button></div>
-    <div class="helptext" style="margin:4px 0 8px;">In ordine cronologico. Compaiono da soli quando una pratica di bilancio viene completata o un task con la spunta "stampa verbale" viene chiuso, per le società i cui libri sono tenuti dallo studio.</div>
+    <div class="helptext" style="margin:4px 0 8px;">In ordine cronologico. Per ogni società (libri tenuti dallo studio): atto costitutivo, elenco soci e verbale di approvazione di ogni bilancio dalla costituzione, più i verbali dei task chiusi con la spunta "stampa verbale". Se i libri non sono ancora stati fatti, prima c'è la vidimazione in CCIAA.</div>
     ${da.length ? `<table class="compact">${testa}<tbody>${da.map(riga).join('')}</tbody></table>` : '<div class="helptext">Niente da stampare.</div>'}
     ${fatteRecenti.length ? `<details style="margin-top:8px;"><summary class="helptext" style="cursor:pointer;">Ultime stampate</summary><table class="compact" style="margin-top:6px;">${testa}<tbody>${fatteRecenti.map(riga).join('')}</tbody></table></details>` : ''}</div>`;
 }
@@ -9269,7 +9551,21 @@ function dettaglioLibriCliente(c) {
       <td><label class="checkline"><input type="checkbox" data-action="atto-trascritto" data-id="${d.id}" ${d.trascritto ? 'checked' : ''}> ${d.trascritto ? 'Trascritto' + (d.trascrittoIl ? ' il ' + fmtData(d.trascrittoIl) : '') : 'Da trascrivere'}</label></td>
       <td style="white-space:nowrap;"><button class="btn small" data-action="atto-modifica" data-id="${d.id}">Modifica</button> <button class="btn small danger" data-action="atto-scollega" data-id="${d.id}" title="Toglie l'atto dal libro, il documento resta in Documenti">Scollega</button></td>
     </tr>`; }).join('') : `<tr><td colspan="7" class="helptext">Nessun atto collegato ai libri. Usa "+ Atto da riportare" per caricare un verbale o assegnare un documento già presente.</td></tr>`;
-  return `<div class="card"><div class="section-title">Cosa va nei libri di ${escapeHtml(c.ragioneSociale)} — ${escapeHtml(prev.titolo)}</div>${libriPrev}<div class="helptext">${escapeHtml(prev.note)} <em>Promemoria organizzativo: verifica sempre statuto e norme.</em></div></div>
+  const lib = libroDelCliente(c.id);
+  const attese = societaConLibri(c) && lib ? stampeLibriTutte().filter(x => x.clienteId === c.id && !x.key.startsWith('vid-')) : [];
+  const esMax = ultimoEsercizioApprovato();
+  const esAtt = attese.map(x => x.esercizio).filter(x => x != null);
+  const opzFino = [['nulla', 'Nulla di stampato'], ['atto', "Solo l'atto costitutivo"]].concat(Array.from(new Set(esAtt)).sort().map(e => ['es-' + e, `Fino al bilancio ${e}`])).concat([['tutto', 'Tutto aggiornato']]);
+  const punto = lib ? `<div class="card"><div class="section-title">A che punto sono i libri di ${escapeHtml(c.ragioneSociale)}</div>
+    <div class="grid2" style="margin-top:6px;">
+      <div class="field"><label>Stato dei libri</label><select data-action="libro-stato-fisico" data-id="${lib.id}">${STATI_FISICI_LIBRO.map(t => `<option value="${t.v}" ${statoFisicoLibro(lib) === t.v ? 'selected' : ''}>${escapeHtml(t.l)}</option>`).join('')}</select></div>
+      ${attese.length && statoFisicoLibro(lib) !== 'da_fare' ? `<div class="field"><label>Già stampato fino a… (segna in blocco come "pregresso")</label><select data-action="libri-stampato-fino" data-cliente="${c.id}"><option value="">— scegli —</option>${opzFino.map(o => `<option value="${o[0]}">${escapeHtml(o[1])}</option>`).join('')}</select></div>` : ''}
+    </div>
+    ${c.dataCostituzione ? '' : `<div class="helptext" style="margin-top:6px;">Data di costituzione non indicata in anagrafica: considero solo gli ultimi due esercizi (${esMax - 1} e ${esMax}). Inseriscila per avere l'elenco completo dall'atto costitutivo.</div>`}
+    ${statoFisicoLibro(lib) === 'da_fare' ? `<div class="helptext" style="margin-top:6px;">I libri non sono ancora stati fatti: serve prima la vidimazione in CCIAA (compare tra i "verbali da stampare"). Poi imposta "Fatti e vidimati".</div>` : ''}
+    ${attese.length ? `<table class="compact" style="margin-top:8px;"><thead><tr><th>Quando</th><th>Libro</th><th>Cosa</th><th>Stato</th></tr></thead><tbody>${attese.map(x => `<tr><td style="white-space:nowrap;">${x.dataLabel ? escapeHtml(x.dataLabel) : fmtData(x.data)}</td><td>${escapeHtml(x.sezione)}</td><td>${escapeHtml(x.descrizione)}</td><td><label class="checkline"><input type="checkbox" data-action="stampa-libro-segna" data-key="${escapeHtml(x.key)}" ${x.stampatoIl ? 'checked' : ''}> ${x.stampatoIl ? etichettaStampato(x.stampatoIl) : 'Da stampare'}</label></td></tr>`).join('')}</tbody></table>` : ''}
+  </div>` : '';
+  return punto + `<div class="card"><div class="section-title">Cosa va nei libri di ${escapeHtml(c.ragioneSociale)} — ${escapeHtml(prev.titolo)}</div>${libriPrev}<div class="helptext">${escapeHtml(prev.note)} <em>Promemoria organizzativo: verifica sempre statuto e norme.</em></div></div>
   ${lacune.length ? `<div class="card" style="border-left:4px solid var(--arancio,#d97706);"><div class="section-title">Cosa potrebbe mancare</div><ul style="margin:6px 0 0 18px;line-height:1.6;">${lacune.map(x => `<li>${escapeHtml(x)}</li>`).join('')}</ul></div>` : ''}
   <div class="card"><div class="section-title">Altri documenti della società <span class="helptext" style="font-weight:400;">· visura e simili, si conservano nel fascicolo (atto costitutivo e statuto sono il primo atto dell'elenco sotto)</span></div>
     <table class="compact"><thead><tr><th>Documento</th><th>Categoria</th><th>Caricato il</th><th></th></tr></thead><tbody>${righeBase}</tbody></table></div>
@@ -9281,46 +9577,53 @@ function sezioneAttiGlobale() {
   if (!da.length) return '';
   return `<div class="card"><div class="section-title">Atti ancora da trascrivere <span class="cnt">${da.length}</span></div><table class="compact"><thead><tr><th>Data atto</th><th>Cliente</th><th>Libro</th><th>Tipo</th><th>Documento</th></tr></thead><tbody>${da.slice(0, 50).map(d => { const l = (STATE.libriSociali || []).find(x => x.id === d.libroId); return `<tr><td style="white-space:nowrap;">${d.dataAtto ? fmtData(d.dataAtto) : '—'}</td><td>${escapeHtml(nomeCliente(d.clienteId))}</td><td>${escapeHtml(d.sezioneLibro || '—')}</td><td>${escapeHtml(d.tipoAtto || '')}</td><td>${escapeHtml(d.nome)}</td></tr>`; }).join('')}</tbody></table></div>`;
 }
-let LIBRI_FILTRO = { cliente: 'Tutti', tipo: 'Tutti', detentore: 'Tutti' };
+let LIBRI_FILTRO = { cliente: 'Tutti', tipo: 'Tutti', detentore: 'Tutti', stato: 'Tutti' };
 function renderLibriSociali() {
+  assicuraLibriSocieta(STATE);
   const tutti = STATE.libriSociali || [];
-  const oggi = oggiISO();
-  const vecchi = tutti.filter(l => l.ultimaStampa && giorniTra(l.ultimaStampa, oggi) > 365).length;
-  const mancanti = STATE.clienti.filter(c => clienteAttivo(c) && /srl|spa|sapa|cooperativa|societ/i.test(String(c.tipo || '')) && !tutti.some(l => l.clienteId === c.id)).length;
+  const daStampare = stampeLibriDaFare();
+  const conta = (cond) => tutti.filter(l => { const c = clienteById(l.clienteId); return c && clienteAttivo(c) && cond(l); }).length;
   const kpi = `<div class="kpi-grid" style="grid-template-columns:repeat(6,1fr);">
-    <div class="kpi scaduti"><div class="n">${stampeLibriDaFare().length}</div><div class="l">VERBALI DA STAMPARE</div></div>
-    <div class="kpi completati"><div class="n">${tutti.length}</div><div class="l">LIBRI REGISTRATI</div></div>
-    <div class="kpi futuri"><div class="n">${tutti.filter(l => l.detenutoDa === 'Studio').length}</div><div class="l">DETENUTI DALLO STUDIO</div></div>
-    <div class="kpi inscadenza"><div class="n">${vecchi}</div><div class="l">ULTIMA STAMPA > 1 ANNO</div></div>
-    <div class="kpi scaduti"><div class="n">${mancanti}</div><div class="l">SOCIETÀ SENZA LIBRI</div></div>
+    <div class="kpi scaduti"><div class="n">${conta(l => statoFisicoLibro(l) === 'da_fare')}</div><div class="l">DA VIDIMARE IN CCIAA</div></div>
+    <div class="kpi inscadenza"><div class="n">${conta(l => statoFisicoLibro(l) === 'vidimati')}</div><div class="l">VIDIMATI, ANCORA VUOTI</div></div>
+    <div class="kpi scaduti"><div class="n">${daStampare.filter(x => !x.key.startsWith('vid-')).length}</div><div class="l">VERBALI DA STAMPARE</div></div>
+    <div class="kpi completati"><div class="n">${conta(() => true)}</div><div class="l">SOCIETÀ CON LIBRI</div></div>
+    <div class="kpi futuri"><div class="n">${conta(l => l.detenutoDa === 'Studio')}</div><div class="l">DETENUTI DALLO STUDIO</div></div>
     <div class="kpi inscadenza"><div class="n">${attiDaTrascrivere().length}</div><div class="l">ATTI DA TRASCRIVERE</div></div>
   </div>`;
-  let lista = tutti.slice();
+  let lista = tutti.filter(l => { const c = clienteById(l.clienteId); return c && (clienteAttivo(c) || LIBRI_FILTRO.cliente === c.id); });
   if (LIBRI_FILTRO.cliente !== 'Tutti') lista = lista.filter(l => l.clienteId === LIBRI_FILTRO.cliente);
   if (LIBRI_FILTRO.detentore !== 'Tutti') lista = lista.filter(l => l.detenutoDa === LIBRI_FILTRO.detentore);
+  if (LIBRI_FILTRO.stato && LIBRI_FILTRO.stato !== 'Tutti') lista = lista.filter(l => statoFisicoLibro(l) === LIBRI_FILTRO.stato);
   lista.sort((a, b) => nomeCliente(a.clienteId).localeCompare(nomeCliente(b.clienteId)));
   const toolbar = `<div class="toolbar">
     <div class="field"><label>Cliente</label><select data-action="libri-filtro-cliente"><option value="Tutti">Tutti</option>${STATE.clienti.slice().sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale)).map(c => `<option value="${c.id}" ${LIBRI_FILTRO.cliente === c.id ? 'selected' : ''}>${escapeHtml(c.ragioneSociale)}</option>`).join('')}</select></div>
+    <div class="field"><label>Stato dei libri</label><select data-action="libri-filtro-stato"><option value="Tutti">Tutti</option>${STATI_FISICI_LIBRO.map(t => `<option value="${t.v}" ${LIBRI_FILTRO.stato === t.v ? 'selected' : ''}>${escapeHtml(t.corto)}</option>`).join('')}</select></div>
     <div class="field"><label>Detenuto da</label><select data-action="libri-filtro-detentore"><option value="Tutti">Tutti</option>${DETENTORI_LIBRO.map(t => `<option ${LIBRI_FILTRO.detentore === t ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
     <div class="field" style="margin-left:auto;"><label>&nbsp;</label><button class="btn primary" data-action="libro-nuovo">+ Aggiungi libro</button></div>
   </div>`;
   if (STATE.clienti.length === 0) return `<div class="card"><div class="empty"><div class="big">Aggiungi prima un cliente</div></div></div>`;
-  if (!tutti.length) return kpi + toolbar + htmlStampeLibri(LIBRI_FILTRO.cliente !== 'Tutti' ? LIBRI_FILTRO.cliente : null) + `<div class="card"><div class="empty"><div class="big">Nessun libro registrato</div>Per ogni società indica quali libri sociali ha, chi li conserva e quando sono stati stampati l'ultima volta.</div></div>` + (LIBRI_FILTRO.cliente !== 'Tutti' && clienteById(LIBRI_FILTRO.cliente) ? dettaglioLibriCliente(clienteById(LIBRI_FILTRO.cliente)) : '');
-  if (!lista.length) return kpi + toolbar + htmlStampeLibri(LIBRI_FILTRO.cliente !== 'Tutti' ? LIBRI_FILTRO.cliente : null) + `<div class="card"><div class="empty">Nessun libro corrisponde ai filtri.</div></div>` + (LIBRI_FILTRO.cliente !== 'Tutti' && clienteById(LIBRI_FILTRO.cliente) ? dettaglioLibriCliente(clienteById(LIBRI_FILTRO.cliente)) : '');
-  const righe = lista.map(l => `<tr>
-    <td>${escapeHtml(nomeCliente(l.clienteId))}</td>
-    <td><span class="badge ${l.detenutoDa === 'Studio' ? 'stato-da-fare' : 'info'}">${escapeHtml(l.detenutoDa)}</span>${l.detentoreNote ? ` <span class="helptext">${escapeHtml(l.detentoreNote)}</span>` : ''}</td>
-    <td style="white-space:nowrap;">${l.ultimaStampa ? fmtData(l.ultimaStampa) : '—'}</td><td>${l.ultimaPagina != null ? l.ultimaPagina : '—'}</td>
-    <td style="white-space:nowrap;">${l.vidimazione ? fmtData(l.vidimazione) : '—'}</td>
-    <td style="white-space:nowrap;"><button class="btn small" data-action="libro-modifica" data-id="${l.id}">Modifica</button> <button class="btn small danger" data-action="libro-elimina" data-id="${l.id}">Elimina</button></td>
-  </tr>`).join('');
   const clSel = LIBRI_FILTRO.cliente !== 'Tutti' ? clienteById(LIBRI_FILTRO.cliente) : null;
   const extra = clSel ? dettaglioLibriCliente(clSel) : sezioneAttiGlobale();
-  return kpi + toolbar + htmlStampeLibri(clSel ? clSel.id : null) + `<div class="card"><table class="tbl"><thead><tr><th>Cliente</th><th>Detenuto da</th><th>Ultima stampa</th><th>Ultima pagina</th><th>Vidimazione</th><th></th></tr></thead><tbody>${righe}</tbody></table></div>` + extra;
+  if (!lista.length) return kpi + toolbar + htmlStampeLibri(clSel ? clSel.id : null) + `<div class="card"><div class="empty"><div class="big">Nessuna società da mostrare</div>Le società di capitali e le cooperative compaiono qui da sole, con i loro libri sociali.</div></div>` + extra;
+  const righe = lista.map(l => {
+    const c = clienteById(l.clienteId); const st = infoStatoFisico(statoFisicoLibro(l));
+    const nDa = daStampare.filter(x => x.clienteId === l.clienteId && !x.key.startsWith('vid-')).length;
+    const sintesi = societaConLibri(c) && l.detenutoDa === 'Studio' ? sintesiStampaLibri(c) : '—';
+    return `<tr>
+    <td><a href="#" data-action="libri-filtro-apri" data-id="${l.clienteId}"><b>${escapeHtml(nomeCliente(l.clienteId))}</b></a></td>
+    <td><span class="badge ${st.cls}">${escapeHtml(st.corto)}</span></td>
+    <td><span class="badge ${l.detenutoDa === 'Studio' ? 'stato-da-fare' : 'info'}">${escapeHtml(l.detenutoDa)}</span>${l.detentoreNote ? ` <span class="helptext">${escapeHtml(l.detentoreNote)}</span>` : ''}</td>
+    <td>${escapeHtml(sintesi)}</td>
+    <td>${nDa ? `<span class="badge stato-da-fare">${nDa}</span>` : '<span class="helptext">—</span>'}</td>
+    <td style="white-space:nowrap;">${l.vidimazione ? fmtData(l.vidimazione) : '—'}</td>
+    <td style="white-space:nowrap;"><button class="btn small" data-action="libro-modifica" data-id="${l.id}">Modifica</button> <button class="btn small danger" data-action="libro-elimina" data-id="${l.id}">Elimina</button></td>
+  </tr>`; }).join('');
+  return kpi + toolbar + htmlStampeLibri(clSel ? clSel.id : null) + `<div class="card"><table class="tbl"><thead><tr><th>Società</th><th>Stato dei libri</th><th>Detenuto da</th><th>Stampato fino a</th><th>Da stampare</th><th>Vidimazione</th><th></th></tr></thead><tbody>${righe}</tbody></table></div>` + extra;
 }
 function modalLibroSociale(id) {
   const ed = id ? (STATE.libriSociali || []).find(x => x.id === id) : null;
-  const v = ed || { clienteId: LIBRI_FILTRO.cliente !== 'Tutti' ? LIBRI_FILTRO.cliente : (STATE.clienti[0] || {}).id, tipo: 'Libri sociali', detenutoDa: 'Studio', detentoreNote: '', ultimaStampa: '', ultimaPagina: '', vidimazione: '', note: '' };
+  const v = ed || { clienteId: LIBRI_FILTRO.cliente !== 'Tutti' ? LIBRI_FILTRO.cliente : (STATE.clienti[0] || {}).id, tipo: 'Libri sociali', statoFisico: 'in_uso', detenutoDa: 'Studio', detentoreNote: '', ultimaStampa: '', ultimaPagina: '', vidimazione: '', note: '' };
   document.getElementById('modalRoot').innerHTML = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
     <div class="modal" style="max-width:540px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;">
@@ -9329,6 +9632,7 @@ function modalLibroSociale(id) {
       </div>
       <form id="formLibro" onsubmit="return false;"><div class="grid2">
         <div class="field full" style="grid-column:1/-1;"><label>Cliente *</label><select id="libCliente">${STATE.clienti.slice().sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale)).map(c => `<option value="${c.id}" ${v.clienteId === c.id ? 'selected' : ''}>${escapeHtml(c.ragioneSociale)}</option>`).join('')}</select></div>
+        <div class="field"><label>Stato dei libri</label><select id="libStatoFisico">${STATI_FISICI_LIBRO.map(t => `<option value="${t.v}" ${statoFisicoLibro(v) === t.v ? 'selected' : ''}>${escapeHtml(t.l)}</option>`).join('')}</select></div>
         <div class="field"><label>Detenuto da</label><select id="libDetenuto">${DETENTORI_LIBRO.map(t => `<option ${v.detenutoDa === t ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
         <div class="field full" style="grid-column:1/-1;"><label>Dove si trova / note sul detentore</label><input id="libDetNote" value="${escapeHtml(v.detentoreNote || '')}" placeholder="es. armadio sala riunioni, sede legale…"></div>
         <div class="field"><label>Ultima stampa</label><input type="date" id="libStampa" value="${escapeHtml(v.ultimaStampa || '')}"></div>
@@ -9702,17 +10006,56 @@ function aggiungiProroga(d) {
   STATE.proroghe.push(p); salvaStato(); return p;
 }
 function eliminaProroga(id) { STATE.proroghe = (STATE.proroghe || []).filter(x => x.id !== id); salvaStato(); }
+/* Clienti (id) che hanno la scadenza a cui si riferisce una proroga. */
+function clientiDiProroga(p) {
+  const o = opzioniProroga().find(x => x.tipo === p.tipo && x.dataOriginale === p.dataOriginale);
+  return o ? Array.from(o.clienti) : [];
+}
+function aderentiProroga(p) {
+  const tutti = clientiDiProroga(p);
+  return p.clienteIds ? tutti.filter(id => p.clienteIds.includes(id)) : tutti;
+}
 function renderProroghe() {
   const opz = opzioniProroga();
   const attive = STATE.proroghe || [];
   const form = `<div class="card"><div class="section-title">Nuova proroga</div>
-    <div class="helptext" style="margin-bottom:8px;">Scegli la scadenza e la nuova data: si sposta per tutti i clienti che l'hanno. Stati, note e solleciti già inseriti restano. Annullando la proroga la data torna quella ordinaria. Controlla sempre il testo del decreto (ambiti e soggetti interessati).</div>
+    <div class="helptext" style="margin-bottom:8px;">Scegli la scadenza e la nuova data. Subito dopo scegli <b>quali clienti aderiscono</b>: non tutti si avvalgono della proroga (chi paga alla data ordinaria, chi alla prima proroga, chi alla seconda). Più proroghe sulla stessa scadenza si sommano: ogni cliente ha la data più avanzata tra quelle a cui aderisce. Stati, note e solleciti già inseriti restano; annullando la proroga la data torna quella precedente. Controlla sempre il testo del decreto (ambiti e soggetti interessati).</div>
     <div class="toolbar"><div class="field grow"><label>Scadenza</label><select id="prScad">${opz.map((o, i) => `<option value="${i}">${escapeHtml(o.tipo)} — ${fmtData(o.dataOriginale)} (${o.clienti.size} clienti)</option>`).join('')}</select></div>
     <div class="field"><label>Nuova data</label><input type="date" id="prData"></div>
     <div class="field grow"><label>Motivo / riferimento</label><input id="prMotivo" placeholder="es. DL n. …"></div>
     <div class="field"><label>&nbsp;</label><button class="btn primary" data-action="proroga-crea">Applica proroga</button></div></div></div>`;
-  const lista = attive.length ? `<div class="card"><div class="section-title">Proroghe attive <span class="cnt">${attive.length}</span></div><table class="compact"><thead><tr><th>Scadenza</th><th>Da</th><th>A</th><th>Motivo</th><th></th></tr></thead><tbody>${attive.map(p => `<tr><td>${escapeHtml(p.tipo)}</td><td>${fmtData(p.dataOriginale)}</td><td><strong>${fmtData(p.dataNuova)}</strong></td><td>${escapeHtml(p.motivo || '')}</td><td><button class="btn small danger" data-action="proroga-elimina" data-id="${p.id}">Annulla</button></td></tr>`).join('')}</tbody></table></div>` : '';
+  const lista = attive.length ? `<div class="card"><div class="section-title">Proroghe attive <span class="cnt">${attive.length}</span></div><table class="compact"><thead><tr><th>Scadenza</th><th>Da</th><th>A</th><th>Aderiscono</th><th>Motivo</th><th></th></tr></thead><tbody>${attive.map(p => { const tot = clientiDiProroga(p).length; const ad = aderentiProroga(p).length; return `<tr><td>${escapeHtml(p.tipo)}</td><td>${fmtData(p.dataOriginale)}</td><td><strong>${fmtData(p.dataNuova)}</strong></td><td><span class="badge ${ad === tot ? 'info' : 'stato-da-fare'}">${ad} di ${tot}</span></td><td>${escapeHtml(p.motivo || '')}</td><td style="white-space:nowrap;"><button class="btn small" data-action="proroga-clienti" data-id="${p.id}">Chi aderisce</button> <button class="btn small danger" data-action="proroga-elimina" data-id="${p.id}">Annulla</button></td></tr>`; }).join('')}</tbody></table></div>` : '';
   return form + lista;
+}
+/* Scelta dei clienti che aderiscono a una proroga, con la data che ciascuno ha oggi. */
+function modalProrogaClienti(id) {
+  const p = (STATE.proroghe || []).find(x => x.id === id);
+  if (!p) return;
+  const { periodiche } = derivati();
+  const dataDi = (cid) => { const sc = periodiche.find(x => x.clienteId === cid && x.tipo === p.tipo && (x.dataOriginale || x.data) === p.dataOriginale); return sc ? sc.data : null; };
+  const ids = clientiDiProroga(p).sort((a, b) => nomeCliente(a).localeCompare(nomeCliente(b)));
+  const righe = ids.map(cid => `<tr data-prc-riga="${escapeHtml(nomeCliente(cid).toLowerCase())}"><td><label style="display:flex;align-items:center;gap:8px;font-weight:400;cursor:pointer;"><input type="checkbox" data-action="proroga-conta" data-prc="${cid}" ${(!p.clienteIds || p.clienteIds.includes(cid)) ? 'checked' : ''}> ${escapeHtml(nomeCliente(cid))}</label></td><td class="helptext" style="white-space:nowrap;">oggi: ${dataDi(cid) ? fmtData(dataDi(cid)) : '—'}</td></tr>`).join('');
+  h('modalRoot').innerHTML = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
+    <div class="modal" style="max-width:560px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div><h2>Chi aderisce alla proroga</h2><div class="modal-sub">${escapeHtml(p.tipo)}: dal ${fmtData(p.dataOriginale)} al <b>${fmtData(p.dataNuova)}</b>${p.motivo ? ' — ' + escapeHtml(p.motivo) : ''}. Togli la spunta ai clienti che NON se ne avvalgono: restano alla data precedente.</div></div>
+        <button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button>
+      </div>
+      <div class="toolbar" style="margin:10px 0;"><input type="text" id="prcCerca" data-action="proroga-cerca" placeholder="Cerca cliente…" style="flex:1;"><button class="btn small" data-action="proroga-clienti-tutti" data-val="1">Tutti</button><button class="btn small" data-action="proroga-clienti-tutti" data-val="0">Nessuno</button></div>
+      <div style="max-height:46vh;overflow:auto;border:1px solid var(--border);border-radius:8px;"><table class="compact"><tbody>${righe || '<tr><td class="helptext">Nessun cliente ha questa scadenza.</td></tr>'}</tbody></table></div>
+      <div class="helptext" id="prcConteggio" style="margin-top:8px;"></div>
+      <div class="modal-actions">
+        <button class="btn" data-action="chiudi-modal">Annulla</button>
+        <button class="btn primary" data-action="proroga-clienti-salva" data-id="${p.id}">Salva</button>
+      </div>
+    </div>
+  </div>`;
+  prcAggiornaConteggio();
+}
+function prcAggiornaConteggio() {
+  const c = document.querySelectorAll('input[data-prc]');
+  const n = Array.from(c).filter(x => x.checked).length;
+  const box = h('prcConteggio'); if (box) box.textContent = `${n} di ${c.length} clienti aderiscono.`;
 }
 const STATI_CPB = ['Da valutare', 'Proposta ricevuta', 'Valutata', 'Aderito', 'Non aderito'];
 function renderCpb() {
@@ -13139,6 +13482,15 @@ function costruisciVistaPortaleClienteEsterna(token, password) {
     delta: deltaLabel(s.data),
   }));
 
+  /* Scadenze marcate "Cliente non può pagare" (richiesta Matteo): l'importo del versamento (F24) arriva
+     nell'area cliente come "pagamento in ritardo", in un riquadro a sé, con data originale e giorni di
+     ritardo. Nessun testo di sollecito: è la fotografia di quanto resta da regolarizzare. */
+  const pagamentiInRitardo = scadenzeClienteTutte.filter(s => s.stato === STATO_NON_PUO_PAGARE).map(s => ({
+    id: s.id, nome: s.nome, data: s.data,
+    importo: (typeof s.importo === 'number') ? s.importo : null,
+    delta: deltaLabel(s.data),
+  }));
+
   const ritenute = ritenuteCliente.map(r => ({
     id: r.id, percipiente: r.percipiente, numeroFattura: r.numeroFattura || null,
     dataFattura: r.dataFattura, importo: Number(r.importo) || 0, stadio: stadioRitenutaPortale(r),
@@ -13316,7 +13668,8 @@ function costruisciVistaPortaleClienteEsterna(token, password) {
     },
     comunicazioni: puoVedere('comunicazioni') ? comunicazioni : [],
     comunicazioniArchiviate: puoVedere('comunicazioni') ? comunicazioniArchiviate : [],
-    scadenze: puoVedere('scadenze') ? scadenze : [],
+    scadenze: puoVedere('scadenze') ? scadenze.filter(s => s.stato !== STATO_NON_PUO_PAGARE) : [],
+    pagamentiInRitardo: puoVedere('scadenze') ? pagamentiInRitardo : [],
     // Stesso permesso delle scadenze/F24 (vedi SEZIONI_PORTALE_LIMITABILI): sono fatture che
     // riguardano versamenti verso l'Erario, concettualmente la stessa area per un accesso limitato.
     ritenute: puoVedere('scadenze') ? ritenute : [],
@@ -16308,6 +16661,7 @@ function modalCredenziale(id) {
 const IMP_SEZIONI = [
   { id: 'studio', label: 'Studio' },
   { id: 'catalogo', label: 'Scadenzario e catalogo', master: true },
+  { id: 'proroghe', label: 'Proroghe', tab: 'proroghe' }, // spostata qui dal menu (richiesta Matteo): serve di rado
   { id: 'dati', label: 'Dati e backup', master: true },
   { id: 'team', label: 'Squadra e accessi', master: true },
   { id: 'moduli', label: 'Moduli', master: true },
@@ -16723,6 +17077,7 @@ function renderImpostazioni() {
     case 'team': contenuto = renderImpostazioniTeam(); break;
     case 'dati': contenuto = renderImpostazioniDati(); break;
     case 'catalogo': contenuto = renderImpostazioniCatalogo(); break;
+    case 'proroghe': contenuto = renderProroghe(); break;
     case 'ia': contenuto = renderImpostazioniIA(); break;
     case 'assistenza': contenuto = renderImpostazioniAssistenza(); break;
     case 'sviluppatore': contenuto = renderImpostazioniSviluppatore(); break;
@@ -18030,8 +18385,21 @@ function onClickDelegatoInterno(e) {
       const o = opzioniProroga()[Number(h('prScad').value)];
       const nd = h('prData').value;
       if (!o || !nd) { toast('Scegli la scadenza e la nuova data.'); return; }
-      aggiungiProroga({ tipo: o.tipo, dataOriginale: o.dataOriginale, dataNuova: nd, motivo: h('prMotivo').value.trim() });
-      render(); toast(`Proroga applicata a ${o.clienti.size} clienti.`); break;
+      const nuova = aggiungiProroga({ tipo: o.tipo, dataOriginale: o.dataOriginale, dataNuova: nd, motivo: h('prMotivo').value.trim() });
+      render(); toast(`Proroga applicata a ${o.clienti.size} clienti: scegli ora chi aderisce.`);
+      modalProrogaClienti(nuova.id); break;
+    }
+    case 'proroga-clienti': modalProrogaClienti(id); break;
+    case 'proroga-clienti-tutti': document.querySelectorAll('input[data-prc]').forEach(x => { if (x.closest('tr').style.display !== 'none') x.checked = el.dataset.val === '1'; }); prcAggiornaConteggio(); break;
+    case 'proroga-clienti-salva': {
+      const p = (STATE.proroghe || []).find(x => x.id === id);
+      if (!p) break;
+      const tutte = Array.from(document.querySelectorAll('input[data-prc]'));
+      const sel = tutte.filter(x => x.checked).map(x => x.dataset.prc);
+      p.clienteIds = sel.length === tutte.length ? null : sel;
+      salvaStato(); chiudiModal(); render();
+      toast(sel.length === tutte.length ? 'Proroga valida per tutti i clienti.' : `Proroga valida per ${sel.length} di ${tutte.length} clienti.`);
+      break;
     }
     case 'proroga-elimina': if (confermaAzione('Annullare la proroga? Le scadenze tornano alla data ordinaria.')) { eliminaProroga(id); render(); } break;
     case 'report-mensile-apri': modalReportMensile(el.dataset.cliente); break;
@@ -18067,6 +18435,7 @@ function onClickDelegatoInterno(e) {
     case 'stampa-libro-elimina': STATE.stampeLibri = (STATE.stampeLibri || []).filter(x => x.id !== el.dataset.id); salvaStato(); render(); break;
     case 'libro-nuovo': modalLibroSociale(null); break;
     case 'libro-modifica': modalLibroSociale(id); break;
+    case 'libri-filtro-apri': LIBRI_FILTRO.cliente = id; render(); break;
     case 'libro-elimina': if (confermaAzione('Eliminare questo libro dal registro?')) { eliminaLibroSociale(id); render(); } break;
     case 'atto-nuovo': modalAttoLibro(null); break;
     case 'atto-modifica': modalAttoLibro(id); break;
@@ -18089,7 +18458,7 @@ function onClickDelegatoInterno(e) {
       break;
     }
     case 'libro-salva': {
-      const dati = { clienteId: h('libCliente').value, tipo: 'Libri sociali', detenutoDa: h('libDetenuto').value, detentoreNote: h('libDetNote').value.trim(), ultimaStampa: h('libStampa').value || null, ultimaPagina: h('libPagina').value, vidimazione: h('libVidim').value || null, note: h('libNote').value.trim() };
+      const dati = { clienteId: h('libCliente').value, tipo: 'Libri sociali', statoFisico: h('libStatoFisico').value, detenutoDa: h('libDetenuto').value, detentoreNote: h('libDetNote').value.trim(), ultimaStampa: h('libStampa').value || null, ultimaPagina: h('libPagina').value, vidimazione: h('libVidim').value || null, note: h('libNote').value.trim() };
       if (!dati.clienteId) { toast('Scegli il cliente.'); return; }
       if (!id && libroDelCliente(dati.clienteId)) { toast('Questo cliente ha già i suoi libri: modifica quelli esistenti.', true); return; }
       if (id) aggiornaLibroSociale(id, dati); else aggiungiLibroSociale(dati);
@@ -18568,6 +18937,11 @@ function onClickDelegatoInterno(e) {
       break;
     }
 
+    case 'scad-conferma-importo': {
+      const inp = el.parentElement && el.parentElement.querySelector('input.importo-input');
+      if (inp) salvaImportoScadenza(el.dataset.id, inp, true);
+      break;
+    }
     case 'scad-apri-solleciti': SCAD_SUBMODAL_DA_DETTAGLIO = false; modalSolleciti(el.dataset.id); break;
     case 'apri-dettaglio-scadenza': modalDettaglioScadenza(id); break;
     case 'apri-dettaglio-appuntamento': apriModalAppuntamento(id); break;
@@ -19173,6 +19547,9 @@ function onChangeDelegato(e) {
     case 'libri-filtro-cliente': LIBRI_FILTRO.cliente = el.value; render(); break;
     case 'libri-filtro-tipo': LIBRI_FILTRO.tipo = el.value; render(); break;
     case 'stampa-libro-segna': segnaStampaLibro(el.dataset.key, el.checked); render(); break;
+    case 'libro-stato-fisico': aggiornaLibroSociale(el.dataset.id, { statoFisico: el.value }); render(); break;
+    case 'libri-stampato-fino': if (el.value) { impostaStampatoFino(el.dataset.cliente, el.value); render(); toast('Stato di stampa aggiornato.'); } break;
+    case 'libri-filtro-stato': LIBRI_FILTRO.stato = el.value; render(); break;
     case 'libri-filtro-detentore': LIBRI_FILTRO.detentore = el.value; render(); break;
     case 'fatt-filtro-cliente': FATT_FILTRO.cliente = el.value; render(); break;
     case 'fatt-filtro-vista': FATT_FILTRO.vista = el.value; render(); break;
@@ -19615,7 +19992,9 @@ function onInputDelegato(e) {
     }
     case 'ann-nota': aggiornaAnnualeMeta(id, { nota: el.value }); break; // no render: non perdere il focus mentre si scrive
     case 'scad-cambia-nota': aggiornaScadenza(id, { nota: el.value }); break; // no render: non perdere il focus mentre si scrive
-    case 'scad-cambia-importo': aggiornaScadenza(id, { importo: el.value === '' ? null : Number(el.value) }); break; // no render, stesso motivo
+    case 'scad-cambia-importo': salvaImportoScadenza(id, el); break; // no render, stesso motivo
+    case 'proroga-cerca': { const t = el.value.trim().toLowerCase(); document.querySelectorAll('tr[data-prc-riga]').forEach(r => { r.style.display = (!t || r.dataset.prcRiga.includes(t)) ? '' : 'none'; }); break; }
+    case 'proroga-conta': prcAggiornaConteggio(); break;
     case 'ann-filtro-q': ANN_FILTRO.q = el.value; resetPagina('annuali'); render(); restoreFocus('[data-action="ann-filtro-q"]'); break;
     case 'ricerca-input': RICERCA_QUERY = el.value; RICERCA_SEL = 0; aggiornaRisultatiRicerca(); break; // niente render(): perderebbe il focus sull'input
     case 'chat-rif-input': CHAT_RIF_QUERY = el.value; aggiornaRisultatiRiferimentoChat(); break; // idem
@@ -19699,7 +20078,7 @@ function esportaVistaMCP() {
       stato: c.stato, regimeFiscale: c.regimeFiscale || '', responsabileStudio: c.responsabileStudio || '',
       periodicitaIva: c.periodicitaIva || '', previdenza: c.previdenza || '', tenutaContabilita: c.contabilita || '', addebitoF24: c.addebitoF24 || '',
       codiceFiscale: c.codiceFiscale || '', partitaIva: c.partitaIva || '',
-      pmiInnovativa: c.pmiInnovativa || '', startupInnovativa: c.startupInnovativa || '', organoControllo: c.organoControllo || '',
+      pmiInnovativa: c.pmiInnovativa || '', startupInnovativa: c.startupInnovativa || '', organoControllo: c.organoControllo || '', haDipendenti: c.haDipendenti || '',
       ...(c.tipo === 'associazione' ? { associazione: datiAssociazione(c) } : {}),
       datiMancanti: livelliMancantiCliente(c),
       contabilita: contab, avvisiCoerenzaContabile: verificaCoerenzaContabile(c.id), ultimoBilancio,
@@ -19772,7 +20151,7 @@ function esportaVistaMCP() {
     moduli: MODULI.map(m => ({ id: m.id, nome: m.label, attivo: moduloAttivo(m.id) })),
     team: { responsabili: STATE.meta.responsabili || [], consulenti: STATE.meta.consulenti || [], ruoli: STATE.meta.ruoli || {} },
     cruscotto: datiCruscotto(),
-    libriSociali: (STATE.libriSociali || []).map(l => ({ id: l.id, clienteId: l.clienteId, cliente: nomeCliente(l.clienteId), tipo: l.tipo, detenutoDa: l.detenutoDa, detentoreNote: l.detentoreNote, ultimaStampa: l.ultimaStampa, ultimaPagina: l.ultimaPagina, vidimazione: l.vidimazione, note: l.note })),
+    libriSociali: (STATE.libriSociali || []).map(l => ({ id: l.id, clienteId: l.clienteId, cliente: nomeCliente(l.clienteId), tipo: l.tipo, statoFisico: statoFisicoLibro(l), detenutoDa: l.detenutoDa, detentoreNote: l.detentoreNote, ultimaStampa: l.ultimaStampa, ultimaPagina: l.ultimaPagina, vidimazione: l.vidimazione, note: l.note })),
     attivitaFatturabili: (STATE.attivitaFatturabili || []).map(a => ({ id: a.id, clienteId: a.clienteId, cliente: nomeCliente(a.clienteId), data: a.data, descrizione: a.descrizione, importo: a.importo, stato: a.stato, fatturaNumero: a.fatturaNumero, fatturaData: a.fatturaData })),
     incassi: (STATE.incassi || []).map(i => ({ id: i.id, clienteId: i.clienteId, cliente: nomeCliente(i.clienteId), descrizione: i.descrizione, numero: i.numero, importo: i.importo, incassato: i.importoIncassato || 0, residuo: residuoIncasso(i), dataEmissione: i.dataEmissione, dataScadenza: i.dataScadenza, stato: statoIncasso(i), solleciti: (i.solleciti || []).length })),
     appuntamenti: (STATE.appuntamenti || []).map(a => ({
@@ -20179,9 +20558,53 @@ function init() {
   // append incrementali.
   new MutationObserver(() => { MODAL_SNAPSHOT = serializzaModal(); }).observe(h('modalRoot'), { childList: true });
   h('navMenu').addEventListener('click', (e) => {
+    const stella = e.target.closest('.nav-star');
+    if (stella) { toggleNavPreferito(stella.dataset.star); renderNav(); return; } // la stellina non naviga
+    const ed = e.target.closest('[data-navedit]');
+    if (ed) {
+      const az = ed.dataset.navedit;
+      if (az === 'inizia') NAV_MODIFICA = true;
+      else if (az === 'fine') NAV_MODIFICA = false;
+      else if (az === 'reset') { ripristinaNavLayout(); toast('Menu ripristinato al layout standard.'); }
+      renderNav(); return;
+    }
+    if (NAV_MODIFICA) return; // in "Personalizza menu" le voci non navigano
     const el = e.target.closest('[data-nav]');
     if (el) setView(el.dataset.nav);
   });
+  // Drag & drop del menu (solo in modalità "Personalizza menu"): vedi riordinaNav
+  {
+    const nm = h('navMenu');
+    let trascinato = null;
+    const bersaglio = (e) => e.target.closest && e.target.closest('[data-drag]');
+    const pulisci = () => nm.querySelectorAll('.drag-prima,.drag-dopo,.drag-dentro,.trascinato').forEach(x => x.classList.remove('drag-prima', 'drag-dopo', 'drag-dentro', 'trascinato'));
+    const metaBassa = (e, el) => { const r = el.getBoundingClientRect(); return (e.clientY - r.top) > r.height / 2; };
+    nm.addEventListener('dragstart', (e) => {
+      const el = bersaglio(e);
+      if (!NAV_MODIFICA || !el) return;
+      trascinato = { tipo: el.dataset.drag, id: el.dataset.id };
+      el.classList.add('trascinato');
+      if (e.dataTransfer) { try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', el.dataset.id); } catch (err) { /* jsdom */ } }
+    });
+    nm.addEventListener('dragover', (e) => {
+      const el = bersaglio(e);
+      if (!NAV_MODIFICA || !trascinato || !el) return;
+      e.preventDefault();
+      nm.querySelectorAll('.drag-prima,.drag-dopo,.drag-dentro').forEach(x => x.classList.remove('drag-prima', 'drag-dopo', 'drag-dentro'));
+      if (trascinato.tipo === 'voce' && el.dataset.drag === 'gruppo') el.classList.add('drag-dentro');
+      else el.classList.add(metaBassa(e, el) ? 'drag-dopo' : 'drag-prima');
+    });
+    nm.addEventListener('drop', (e) => {
+      const el = bersaglio(e);
+      if (!NAV_MODIFICA || !trascinato || !el) return;
+      e.preventDefault();
+      const dopo = !(trascinato.tipo === 'voce' && el.dataset.drag === 'gruppo') && metaBassa(e, el);
+      const fatto = riordinaNav(trascinato.tipo, trascinato.id, el.dataset.drag, el.dataset.id, dopo);
+      trascinato = null; pulisci();
+      if (fatto) renderNav();
+    });
+    nm.addEventListener('dragend', () => { trascinato = null; pulisci(); });
+  }
   h('annoSelect').addEventListener('change', (e) => {
     STATE.annoCorrente = Number(e.target.value);
     salvaStato(); render();
@@ -20413,7 +20836,7 @@ function impostaModalitaSviluppatore(on) {
   try { if (on) localStorage.setItem(LS_KEY_SVILUPPATORE, '1'); else localStorage.removeItem(LS_KEY_SVILUPPATORE); } catch (e) { /* storage bloccato */ }
 }
 function impSezioniVisibili() {
-  return IMP_SEZIONI.filter(s => (!s.master || operatoreMaster()) && (!s.dev || modalitaSviluppatore()));
+  return IMP_SEZIONI.filter(s => (!s.master || operatoreMaster()) && (!s.dev || modalitaSviluppatore()) && (!s.tab || operatorePuoVedere(s.tab)));
 }
 // Tab "di nucleo": quelli che non appartengono a nessun modulo (sempre attivi per tutti).
 function tabNucleo() {
@@ -20480,8 +20903,34 @@ function setupDaFare() {
   const m = STATE.meta || {};
   return !m.setupCompletato && !m.moduliConfermati && (STATE.clienti || []).length === 0;
 }
+/* Configurazione iniziale fatta nell'installer (Installa-Prisma.exe): arriva nell'indirizzo della finestra
+   come "#setup=<base64 di un JSON>". Se c'e' ed e' valida, si applica senza mostrare le domande. */
+function setupDaInstaller() {
+  try {
+    const m = /[#&]setup=([A-Za-z0-9+/=_-]+)/.exec(location.hash || '');
+    if (!m) return null;
+    const bin = atob(m[1].replace(/-/g, '+').replace(/_/g, '/'));
+    const p = JSON.parse(decodeURIComponent(Array.from(bin, c => '%' + c.charCodeAt(0).toString(16).padStart(2, '0')).join('')));
+    const idMod = MODULI.map(x => x.id);
+    const testo = v => typeof v === 'string' && v.trim() && v.length <= 120;
+    if (!p || !testo(p.studio) || !testo(p.master) || !Array.isArray(p.moduli) || p.moduli.some(x => !idMod.includes(x))) return null;
+    const collab = (Array.isArray(p.collab) ? p.collab : []).filter(c => c && testo(c.nome)).map(c => ({
+      nome: c.nome.trim(), ruolo: c.ruolo === 'admin' ? 'admin' : 'limitato', moduli: (Array.isArray(c.moduli) ? c.moduli : []).filter(x => idMod.includes(x))
+    }));
+    const nomi = [p.master.trim()].concat(collab.map(c => c.nome));
+    if (new Set(nomi.map(n => n.toLowerCase())).size !== nomi.length) return null;
+    return { step: 5, studio: p.studio.trim(), master: p.master.trim(), risposte: {}, moduli: p.moduli.slice(), collab };
+  } catch (e) { return null; }
+}
 function avviaSetupSeServe() {
   if (!setupDaFare()) return false;
+  const daInstaller = setupDaInstaller();
+  if (daInstaller) {
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* non blocca */ }
+    SETUP = daInstaller;
+    applicaSetup();
+    return true;
+  }
   SETUP = { step: 1, studio: (STATE.meta.studioNome && STATE.meta.studioNome !== 'Studio') ? STATE.meta.studioNome : '', master: '', risposte: {}, moduli: [], collab: [] };
   renderSetup();
   return true;
@@ -20654,6 +21103,8 @@ function modalBenvenutoDopoSetup() {
   </div></div>`;
 }
 window.avviaSetupSeServe = avviaSetupSeServe;
+window.getSetupDefinizioni = () => ({ MODULI, SETUP_DOMANDE, SETUP_PROFILI });
+window.setupDaInstaller = setupDaInstaller;
 window.setupDaFare = setupDaFare;
 window.operatoreMaster = operatoreMaster;
 window.getSETUP = () => SETUP;
@@ -20732,6 +21183,9 @@ window.setSessioneOperatoreTokenTest = (v) => { SESSIONE_OPERATORE_TOKEN = v || 
 window.responsabileHaPassword = responsabileHaPassword;
 window.setResponsabiliConPasswordTest = (v) => { RESPONSABILI_CON_PASSWORD_CACHE = v || []; };
 window.aggiornaScadenza = aggiornaScadenza;
+window.applicaProroga = applicaProroga;
+window.aderentiProroga = aderentiProroga;
+window.chiaveNavPersonale = chiaveNavPersonale;
 window.generaScadenzePeriodiche = generaScadenzePeriodiche;
 window.clienteById = clienteById;
 window.nomeCliente = nomeCliente;
@@ -20923,7 +21377,7 @@ window.generaRtfDaTesto = generaRtfDaTesto;
 window.escapeRtf = escapeRtf;
 window.testoElencoAttivita = testoElencoAttivita;
 window.creaPreventivoDaModello = creaPreventivoDaModello;
-window.datiAssociazione = datiAssociazione; window.testoModuliPreventivo = testoModuliPreventivo; window.stampeLibriTutte = stampeLibriTutte; window.stampeLibriDaFare = stampeLibriDaFare; window.unisciLibriSociali = unisciLibriSociali; window.libroDelCliente = libroDelCliente; window.modalPreventivo = modalPreventivo;
+window.datiAssociazione = datiAssociazione; window.testoModuliPreventivo = testoModuliPreventivo; window.stampeLibriTutte = stampeLibriTutte; window.vociAttesaLibri = vociAttesaLibri; window.impostaStampatoFino = impostaStampatoFino; window.sintesiStampaLibri = sintesiStampaLibri; window.assicuraLibriSocieta = assicuraLibriSocieta; window.segnaStampaLibro = segnaStampaLibro; window.libroDelCliente = libroDelCliente; window.stampeLibriDaFare = stampeLibriDaFare; window.unisciLibriSociali = unisciLibriSociali; window.libroDelCliente = libroDelCliente; window.modalPreventivo = modalPreventivo;
 window.testoDocumentoToHtml = testoDocumentoToHtml; window.editorDocumentoToTesto = editorDocumentoToTesto; window.documentoStampaHtml = documentoStampaHtml;
 
 init();

@@ -1,22 +1,22 @@
 {
-  "versione": "1.17.0",
-  "note": "Sicurezza: niente CORS aperto, controllo Host/Origin, blocco tentativi password, chiave licenza incorporata, manifesto aggiornamenti firmato",
+  "versione": "1.18.0",
+  "note": "Scadenze: importo in formato italiano con conferma, stato 'Cliente non può pagare' (arriva al portale come pagamento in ritardo), colonna cliente piu larga, via il campo nota; menu riorganizzato con preferiti personali e personalizzazione drag and drop; proroghe con adesione per cliente e catena di proroghe; selezione testo solo sui dati",
   "richiedeNpmInstall": false,
   "file": [
     {
       "nome": "gestionale.htm",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale.htm",
-      "sha256": "b61c67a0f192d0d6442d1ea7784a14cd9f4d8affa893a2aea1f9527b87123414"
+      "sha256": "a51d8ce70cf193466f8b4b4c2ef56d2ae3784b812ada5344e95be10485f255d6"
     },
     {
       "nome": "server.js",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/server.js",
-      "sha256": "fc53ef36ca96768fbf655c9373920ce09dcd603dd56d12e91ab1e474eefc6854"
+      "sha256": "801ba63a6987ef01a0832ee8b5062fa3e3a0194b51cc83c51281ed2d2e775d15"
     },
     {
       "nome": "portale-cliente.htm",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/portale-cliente.htm",
-      "sha256": "a60a1e1a5b7f34aa3de565de193bcc428688ba3ac9f9385dceaaa49f119f567d"
+      "sha256": "7b1f36fadd46340c0f445beb9aba4ca3ddccb9fb569c07711af2b6655133e4eb"
     },
     {
       "nome": "portale-sw.js",
@@ -24,5 +24,5 @@
       "sha256": "2ef5a0fe81a09f871a56489a86ae276f0e2f123d845afa484ff703650b47b24e"
     }
   ],
-  "firma": "3338VY7CM64sGjGA0jqfK+0jfZIBmcsCy5k97SNN/grlSQZk3i5FdbrMwSMivYGKcRBakm15ekdzM8VhqFxoAg=="
+  "firma": "vFn4puko/s5uCEcrVFJNBRRxi0XhToFqaDnfj8SznYeWM9VDybtrOYy2YVItgFNWLz+1xLcZ1tyZu5MciOztCA=="
 }
