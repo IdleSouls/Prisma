@@ -1,5 +1,5 @@
 /* Genera versione.json (il manifesto letto da Prisma per gli aggiornamenti automatici).
-   Uso:  node pubblica-aggiornamento.js "note della versione"
+   Uso:  node pubblica-aggiornamento.js "Voce 1 | Voce 2 | Voce 3"   (le voci separate da " | " compaiono come elenco puntato in Prisma)
    1) cambia VERSIONE_LOCALE in server.js (e "version" in package.json)
    2) git add dei file modificati
    3) node pubblica-aggiornamento.js "cosa cambia"   <- calcola lo sha256 dei file COSÌ COME STANNO NELL'INDICE git
@@ -25,7 +25,7 @@ const manifesto = {
 // Il manifesto viene FIRMATO con la chiave privata (stessa delle licenze): Prisma applica un
 // aggiornamento solo se la firma e' valida, cosi' un repository manomesso non basta per far girare
 // codice sui PC degli studi.
-const FILE_PRIVATA = 'licensing/chiave-privata.pem';
+const FILE_PRIVATA = '2-Gestione-Licenze/chiavi/chiave-privata.pem';
 if (!fs.existsSync(FILE_PRIVATA)) { console.error('ERRORE: manca ' + FILE_PRIVATA + ' - senza non posso firmare il manifesto (i clienti rifiuterebbero l\'aggiornamento).'); process.exit(1); }
 const { firmaLicenza } = require('./licensing/lib.js');
 const firmato = firmaLicenza(manifesto, fs.readFileSync(FILE_PRIVATA, 'utf8'));

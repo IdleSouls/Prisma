@@ -481,12 +481,99 @@ async function main() {
   console.log('=== Stato "Errore" applicato e colorazione select aggiornata correttamente');
 
   // scrivi una nota su una scadenza e verifica persistenza (senza perdita al render)
-  const inputNota = qa('[data-action="scad-cambia-nota"]')[0];
-  const idNota = inputNota.dataset.id;
-  setVal(inputNota, 'verificato con cliente via mail');
-  await wait(20);
+  // la colonna "Nota" è stata tolta dalla tabella (resta nel dettaglio/annotazioni): niente campo in riga
+  assert(qa('[data-action="scad-cambia-nota"]').length === 0, 'la tabella scadenze periodiche non deve più avere il campo nota in riga');
+  const idNota = qa('[data-action="scad-cambia-stato"]')[0].dataset.id;
+  window.aggiornaScadenza(idNota, { nota: 'verificato con cliente via mail' });
   assert(window.getSTATE().scadenzeOverrides[idNota].nota === 'verificato con cliente via mail', 'nota non salvata correttamente');
-  console.log('=== Nota su scadenza salvata correttamente');
+  window.render(); await wait(20);
+  assert(q('#content').innerHTML.includes('Nota: verificato con cliente via mail'), 'la nota esistente deve restare leggibile nel tooltip del tasto annotazioni');
+  console.log('=== Nota su scadenza: niente campo in riga, dato conservato e visibile nel tooltip OK');
+
+  // nuovo stato "Cliente non può pagare": selezionabile, colorato, resta aperto e arriva al portale come pagamento in ritardo
+  const rigaNP = qa('[data-action="scad-cambia-stato"]')[7];
+  assert([...rigaNP.options].some(o => o.value === 'Cliente non può pagare'), 'il menu avanzamento deve offrire "Cliente non può pagare"');
+  const idNP = rigaNP.dataset.id;
+  setVal(rigaNP, 'Cliente non può pagare');
+  await wait(20);
+  assert(window.getSTATE().scadenzeOverrides[idNP].stato === 'Cliente non può pagare', 'stato "Cliente non può pagare" non salvato');
+  assert(qa('select.statoSel.stato-cliente-non-puo-pagare').length >= 1, 'select senza la classe colore del nuovo stato');
+  assert(!window.STATI_SCADENZA_CHIUSI || !window.STATI_SCADENZA_CHIUSI.includes('Cliente non può pagare'), 'il nuovo stato non deve chiudere la scadenza');
+  // arriva nel portale cliente esterno come "pagamento in ritardo" (e sparisce dall'elenco scadenze normale)
+  {
+    const sc = window.derivati().tutteScadenze.find(s => s.id === idNP);
+    window.aggiornaScadenza(idNP, { importo: 2500 });
+    const cl = window.getSTATE().clienti.find(c => c.id === sc.clienteId);
+    const dp = window.datiPortaleCliente(cl);
+    assert(dp.scadenzeClienteTutte.some(s => s.id === idNP && s.stato === 'Cliente non può pagare'), 'la scadenza "non può pagare" deve restare tra quelle aperte del cliente');
+  }
+  window.aggiornaScadenza(idNP, { stato: 'Da fare', fase: null, importo: null });
+  window.render(); await wait(20);
+  console.log('=== Stato "Cliente non può pagare" OK');
+
+  // menu: preferiti, riordino di gruppi e voci, ripristino
+  {
+    const nomiGruppi = () => qa('#navMenu .navgroup').map(g => g.textContent.replace(/[▾▸▲▼★⋮]/g, '').trim());
+    assert(nomiGruppi().includes('Adempimenti') && nomiGruppi().includes('Fatturazione') && nomiGruppi().includes('Squadra'), 'nuova struttura del menu non trovata: ' + nomiGruppi().join('|'));
+    assert(!q('#navMenu [data-nav="proroghe"]'), 'Proroghe non deve più stare nel menu');
+    const gRel = [...qa('#navMenu .navgroup')].find(g => /Relazione cliente/.test(g.textContent));
+    const vociRel = [...gRel.nextElementSibling.querySelectorAll('[data-nav]')].map(x => x.dataset.nav);
+    assert(['antiriciclaggio','onboarding'].every(x => vociRel.includes(x)), 'Relazione cliente deve contenere antiriciclaggio e onboarding: ' + vociRel.join(','));
+    // preferiti personali: la chiave dipende dall'operatore, quindi non passano da un utente all'altro
+    {
+      const ch = window.chiaveNavPersonale('gestionaleNavPreferiti_v1');
+      assert(/^gestionaleNavPreferiti_v1::/.test(ch), 'la chiave dei preferiti deve includere l\'operatore: ' + ch);
+    }
+    // preferiti
+    click(q('#navMenu .nav-star[data-star="scadenze"]'));
+    assert(/Preferiti/.test(q('#navMenu').textContent), 'dopo la stellina deve comparire il gruppo Preferiti');
+    click(qa('#navMenu .nav-star.on[data-star="scadenze"]')[0]);
+    assert(!/★ Preferiti/.test(q('#navMenu').textContent), 'tolta la stellina, il gruppo Preferiti deve sparire');
+    // personalizza: drag & drop di un gruppo e di una voce
+    const trascina = (da, su, y) => {
+      const ev = (tipo, el) => { const e = new window.Event(tipo, { bubbles: true, cancelable: true }); e.clientY = y || 0; el.dispatchEvent(e); };
+      ev('dragstart', da); ev('dragover', su); ev('drop', su); ev('dragend', da);
+    };
+    click(q('[data-navedit="inizia"]'));
+    assert(q('.nav-edit-bar') && !q('[data-move]'), 'modalità Personalizza non attivata (o ci sono ancora i pulsantini)');
+    assert(q('#navMenu .navgroup[draggable="true"]') && q('#navMenu .navitem[draggable="true"]'), 'in Personalizza gruppi e voci devono essere trascinabili');
+    const primoPrima = nomiGruppi()[0];
+    const intest = (nome) => [...qa('#navMenu .navgroup')].find(g => g.dataset.id === nome);
+    // il primo gruppo trascinato sull'intestazione del terzo finisce prima del terzo
+    const terzo = nomiGruppi()[2];
+    trascina(intest(primoPrima), intest(terzo));
+    const dopoOrdine = nomiGruppi();
+    assert(dopoOrdine[1] === primoPrima && dopoOrdine[2] === terzo, 'il gruppo non si è spostato col trascinamento: ' + dopoOrdine.join('|'));
+    // una voce trascinata sull'intestazione di un altro gruppo va in cima a quel gruppo
+    trascina(q('#navMenu .navitem[data-nav="cpb"]'), intest('Fatturazione'));
+    const gFat = intest('Fatturazione').nextElementSibling;
+    assert(gFat.querySelector('[data-nav]').dataset.nav === 'cpb', 'cpb dovrebbe essere in cima a Fatturazione');
+    // una voce trascinata su un\'altra voce si inserisce prima di lei
+    trascina(q('#navMenu .navitem[data-nav="cpb"]'), q('#navMenu .navgroup-items .navitem[data-nav="incassi"]'));
+    const ordFat = [...intest('Fatturazione').nextElementSibling.querySelectorAll('[data-nav]')].map(x => x.dataset.nav);
+    assert(ordFat.indexOf('cpb') === ordFat.indexOf('incassi') - 1, 'cpb dovrebbe stare subito prima di incassi: ' + ordFat.join(','));
+    click(q('[data-navedit="fine"]'));
+    assert(!q('.nav-edit-bar'), 'Fine deve uscire dalla modalità Personalizza');
+    assert(Object.keys(window.localStorage).some(k => k.startsWith('gestionaleNavLayout_v1::')), 'il layout personale non è stato salvato');
+    // ripristino
+    click(q('[data-navedit="inizia"]')); click(q('[data-navedit="reset"]')); click(q('[data-navedit="fine"]'));
+    assert(nomiGruppi()[0] === primoPrima, 'Ripristina deve riportare l\'ordine standard dei gruppi');
+    assert(!Object.keys(window.localStorage).some(k => k.startsWith('gestionaleNavLayout_v1::')), 'Ripristina deve cancellare il layout personale');
+    console.log('=== Menu: nuova struttura, preferiti, riordino gruppi/voci e ripristino OK');
+  }
+
+  // formato italiano dell'importo (1.234,56) e riformattazione dopo il salvataggio
+  const inpIt = qa('[data-action="scad-cambia-importo"]')[1];
+  const idIt = inpIt.dataset.id;
+  setVal(inpIt, '10.663,28');
+  await wait(20);
+  assert(window.getSTATE().scadenzeOverrides[idIt].importo === 10663.28, 'importo in formato italiano non interpretato');
+  assert(inpIt.value === '10.663,28', 'il campo importo deve restare formattato con i punti delle migliaia, trovato ' + inpIt.value);
+  setVal(inpIt, '1234,5');
+  await wait(20);
+  assert(inpIt.value === '1.234,50', 'anche a 4 cifre il punto delle migliaia deve esserci, trovato ' + inpIt.value);
+  assert(qa('[data-action="scad-conferma-importo"]').length >= 1, 'manca il tasto di conferma importo');
+  console.log('=== Importo: formato italiano e tasto conferma OK');
 
   // importo per scadenza (ispirato al "readiness" di Scadero: quante scadenze in arrivo hanno
   // già l'importo impostato) — round-trip via input, persistenza, e KPI di readiness in vista
@@ -1969,7 +2056,25 @@ async function main() {
         assert(dopo[0].id === prima[0].id, 'la proroga non deve cambiare l\'id della scadenza (override)');
         st().proroghe = st().proroghe.filter(x => x.id !== p.id);
       }
-      for (const v of ['carico', 'proroghe', 'cpb']) { click(q(`[data-nav="${v}"]`)); await wait(20); assert(q('#content').textContent.length > 50, 'vista ' + v + ' vuota'); }
+      for (const v of ['carico', 'cpb']) { click(q(`[data-nav="${v}"]`)); await wait(20); assert(q('#content').textContent.length > 50, 'vista ' + v + ' vuota'); }
+      // proroghe a catena con adesione per cliente: chi non aderisce resta alla data precedente, chi aderisce a entrambe prende la più avanzata
+      {
+        const o2 = o;
+        const [c1, c2, c3] = Array.from(window.derivati().periodiche.filter(sc => sc.tipo === o2.tipo && (sc.dataOriginale || sc.data) === o2.dataOriginale).reduce((set, sc) => set.add(sc.clienteId), new Set()));
+        if (c1 && c2 && c3) {
+          const pA = window.aggiungiProroga({ tipo: o2.tipo, dataOriginale: o2.dataOriginale, dataNuova: '2026-11-20', motivo: 'prima', clienteIds: [c2, c3] });
+          const pB = window.aggiungiProroga({ tipo: o2.tipo, dataOriginale: o2.dataOriginale, dataNuova: '2026-12-20', motivo: 'seconda', clienteIds: [c3] });
+          assert(window.applicaProroga(o2.dataOriginale, c1, o2.tipo) === o2.dataOriginale, 'chi non aderisce resta alla data ordinaria');
+          assert(window.applicaProroga(o2.dataOriginale, c2, o2.tipo) === '2026-11-20', 'chi aderisce solo alla prima resta alla prima');
+          assert(window.applicaProroga(o2.dataOriginale, c3, o2.tipo) === '2026-12-20', 'chi aderisce a entrambe ha la data più avanzata');
+          assert(window.aderentiProroga(pA).length === 2 && window.aderentiProroga(pB).length === 1, 'conteggio aderenti errato');
+          st().proroghe = st().proroghe.filter(x => x.id !== pA.id && x.id !== pB.id);
+        }
+      }
+      // le Proroghe ora vivono in Impostazioni (scheda "Proroghe"), non più nel menu
+      click(q('[data-nav="impostazioni"]')); await wait(20);
+      click(q('[data-action="imp-sezione"][data-sezione="proroghe"]')); await wait(20);
+      assert(q('#content').textContent.length > 50 && /[Pp]roroga/.test(q('#content').textContent), 'scheda Proroghe in Impostazioni vuota');
     }
     // Deontologia
     {
@@ -4853,7 +4958,7 @@ async function main() {
   if (estere) assert(estere.fasi.join('|') === 'Registrate|Inviate' && estere.conImporto === false, 'fatture estere: attese fasi Registrate/Inviate e nessun importo');
   // menu avanzamento: Da fare + fasi + Errore + Non applicabile
   const selAvanz = q(`[data-action="scad-cambia-stato"][data-id="${primaScadenza.id}"]`);
-  assert(selAvanz && Array.from(selAvanz.options).map(o => o.value || o.textContent).join('|') === ['Da fare'].concat(primaScadenza.fasi, ['Errore', 'Non applicabile']).join('|'), 'menu avanzamento non coerente con le fasi del tipo');
+  assert(selAvanz && Array.from(selAvanz.options).map(o => o.value || o.textContent).join('|') === ['Da fare'].concat(primaScadenza.fasi, ['Errore', 'Cliente non può pagare', 'Non applicabile']).join('|'), 'menu avanzamento non coerente con le fasi del tipo');
   // fase intermedia: scadenza ancora aperta; ultima fase: scadenza chiusa con data di completamento
   setVal(selAvanz, primaScadenza.fasi[1]);
   await wait(20);
@@ -6799,6 +6904,36 @@ async function main() {
     assert(!window.setupDaFare(), 'Setup: lo stato originale (con clienti) non deve richiederlo');
     console.log('=== Questionario di primo avvio + master: OK');
   }
+  // ===== Configurazione iniziale fatta nell'installer (#setup=...) =====
+  {
+    const def = window.getSetupDefinizioni();
+    const sd = require('./electron-app/setup-dati.js');
+    assert(JSON.stringify(sd.MODULI.map(m => m.id)) === JSON.stringify(def.MODULI.map(m => m.id)), 'Installer: i moduli di setup-dati.js non coincidono con quelli di gestionale.htm');
+    assert(JSON.stringify(sd.DOMANDE.map(d => [d.id, d.moduli])) === JSON.stringify(def.SETUP_DOMANDE.map(d => [d.id, d.moduli])), 'Installer: le domande di setup-dati.js non coincidono con quelle di gestionale.htm');
+    assert(JSON.stringify(sd.PROFILI.map(d => [d.id, d.risposte])) === JSON.stringify(def.SETUP_PROFILI.map(d => [d.id, d.risposte])), 'Installer: i profili di setup-dati.js non coincidono con quelli di gestionale.htm');
+    const salva = JSON.parse(JSON.stringify(window.getSTATE()));
+    const vuoto = JSON.parse(JSON.stringify(salva));
+    vuoto.clienti = []; vuoto.meta.moduliConfermati = false; vuoto.meta.setupCompletato = false;
+    vuoto.meta.ruoli = {}; vuoto.meta.tabConsentiti = {}; vuoto.meta.moduliDisattivati = [];
+    window.setSTATE(vuoto);
+    const preset = { studio: 'Studio Ànima', master: 'Zoe Maestra', moduli: ['team', 'fatturazione'], collab: [{ nome: 'Ugo Limitato', ruolo: 'limitato', moduli: ['team'] }, { nome: 'Ada Admin', ruolo: 'admin', moduli: [] }] };
+    window.location.hash = '#setup=' + Buffer.from(JSON.stringify(preset), 'utf8').toString('base64');
+    assert(window.setupDaInstaller(), 'Installer: preset valido non riconosciuto');
+    window.avviaSetupSeServe();
+    const S = window.getSTATE();
+    assert(!q('#setupRoot'), 'Installer: con preset non devono comparire le domande');
+    assert(S.meta.studioNome === 'Studio Ànima' && S.meta.responsabili.join() === 'Zoe Maestra,Ugo Limitato,Ada Admin', 'Installer: studio e utenze dal preset');
+    assert(S.meta.ruoli['Zoe Maestra'] === 'master' && S.meta.ruoli['Ugo Limitato'] === 'limitato' && !S.meta.ruoli['Ada Admin'], 'Installer: ruoli dal preset');
+    assert(!S.meta.moduliDisattivati.includes('team') && S.meta.moduliDisattivati.includes('portale'), 'Installer: moduli dal preset');
+    assert(S.meta.setupCompletato && !window.setupDaFare(), 'Installer: setup completato');
+    assert(window.location.hash === '', 'Installer: il #setup deve sparire dall\'indirizzo');
+    // preset non valido (modulo inesistente) => ignorato
+    window.location.hash = '#setup=' + Buffer.from(JSON.stringify({ ...preset, moduli: ['inesistente'] }), 'utf8').toString('base64');
+    assert(!window.setupDaInstaller(), 'Installer: un preset con moduli inesistenti va rifiutato');
+    window.location.hash = '';
+    window.setSTATE(salva); window.impostaOperatore(null); window.setView('dashboard');
+    console.log('=== Configurazione iniziale dall\'installer (#setup): OK');
+  }
   // ===== Guida "?" per tab =====
   {
     const senza = Object.keys(window.PAGE_TITLES).filter(v => !window.GUIDA_TAB[v] && v !== 'contabilita');
@@ -7128,7 +7263,9 @@ async function main() {
       assert(mig.libriSociali.length === 1 && mig.libriSociali[0].detenutoDa === 'Studio' && mig.libriSociali[0].ultimaPagina === 9, 'libri uniti in uno solo');
       assert(mig.documenti[0].libroId === 'l1' && mig.documenti[0].sezioneLibro === 'Libro degli amministratori', 'atti riportati sulla sezione');
       // verbali da stampare: task con spunta chiuso -> compare solo se libri dello studio
-      const lib = window.aggiungiLibroSociale({ clienteId: cap.id, detenutoDa: 'Studio' });
+      window.assicuraLibriSocieta(ST);
+      const lib = window.libroDelCliente(cap.id) || window.aggiungiLibroSociale({ clienteId: cap.id, detenutoDa: 'Studio' });
+      assert(lib.detenutoDa === 'Studio' && (lib.statoFisico || 'in_uso') === 'in_uso', 'ogni società ha di default i suoi libri, tenuti dallo studio');
       assert(lib.tipo === 'Libri sociali', 'libro senza tipo');
       window.aggiungiTaskTeam({ titolo: 'Variazione sede TEST', assegnatoA: ST.meta.responsabili[0], clienteId: cap.id, stampaVerbale: true, stampaSezione: 'Libro decisioni dei soci', stato: 'Da fare', creatoIl: '2026-10-01' });
       const tk = ST.taskTeam[ST.taskTeam.length - 1];
@@ -7148,6 +7285,47 @@ async function main() {
       ST.taskTeam = ST.taskTeam.filter(x => x.id !== tk.id); ST.libriSociali = ST.libriSociali.filter(x => x.id !== lib.id); ST.stampeLibriFatte = {};
       window.setView('dashboard');
       console.log('=== Libri sociali: libro unico per cliente, verbali da stampare automatici (task) OK');
+    }
+
+    // ---------- Libri sociali: stato fisico e cosa deve esserci stampato ----------
+    {
+      const ST = window.getSTATE(); const D = window.document;
+      const soc = ST.clienti.filter(c => c.stato !== 'cessato' && (c.tipo === 'societa_capitali' || c.tipo === 'cooperativa'));
+      window.assicuraLibriSocieta(ST);
+      assert(soc.every(c => ST.libriSociali.some(l => l.clienteId === c.id)), 'tutte le società hanno i libri di default');
+      const pers = ST.clienti.find(c => c.stato !== 'cessato' && (c.tipo === 'ditta_individuale' || c.tipo === 'persona_fisica'));
+      if (pers) assert(!ST.libriSociali.some(l => l.clienteId === pers.id && l.automatico), 'ditte e persone fisiche: nessun libro automatico');
+      const c = soc[0]; const l = window.libroDelCliente(c.id);
+      const salvaCost = c.dataCostituzione, salvaIng = c.dataIngresso;
+      const ult = new Date().getMonth() + 1 >= 7 ? new Date().getFullYear() - 1 : new Date().getFullYear() - 2;
+      // società costituita nel 2024: atto costitutivo + approvazione bilancio 2024 ... ultimo esercizio
+      c.dataCostituzione = '2024-03-10'; l.detenutoDa = 'Studio'; l.statoFisico = 'vidimati'; ST.stampeLibriFatte = {};
+      const voci = window.vociAttesaLibri(c).filter(v => !v.key.startsWith('soci-'));
+      assert(voci[0].key === 'atto-' + c.id && voci.length === 1 + (ult - 2024 + 1), 'atteso: atto costitutivo + un verbale per ogni esercizio dal 2024 (' + voci.length + ')');
+      assert(window.stampeLibriDaFare().filter(x => x.clienteId === c.id).length >= voci.length, 'vidimati ma vuoti: tutto da stampare');
+      assert(window.sintesiStampaLibri(c) === 'Nulla di stampato', 'sintesi: nulla di stampato');
+      // libri non ancora fatti: prima la vidimazione in CCIAA
+      l.statoFisico = 'da_fare';
+      const dafare = window.stampeLibriDaFare().filter(x => x.clienteId === c.id);
+      assert(dafare.length === 1 && dafare[0].key === 'vid-' + c.id, 'libri da fare: solo la vidimazione in CCIAA');
+      window.segnaStampaLibro('vid-' + c.id, true);
+      assert(l.statoFisico === 'vidimati' && l.vidimazione, 'vidimazione fatta -> libri vidimati e vuoti');
+      // libri esistenti da anni: stampato fino al 2024 in blocco
+      window.impostaStampatoFino(c.id, 'es-2024');
+      const resto = window.stampeLibriDaFare().filter(x => x.clienteId === c.id && x.key.startsWith('bilesp-'));
+      assert(resto.length === Math.max(0, ult - 2024) && /Fino a: bilancio 2024|Fino a: .*2024/.test(window.sintesiStampaLibri(c)), 'stampato fino al 2024: restano gli esercizi successivi (' + resto.length + ')');
+      window.impostaStampatoFino(c.id, 'tutto');
+      assert(window.stampeLibriDaFare().filter(x => x.clienteId === c.id).length === 0 && window.sintesiStampaLibri(c) === 'Tutto aggiornato', 'tutto aggiornato');
+      // data di costituzione non nota: solo gli ultimi due esercizi
+      c.dataCostituzione = ''; c.dataIngresso = '2010-01-01'; ST.stampeLibriFatte = {};
+      assert(window.vociAttesaLibri(c).filter(v => v.esercizio != null).length === 2, 'senza data di costituzione: ultimi due esercizi');
+      // render
+      window.setLibriFiltroTest && window.setLibriFiltroTest({ cliente: c.id });
+      window.setView('libri'); window.render(); await wait(20);
+      assert(D.querySelector('#content').textContent.includes('DA VIDIMARE IN CCIAA') && D.querySelector('#content').textContent.includes('Stampato fino a'), 'tab libri: nuove colonne e KPI');
+      c.dataCostituzione = salvaCost; c.dataIngresso = salvaIng; l.statoFisico = 'in_uso'; ST.stampeLibriFatte = {}; delete l.vidimazione;
+      window.setView('dashboard');
+      console.log('=== Libri sociali: default per società, stato fisico, attesi dalla costituzione, stampato fino a OK');
     }
 
     // ---------- Anagrafica associazioni: dati RUNTS solo per le associazioni ----------
@@ -7207,6 +7385,20 @@ async function main() {
       console.log('=== Task: In attesa/Bloccata, tessere e barra di riepilogo, motivo OK');
     }
   }
+  // ---------- Note aggiornamento: elenco puntato + Invio nella password operatore ----------
+  {
+    const html = window.renderNoteAggiornamento('Prima voce | Seconda voce\nTerza <b>voce</b>', '9.9.9');
+    assert((html.match(/<li /g) || []).length === 3, 'note aggiornamento: attese 3 voci in elenco');
+    assert(html.includes('9.9.9') && !html.includes('<b>voce</b>'), 'note aggiornamento: versione assente o HTML non escapato');
+    assert(window.renderNoteAggiornamento('', '1') === '', 'note aggiornamento: senza note niente riquadro');
+    window.modalPasswordOperatore('Prova');
+    const inp = q('#operatoreLoginPassword');
+    assert(inp && /Enter/.test(inp.getAttribute('onkeydown') || ''), 'password operatore: manca la gestione del tasto Invio');
+    click(q('[data-action="chiudi-modal"]'));
+    await wait(20);
+    console.log('=== Note aggiornamento a elenco + Invio nel login operatore OK');
+  }
+
   console.log('\n✅ TUTTI I TEST END-TO-END PASSATI (' + errors.length + ' errori console catturati)');
   if (errors.length) {
     console.log('--- Dettaglio errori console/jsdom catturati durante il test ---');

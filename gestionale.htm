@@ -2760,7 +2760,7 @@ function modalPasswordOperatore(nome, messaggioErrore) {
       <h2>Password di ${escapeHtml(nome)}</h2>
       <div class="modal-sub">Questo referente è protetto da una password personale.</div>
       <form id="formLoginOperatore" data-nome="${escapeHtml(nome)}" onsubmit="return false;" style="margin-top:12px;">
-        <input type="password" id="operatoreLoginPassword" autocomplete="current-password" placeholder="Password" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 11px;box-sizing:border-box;" autofocus>
+        <input type="password" id="operatoreLoginPassword" autocomplete="current-password" onkeydown="if(event.key==='Enter'){event.preventDefault();var b=this.form&&this.form.querySelector('[data-action=login-operatore]');if(b)b.click();}" placeholder="Password" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 11px;box-sizing:border-box;" autofocus>
         <div style="color:var(--rosso);font-size:12.5px;margin-top:8px;min-height:16px;">${escapeHtml(messaggioErrore || '')}</div>
         <div class="modal-actions" style="margin-top:6px;">
           <button type="button" class="btn" data-action="chiudi-modal">Annulla</button>
@@ -4979,7 +4979,6 @@ const NAV = [
     { id: 'oggi', label: 'Il mio lavoro', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3.5" width="16" height="17" rx="2.5"/><path d="M8 9l1.8 1.8L13 7.6"/><path d="M8 15h8"/></svg>' },
     { id: 'dashboard', label: 'Dashboard', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>' },
     { id: 'calendario', label: 'Calendario', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="8" y1="2.5" x2="8" y2="6.5"/><line x1="16" y1="2.5" x2="16" y2="6.5"/></svg>' },
-    { id: 'test', label: 'Test', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6"/><path d="M10 3v6L5 19a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-10V3"/></svg>' },
   ]},
   { group: 'Clienti', items: [
     { id: 'clienti', label: 'Clienti', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="3.5" cy="6" r="1.3" fill="currentColor" stroke="none"/><circle cx="3.5" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="3.5" cy="18" r="1.3" fill="currentColor" stroke="none"/></svg>' },
@@ -5030,7 +5029,6 @@ const PAGE_TITLES = {
   cruscotto: ['Cruscotto titolare', 'La situazione dello studio a colpo d\'occhio: clienti, preventivi, fatture e avanzamento di ogni adempimento'],
   dashboard: ['Dashboard', 'Il quadro di tutto lo studio: scadenze, adempimenti e onboarding di tutti'],
   calendario: ['Calendario', 'Vista mensile di tutte le scadenze'],
-  test: ['Test', 'Pagina di prova per verificare gli aggiornamenti da GitHub'],
   clienti: ['Clienti', 'Anagrafica e flag fiscali'],
   rubrica: ['Rubrica', 'Tutti i contatti dei clienti in un unico elenco ricercabile'],
   schedacliente: ['Scheda cliente', 'Tutto quello che riguarda questo cliente, in un unico posto'],
@@ -5345,7 +5343,6 @@ function render() {
     case 'dashboard': content.innerHTML = renderDashboard(); break;
     case 'cruscotto': content.innerHTML = renderCruscotto(); break;
     case 'calendario': content.innerHTML = renderCalendario(); break;
-    case 'test': content.innerHTML = renderTestAggiornamento(); break;
     case 'clienti': content.innerHTML = renderClienti(); break;
     case 'rubrica': content.innerHTML = renderRubrica(); break;
     case 'schedacliente': content.innerHTML = renderSchedaCliente(); break;
@@ -15678,7 +15675,7 @@ function cardAggiornamentiELog() {
   } else if (AGGIORNAMENTI_CACHE === 'errore') {
     corpoVersione = `<div class="helptext">⚠️ Non sono riuscito a controllare (nessuna connessione internet, o l'aggiornamento non è ancora stato configurato). <button class="btn small" data-action="verifica-aggiornamenti">Riprova</button></div>`;
   } else if (AGGIORNAMENTI_CACHE.aggiornamentoDisponibile) {
-    corpoVersione = `<div class="helptext" style="margin-bottom:8px;">Versione installata: ${escapeHtml(AGGIORNAMENTI_CACHE.versioneLocale)} → <b>nuova versione disponibile: ${escapeHtml(AGGIORNAMENTI_CACHE.versioneRemota)}</b>${AGGIORNAMENTI_CACHE.note ? ('<br>' + escapeHtml(AGGIORNAMENTI_CACHE.note)) : ''}</div>
+    corpoVersione = `<div class="helptext" style="margin-bottom:8px;">Versione installata: ${escapeHtml(AGGIORNAMENTI_CACHE.versioneLocale)} → <b>nuova versione disponibile: ${escapeHtml(AGGIORNAMENTI_CACHE.versioneRemota)}</b></div>${renderNoteAggiornamento(AGGIORNAMENTI_CACHE.note, AGGIORNAMENTI_CACHE.versioneRemota)}
       <button class="btn primary small" data-action="applica-aggiornamento" ${AGGIORNAMENTI_IN_CORSO ? 'disabled' : ''}>${AGGIORNAMENTI_IN_CORSO ? 'Installazione…' : 'Installa aggiornamento'}</button>`;
   } else {
     corpoVersione = `<div class="helptext">Versione installata: ${escapeHtml(AGGIORNAMENTI_CACHE.versioneLocale)} — già la più recente. <button class="btn small ghost" data-action="verifica-aggiornamenti">Ricontrolla</button></div>`;
@@ -20684,7 +20681,6 @@ const GUIDA_TAB = {
   oggi: { cosa: 'La tua giornata: solo ciò che tocca a te, senza il rumore del resto dello studio.', funzioni: ['Scadenze urgenti assegnate a te', 'Fasi di adempimento pronte per te (quando il collega precedente ha finito)', 'Task e messaggi da leggere'], consiglio: 'Aprila ogni mattina: se è vuota, sei in pari.' },
   dashboard: { cosa: 'Il quadro di tutto lo studio: scadenze, adempimenti e onboarding di tutti.', funzioni: ['Conteggi per stato e per urgenza', 'Filtri per responsabile', 'Accesso rapido alle sezioni che richiedono attenzione'], consiglio: 'Per vedere solo il tuo lavoro usa "Il mio lavoro".' },
   cruscotto: { cosa: 'Vista d\'insieme per il titolare: portafoglio clienti, nuovi e cessati, preventivi, fatturazione e avanzamento degli adempimenti.', funzioni: ['Clienti per tipologia e andamento', 'Preventivi in attesa e accettati', 'Avanzamento adempimenti per fase'], consiglio: 'Se non ti serve, spegni il modulo da Impostazioni › Moduli.' },
-  test: { cosa: 'Pagina di prova per verificare che gli aggiornamenti da GitHub arrivino.', funzioni: ['Se la vedi, l\'aggiornamento e andato a buon fine'], consiglio: 'Si puo nascondere con Personalizza menu.' },
   calendario: { cosa: 'Calendario mensile con scadenze, appuntamenti e impegni.', funzioni: ['Vista mese, settimana e giorno', 'Nuovo evento: appuntamento o scadenza ricorrente', '"Prenota un appuntamento" con un consulente, con controllo dei conflitti di orario'], consiglio: 'Clicca un giorno per vedere e aggiungere tutto ciò che lo riguarda.' },
   clienti: { cosa: 'Anagrafica dei clienti e dei flag fiscali che generano le scadenze.', funzioni: ['Nuovo cliente o import da Excel/CSV', 'Filtri per regime, responsabile e stato (anche cessati)', 'Cessazione cliente con data e adempimenti ceduti al nuovo commercialista'], consiglio: 'I flag fiscali del cliente decidono quali scadenze gli vengono generate: tienili aggiornati.' },
   rubrica: { cosa: 'Tutti i contatti dei clienti in un unico elenco ricercabile.', funzioni: ['Ricerca per nome, ruolo o cliente', 'Contatti collegati ai clienti'], consiglio: 'Se usate già un\'altra rubrica puoi spegnere il modulo.' },
@@ -20855,11 +20851,15 @@ function impSezioniVisibili() {
   return IMP_SEZIONI.filter(s => (!s.master || operatoreMaster()) && (!s.dev || modalitaSviluppatore()) && (!s.tab || operatorePuoVedere(s.tab)));
 }
 // Tab "di nucleo": quelli che non appartengono a nessun modulo (sempre attivi per tutti).
-/* Pagina temporanea per verificare che l'aggiornamento da GitHub arrivi davvero: compare solo dalla 1.18.2. */
-function renderTestAggiornamento() {
-  return `<div class="card" style="max-width:640px;"><h2 style="margin-top:0;">✅ Aggiornamento da GitHub riuscito</h2>
-    <p>Se vedi questa pagina, Prisma ha scaricato e applicato la versione <b>1.18.2</b> da GitHub.</p>
-    <p class="helptext">Pagina di prova: si puo togliere dal menu con «Personalizza menu» oppure verra rimossa in una versione successiva.</p></div>`;
+/* Elenco "Novita" di un aggiornamento: le voci stanno nel campo note del manifesto separate da " | " o da a capo
+   (vedi pubblica-aggiornamento.js). Ogni voce diventa una riga con un segno distintivo, in un riquadro a parte. */
+function renderNoteAggiornamento(note, versione) {
+  const voci = String(note || '').split(/\s*\|\s*|\r?\n/).map(v => v.trim()).filter(Boolean);
+  if (!voci.length) return '';
+  return `<div style="background:var(--blu-light);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin:0 0 12px;max-width:640px;">
+    <div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--blu-mid);margin-bottom:8px;">Novit\u00e0 della versione ${escapeHtml(versione || '')}</div>
+    <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px;">${voci.map(v => `<li style="display:flex;gap:9px;align-items:flex-start;font-size:13.5px;line-height:1.4;color:var(--text);"><span style="flex:none;color:var(--verde);font-weight:700;">\u2713</span><span>${escapeHtml(v)}</span></li>`).join('')}</ul>
+  </div>`;
 }
 function tabNucleo() {
   const inModuli = new Set(); MODULI.forEach(m => m.tabs.forEach(t => inModuli.add(t)));
@@ -21385,6 +21385,7 @@ window.impostaBaseCondivisa = impostaBaseCondivisa;
 window.haModificheNonCondivise = haModificheNonCondivise;
 window.aggiornaAnnualeMeta = aggiornaAnnualeMeta;
 window.modalBenvenutoDopoSetup = modalBenvenutoDopoSetup;
+window.renderNoteAggiornamento = renderNoteAggiornamento;
 window.passiSetupStudio = passiSetupStudio;
 window.annualiEffettivi = annualiEffettivi;
 window.annualeAutomatico = annualeAutomatico;

@@ -1,17 +1,17 @@
 {
-  "versione": "1.18.2",
-  "note": "Aggiunto tab Test (gruppo Oggi) per verificare gli aggiornamenti da GitHub",
+  "versione": "1.18.3",
+  "note": "Tolto il tab di prova Test | Elenco novità degli aggiornamenti in un riquadro leggibile, una voce per riga | Password operatore: si entra anche premendo Invio",
   "richiedeNpmInstall": false,
   "file": [
     {
       "nome": "gestionale.htm",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale.htm",
-      "sha256": "ac3cdf6aa6d495ef9b25b8da2bb4e2cb9b16d483fa72948503b6337688ed1f00"
+      "sha256": "fc65ad5e623a8097e7381c74ffcc096f9518fc46441ead73a16102cd72b4beab"
     },
     {
       "nome": "server.js",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/server.js",
-      "sha256": "adb9ad006fcb097972156e20b4992744078a4b0cc8d0d57dfb5625193260e39b"
+      "sha256": "ccd0998640cb3fa3e36c28f9e04dca5941b5d6381c1df4d7cae50edd9ba1f914"
     },
     {
       "nome": "portale-cliente.htm",
@@ -24,5 +24,5 @@
       "sha256": "2ef5a0fe81a09f871a56489a86ae276f0e2f123d845afa484ff703650b47b24e"
     }
   ],
-  "firma": "TbKQi1Fe48EWs4yNvH94XzD2t9qgIlGUPpcW1Jyie3X1WIEjhmMei0JsdfxaeVRgX4KMslLJ2XV1XovZ3/azAA=="
+  "firma": "+kPo/Gm2wqIyGqgT5xo5QE28lVYwc8Ze8rj0ZbRkAewEtz86lZGpluvHP4UrCVNhrFacY328sRefxwvPfc2aAA=="
 }
