@@ -4621,9 +4621,14 @@ async function main() {
   // verifica che tornando all'anno originale gli stati marcati prima siano ancora lì (persistenza cross-anno)
   // l'id contiene il cliente (data|cliente|nome): se un test intermedio ha eliminato proprio quel cliente (gli id sono casuali,
   // quindi succedeva a volte), la sua scadenza non esiste più per scelta e non va contata come "stato perso"
-  const idSopravvissuto = idsMarcati.find(id => window.getSTATE().clienti.some(c => c.id === id.split('|')[1])) || idsMarcati[0];
-  const primaMarcataAncora = window.getSTATE().scadenzeOverrides[idSopravvissuto];
-  assert(primaMarcataAncora && primaMarcataAncora.stato === 'Inviato telematicamente', 'stato perso dopo cambio anno avanti e indietro');
+  // Una scadenza puo sparire per scelta anche senza eliminare il cliente (un test intermedio cambia periodicita/regime/stato
+  // del cliente): si controlla solo una scadenza che esiste ANCORA tra quelle generate per l'anno originale.
+  const idsPresenti = new Set(window.derivati().periodiche.map(sc => sc.id));
+  const idSopravvissuto = idsMarcati.find(id => idsPresenti.has(id));
+  if (idSopravvissuto) {
+    const primaMarcataAncora = window.getSTATE().scadenzeOverrides[idSopravvissuto];
+    assert(primaMarcataAncora && primaMarcataAncora.stato === 'Inviato telematicamente', 'stato perso dopo cambio anno avanti e indietro (' + idSopravvissuto + ')');
+  }
   console.log('=== Stati preservati dopo cambio anno avanti/indietro');
 
   // ---------- 10) Backup: esporta e reimporta ----------
@@ -6535,6 +6540,7 @@ async function main() {
         ngrokAutoavvioMock = corpo.ngrokAutoavvio;
         return Promise.resolve({ ok: true, json: async () => ({ ok: true, ngrokAutoavvio: ngrokAutoavvioMock }) });
       }
+      if (typeof url === 'string' && url.indexOf('/api/accesso-lan') === 0) return Promise.resolve({ ok: false, json: async () => ({ ok: false }) }); // card accesso rete: non gestibile da questo client
       return fetchOriginaleNgrok(url, opts);
     };
     window.resetAccessoEsternoTest(); // forza un fetch fresco con i mock sopra invece della cache di un giro di test precedente
@@ -7396,6 +7402,17 @@ async function main() {
     assert(inp && /Enter/.test(inp.getAttribute('onkeydown') || ''), 'password operatore: manca la gestione del tasto Invio');
     click(q('[data-action="chiudi-modal"]'));
     await wait(20);
+    // Card "Accesso dalla rete dello studio": con il server raggiungibile mostra password e dispositivi
+    window.setHttpSyncAttivoTest(true);
+    const fetchOrig = window.fetch;
+    window.fetch = () => Promise.resolve({ json: () => Promise.resolve({ ok: true, dispositivi: [{ id: 'abc', nome: 'Windows - Chrome', ip: '192.168.1.9', creato: Date.now(), ultimoUso: Date.now() }], passwordInizialeInFile: true }) });
+    window.resetAccessoLanTest();
+    window.cardAccessoRete();
+    await wait(30);
+    const cardLan = window.cardAccessoRete();
+    assert(cardLan.includes('Windows - Chrome') && cardLan.includes('data-action="lan-revoca"') && cardLan.includes('lan-cambia-password') && cardLan.includes('password-accesso-rete-locale.txt'), 'card accesso rete: dispositivi/azioni mancanti');
+    window.fetch = fetchOrig;
+    window.setHttpSyncAttivoTest(false);
     console.log('=== Note aggiornamento a elenco + Invio nel login operatore OK');
   }
 

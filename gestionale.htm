@@ -15895,6 +15895,57 @@ function aggiornaBottoneAccessoEsterno(tipo) {
   const d = ACCESSO_ESTERNO_DRAFT[tipo];
   btn.disabled = !(d.utente.trim() && d.password.trim());
 }
+/* Accesso dalla rete dello studio: ogni dispositivo (altri PC, tablet, app "Prisma rete") deve essere autorizzato con la
+   password dello studio, una volta sola (vedi server.js, bloccaSeDispositivoNonAutorizzato). Qui si cambia la password
+   e si revocano i dispositivi. Il server accetta queste operazioni SOLO dal PC dello studio. */
+let ACCESSO_LAN_CACHE = null; // null = da caricare, 'errore' = non disponibile da qui, altrimenti {dispositivi, passwordInizialeInFile}
+let ACCESSO_LAN_CARICAMENTO = false;
+let ACCESSO_LAN_ESITO = null;
+function caricaAccessoLan(forza) {
+  if (!HTTP_SYNC_ATTIVO || ACCESSO_LAN_CARICAMENTO || (ACCESSO_LAN_CACHE !== null && !forza)) return;
+  ACCESSO_LAN_CARICAMENTO = true;
+  fetch('/api/accesso-lan').then(r => r.json())
+    .then(d => { ACCESSO_LAN_CACHE = (d && d.ok) ? d : 'errore'; })
+    .catch(() => { ACCESSO_LAN_CACHE = 'errore'; })
+    .finally(() => { ACCESSO_LAN_CARICAMENTO = false; if (VIEW === 'impostazioni') render(); });
+}
+function cardAccessoRete() {
+  if (!HTTP_SYNC_ATTIVO) return '';
+  caricaAccessoLan(false);
+  const c = ACCESSO_LAN_CACHE;
+  let corpo;
+  if (c === null) corpo = '<div class="helptext">Caricamento…</div>';
+  else if (c === 'errore') corpo = '<div class="helptext">Si gestisce solo dal PC dello studio (quello su cui gira il server).</div>';
+  else {
+    const righe = c.dispositivi.length
+      ? c.dispositivi.map(d => `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 0;border-top:1px solid var(--border);">
+          <div><strong>${escapeHtml(d.nome || 'Dispositivo')}</strong><div class="helptext">${escapeHtml(d.ip || '')} · autorizzato il ${fmtDataOra(d.creato)} · ultimo uso ${fmtDataOra(d.ultimoUso)}</div></div>
+          <button class="btn small" data-action="lan-revoca" data-id="${escapeHtml(d.id)}">Revoca</button></div>`).join('')
+      : '<div class="helptext" style="padding:8px 0;border-top:1px solid var(--border);">Nessun altro dispositivo autorizzato.</div>';
+    corpo = `${c.passwordInizialeInFile ? '<div class="helptext" style="background:var(--giallo-bg);color:var(--giallo);border-radius:8px;padding:8px 10px;margin-bottom:10px;">La password iniziale generata dal server è nel file <b>password-accesso-rete-locale.txt</b> nella cartella di Prisma. Dopo averla data ai colleghi, scegline una tua qui sotto: il file si elimina da solo.</div>' : ''}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
+        <input type="text" id="lanNuovaPassword" placeholder="Nuova password (almeno 8 caratteri)" autocomplete="off" style="flex:1;min-width:220px;border:1px solid var(--border);border-radius:8px;padding:8px 10px;" onkeydown="if(event.key==='Enter'){event.preventDefault();var b=document.querySelector('[data-action=lan-cambia-password]');if(b)b.click();}">
+        <button class="btn primary small" data-action="lan-cambia-password">Cambia password</button>
+      </div>
+      <div class="helptext" style="margin-bottom:6px;">Cambiare la password disconnette tutti i dispositivi: dovranno rientrare con la nuova.</div>
+      <div style="font-size:11px;font-weight:700;color:var(--text-mut);text-transform:uppercase;letter-spacing:.03em;margin:10px 0 2px;">Dispositivi autorizzati (${c.dispositivi.length})</div>
+      ${righe}
+      ${c.dispositivi.length ? '<button class="btn small ghost" style="margin-top:10px;" data-action="lan-revoca-tutti">Disconnetti tutti</button>' : ''}`;
+  }
+  const esito = ACCESSO_LAN_ESITO ? `<div class="helptext" style="margin-top:8px;${ACCESSO_LAN_ESITO.ok ? '' : 'color:var(--rosso);'}">${escapeHtml(ACCESSO_LAN_ESITO.messaggio)}</div>` : '';
+  return `<div class="card">
+    <div class="section-title">Accesso dalla rete dello studio</div>
+    <div class="helptext" style="margin-bottom:10px;">Gli altri PC e dispositivi collegati alla rete devono essere autorizzati con la password dello studio (la chiedono una sola volta). Questo PC entra sempre senza password. Il portale dei clienti non è coinvolto.</div>
+    ${corpo}${esito}
+  </div>`;
+}
+function azioneAccessoLan(percorso, corpo, messaggioOk) {
+  fetch('/api/accesso-lan/' + percorso, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo) })
+    .then(r => r.json())
+    .then(d => { ACCESSO_LAN_ESITO = d && d.ok ? { ok: true, messaggio: messaggioOk } : { ok: false, messaggio: (d && d.errore) || 'Operazione non riuscita.' }; })
+    .catch(() => { ACCESSO_LAN_ESITO = { ok: false, messaggio: 'Server non raggiungibile.' }; })
+    .finally(() => { ACCESSO_LAN_CACHE = null; caricaAccessoLan(true); });
+}
 function cardAccessoEsterno() {
   if (!HTTP_SYNC_ATTIVO) {
     return `<div class="card">
@@ -16863,6 +16914,7 @@ function renderImpostazioniTeam() {
     <button class="btn small" style="margin-top:10px;" data-action="aggiungi-responsabile">+ Aggiungi responsabile</button>
   </div>
   ${cardPasswordResponsabili()}
+  ${cardAccessoRete()}
   ${cardAccessoEsterno()}`;
 }
 
@@ -19324,6 +19376,9 @@ function onClickDelegatoInterno(e) {
     case 'ia-collegamento': apriModalIaCollegamento(); break;
     case 'ia-copia': { const i = document.getElementById(el.dataset.src); if (i && i.value) copiaTestoNegliAppunti(i.value, 'Copiato negli appunti.'); else toast('Niente da copiare.'); break; }
     case 'ia-nuovo-token': nuovoTokenIa(); break;
+    case 'lan-cambia-password': { const v = (h('lanNuovaPassword') || {}).value || ''; azioneAccessoLan('password', { password: v }, 'Password cambiata: tutti i dispositivi dovranno rientrare con la nuova.'); break; }
+    case 'lan-revoca': azioneAccessoLan('revoca', { id: el.dataset.id }, 'Dispositivo revocato.'); break;
+    case 'lan-revoca-tutti': if (confirm('Disconnettere tutti i dispositivi? Dovranno rientrare con la password dello studio.')) azioneAccessoLan('revoca', { tutti: true }, 'Tutti i dispositivi sono stati disconnessi.'); break;
     case 'verifica-aggiornamenti': verificaAggiornamenti(); break;
     case 'applica-aggiornamento': applicaAggiornamentoConferma(); break;
     case 'riavvia-server': {
@@ -21386,6 +21441,8 @@ window.haModificheNonCondivise = haModificheNonCondivise;
 window.aggiornaAnnualeMeta = aggiornaAnnualeMeta;
 window.modalBenvenutoDopoSetup = modalBenvenutoDopoSetup;
 window.renderNoteAggiornamento = renderNoteAggiornamento;
+window.cardAccessoRete = cardAccessoRete;
+window.resetAccessoLanTest = () => { ACCESSO_LAN_CACHE = null; ACCESSO_LAN_CARICAMENTO = false; };
 window.passiSetupStudio = passiSetupStudio;
 window.annualiEffettivi = annualiEffettivi;
 window.annualeAutomatico = annualeAutomatico;

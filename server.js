@@ -96,7 +96,7 @@ function sessioneEsclusivaValida(nome, token, deviceId) {
   return sess.token === token && sess.deviceId === deviceId;
 }
 
-const PORTA = 8420;
+const PORTA = Number(process.env.PRISMA_PORTA) || 8420;
 // CARTELLA: normalmente __dirname. Se questo file viene eseguito pacchettizzato come eseguibile
 // singolo (Node.js Single Executable Applications - vedi licensing/installer.js per i dettagli e
 // le istruzioni di build), __dirname non punta più a un percorso reale su disco: in quel caso si usa
@@ -429,7 +429,7 @@ scriviLog('Avvio di Prisma...');
 const URL_MANIFESTO_AGGIORNAMENTI = 'https://raw.githubusercontent.com/IdleSouls/Prisma/main/versione.json';
 // Cambiala qui a ogni nuova versione pubblicata (deve combaciare con quella scritta nel
 // "versione.json" caricato su GitHub, altrimenti il confronto non ha senso).
-const VERSIONE_LOCALE = '1.18.3';
+const VERSIONE_LOCALE = '1.19.0';
 // Solo questi file possono essere sovrascritti da un aggiornamento - mai un nome libero/a piacere
 // del manifesto, per non correre il rischio (anche solo teorico, es. account GitHub compromesso)
 // di far scrivere un file arbitrario altrove sul PC del cliente.
@@ -1267,7 +1267,7 @@ function eseguiBackupPiattaforma(motivo, suffisso) {
 // configurazione: finora il backup copriva solo dati-studio.json e il codice. Qui è uno "specchio
 // cumulativo": si copia solo ciò che manca o è cambiato e NON si cancella mai nulla, così anche un
 // documento eliminato per sbaglio dall'app resta recuperabile da backup/documenti-clienti/.
-const FILE_CONFIG_BACKUP = ['accesso-esterno.json', 'push-abbonamenti.json', 'responsabili-password.json', 'license.json', 'package.json', 'backup-esterno.json'];
+const FILE_CONFIG_BACKUP = ['accesso-esterno.json', 'accesso-lan.json', 'push-abbonamenti.json', 'responsabili-password.json', 'license.json', 'package.json', 'backup-esterno.json'];
 function specchiaCartella(origine, destinazione) {
   if (!fs.existsSync(origine)) return 0;
   let copiati = 0;
@@ -1996,7 +1996,42 @@ function gestisciRichiesta(req, res) {
     return;
   }
 
+  // Gestione dei dispositivi autorizzati sulla rete locale: SOLO da questo PC (mai da un altro dispositivo ne' dal tunnel).
+  if (url.indexOf('/api/accesso-lan') === 0) {
+    if (!richiestaLocale(req)) { res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ ok: false, errore: 'Gestibile solo dal PC dello studio.' })); return; }
+    if (url === '/api/accesso-lan' && req.method === 'GET') {
+      const lista = Object.entries(CFG_LAN.dispositivi).map(([id, d]) => ({ id, nome: d.nome, ip: d.ip, creato: d.creato, ultimoUso: d.ultimoUso })).sort((a, b) => b.ultimoUso - a.ultimoUso);
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ ok: true, dispositivi: lista, passwordInizialeInFile: fs.existsSync(FILE_PASSWORD_LAN_INIZIALE) }));
+      return;
+    }
+    if (req.method === 'POST') {
+      leggiCorpoRichiesta(req, (corpo) => {
+        const rispondi = (c, o) => { res.writeHead(c, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(o)); };
+        try {
+          const dati = JSON.parse(corpo || '{}');
+          if (url === '/api/accesso-lan/password') {
+            const nuova = String(dati.password || '');
+            if (nuova.length < 8) return rispondi(400, { ok: false, errore: 'La password deve avere almeno 8 caratteri.' });
+            impostaPasswordLan(nuova);
+            try { fs.unlinkSync(FILE_PASSWORD_LAN_INIZIALE); } catch (e) { /* gia' assente */ }
+            return rispondi(200, { ok: true });
+          }
+          if (url === '/api/accesso-lan/revoca') {
+            if (dati.tutti) CFG_LAN.dispositivi = {}; else delete CFG_LAN.dispositivi[String(dati.id || '')];
+            salvaCfgLan();
+            return rispondi(200, { ok: true });
+          }
+          rispondi(404, { ok: false, errore: 'Non trovato.' });
+        } catch (err) { rispondi(400, { ok: false, errore: 'Richiesta non valida.' }); }
+      });
+      return;
+    }
+  }
+
   if (url === '/api/accesso-esterno' && req.method === 'GET') {
+    // La password del collaboratore esterno si legge solo dal PC dello studio.
+    if (!richiestaLocale(req)) { res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ ok: false, errore: 'Visibile solo dal PC dello studio.' })); return; }
     const cfg = leggiConfigAccessoEsterno();
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify({
@@ -2933,12 +2968,132 @@ function hostConsentito(req) {
   if (host.endsWith('.local')) return true;
   return false;
 }
+
+// ---------------------------------------------------------------------------
+// Accesso dalla rete dello studio (porta 8420) - ogni DISPOSITIVO deve essere autorizzato.
+// Prima chiunque fosse sulla stessa rete (un portatile ospite, un dispositivo infetto) poteva leggere e
+// sovrascrivere tutti i dati dei clienti senza alcuna credenziale. Ora:
+//  - le richieste fatte da QUESTO PC (localhost o un suo indirizzo) passano come sempre;
+//  - ogni altro dispositivo deve inserire UNA volta la password dello studio nella pagina di accesso:
+//    riceve un cookie casuale (HttpOnly, SameSite=Strict) che il server riconosce, e si puo' revocare
+//    dispositivo per dispositivo da Impostazioni (la password si cambia da li');
+//  - il portale clienti (percorsi /portale/...) resta aperto: lo protegge il token del singolo cliente.
+// Il server conserva solo l'hash della password (scrypt) e l'hash (sha256) dei cookie dei dispositivi.
+// ---------------------------------------------------------------------------
+function percorsoPortaleLibero(url) {
+  return url.indexOf('/portale/') === 0 || url.indexOf('/api/portale-') === 0 || url === '/portale-manifest.json' || url === '/portale-sw.js' || url === '/portale-push-chiave' || /^\/portale-icona-(180|192|512)\.png$/.test(url);
+}
+const FILE_ACCESSO_LAN = path.join(CARTELLA_DATI, 'accesso-lan.json');
+const FILE_PASSWORD_LAN_INIZIALE = path.join(CARTELLA_DATI, 'password-accesso-rete-locale.txt');
+const COOKIE_DISPOSITIVO = 'prisma_dev';
+const DISPOSITIVO_DURATA_S = 365 * 24 * 3600;
+let CFG_LAN = null; // { salt, hash, dispositivi: { <sha256 cookie>: { creato, ultimoUso, ip, nome } } }
+function hashPasswordLan(password, saltHex) { return crypto.scryptSync(String(password), Buffer.from(saltHex, 'hex'), 32).toString('hex'); }
+function sha256Hex(t) { return crypto.createHash('sha256').update(String(t)).digest('hex'); }
+function salvaCfgLan() { try { fs.writeFileSync(FILE_ACCESSO_LAN, JSON.stringify(CFG_LAN, null, 2), 'utf8'); } catch (err) { console.error('[accesso-lan] salvataggio non riuscito:', err.message); } }
+function generaPasswordLan() {
+  const alfabeto = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+  let out = '';
+  while (out.length < 14) { for (const b of crypto.randomBytes(24)) { if (b < 248 && out.length < 14) out += alfabeto[b % alfabeto.length]; } }
+  return out;
+}
+function impostaPasswordLan(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  CFG_LAN = { salt, hash: hashPasswordLan(password, salt), dispositivi: {} }; // cambiare password disconnette tutti i dispositivi
+  salvaCfgLan();
+}
+function inizializzaAccessoLan() {
+  try { CFG_LAN = JSON.parse(fs.readFileSync(FILE_ACCESSO_LAN, 'utf8')); } catch (e) { CFG_LAN = null; }
+  if (CFG_LAN && CFG_LAN.salt && CFG_LAN.hash) { CFG_LAN.dispositivi = CFG_LAN.dispositivi || {}; return; }
+  const iniziale = generaPasswordLan();
+  impostaPasswordLan(iniziale);
+  try { fs.writeFileSync(FILE_PASSWORD_LAN_INIZIALE, 'Password iniziale per collegare gli altri PC dello studio a Prisma (rete locale):\r\n' + iniziale + '\r\n\r\nSi inserisce una sola volta su ogni dispositivo. Puoi cambiarla da Impostazioni; dopo averla distribuita elimina questo file.\r\n', 'utf8'); } catch (e) { /* non blocca */ }
+  console.log('  Accesso rete locale: generata una password per gli altri PC dello studio, scritta in ' + path.basename(FILE_PASSWORD_LAN_INIZIALE));
+}
+let _ipProprieCache = { t: 0, set: new Set() };
+function ipProprie() {
+  if (Date.now() - _ipProprieCache.t < 30000) return _ipProprieCache.set;
+  const set = new Set(['127.0.0.1', '::1']);
+  try { for (const lista of Object.values(os.networkInterfaces())) for (const i of (lista || [])) set.add(String(i.address || '').replace(/%.*$/, '')); } catch (e) { /* ignora */ }
+  _ipProprieCache = { t: Date.now(), set };
+  return set;
+}
+// "Locale" = la richiesta arriva da questo stesso PC e NON e' stata inoltrata da un proxy/tunnel (ngrok aggiunge X-Forwarded-For).
+function richiestaLocale(req) {
+  const h = req.headers || {};
+  if (h['x-forwarded-for'] || h['forwarded'] || h['x-forwarded-host'] || h['x-real-ip']) return false;
+  const a = String((req.socket && req.socket.remoteAddress) || '').replace(/^::ffff:/, '').replace(/%.*$/, '');
+  return ipProprie().has(a);
+}
+function leggiCookie(req, nome) {
+  const m = String(req.headers.cookie || '').split(';').map(x => x.trim()).find(x => x.startsWith(nome + '='));
+  return m ? decodeURIComponent(m.slice(nome.length + 1)) : '';
+}
+function dispositivoLanValido(req) {
+  const tok = leggiCookie(req, COOKIE_DISPOSITIVO);
+  if (!tok || !CFG_LAN) return false;
+  const d = CFG_LAN.dispositivi[sha256Hex(tok)];
+  if (!d) return false;
+  if (Date.now() - (d.ultimoUso || 0) > 10 * 60 * 1000) { d.ultimoUso = Date.now(); salvaCfgLan(); }
+  return true;
+}
+function nomeDispositivoDaUA(ua) {
+  ua = String(ua || '');
+  const os_ = /Windows/i.test(ua) ? 'Windows' : /Android/i.test(ua) ? 'Android' : /iPhone|iPad/i.test(ua) ? 'iOS' : /Mac OS/i.test(ua) ? 'Mac' : /Linux/i.test(ua) ? 'Linux' : 'Dispositivo';
+  const br = /Electron/i.test(ua) ? 'app Prisma' : /Edg\//i.test(ua) ? 'Edge' : /Chrome/i.test(ua) ? 'Chrome' : /Firefox/i.test(ua) ? 'Firefox' : /Safari/i.test(ua) ? 'Safari' : 'browser';
+  return os_ + ' - ' + br;
+}
+const PAGINA_LOGIN_LAN = `<!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Prisma - accesso</title>
+<style>body{font-family:Segoe UI,system-ui,sans-serif;background:#0f1f3a;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;color:#132A4C}
+.c{background:#fff;border-radius:14px;padding:28px;width:min(380px,92vw);box-shadow:0 10px 40px rgba(0,0,0,.35)}h1{margin:0 0 6px;font-size:22px}p{margin:0 0 16px;color:#566;font-size:14px;line-height:1.4}
+input{width:100%;box-sizing:border-box;padding:11px;border:1px solid #c9d3e6;border-radius:8px;font-size:15px}button{margin-top:12px;width:100%;padding:11px;border:0;border-radius:8px;background:#2E63C7;color:#fff;font-size:15px;font-weight:600;cursor:pointer}
+#e{color:#B3261E;font-size:13px;min-height:18px;margin-top:8px}</style></head><body><form class="c" id="f"><h1>Prisma</h1><p>Questo dispositivo non e' ancora autorizzato. Inserisci la password dello studio: la chiede una sola volta.</p>
+<input type="password" id="p" placeholder="Password dello studio" autocomplete="current-password" autofocus><div id="e"></div><button type="submit">Entra</button></form>
+<script>document.getElementById('f').addEventListener('submit',function(ev){ev.preventDefault();var e=document.getElementById('e');e.textContent='';
+fetch('/lan-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:document.getElementById('p').value})}).then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d}})}).then(function(x){if(x.ok&&x.d.ok){location.reload();}else{e.textContent=(x.d&&x.d.errore)||'Password errata.';}}).catch(function(){e.textContent='Server non raggiungibile.';});});</script></body></html>`;
+function gestisciLoginLan(req, res) {
+  const ip = String((req.socket && req.socket.remoteAddress) || '');
+  leggiCorpoRichiesta(req, (corpo) => {
+    const rispondi = (codice, obj, extra) => { res.writeHead(codice, Object.assign({ 'Content-Type': 'application/json; charset=utf-8' }, extra || {})); res.end(JSON.stringify(obj)); };
+    try {
+      const chiave = 'lan:' + ip;
+      const blocco = tentativiLoginBloccati(chiave);
+      if (blocco) return rispondi(429, { ok: false, errore: 'Troppi tentativi errati. Riprova tra ' + Math.ceil(blocco / 60000) + ' minuti.' });
+      const password = String((JSON.parse(corpo || '{}')).password || '');
+      const a = Buffer.from(hashPasswordLan(password, CFG_LAN.salt), 'hex'), b = Buffer.from(CFG_LAN.hash, 'hex');
+      if (!password || a.length !== b.length || !crypto.timingSafeEqual(a, b)) { registraErroreLogin(chiave); return rispondi(401, { ok: false, errore: 'Password errata.' }); }
+      erroriLogin.delete(chiave);
+      const token = crypto.randomBytes(32).toString('hex');
+      CFG_LAN.dispositivi[sha256Hex(token)] = { creato: Date.now(), ultimoUso: Date.now(), ip: ip.replace(/^::ffff:/, ''), nome: nomeDispositivoDaUA(req.headers['user-agent']) };
+      salvaCfgLan();
+      rispondi(200, { ok: true }, { 'Set-Cookie': COOKIE_DISPOSITIVO + '=' + token + '; Path=/; Max-Age=' + DISPOSITIVO_DURATA_S + '; HttpOnly; SameSite=Strict' });
+    } catch (err) { rispondi(400, { ok: false, errore: 'Richiesta non valida.' }); }
+  });
+}
+// Ritorna true se la richiesta e' stata gestita (rifiutata o servita la pagina di accesso) e NON va passata oltre.
+function bloccaSeDispositivoNonAutorizzato(req, res) {
+  if (richiestaLocale(req)) return false;
+  const url = req.url.split('?')[0];
+  if (percorsoPortaleLibero(url)) return false;
+  if (url === '/lan-login' && req.method === 'POST') { gestisciLoginLan(req, res); return true; }
+  if (dispositivoLanValido(req)) return false;
+  if (url.indexOf('/api/') === 0 || (req.method !== 'GET' && req.method !== 'HEAD')) {
+    res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ ok: false, errore: 'Dispositivo non autorizzato: apri Prisma e inserisci la password dello studio.' }));
+    return true;
+  }
+  res.writeHead(401, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+  res.end(PAGINA_LOGIN_LAN);
+  return true;
+}
+inizializzaAccessoLan();
 const server = http.createServer((req, res) => {
   if (!hostConsentito(req)) {
     res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
     res.end('Indirizzo non consentito.');
     return;
   }
+  if (bloccaSeDispositivoNonAutorizzato(req, res)) return;
   gestisciRichiesta(req, res);
 });
 
@@ -3099,7 +3254,7 @@ function creaServerEsterno() {
       return;
     }
     const url = req.url.split('?')[0];
-    const percorsoPortale = url.indexOf('/portale/') === 0 || url.indexOf('/api/portale-') === 0 || url === '/portale-manifest.json' || url === '/portale-sw.js' || url === '/portale-push-chiave' || /^\/portale-icona-(180|192|512)\.png$/.test(url);
+    const percorsoPortale = percorsoPortaleLibero(url);
     if (percorsoPortale) {
       gestisciRichiesta(req, res); // portale cliente: sempre aperto, nessun login condiviso
       return;

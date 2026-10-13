@@ -29,13 +29,19 @@ password-portale-esterno.txt
 #     logica di dati-studio.json. ---
 licensing/chiave-privata.pem
 licensing/emesse/
+2-Gestione-Licenze/chiavi/
+2-Gestione-Licenze/database/
+2-Gestione-Licenze/emesse/
+2-Gestione-Licenze/vecchi-script/
+2-Gestione-Licenze/dist/
+2-Gestione-Licenze/Prisma-Licenze.exe
 
 # --- Cartelle di consegna/staging per clienti reali: contengono copie
 #     eseguibili pronte + a volte una chiave pubblica di quel cliente, sono
 #     un "pacco già pronto da consegnare", non sorgente da versionare ---
 clienti-prisma/
-ACCESSI/
-DA-CANCELLARE/
+4-Accessi-e-Rete/
+9-Da-cancellare/
 
 # --- Dipendenze npm: si rigenerano con "npm install", non si versionano mai ---
 node_modules/
@@ -62,8 +68,11 @@ licensing/Licenze-emesse.xlsx
 electron-app/chiave-pubblica.pem
 
 # backup chiavi (mai su GitHub)
-BACKUP-CHIAVI/
+6-Riservato-e-Backup/
 mcp-server/token-ia.txt
 
 # Dati reali clienti (mai nel repository)
-DATI-PRIVATI/
+
+# Accesso rete locale: hash password e dispositivi autorizzati + password iniziale in chiaro
+accesso-lan.json
+password-accesso-rete-locale.txt

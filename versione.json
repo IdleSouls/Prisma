@@ -1,17 +1,17 @@
 {
-  "versione": "1.18.3",
-  "note": "Tolto il tab di prova Test | Elenco novità degli aggiornamenti in un riquadro leggibile, una voce per riga | Password operatore: si entra anche premendo Invio",
+  "versione": "1.19.0",
+  "note": "Sicurezza: ogni dispositivo sulla rete dello studio deve essere autorizzato con la password dello studio (una volta sola) | Nuova sezione in Impostazioni > Squadra e accessi: cambia password, vedi e revoca i dispositivi | Questo PC entra sempre senza password; il portale clienti non cambia | La password dell'accesso esterno si legge solo dal PC dello studio",
   "richiedeNpmInstall": false,
   "file": [
     {
       "nome": "gestionale.htm",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale.htm",
-      "sha256": "fc65ad5e623a8097e7381c74ffcc096f9518fc46441ead73a16102cd72b4beab"
+      "sha256": "5e8d55b39255131dbbeadaada3d01ac34cec556dd0aef347129bdcb61921e74a"
     },
     {
       "nome": "server.js",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/server.js",
-      "sha256": "ccd0998640cb3fa3e36c28f9e04dca5941b5d6381c1df4d7cae50edd9ba1f914"
+      "sha256": "0691bc95941398fe9b43cf788dc7778bbc12d21a3f5a82c04c543faa95181589"
     },
     {
       "nome": "portale-cliente.htm",
@@ -24,5 +24,5 @@
       "sha256": "2ef5a0fe81a09f871a56489a86ae276f0e2f123d845afa484ff703650b47b24e"
     }
   ],
-  "firma": "+kPo/Gm2wqIyGqgT5xo5QE28lVYwc8Ze8rj0ZbRkAewEtz86lZGpluvHP4UrCVNhrFacY328sRefxwvPfc2aAA=="
+  "firma": "/Kiz8MOkHIk8OYBhRwM1ICwptSlG5+QeiUpkNpEHBoX50Nwfiy+A19o8joL3d1lShJztuxn7fqh7286+h1sQBg=="
 }
