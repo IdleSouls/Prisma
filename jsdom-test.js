@@ -640,6 +640,33 @@ async function main() {
     assert(!window.opzioniProcedureTask(null, 'zzzzzzzzqqq').includes('<option value="' + procs[0].id), 'filtro senza risultati: nessuna procedura');
     assert(window.opzioniProcedureTask(procs[0].id, 'zzzzzzzzqqq').includes('value="' + procs[0].id + '"'), 'la procedura gia selezionata resta nel menu anche se non corrisponde al filtro');
   }
+  // selettore procedura del task: ricerca, elenco, selezione con clic e rimozione
+  {
+    const procsS = (window.getSTATE().procedureInterne || []).filter(pp => pp.attivo);
+    const bersaglio = procsS[procsS.length - 1];
+    const parolaS = String(bersaglio.nome).trim().split(/\s+/).pop().toLowerCase();
+    const trov = window.procedureTaskFiltrate(parolaS);
+    assert(trov.some(pp => pp.id === bersaglio.id), 'ricerca procedure: parola in fondo al nome non trovata');
+    assert(window.htmlListaProcedureTask('zzzzqqqq').includes('Nessuna procedura'), 'ricerca procedure: attesa la scritta "Nessuna procedura"');
+    click(q('[data-nav="taskteam"]'));
+    await wait(20);
+    click(q('[data-action="nuovo-task-team"]'));
+    await wait(20);
+    const cerca = q('#tProceduraCerca');
+    assert(cerca && q('#tProcLista') && q('#tProcedura').style.display === 'none', 'selettore procedura: elementi mancanti');
+    cerca.value = parolaS; fire(cerca, 'input');
+    assert(q('#tProcLista').style.display === 'block' && q('#tProcLista .proc-riga'), 'digitando deve comparire l\'elenco dei risultati');
+    click(q(`#tProcLista .proc-riga[data-id="${bersaglio.id}"]`));
+    assert(q('#tProcedura').value === bersaglio.id, 'il clic su un risultato deve selezionare la procedura');
+    assert(q('#tProcChip').textContent.includes(bersaglio.nome), 'la procedura scelta deve comparire come etichetta');
+    assert(q('#tProcLista').style.display === 'none', 'dopo la scelta l\'elenco si chiude');
+    click(q('[data-action="task-proc-rimuovi"]'));
+    assert(q('#tProcedura').value === '', 'la X deve scollegare la procedura');
+    click(q('[data-action="chiudi-modal"]'));
+    await wait(20);
+    click(q('[data-nav="scadenze"]'));
+    await wait(20);
+  }
   // Task "pratica": casella, nome cartella, salvataggio dei campi
   {
     assert(window.nomeCartellaPratica('2026-10-13', 'Variazione sede') === '2026.13.10 - Variazione sede', 'nome cartella pratica: atteso "aaaa.gg.mm - nome", trovato ' + window.nomeCartellaPratica('2026-10-13', 'Variazione sede'));

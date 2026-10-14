@@ -198,6 +198,7 @@ input, textarea, [contenteditable="true"], td, .sd-v, .kv .v, .helptext, pre, co
 }
 /* ... ma i controlli dentro una cella restano non selezionabili */
 td button, td .btn, td select, td .badge, td .pill-delta, td label { -webkit-user-select: none; user-select: none; }
+.proc-riga:hover,.proc-riga.attiva{background:var(--blu-light);}
 .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;letter-spacing:.01em;}
 .badge.stato-da-fare{background:var(--giallo-bg);color:var(--giallo);}
 .badge.stato-calcolato{background:#BDD7EE;color:var(--blu-scuro);}
@@ -11576,6 +11577,75 @@ function sincronizzaPratica(taskId, files) {
     })
     .catch(err => toast('Pratica segnata, ma la cartella non è stata creata: ' + err.message, true));
 }
+/* Selettore "Procedura collegata" dei task: al posto del menu nativo (stretto, senza ricerca "contiene") c'e una casella di ricerca
+   con un elenco a comparsa: nomi per intero (a capo se lunghi), categoria accanto, parola cercata evidenziata, ordinamento per
+   pertinenza, selezione con clic oppure con frecce + Invio. Il vero valore resta nel <select id="tProcedura"> nascosto. */
+function evidenziaTesto(testo, filtro) {
+  const t = String(testo || ''), f = String(filtro || '').trim();
+  if (!f) return escapeHtml(t);
+  const idx = t.toLowerCase().indexOf(f.toLowerCase());
+  if (idx < 0) return escapeHtml(t);
+  return escapeHtml(t.slice(0, idx)) + '<mark style="background:#FFE9A8;color:inherit;border-radius:3px;padding:0 1px;">' + escapeHtml(t.slice(idx, idx + f.length)) + '</mark>' + escapeHtml(t.slice(idx + f.length));
+}
+function procedureTaskFiltrate(filtro) {
+  const f = String(filtro || '').trim().toLowerCase();
+  const attive = (STATE.procedureInterne || []).filter(p => p.attivo);
+  if (!f) return attive.slice().sort((a, b) => String(a.categoria).localeCompare(String(b.categoria)) || String(a.nome).localeCompare(String(b.nome)));
+  const punti = (p) => {
+    const n = String(p.nome || '').toLowerCase(), c = String(p.categoria || '').toLowerCase();
+    if (n.startsWith(f)) return 0;
+    if (new RegExp('(^|[^a-z0-9àèéìòù])' + f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).test(n)) return 1; // inizio di una parola
+    if (n.includes(f)) return 2;
+    if (c.includes(f)) return 3;
+    return -1;
+  };
+  return attive.map(p => ({ p, v: punti(p) })).filter(x => x.v >= 0).sort((a, b) => a.v - b.v || String(a.p.nome).localeCompare(String(b.p.nome))).map(x => x.p);
+}
+function htmlChipProceduraTask(id) {
+  const p = id ? procedureById(id) : null;
+  if (!p) return '<div class="helptext" style="margin-bottom:6px;">Nessuna procedura collegata.</div>';
+  return `<div style="display:flex;align-items:flex-start;gap:8px;background:var(--blu-light);border-radius:8px;padding:7px 10px;margin-bottom:6px;"><span>📋</span><div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:13.5px;overflow-wrap:anywhere;">${escapeHtml(p.nome)}</div><div class="helptext">${escapeHtml(p.categoria || '')}</div></div><button type="button" class="btn small ghost" data-action="task-proc-rimuovi" title="Scollega la procedura">✕</button></div>`;
+}
+function htmlListaProcedureTask(filtro) {
+  const f = String(filtro || '').trim();
+  const lista = procedureTaskFiltrate(f);
+  if (!lista.length) return '<div class="helptext" style="padding:12px 14px;">Nessuna procedura contiene «' + escapeHtml(f) + '».</div>';
+  let out = f ? `<div class="helptext" style="padding:6px 12px;border-bottom:1px solid var(--border);">${lista.length} ${lista.length === 1 ? 'risultato' : 'risultati'} — ↑ ↓ per scorrere, Invio per scegliere</div>` : '';
+  let catPrec = null;
+  lista.forEach((p, i) => {
+    if (!f && p.categoria !== catPrec) { catPrec = p.categoria; out += `<div style="position:sticky;top:0;background:var(--bg);padding:5px 12px;font-size:11px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:var(--text-mut);border-bottom:1px solid var(--border);">${escapeHtml(p.categoria || '')}</div>`; }
+    out += `<div class="proc-riga${i === 0 && f ? ' attiva' : ''}" data-action="task-proc-scegli" data-id="${p.id}" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:flex-start;justify-content:space-between;">
+      <span style="font-size:13.5px;line-height:1.35;overflow-wrap:anywhere;">${evidenziaTesto(p.nome, f)}</span>${f ? `<span class="badge" style="flex:none;font-size:10.5px;background:var(--bg);color:var(--text-mut);border:1px solid var(--border);">${escapeHtml(p.categoria || '')}</span>` : ''}</div>`;
+  });
+  return out;
+}
+function mostraListaProcedureTask() {
+  const l = h('tProcLista'), c = h('tProceduraCerca'); if (!l || !c) return;
+  l.innerHTML = htmlListaProcedureTask(c.value);
+  l.style.display = 'block';
+}
+function nascondiListaProcedureTask() { const l = h('tProcLista'); if (l) l.style.display = 'none'; }
+function impostaProceduraTask(id) {
+  const sel = h('tProcedura'); if (sel) sel.value = id || '';
+  const chip = h('tProcChip'); if (chip) chip.innerHTML = htmlChipProceduraTask(id || null);
+  const c = h('tProceduraCerca'); if (c) c.value = '';
+  nascondiListaProcedureTask();
+}
+function tastoProcedureTask(e) {
+  const l = h('tProcLista'); if (!l) return;
+  if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); nascondiListaProcedureTask(); return; }
+  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Enter') return;
+  e.preventDefault();
+  if (l.style.display === 'none') mostraListaProcedureTask();
+  const righe = Array.from(l.querySelectorAll('.proc-riga'));
+  if (!righe.length) return;
+  let i = righe.findIndex(r => r.classList.contains('attiva'));
+  if (e.key === 'Enter') { impostaProceduraTask(righe[Math.max(i, 0)].dataset.id); return; }
+  righe.forEach(r => r.classList.remove('attiva'));
+  i = e.key === 'ArrowDown' ? Math.min(righe.length - 1, i + 1) : Math.max(0, i - 1);
+  righe[i].classList.add('attiva');
+  righe[i].scrollIntoView({ block: 'nearest' });
+}
 let TASK_BOZZA = null; // campi compilati nel modale task mentre si guarda la procedura collegata (o si modifica una nota)
 function modalTaskTeam(taskId, presetClienteId) {
   if (!(TASK_BOZZA && TASK_BOZZA.ripristina)) NOTA_IN_MODIFICA = null;
@@ -11607,9 +11677,11 @@ function modalTaskTeam(taskId, presetClienteId) {
   // di note di completamento libero - nessun auto-append delle note dentro la procedura stessa.
   const procedureAttive = (STATE.procedureInterne || []).filter(p => p.attivo);
   const categorieProc = Array.from(new Set(procedureAttive.map(p => p.categoria)));
-  const selectProcedura = `<div style="flex:1;display:flex;flex-direction:column;gap:6px;min-width:0;">
-    <input type="text" id="tProceduraCerca" data-action="task-cerca-procedura" placeholder="🔍 Cerca nel nome della procedura…" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();var s=document.getElementById('tProcedura');var o=s&&s.querySelector('option[value]:not([value=&quot;&quot;])');if(o){s.value=o.value;}}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:13px;">
-    <select id="tProcedura" style="width:100%;">${opzioniProcedureTask(t.procedureId, '')}</select>
+  const selectProcedura = `<div style="flex:1;min-width:0;position:relative;">
+    <div id="tProcChip">${htmlChipProceduraTask(t.procedureId)}</div>
+    <input type="text" id="tProceduraCerca" data-action="task-cerca-procedura" placeholder="🔍 Cerca una procedura (basta una parola del nome)…" autocomplete="off" onfocus="mostraListaProcedureTask()" onblur="setTimeout(nascondiListaProcedureTask, 150)" onkeydown="tastoProcedureTask(event)" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13.5px;">
+    <div id="tProcLista" onmousedown="event.preventDefault()" style="display:none;position:absolute;left:0;right:0;top:100%;margin-top:4px;z-index:30;max-height:300px;overflow-y:auto;background:var(--card-bg);border:1px solid var(--border);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.18);"></div>
+    <select id="tProcedura" style="display:none;">${opzioniProcedureTask(t.procedureId, '')}</select>
   </div>`;
   const campoProcedura = `<div class="field full" style="grid-column:1/-1;">
     <label>Procedura collegata (opzionale)</label>
@@ -11657,6 +11729,7 @@ function modalTaskTeam(taskId, presetClienteId) {
   if (TASK_BOZZA && TASK_BOZZA.ripristina && TASK_BOZZA.id === (taskId || null)) {
     Object.keys(TASK_BOZZA.campi).forEach(k => { const f = document.getElementById(k); if (!f) return; if (k === 'tPratica') { f.checked = TASK_BOZZA.campi[k] === '1'; const bx = document.getElementById('tPraticaBox'); if (bx) bx.style.display = f.checked ? 'block' : 'none'; } else f.value = TASK_BOZZA.campi[k]; });
   }
+  if (h('tProcedura') && h('tProcChip')) h('tProcChip').innerHTML = htmlChipProceduraTask(h('tProcedura').value || null);
   TASK_BOZZA = null;
 }
 
@@ -18014,6 +18087,8 @@ function onClickDelegatoInterno(e) {
     case 'goto-clienti-incompleti': CLI_FILTRO.soloIncompleti = true; CLI_FILTRO.soloGravi = nClientiGravi() > 0; resetPagina('clienti'); setView('clienti'); break;
     case 'cli-filtro-incompleti-vai': CLI_FILTRO.soloIncompleti = true; CLI_FILTRO.soloGravi = nClientiGravi() > 0; resetPagina('clienti'); render(); break;
     case 'nav': setView(el.dataset.nav); break;
+    case 'task-proc-scegli': impostaProceduraTask(el.dataset.id); break;
+    case 'task-proc-rimuovi': impostaProceduraTask(''); break;
     case 'nav-indietro': navIndietro(); break;
     case 'nav-avanti': navAvanti(); break;
     case 'nav-onboarding-cliente': setView('onboarding', { clienteId: id }); break;
@@ -20162,14 +20237,7 @@ function onInputDelegato(e) {
   const action = el.dataset.action;
   const id = el.dataset.id;
   switch (action) {
-    case 'task-cerca-procedura': {
-      const sel = h('tProcedura'); if (!sel) break;
-      const f = el.value.trim();
-      sel.innerHTML = opzioniProcedureTask(sel.value || null, f);
-      const n = sel.querySelectorAll('option[value]:not([value=""])').length;
-      sel.size = f ? Math.min(8, n + 1) : 1; // durante la ricerca il menu diventa un elenco visibile: si vede subito cosa e stato trovato
-      break;
-    }
+    case 'task-cerca-procedura': mostraListaProcedureTask(); break;
     case 'scad-filtro-data-da': case 'scad-filtro-data-a': maschera_data_testo(el); break; // solo formattazione, nessun filtro finche non si esce dal campo
     // Task #171: autoformattazione "mentre si scrive" dei campi orario testuali (inserisce i due
     // punti da solo dopo le prime due cifre) - il salvataggio vero e proprio (dove previsto) è un
@@ -21666,6 +21734,9 @@ window.aggiornaAnnualeMeta = aggiornaAnnualeMeta;
 window.modalBenvenutoDopoSetup = modalBenvenutoDopoSetup;
 window.renderNoteAggiornamento = renderNoteAggiornamento;
 window.cardAccessoRete = cardAccessoRete;
+window.procedureTaskFiltrate = procedureTaskFiltrate;
+window.htmlListaProcedureTask = htmlListaProcedureTask;
+window.impostaProceduraTask = impostaProceduraTask;
 window.nomeCartellaPratica = nomeCartellaPratica;
 window.htmlCampoPratica = htmlCampoPratica;
 window.opzioniProcedureTask = opzioniProcedureTask;

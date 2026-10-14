@@ -1,17 +1,17 @@
 {
-  "versione": "1.20.0",
-  "note": "Scadenze periodiche: gli importi si scrivono di nuovo senza che il campo si riformatti a ogni tasto (si conferma uscendo dal campo, con Invio o con ✓) | Scadenze periodiche: nuova colonna Addebito F24 (dall'anagrafica) | Scadenze periodiche: i filtri data si scrivono a tastiera (gg/mm/aaaa), Tab passa direttamente al campo successivo; il pulsante calendario resta | Scadenze periodiche: clic sul nome del cliente apre la scheda cliente | Frecce Indietro/Avanti in alto a sinistra (anche Alt+←/→ e tasti laterali del mouse) | Lo stato F24 inviato al cliente conta come scadenza completata | Task: ricerca nella procedura collegata per qualsiasi parola del nome | Task: casella È una pratica, crea la cartella aaaa.gg.mm - nome nei documenti del cliente e permette di allegare file | Utenze con password: la password si chiede una sola volta per ogni avvio del server, non più dopo inattività",
+  "versione": "1.20.1",
+  "note": "Task: nuovo selettore della procedura collegata, con ricerca e elenco ampio | I risultati mostrano il nome intero con la categoria e la parola cercata evidenziata, ordinati per pertinenza | Si sceglie con un clic oppure con le frecce e Invio; la procedura scelta compare in alto con una X per scollegarla",
   "richiedeNpmInstall": false,
   "file": [
     {
       "nome": "gestionale.htm",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale.htm",
-      "sha256": "a7203180462c557a233342aff07a8ceeedbfdc20b84b034833f71f3f715eef28"
+      "sha256": "30b5d6c8b73092d98635188d45d12ae8f079cff94570f86d57dcb46c60084872"
     },
     {
       "nome": "server.js",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/server.js",
-      "sha256": "5fc03163ab9f9d98bf5f101f120c052d4bfe9b9f0b4992002b04754178955855"
+      "sha256": "f8a891e354f62e63ff5bdad118e264055fc7b0b8a3ba05df9e6565435d83d6ab"
     },
     {
       "nome": "portale-cliente.htm",
@@ -24,5 +24,5 @@
       "sha256": "2ef5a0fe81a09f871a56489a86ae276f0e2f123d845afa484ff703650b47b24e"
     }
   ],
-  "firma": "fEA97Kw0Oh8OM/0DBMi1tyYl/rKc4PztnaXK7CfPuw296UctWnZ33ksXKufHogb5XSsth1cv+Fo8RoS4ve0KAQ=="
+  "firma": "AiXHEtEXTUGjrnzLe++I8l+Uwg41pFhCkDuznnbfo1o74StMVE0drQz0ui98VAamB/IbnP6rz7A/f5+O0p7DAg=="
 }
