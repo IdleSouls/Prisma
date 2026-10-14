@@ -138,7 +138,7 @@ function applicaAggiornamentoPronto() {
   if (!m) return { applicato: false, serverCambiato: false };
   const pulisci = () => { try { fs.rmSync(CARTELLA_AGG_PRONTO, { recursive: true, force: true }); } catch (err) { /* ignorato */ } };
   let versioneAttuale = '0';
-  try { versioneAttuale = (fs.readFileSync(path.join(CARTELLA, 'server.js'), 'utf8').match(/const VERSIONE_LOCALE = '([^']+)'/) || [])[1] || '0'; } catch (err) { /* ignorato */ }
+  try { versioneAttuale = (fs.readFileSync(path.join(CARTELLA, 'server.js'), 'utf8').match(/^const VERSIONE_LOCALE = '([^']+)'/m) || [])[1] || '0'; } catch (err) { /* ignorato */ }
   if (!versionePiuNuova(m.versione, versioneAttuale)) { pulisci(); return { applicato: false, serverCambiato: false }; }
   const pronti = [];
   for (const voce of m.file) {
@@ -479,7 +479,7 @@ scriviLog('Avvio di Prisma...');
 const URL_MANIFESTO_AGGIORNAMENTI = 'https://raw.githubusercontent.com/IdleSouls/Prisma/main/versione.json';
 // Cambiala qui a ogni nuova versione pubblicata (deve combaciare con quella scritta nel
 // "versione.json" caricato su GitHub, altrimenti il confronto non ha senso).
-const VERSIONE_LOCALE = '1.26.0';
+const VERSIONE_LOCALE = '1.26.1';
 // Solo questi file possono essere sovrascritti da un aggiornamento - mai un nome libero/a piacere
 // del manifesto, per non correre il rischio (anche solo teorico, es. account GitHub compromesso)
 // di far scrivere un file arbitrario altrove sul PC del cliente.
