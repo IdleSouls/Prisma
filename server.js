@@ -92,7 +92,9 @@ const sessioneAttivaPerNome = new Map();
 function sessioneEsclusivaValida(nome, token, deviceId) {
   const sess = sessioneAttivaPerNome.get(nome);
   if (!sess) return false;
-  if (Date.now() - sess.ultimoHeartbeat > SESSIONE_ESCLUSIVA_TTL_MS) return false;
+  // La sessione NON scade per inattivita (PC in standby, scheda in background, pausa pranzo): la password si chiede una sola
+  // volta per ogni avvio del server. Si perde solo se il server si riavvia o se un ALTRO dispositivo prende il nome
+  // (cosa possibile solo quando questo non da segni di vita da oltre SESSIONE_ESCLUSIVA_TTL_MS: vedi /api/operatore-login).
   return sess.token === token && sess.deviceId === deviceId;
 }
 
@@ -429,7 +431,7 @@ scriviLog('Avvio di Prisma...');
 const URL_MANIFESTO_AGGIORNAMENTI = 'https://raw.githubusercontent.com/IdleSouls/Prisma/main/versione.json';
 // Cambiala qui a ogni nuova versione pubblicata (deve combaciare con quella scritta nel
 // "versione.json" caricato su GitHub, altrimenti il confronto non ha senso).
-const VERSIONE_LOCALE = '1.19.1';
+const VERSIONE_LOCALE = '1.20.0';
 // Solo questi file possono essere sovrascritti da un aggiornamento - mai un nome libero/a piacere
 // del manifesto, per non correre il rischio (anche solo teorico, es. account GitHub compromesso)
 // di far scrivere un file arbitrario altrove sul PC del cliente.
@@ -2326,6 +2328,28 @@ function gestisciRichiesta(req, res) {
     return;
   }
 
+  // Crea (se non esiste) una sottocartella nella cartella documenti di un cliente - usata dalle "pratiche" dei task:
+  // la cartella "aaaa.gg.mm - nome pratica" esiste subito, anche prima di allegare il primo file.
+  if (url === '/api/documenti/cartella' && req.method === 'POST') {
+    leggiCorpoRichiesta(req, (corpo) => {
+      try {
+        const dati = JSON.parse(corpo);
+        const idPulito = String(dati.clienteId || '').trim();
+        const nomePulito = String(dati.clienteNome || idPulito || 'Cliente').trim();
+        const sotto = nomeCartellaSicuro(String(dati.sottocartella || ''));
+        if (!idPulito || !String(dati.sottocartella || '').trim()) throw new Error('Dati mancanti (clienteId o nome cartella)');
+        const cartella = path.join(CARTELLA_DOCUMENTI, nomeCartellaSicuro(nomePulito) + ' [' + idPulito.slice(-6) + ']', sotto);
+        fs.mkdirSync(cartella, { recursive: true });
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: true, sottocartella: sotto, percorso: path.relative(CARTELLA_DOCUMENTI, cartella) }));
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, errore: err.message }));
+      }
+    });
+    return;
+  }
+
   if (url === '/api/documenti/scarica' && req.method === 'GET') {
     const percorsoRel = decodeURIComponent((req.url.split('?')[1] || '').replace(/^percorso=/, ''));
     const assoluto = risolviPercorsoDocumento(percorsoRel);
@@ -3219,12 +3243,7 @@ setInterval(() => {
 // resterebbe comunque in memoria finché non si sovrascrive lo stesso nome - non è un leak concreto
 // (la mappa ha al più un numero di chiavi pari ai referenti configurati) ma è coerente con
 // rateLimitContatori tenerla ripulita lo stesso.
-setInterval(() => {
-  const ora = Date.now();
-  for (const [nome, sess] of sessioneAttivaPerNome) {
-    if (ora - sess.ultimoHeartbeat > SESSIONE_ESCLUSIVA_TTL_MS) sessioneAttivaPerNome.delete(nome);
-  }
-}, SESSIONE_ESCLUSIVA_TTL_MS).unref();
+// (nessuna pulizia periodica: le sessioni esclusive restano valide finche il server resta acceso, vedi sessioneEsclusivaValida)
 
 function autenticazioneBasicOk(req, tipo) {
   const cfg = leggiConfigAccessoEsterno()[tipo];

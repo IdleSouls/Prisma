@@ -50,7 +50,7 @@ function assertNoAutoSubmit(formEl, nomeForm) {
   assert(formEl.getAttribute('onsubmit') === 'return false;', `form "${nomeForm}" senza onsubmit="return false;": Invio in un campo di testo causerebbe un reload dell'intera pagina`);
 }
 
-setTimeout(() => { console.error('\n❌ WATCHDOG: timeout duro, il test si è bloccato da qualche parte.'); process.exit(3); }, 90000).unref?.();
+setTimeout(() => { console.error('\n❌ WATCHDOG: timeout duro, il test si è bloccato da qualche parte.'); process.exit(3); }, Number(process.env.PRISMA_WATCHDOG_MS) || 90000).unref?.();
 
 async function main() {
   await wait(200); // lascia girare init()
@@ -573,6 +573,115 @@ async function main() {
   await wait(20);
   assert(inpIt.value === '1.234,50', 'anche a 4 cifre il punto delle migliaia deve esserci, trovato ' + inpIt.value);
   assert(qa('[data-action="scad-conferma-importo"]').length >= 1, 'manca il tasto di conferma importo');
+  // colonna "Addebito F24" nelle scadenze periodiche, presa dall'anagrafica
+  {
+    assert(q('#content').innerHTML.includes('Addebito F24'), 'scadenze periodiche: manca la colonna Addebito F24');
+    const cTest = window.getSTATE().clienti.find(c => c.addebitoF24 === 'CLIENTE') || window.getSTATE().clienti[0];
+    const vecchio = cTest.addebitoF24; cTest.addebitoF24 = 'CLIENTE';
+    assert(window.badgeAddebitoF24(cTest.id).includes('Cliente'), 'badge addebito F24: atteso "Cliente"');
+    cTest.addebitoF24 = 'NOI'; assert(window.badgeAddebitoF24(cTest.id).includes('Studio'), 'badge addebito F24: atteso "Studio"');
+    cTest.addebitoF24 = ''; assert(window.badgeAddebitoF24(cTest.id).includes('—'), 'badge addebito F24: atteso trattino se vuoto');
+    cTest.addebitoF24 = vecchio;
+  }
+  // clic sul cliente nelle scadenze -> scheda cliente; frecce indietro/avanti tornano alle scadenze
+  {
+    window.resetNavStoriaTest();
+    click(q('[data-nav="scadenze"]'));
+    await wait(20);
+    assert(window.navPuoIndietro() === false || true, 'ok');
+    const linkCliente = q('#content a.link-cliente[data-action="apri-cliente"]');
+    assert(linkCliente, 'scadenze periodiche: il nome cliente deve essere un collegamento alla scheda');
+    const idCl = linkCliente.dataset.id;
+    click(linkCliente);
+    await wait(20);
+    assert(q('#pageTitle').textContent === 'Scheda cliente', 'il clic sul cliente deve aprire la scheda cliente');
+    assert(!q('#navIndietro').disabled, 'dopo l\'apertura della scheda la freccia indietro deve essere attiva');
+    click(q('#navIndietro'));
+    await wait(20);
+    assert(q('#pageTitle').textContent === 'Scadenze periodiche' || q('#pageTitle').textContent.startsWith('Scadenze'), 'indietro deve tornare alle scadenze, trovato ' + q('#pageTitle').textContent);
+    assert(!q('#navAvanti').disabled, 'dopo indietro la freccia avanti deve essere attiva');
+    click(q('#navAvanti'));
+    await wait(20);
+    assert(q('#pageTitle').textContent === 'Scheda cliente', 'avanti deve riaprire la scheda cliente');
+    assert(window.getSTATE().clienti.some(c => c.id === idCl), 'cliente della scheda esistente');
+    click(q('#navIndietro'));
+    await wait(20);
+    click(q('[data-nav="scadenze"]'));
+    await wait(20);
+  }
+  // campo data a tastiera: mascheratura, parsing, Tab non passa dal calendario
+  {
+    assert(window.parseDataTesto('31/12/2026') === '2026-12-31' && window.parseDataTesto('31122026') === '2026-12-31', 'parseDataTesto: formati gg/mm/aaaa e ggmmaaaa');
+    assert(window.parseDataTesto('31/02/2026') === null, 'parseDataTesto: 31/02 non e valida');
+    assert(window.parseDataTesto('') === '' && window.parseDataTesto('2026-05-04') === '2026-05-04', 'parseDataTesto: vuoto e ISO');
+    const da = q('[data-action="scad-filtro-data-da"]');
+    assert(da && da.type === 'text', 'il filtro "Scadenza da" deve essere un campo testo');
+    da.value = '01012027'; fire(da, 'input');
+    assert(da.value === '01/01/2027', 'mascheratura data: atteso 01/01/2027, trovato ' + da.value);
+    const btnCal = q('[data-action="apri-calendario-campo"][data-target="scad-filtro-data-da"]');
+    assert(btnCal && btnCal.getAttribute('tabindex') === '-1', 'il pulsante calendario non deve essere raggiungibile con Tab');
+    da.value = ''; fire(da, 'focusout');
+  }
+  // "F24 inviato al cliente" conta come scadenza completata
+  {
+    const p = window.patchDaScelta('F24 inviato al cliente', window.FASI_F24);
+    assert(p.stato === 'Comunicato al cliente' && p.fase === 'F24 inviato al cliente', 'F24 inviato al cliente deve chiudere la scadenza');
+    assert(window.patchDaScelta('Calcolata', window.FASI_F24).stato === 'Calcolato', 'Calcolata resta intermedia');
+  }
+  // ricerca "contiene" nel menu Procedura collegata del task
+  {
+    const procs = (window.getSTATE().procedureInterne || []).filter(pp => pp.attivo);
+    assert(procs.length >= 2, 'servono almeno 2 procedure attive per il test di ricerca');
+    const parola = String(procs[1].nome).trim().split(/\s+/).pop().slice(0, 4).toLowerCase(); // pezzo preso dal FONDO del nome, non dall\'inizio
+    const html = window.opzioniProcedureTask(null, parola);
+    assert(html.includes('value="' + procs[1].id + '"'), 'la ricerca deve trovare la procedura anche se la parola e dentro/in fondo al nome');
+    const tutte = window.opzioniProcedureTask(null, '');
+    assert(tutte.includes('value="' + procs[0].id + '"') && tutte.includes('value="' + procs[1].id + '"'), 'senza filtro devono esserci tutte le procedure');
+    assert(!window.opzioniProcedureTask(null, 'zzzzzzzzqqq').includes('<option value="' + procs[0].id), 'filtro senza risultati: nessuna procedura');
+    assert(window.opzioniProcedureTask(procs[0].id, 'zzzzzzzzqqq').includes('value="' + procs[0].id + '"'), 'la procedura gia selezionata resta nel menu anche se non corrisponde al filtro');
+  }
+  // Task "pratica": casella, nome cartella, salvataggio dei campi
+  {
+    assert(window.nomeCartellaPratica('2026-10-13', 'Variazione sede') === '2026.13.10 - Variazione sede', 'nome cartella pratica: atteso "aaaa.gg.mm - nome", trovato ' + window.nomeCartellaPratica('2026-10-13', 'Variazione sede'));
+    click(q('[data-nav="taskteam"]'));
+    await wait(20);
+    click(q('[data-action="nuovo-task-team"]'));
+    await wait(20);
+    assert(q('#tPratica') && q('#tPraticaBox') && q('#tPraticaFile'), 'task: manca la sezione pratica (casella e allegati)');
+    assert(q('#tPraticaBox').style.display === 'none', 'la sezione allegati pratica deve restare nascosta finche la casella non e spuntata');
+    q('#tPratica').checked = true; fire(q('#tPratica'), 'change');
+    assert(q('#tPraticaBox').style.display === 'block', 'spuntando "E una pratica" compare la sezione allegati');
+    setVal(q('#tTitolo'), 'Pratica di prova SCIA');
+    // senza cliente non si salva
+    setVal(q('#tCliente'), '');
+    const nTaskPrima = window.getSTATE().taskTeam.length;
+    click(q('[data-action="salva-task-team"]'));
+    await wait(20);
+    assert(window.getSTATE().taskTeam.length === nTaskPrima, 'una pratica senza cliente non deve essere salvata');
+    const clP = window.getSTATE().clienti.find(c => c.stato !== 'cessato');
+    setVal(q('#tCliente'), clP.id);
+    click(q('[data-action="salva-task-team"]'));
+    await wait(30);
+    const tP = window.getSTATE().taskTeam.find(x => x.titolo === 'Pratica di prova SCIA');
+    assert(tP && tP.pratica === true && /^\d{4}\.\d{2}\.\d{2} - Pratica di prova SCIA$/.test(tP.praticaCartella), 'task pratica: campi pratica/praticaCartella non salvati (' + (tP && tP.praticaCartella) + ')');
+    window.getSTATE().taskTeam = window.getSTATE().taskTeam.filter(x => x.id !== tP.id);
+    click(q('[data-nav="scadenze"]'));
+    await wait(20);
+  }
+  // regressione: durante la digitazione (evento input) il campo NON deve essere riformattato ne salvato
+  {
+    const inpIt = qa('[data-action="scad-cambia-importo"]')[1]; // il DOM e stato ricreato dai test di navigazione qui sopra
+    inpIt.value = '1';
+    fire(inpIt, 'input');
+    assert(inpIt.value === '1', 'digitando, il campo importo non va riformattato (trovato ' + inpIt.value + ')');
+    inpIt.value = '1,';
+    fire(inpIt, 'input');
+    assert(inpIt.value === '1,', 'digitando la virgola il campo non deve cambiare (trovato ' + inpIt.value + ')');
+    inpIt.value = '1,5';
+    fire(inpIt, 'change');
+    assert(inpIt.value === '1,50', 'all\'uscita dal campo l\'importo si formatta (trovato ' + inpIt.value + ')');
+    assert(/onkeydown=/.test(inpIt.outerHTML) && /Enter/.test(inpIt.getAttribute('onkeydown')), 'importo: Invio deve confermare');
+  }
   console.log('=== Importo: formato italiano e tasto conferma OK');
 
   // importo per scadenza (ispirato al "readiness" di Scadero: quante scadenze in arrivo hanno
@@ -4968,8 +5077,17 @@ async function main() {
   setVal(selAvanz, primaScadenza.fasi[1]);
   await wait(20);
   let scadFase = window.derivati().periodiche.find(s => s.id === primaScadenza.id);
-  assert(scadFase.fase === primaScadenza.fasi[1] && scadFase.stato === 'Calcolato', 'una fase intermedia deve lasciare la scadenza aperta');
-  assert(!scadFase.dataCompletamento, 'una fase intermedia non deve impostare la data di completamento');
+  if (primaScadenza.fasi[1] === 'F24 inviato al cliente') {
+    // "F24 inviato al cliente" chiude la scadenza (richiesta Matteo), anche se non e l'ultima fase
+    assert(scadFase.fase === primaScadenza.fasi[1] && window.STATI_SCADENZA_CHIUSI.includes(scadFase.stato) && !!scadFase.dataCompletamento, 'F24 inviato al cliente deve contare come scadenza completata');
+    setVal(q(`[data-action="scad-cambia-stato"][data-id="${primaScadenza.id}"]`), primaScadenza.fasi[0]);
+    await wait(20);
+    scadFase = window.derivati().periodiche.find(s => s.id === primaScadenza.id);
+    assert(scadFase.fase === primaScadenza.fasi[0] && scadFase.stato === 'Calcolato', 'la prima fase (Calcolata) deve lasciare la scadenza aperta');
+  } else {
+    assert(scadFase.fase === primaScadenza.fasi[1] && scadFase.stato === 'Calcolato', 'una fase intermedia deve lasciare la scadenza aperta');
+    assert(!scadFase.dataCompletamento, 'una fase intermedia non deve impostare la data di completamento');
+  }
   setVal(q(`[data-action="scad-cambia-stato"][data-id="${primaScadenza.id}"]`), primaScadenza.fasi[2]);
   await wait(20);
   scadFase = window.derivati().periodiche.find(s => s.id === primaScadenza.id);

@@ -762,6 +762,10 @@ html[data-tema="scuro"] .sem770 .esc{background:#ddd;color:#111;}
 <div id="main">
   <div id="topbar">
     <div>
+      <span style="display:inline-flex;gap:4px;margin-right:10px;vertical-align:middle;">
+        <button class="btn small" id="navIndietro" data-action="nav-indietro" title="Indietro (Alt + ←)" aria-label="Indietro" disabled style="padding:4px 9px;">←</button>
+        <button class="btn small" id="navAvanti" data-action="nav-avanti" title="Avanti (Alt + →)" aria-label="Avanti" disabled style="padding:4px 9px;">→</button>
+      </span>
       <h1 id="pageTitle" style="display:inline-block;">Dashboard</h1> <button class="btn small ghost" id="btnGuidaTab" data-action="guida-tab" title="Come si usa questa sezione" style="display:none;align-items:center;justify-content:center;border-radius:50%;width:26px;height:26px;padding:0;line-height:1;font-size:13px;vertical-align:middle;position:relative;top:-2px;margin-left:8px;border:1px solid var(--border);">?</button>
       <div class="sub" id="pageSub"></div>
     </div>
@@ -835,6 +839,9 @@ const FASI_COMUNICAZIONE = ['Predisposta', 'Inviata'];
 const FASI_DEFAULT_CUSTOM = ['Eseguita'];
 const STATO_DA_FASE_INTERMEDIA = 'Calcolato';
 const STATO_DA_FASE_FINALE = 'Comunicato al cliente';
+/* Fasi che chiudono la scadenza anche se non sono l'ultima: per l'F24 "inviato al cliente" il lavoro dello studio e finito
+   (l'eventuale addebito successivo resta selezionabile ma la scadenza conta gia come completata). */
+const FASI_CHE_CHIUDONO = ['F24 inviato al cliente'];
 /* Informazioni di fase per una scadenza periodica generata: { conImporto, fasi } */
 function infoFasiPeriodico(def) {
   const seed = def && DEFAULT_CATALOGO_PERIODICO.find(d => d.id === def.id);
@@ -856,6 +863,8 @@ function applicaFasiScadenza(item, salvato, info) {
     else if (item.stato === 'Calcolato' && item.fasi.length > 1) fase = item.fasi[0];
   }
   item.fase = fase;
+  // Scadenze salvate prima di questa regola: fase che chiude ma stato ancora "Calcolato" -> si allinea (conta come completata).
+  if (fase && FASI_CHE_CHIUDONO.includes(fase) && !STATI_SCADENZA_DEFINITIVI.includes(item.stato) && item.stato !== 'Non applicabile') item.stato = STATO_DA_FASE_FINALE;
   return item;
 }
 /* Etichetta da mostrare al posto dello stato generico: la fase se c'è, altrimenti lo stato. */
@@ -863,7 +872,7 @@ function etichettaStatoScadenza(s) { return (s && s.fase) || (s && s.stato) || '
 /* Traduce la scelta fatta in un menu di avanzamento in { stato, fase } da salvare. */
 function patchDaScelta(valore, fasi) {
   const idx = (fasi || []).indexOf(valore);
-  if (idx >= 0) return { fase: valore, stato: idx === fasi.length - 1 ? STATO_DA_FASE_FINALE : STATO_DA_FASE_INTERMEDIA };
+  if (idx >= 0) return { fase: valore, stato: (idx === fasi.length - 1 || FASI_CHE_CHIUDONO.includes(valore)) ? STATO_DA_FASE_FINALE : STATO_DA_FASE_INTERMEDIA };
   return { fase: null, stato: valore };
 }
 /* Opzioni del menu di avanzamento di una scadenza: Da fare, le sue fasi, poi Errore / Non applicabile. */
@@ -3378,6 +3387,44 @@ function statoBadgeClass(stato) {
 function clienteById(id) {
   return STATE.clienti.find(c => c.id === id);
 }
+/* Campo data "gg/mm/aaaa" a tastiera: con il <input type="date"> nativo Tab, dopo l'anno, finiva sul pulsantino del
+   calendario (che nel browser non si puo escludere dall'ordine dei tab) e SOLO dopo sul campo successivo. Qui il testo si
+   scrive con la tastiera (le barre si mettono da sole), Tab passa subito al campo dopo e il pulsantino resta per chi vuole
+   scegliere col mouse (tabindex=-1: non si raggiunge con Tab). Il valore salvato resta ISO (aaaa-mm-gg). */
+function campoDataTesto(azione, iso) {
+  const visto = iso ? fmtData(iso) : '';
+  return `<span style="display:inline-flex;align-items:center;gap:4px;position:relative;">
+    <input type="text" inputmode="numeric" maxlength="10" placeholder="gg/mm/aaaa" autocomplete="off" value="${escapeHtml(visto)}" data-action="${azione}" style="width:104px;">
+    <button type="button" class="btn small ghost" tabindex="-1" data-action="apri-calendario-campo" data-target="${azione}" title="Scegli dal calendario" style="padding:3px 6px;">📅</button>
+    <input type="date" tabindex="-1" aria-hidden="true" value="${escapeHtml(iso || '')}" data-action="${azione}-picker" style="position:absolute;right:0;bottom:0;width:1px;height:1px;opacity:0;pointer-events:none;border:0;padding:0;">
+  </span>`;
+}
+/* "gg/mm/aaaa", "ggmmaaaa" o ISO -> ISO valido, '' se vuoto, null se non valido. */
+function parseDataTesto(t) {
+  t = String(t || '').trim();
+  if (!t) return '';
+  let g, m, a, x;
+  if ((x = /^(\d{4})-(\d{2})-(\d{2})$/.exec(t))) { a = +x[1]; m = +x[2]; g = +x[3]; }
+  else if ((x = /^(\d{1,2})[\/.\-\s]?(\d{1,2})[\/.\-\s]?(\d{4})$/.exec(t))) { g = +x[1]; m = +x[2]; a = +x[3]; }
+  else return null;
+  const d = new Date(Date.UTC(a, m - 1, g));
+  if (d.getUTCFullYear() !== a || d.getUTCMonth() !== m - 1 || d.getUTCDate() !== g) return null;
+  return `${String(a).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(g).padStart(2, '0')}`;
+}
+function maschera_data_testo(el) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(el.value)) return; // ISO incollato: lo si interpreta all'uscita dal campo
+  const c = el.value.replace(/\D/g, '').slice(0, 8);
+  el.value = c.length > 4 ? `${c.slice(0, 2)}/${c.slice(2, 4)}/${c.slice(4)}` : (c.length > 2 ? `${c.slice(0, 2)}/${c.slice(2)}` : c);
+}
+/* Chi addebita l'F24 per quel cliente (campo "Addebito F24" dell'anagrafica): mostrato in ogni riga delle scadenze periodiche. */
+function badgeAddebitoF24(clienteId) {
+  const c = clienteById(clienteId);
+  const v = c && c.addebitoF24;
+  if (!v) return '<span class="helptext" title="Non indicato in anagrafica">—</span>';
+  const etichetta = { NOI: 'Studio', CLIENTE: 'Cliente', 'NOI/CLIENTE': 'Studio o cliente' }[v] || v;
+  const stile = v === 'NOI' ? 'background:var(--blu-light);color:var(--blu-scuro);' : (v === 'CLIENTE' ? 'background:var(--giallo-bg);color:var(--giallo);' : 'background:var(--bg);color:var(--text-mut);border:1px solid var(--border);');
+  return `<span class="badge" style="${stile}" title="Addebito F24 (da anagrafica)">${escapeHtml(etichetta)}</span>`;
+}
 function nomeCliente(id) {
   const c = clienteById(id);
   return c ? c.ragioneSociale : '(cliente eliminato)';
@@ -5300,6 +5347,51 @@ function renderAnnoSelect() {
   sel.innerHTML = Array.from(anni).sort().map(a => `<option value="${a}" ${a===STATE.annoCorrente?'selected':''}>${a}</option>`).join('');
 }
 
+/* Cronologia di navigazione tipo browser (frecce indietro/avanti in alto a sinistra, Alt+←/→, tasti laterali del mouse):
+   da Scadenze si apre la scheda di un cliente per controllare una cosa e con "indietro" si torna alle Scadenze, con gli stessi
+   filtri e alla stessa altezza della pagina. Ogni voce ricorda sezione, cliente della scheda e scorrimento. */
+let NAV_STORIA = [];
+let NAV_STORIA_POS = -1;
+const NAV_STORIA_MAX = 60;
+function navVoceCorrente() { return { view: VIEW, scheda: SCHEDA_CLIENTE, scroll: 0 }; }
+function navScrollAttuale() { try { return Math.round(window.scrollY || window.pageYOffset || 0); } catch (e) { return 0; } }
+// Chiamata PRIMA di cambiare VIEW: registra la posizione di scorrimento della voce che si sta lasciando (e la crea se e la prima).
+function navStoriaPrima() {
+  if (NAV_STORIA_POS < 0) { NAV_STORIA = [navVoceCorrente()]; NAV_STORIA_POS = 0; }
+  NAV_STORIA[NAV_STORIA_POS].scroll = navScrollAttuale();
+}
+// Chiamata DOPO aver impostato la nuova VIEW (e SCHEDA_CLIENTE da parte del chiamante): aggiunge la nuova voce se diversa.
+function navStoriaDopo() {
+  const cur = NAV_STORIA[NAV_STORIA_POS];
+  if (cur && cur.view === VIEW && cur.scheda === SCHEDA_CLIENTE) return;
+  NAV_STORIA = NAV_STORIA.slice(0, NAV_STORIA_POS + 1);
+  NAV_STORIA.push(navVoceCorrente());
+  if (NAV_STORIA.length > NAV_STORIA_MAX) NAV_STORIA.shift();
+  NAV_STORIA_POS = NAV_STORIA.length - 1;
+}
+function navPuoIndietro() { return NAV_STORIA_POS > 0; }
+function navPuoAvanti() { return NAV_STORIA_POS >= 0 && NAV_STORIA_POS < NAV_STORIA.length - 1; }
+function navVaiA(posizione) {
+  if (posizione < 0 || posizione >= NAV_STORIA.length) return;
+  if (NAV_STORIA_POS >= 0 && NAV_STORIA[NAV_STORIA_POS]) NAV_STORIA[NAV_STORIA_POS].scroll = navScrollAttuale();
+  const v = NAV_STORIA[posizione];
+  if (!operatorePuoVedere(v.view)) { toast('Non hai accesso a questa sezione.', true); return; }
+  NAV_STORIA_POS = posizione;
+  chiudiModal();
+  SCHEDA_CLIENTE = v.scheda;
+  VIEW = v.view;
+  VIEW_PARAMS = {};
+  render();
+  try { window.scrollTo(0, v.scroll || 0); } catch (e) {}
+}
+function navIndietro() { if (navPuoIndietro()) navVaiA(NAV_STORIA_POS - 1); }
+function navAvanti() { if (navPuoAvanti()) navVaiA(NAV_STORIA_POS + 1); }
+function aggiornaFrecceNav() {
+  const i = typeof document !== 'undefined' && document.getElementById('navIndietro');
+  const a = typeof document !== 'undefined' && document.getElementById('navAvanti');
+  if (i) i.disabled = !navPuoIndietro();
+  if (a) a.disabled = !navPuoAvanti();
+}
 function setView(view, params) {
   // Task #156: blocco centrale, non solo nascondere la voce di menu - copre anche i link/scorciatoie
   // sparsi per l'app (es. "Vai agli adempimenti annuali →", risultati di Azioni, link da un task/
@@ -5310,8 +5402,10 @@ function setView(view, params) {
     view = 'dashboard';
     params = {};
   }
+  navStoriaPrima();
   VIEW = view;
   VIEW_PARAMS = params || {};
+  navStoriaDopo();
   if ((view === 'scadenze' || view === 'annuali') && STATE && STATE.meta && !(STATE.meta.passiVisti && STATE.meta.passiVisti[view])) {
     STATE.meta.passiVisti = Object.assign({}, STATE.meta.passiVisti, { [view]: true });
     salvaStato();
@@ -5329,6 +5423,7 @@ function render() {
   renderNav();
   renderAnnoSelect();
   aggiornaBadgeOperatore();
+  aggiornaFrecceNav();
   const [title, sub] = PAGE_TITLES[VIEW] || ['', ''];
   document.getElementById('pageTitle').textContent = title;
   document.getElementById('pageSub').textContent = sub;
@@ -7135,8 +7230,8 @@ function renderScadenze() {
       </optgroup>`).join('')}
     </select></div>
     <div class="field grow"><label>Cerca cliente</label><input type="text" value="${escapeHtml(SCAD_FILTRO.q)}" data-action="scad-filtro-q" placeholder="Nome cliente..."></div>
-    <div class="field"><label>Scadenza da</label><input type="date" value="${escapeHtml(SCAD_FILTRO.dataDa)}" data-action="scad-filtro-data-da"></div>
-    <div class="field"><label>Scadenza a</label><input type="date" value="${escapeHtml(SCAD_FILTRO.dataA)}" data-action="scad-filtro-data-a"></div>
+    <div class="field"><label>Scadenza da</label>${campoDataTesto('scad-filtro-data-da', SCAD_FILTRO.dataDa)}</div>
+    <div class="field"><label>Scadenza a</label>${campoDataTesto('scad-filtro-data-a', SCAD_FILTRO.dataA)}</div>
     <div class="field"><label>&nbsp;</label><button class="btn small" data-action="scad-seleziona-tutti-filtrati">☑ Seleziona tutte (${lista.length})</button></div>
   </div>`;
 
@@ -7170,7 +7265,7 @@ function renderScadenze() {
     return `<tr class="${SCAD_SELEZIONATE.has(s.id)?'riga-selezionata':''}">
       <td><input type="checkbox" data-action="scad-toggle-sel" data-id="${s.id}" ${SCAD_SELEZIONATE.has(s.id)?'checked':''}></td>
       <td style="white-space:nowrap;">${fmtData(s.data)}</td>
-      <td style="min-width:210px;max-width:280px;" title="${escapeHtml(nomeCliente(s.clienteId))}">${escapeHtml(nomeCliente(s.clienteId))}</td>
+      <td style="min-width:210px;max-width:280px;" title="Apri la scheda di ${escapeHtml(nomeCliente(s.clienteId))}"><a class="link-cliente" data-action="apri-cliente" data-id="${s.clienteId}" style="color:inherit;text-decoration:none;border-bottom:1px dotted var(--text-mut);cursor:pointer;">${escapeHtml(nomeCliente(s.clienteId))}</a></td>
       <td>${escapeHtml(s.nome)}</td>
       <td>${chiuso?'<span class="helptext">chiusa</span>':`<span class="pill-delta ${d.cls}">${d.txt}</span>`}</td>
       <td><select class="statoSel ${statoBadgeClass(s.stato)}" data-action="scad-cambia-stato" data-id="${s.id}">
@@ -7180,7 +7275,8 @@ function renderScadenze() {
         <option value="">—</option>
         ${STATE.meta.responsabili.map(r=>`<option ${s.responsabile===r?'selected':''}>${escapeHtml(r)}</option>`).join('')}
       </select></td>
-      <td style="white-space:nowrap;min-width:150px;">${s.conImporto ? `<span class="importo-wrap"><input type="text" inputmode="decimal" class="importo-input" value="${s.importo!=null?escapeHtml(formatImportoIT(s.importo)):''}" data-action="scad-cambia-importo" data-id="${s.id}" placeholder="€ 0,00" style="width:105px;text-align:right;border:1px solid var(--border);border-radius:5px;padding:4px 6px;font-size:12px;"> <button class="btn small importo-ok ${s.importo!=null?'salvato':''}" data-action="scad-conferma-importo" data-id="${s.id}" title="Conferma importo">✓</button></span>` : '<span class="helptext">—</span>'}</td>
+      <td style="white-space:nowrap;min-width:150px;">${s.conImporto ? `<span class="importo-wrap"><input type="text" inputmode="decimal" class="importo-input" value="${s.importo!=null?escapeHtml(formatImportoIT(s.importo)):''}" data-action="scad-cambia-importo" onkeydown="if(event.key==='Enter'){event.preventDefault();var b=this.parentElement.querySelector('button.importo-ok');if(b)b.click();}" data-id="${s.id}" placeholder="€ 0,00" style="width:105px;text-align:right;border:1px solid var(--border);border-radius:5px;padding:4px 6px;font-size:12px;"> <button class="btn small importo-ok ${s.importo!=null?'salvato':''}" data-action="scad-conferma-importo" data-id="${s.id}" title="Conferma importo">✓</button></span>` : '<span class="helptext">—</span>'}</td>
+      <td style="white-space:nowrap;">${badgeAddebitoF24(s.clienteId)}</td>
       <td style="white-space:nowrap;"><button class="btn small" data-action="scad-apri-solleciti" data-id="${s.id}" title="Storico solleciti">🔔 ${nSolleciti||''}</button></td>
       <td style="white-space:nowrap;"><button class="btn small" data-action="scad-apri-controllo" data-id="${s.id}" title="${escapeHtml(s.nota ? 'Nota: ' + s.nota : 'Annotazioni datate')}">📝 ${(s.annotazioni||[]).length||''}${s.nota ? ' •' : ''}</button></td>
       <td style="white-space:nowrap;">${s.dataCompletamento?fmtData(s.dataCompletamento):'—'}</td>
@@ -7188,7 +7284,7 @@ function renderScadenze() {
   }).join('');
 
   return readiness + toolbar + bulkBar + `<div class="card" style="padding:0;overflow-x:auto;">
-    <table class="compact"><thead><tr><th><input type="checkbox" data-action="scad-toggle-sel-pagina" ${tutteSelezionateInPagina?'checked':''} title="Seleziona/deseleziona tutte le righe di questa pagina"></th><th>Data</th><th>Cliente</th><th>Adempimento</th><th>Countdown</th><th>Avanzamento</th><th>Resp.</th><th>Importo</th><th>Solleciti</th><th>Annotazioni</th><th>Completata il</th></tr></thead>
+    <table class="compact"><thead><tr><th><input type="checkbox" data-action="scad-toggle-sel-pagina" ${tutteSelezionateInPagina?'checked':''} title="Seleziona/deseleziona tutte le righe di questa pagina"></th><th>Data</th><th>Cliente</th><th>Adempimento</th><th>Countdown</th><th>Avanzamento</th><th>Resp.</th><th>Importo</th><th title="Chi addebita l'F24: dato preso dall'anagrafica del cliente">Addebito F24</th><th>Solleciti</th><th>Annotazioni</th><th>Completata il</th></tr></thead>
     <tbody>${righe}</tbody></table>
   </div>` + controlliPaginazione(pag);
 }
@@ -11263,6 +11359,7 @@ function renderTaskTeam() {
       <div class="meta">
         <span class="badge info">${escapeHtml(t.assegnatoA || '—')}</span>
         ${t.clienteId ? `<span class="badge viola">${escapeHtml(nomeCliente(t.clienteId))}</span>` : ''}
+        ${t.pratica ? `<span class="badge" style="background:var(--giallo-bg);color:var(--giallo);${t.praticaPercorso ? 'cursor:pointer;' : ''}" ${t.praticaPercorso ? `data-action="apri-cartella-documento" data-percorso="${escapeHtml(t.praticaPercorso)}"` : ''} title="Pratica${t.praticaCartella ? ': ' + escapeHtml(t.praticaCartella) : ''}">📁 Pratica</span>` : ''}
         ${proceduraCollegata ? `<span class="badge" style="cursor:pointer;" data-action="apri-procedura" data-id="${proceduraCollegata.id}" title="Apri procedura collegata">📋 ${escapeHtml(proceduraCollegata.nome)}</span>` : ''}
         ${t.scadenza ? `<span class="pill-delta ${ritardo?'scaduto':'lontano'}">${ritardo?'In ritardo — ':'Entro '}${fmtDataBreve(t.scadenza)}</span>` : ''}
         ${nNoteOperative ? `<span class="badge" title="Note operative: ${nNoteOperative}">📝 ${nNoteOperative}</span>` : ''}
@@ -11349,6 +11446,7 @@ function htmlNotaTask(n, taskId, conAzioni) {
 function riapriTaskConBozza(taskId, escludi) {
   TASK_BOZZA = { id: taskId || null, campi: {}, ripristina: true };
   ['tTitolo', 'tAssegnato', 'tCliente', 'tScadenza', 'tStato', 'tProcedura', 'tDescrizione', 'tNuovaNota'].forEach(k => { if ((escludi || []).includes(k)) return; const f = document.getElementById(k); if (f) TASK_BOZZA.campi[k] = f.value; });
+  if (document.getElementById('tPratica')) TASK_BOZZA.campi.tPratica = document.getElementById('tPratica').checked ? '1' : '0';
   modalTaskTeam(taskId);
 }
 function aggiungiNotaTaskTeam(taskId, testo) {
@@ -11420,6 +11518,64 @@ function modalDettaglioTaskTeam(taskId) {
   </div>`;
   document.getElementById('modalRoot').innerHTML = html;
 }
+/* Opzioni del menu "Procedura collegata" di un task, filtrate per testo: cerca la parola OVUNQUE nel nome della procedura (o
+   nella categoria), non solo dalla prima lettera come fa il menu nativo. La procedura gia scelta resta sempre presente. */
+function opzioniProcedureTask(selezionataId, filtro) {
+  const f = String(filtro || '').trim().toLowerCase();
+  const attive = (STATE.procedureInterne || []).filter(p => p.attivo);
+  const trovate = attive.filter(p => !f || String(p.nome || '').toLowerCase().includes(f) || String(p.categoria || '').toLowerCase().includes(f) || p.id === selezionataId);
+  const categorie = Array.from(new Set(trovate.map(p => p.categoria)));
+  return '<option value="">— Nessuna —</option>' + categorie.map(cat => `<optgroup label="${escapeHtml(cat)}">${trovate.filter(p => p.categoria === cat).map(p => `<option value="${p.id}" ${selezionataId === p.id ? 'selected' : ''}>${escapeHtml(p.nome)}</option>`).join('')}</optgroup>`).join('');
+}
+/* PRATICHE: un task puo essere una "pratica" (richiede comunicazioni a istituzioni o enti). Segnarla crea nella cartella
+   documenti del cliente la sottocartella "aaaa.gg.mm - nome pratica" (data di creazione del task, nome = titolo): i documenti
+   allegati al task finiscono sempre li dentro e compaiono anche tra i Documenti del cliente (categoria "Corrispondenza Enti"). */
+const FORMATO_DATA_CARTELLA_PRATICA = 'aaaa.gg.mm'; // per avere l'ordine per data nell'elenco file basta cambiarlo in 'aaaa.mm.gg'
+function nomeCartellaPratica(dataISO, titolo) {
+  const [a, m, g] = String(dataISO || oggiISO()).split('-');
+  const data = FORMATO_DATA_CARTELLA_PRATICA.replace('aaaa', a).replace('gg', g).replace('mm', m);
+  return `${data} - ${String(titolo || '').trim()}`;
+}
+function documentiDiTask(taskId) { return (STATE.documenti || []).filter(d => d.taskId === taskId); }
+function htmlCampoPratica(t, editing) {
+  const docs = editing ? documentiDiTask(t.id) : [];
+  const nomeCart = t.praticaCartella || nomeCartellaPratica(t.creatoIl || oggiISO(), t.titolo || 'nome pratica');
+  return `<div class="field full" style="grid-column:1/-1;border:1px solid var(--border);border-radius:10px;padding:10px 12px;">
+    <label class="checkline" style="display:flex;gap:8px;align-items:center;"><input type="checkbox" id="tPratica" data-action="task-pratica-toggle" ${t.pratica ? 'checked' : ''}> <b>È una pratica</b> <span class="helptext">(richiede comunicazioni a istituzioni o enti)</span></label>
+    <div id="tPraticaBox" style="display:${t.pratica ? 'block' : 'none'};margin-top:8px;">
+      <div class="helptext">Nei documenti del cliente si crea la cartella: <b id="tPraticaCartella">${escapeHtml(nomeCart)}</b>${t.praticaCartella ? '' : ' <span>(il nome usa il titolo del task)</span>'}</div>
+      ${docs.length ? `<div style="margin-top:8px;font-size:12.5px;"><div class="helptext" style="font-weight:700;">Documenti della pratica</div>${docs.map(d => `<div style="display:flex;gap:8px;align-items:center;padding:2px 0;">📎 ${d.filePercorso ? `<a href="${linkScaricaFileReale(d.filePercorso)}" target="_blank" rel="noopener">${escapeHtml(d.nome)}</a>` : escapeHtml(d.nome)}</div>`).join('')}${t.praticaPercorso ? `<button type="button" class="btn small ghost" style="margin-top:4px;" data-action="apri-cartella-documento" data-percorso="${escapeHtml(t.praticaPercorso)}">📂 Apri cartella</button>` : ''}</div>` : (t.praticaPercorso ? `<button type="button" class="btn small ghost" style="margin-top:6px;" data-action="apri-cartella-documento" data-percorso="${escapeHtml(t.praticaPercorso)}">📂 Apri cartella</button>` : '')}
+      <div style="margin-top:8px;"><label style="font-size:12px;font-weight:600;">Allega documenti (opzionale)</label><input type="file" id="tPraticaFile" multiple style="display:block;margin-top:4px;max-width:100%;"></div>
+      ${HTTP_SYNC_ATTIVO ? '' : '<div class="helptext" style="color:var(--giallo);margin-top:6px;">Cartella e file si creano solo con il server di Prisma attivo.</div>'}
+    </div>
+  </div>`;
+}
+/* Dopo il salvataggio del task: crea la cartella della pratica e carica i file allegati (asincrono, con avvisi). */
+function sincronizzaPratica(taskId, files) {
+  const t = STATE.taskTeam.find(x => x.id === taskId);
+  if (!t || !t.pratica) return;
+  const cl = clienteById(t.clienteId);
+  if (!cl) return;
+  if (!HTTP_SYNC_ATTIVO) { toast('Pratica segnata, ma la cartella non è stata creata: serve il server di Prisma attivo.', true); return; }
+  fetch('/api/documenti/cartella', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clienteId: cl.id, clienteNome: cl.ragioneSociale, sottocartella: t.praticaCartella }) })
+    .then(r => r.json())
+    .then(async (esito) => {
+      if (!esito || !esito.ok) throw new Error((esito && esito.errore) || 'cartella non creata');
+      t.praticaCartella = esito.sottocartella; t.praticaPercorso = esito.percorso; t.praticaClienteId = cl.id;
+      salvaStato();
+      let caricati = 0;
+      for (const f of (files || [])) {
+        try {
+          const up = await uploadFileReale(f, cl.id, cl.ragioneSociale, esito.sottocartella);
+          aggiungiDocumento({ clienteId: cl.id, categoria: 'Corrispondenza Enti', nome: f.name, dataCaricamento: oggiISO(), dataScadenza: null, taskId: t.id, praticaCartella: esito.sottocartella, filePercorso: up.percorso, fileNome: up.nomeFile, fileDimensione: up.dimensione });
+          caricati++;
+        } catch (err) { toast('Il file "' + f.name + '" non è stato caricato: ' + err.message, true); }
+      }
+      render();
+      toast(caricati ? `Pratica: cartella «${esito.sottocartella}» pronta, ${caricati} ${caricati === 1 ? 'documento caricato' : 'documenti caricati'}.` : `Pratica: cartella «${esito.sottocartella}» creata nei documenti del cliente.`);
+    })
+    .catch(err => toast('Pratica segnata, ma la cartella non è stata creata: ' + err.message, true));
+}
 let TASK_BOZZA = null; // campi compilati nel modale task mentre si guarda la procedura collegata (o si modifica una nota)
 function modalTaskTeam(taskId, presetClienteId) {
   if (!(TASK_BOZZA && TASK_BOZZA.ripristina)) NOTA_IN_MODIFICA = null;
@@ -11451,10 +11607,10 @@ function modalTaskTeam(taskId, presetClienteId) {
   // di note di completamento libero - nessun auto-append delle note dentro la procedura stessa.
   const procedureAttive = (STATE.procedureInterne || []).filter(p => p.attivo);
   const categorieProc = Array.from(new Set(procedureAttive.map(p => p.categoria)));
-  const selectProcedura = `<select id="tProcedura">
-    <option value="">— Nessuna —</option>
-    ${categorieProc.map(cat => `<optgroup label="${escapeHtml(cat)}">${procedureAttive.filter(p=>p.categoria===cat).map(p=>`<option value="${p.id}" ${t.procedureId===p.id?'selected':''}>${escapeHtml(p.nome)}</option>`).join('')}</optgroup>`).join('')}
-  </select>`;
+  const selectProcedura = `<div style="flex:1;display:flex;flex-direction:column;gap:6px;min-width:0;">
+    <input type="text" id="tProceduraCerca" data-action="task-cerca-procedura" placeholder="🔍 Cerca nel nome della procedura…" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();var s=document.getElementById('tProcedura');var o=s&&s.querySelector('option[value]:not([value=&quot;&quot;])');if(o){s.value=o.value;}}" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:13px;">
+    <select id="tProcedura" style="width:100%;">${opzioniProcedureTask(t.procedureId, '')}</select>
+  </div>`;
   const campoProcedura = `<div class="field full" style="grid-column:1/-1;">
     <label>Procedura collegata (opzionale)</label>
     <div style="display:flex;gap:8px;align-items:center;">
@@ -11484,6 +11640,7 @@ function modalTaskTeam(taskId, presetClienteId) {
           <div class="field full" style="grid-column:1/-1;"><label class="checkline" style="display:flex;gap:8px;align-items:center;"><input type="checkbox" id="tStampaVerbale" ${t.stampaVerbale ? 'checked' : ''}> A fine pratica va stampato un verbale nei libri sociali</label>
             <div class="helptext" style="margin-top:4px;">Quando il task passa a "Fatto" compare tra i verbali da stampare in Libri sociali (se i libri del cliente sono tenuti dallo studio). Sezione del libro: <select id="tStampaSezione" style="font-size:12px;">${SEZIONI_LIBRO.map(x => `<option ${(t.stampaSezione || 'Libro decisioni dei soci') === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div></div>
           ${campoProcedura}
+          ${htmlCampoPratica(t, editing)}
           ${campoNoteCompletamento}
           ${sezioneNote}
         </div>
@@ -11498,7 +11655,7 @@ function modalTaskTeam(taskId, presetClienteId) {
   document.getElementById('modalRoot').innerHTML = html;
   // ritorno dalla vista della procedura: si rimettono i campi come li aveva lasciati l'utente
   if (TASK_BOZZA && TASK_BOZZA.ripristina && TASK_BOZZA.id === (taskId || null)) {
-    Object.keys(TASK_BOZZA.campi).forEach(k => { const f = document.getElementById(k); if (f) f.value = TASK_BOZZA.campi[k]; });
+    Object.keys(TASK_BOZZA.campi).forEach(k => { const f = document.getElementById(k); if (!f) return; if (k === 'tPratica') { f.checked = TASK_BOZZA.campi[k] === '1'; const bx = document.getElementById('tPraticaBox'); if (bx) bx.style.display = f.checked ? 'block' : 'none'; } else f.value = TASK_BOZZA.campi[k]; });
   }
   TASK_BOZZA = null;
 }
@@ -11527,6 +11684,7 @@ function aggiungiTaskTeam(t) {
   task.notificaVista = !task.assegnatoA || task.assegnatoA === creatore;
   STATE.taskTeam.push(task);
   salvaStato();
+  return task;
 }
 function aggiornaTaskTeam(id, patch) {
   const t = STATE.taskTeam.find(x => x.id === id);
@@ -17842,6 +18000,7 @@ function onClickDelegatoInterno(e) {
     case 'apri-ricerca-globale': modalRicercaGlobale(); break;
     case 'apri-selettore-operatore': modalSelettoreOperatore(); break;
     case 'operatore-scegli': tentaSceltaOperatore(el.dataset.nome); break;
+    case 'apri-calendario-campo': { const p = document.querySelector(`[data-action="${el.dataset.target}-picker"]`); if (p) { try { p.showPicker(); } catch (err) { p.focus(); p.click(); } } break; }
     case 'operatore-annulla-password': modalSelettoreOperatore(); break;
     case 'login-operatore': eseguiLoginOperatore(el.dataset.nome); break;
     case 'apri-riferimento-chat': modalRiferimentoChat(); break;
@@ -17855,6 +18014,8 @@ function onClickDelegatoInterno(e) {
     case 'goto-clienti-incompleti': CLI_FILTRO.soloIncompleti = true; CLI_FILTRO.soloGravi = nClientiGravi() > 0; resetPagina('clienti'); setView('clienti'); break;
     case 'cli-filtro-incompleti-vai': CLI_FILTRO.soloIncompleti = true; CLI_FILTRO.soloGravi = nClientiGravi() > 0; resetPagina('clienti'); render(); break;
     case 'nav': setView(el.dataset.nav); break;
+    case 'nav-indietro': navIndietro(); break;
+    case 'nav-avanti': navAvanti(); break;
     case 'nav-onboarding-cliente': setView('onboarding', { clienteId: id }); break;
     /* Dashboard "Adempimenti annuali in corso" (task #116): in dashboard non c'è un modale di
        dettaglio dedicato (l'unica UI per lavorarci è il pannello espandibile già nella vista
@@ -18694,20 +18855,31 @@ function onClickDelegatoInterno(e) {
       const descrizione = h('tDescrizione').value || '';
       const stampaVerbale = !!h('tStampaVerbale').checked, stampaSezione = h('tStampaSezione').value;
       if (!titolo || !assegnatoA) { toast('Inserisci almeno titolo e assegnatario.'); return; }
+      const pratica = !!(h('tPratica') && h('tPratica').checked);
+      const filePratica = pratica && h('tPraticaFile') ? Array.from(h('tPraticaFile').files || []) : [];
+      if (pratica && !clienteId) { toast('Una pratica deve avere un cliente: scegli il cliente del task.', true); return; }
+      const esistente = editing ? STATE.taskTeam.find(x => x.id === id) : null;
+      // La cartella si fissa alla prima volta che il task diventa pratica (data = quel giorno); cambiando cliente se ne crea una nuova.
+      const cartellaServe = pratica && (!esistente || !esistente.praticaCartella || esistente.praticaClienteId !== clienteId);
+      const campiPratica = pratica
+        ? { pratica: true, praticaCartella: cartellaServe ? (esistente && esistente.praticaCartella ? esistente.praticaCartella : nomeCartellaPratica(oggiISO(), titolo)) : esistente.praticaCartella }
+        : { pratica: false };
+      let taskIdPratica = id;
       if (editing) {
         // Le note (storico) in modifica si gestiscono SOLO con "Aggiungi nota" (append immediato,
         // vedi sotto): qui non tocchiamo noteStorico, così Salva non può mai sovrascrivere/perdere
         // lo storico. procedureId e descrizione invece sono campi "semplici" (task #155),
         // sovrascrivibili come titolo/scadenza/stato.
-        aggiornaTaskTeam(id, { titolo, assegnatoA, clienteId, scadenza, stato, procedureId, descrizione, stampaVerbale, stampaSezione});
+        aggiornaTaskTeam(id, Object.assign({ titolo, assegnatoA, clienteId, scadenza, stato, procedureId, descrizione, stampaVerbale, stampaSezione }, campiPratica));
       } else {
         // In creazione l'unica nota possibile è quella "iniziale" nel campo tNuovaNota: diventa la
         // prima voce dello storico, attribuita a chi sta creando il task in questo momento.
         const notaIniziale = (h('tNuovaNota').value || '').trim();
         const noteStorico = notaIniziale ? [{ id: uid('nota'), testo: notaIniziale, autore: operatoreCorrente() || null, data: oggiISO() }] : [];
-        aggiungiTaskTeam({ titolo, assegnatoA, clienteId, scadenza, stato, noteStorico, procedureId, descrizione, stampaVerbale, stampaSezione, statoDal: oggiISO(), creatoIl: oggiISO() });
+        taskIdPratica = aggiungiTaskTeam(Object.assign({ titolo, assegnatoA, clienteId, scadenza, stato, noteStorico, procedureId, descrizione, stampaVerbale, stampaSezione, statoDal: oggiISO(), creatoIl: oggiISO() }, campiPratica)).id;
       }
       chiudiModal(); render(); toast(editing ? 'Task aggiornato.' : 'Task creato.');
+      if (pratica && (cartellaServe || filePratica.length)) sincronizzaPratica(taskIdPratica, filePratica);
       if (stampaVerbale && stato === 'Fatto') toast('Verbale da stampare: lo trovi in Libri sociali.');
       break;
     }
@@ -18730,6 +18902,7 @@ function onClickDelegatoInterno(e) {
       // e tornando "Indietro" deve ritrovarsi com'era, non vuoto o con i dati vecchi
       TASK_BOZZA = { id: id || null, campi: {} };
       ['tTitolo', 'tAssegnato', 'tCliente', 'tScadenza', 'tStato', 'tProcedura', 'tDescrizione', 'tNuovaNota'].forEach(k => { const f = h(k); if (f) TASK_BOZZA.campi[k] = f.value; });
+      if (h('tPratica')) TASK_BOZZA.campi.tPratica = h('tPratica').checked ? '1' : '0';
       modalDettaglioProcedura(pid, { task: id || '__nuovo__' });
       break;
     }
@@ -19561,6 +19734,15 @@ function onChangeDelegato(e) {
   const id = el.dataset.id;
 
   switch (action) {
+    case 'task-pratica-toggle': {
+      const box = h('tPraticaBox'); if (box) box.style.display = el.checked ? 'block' : 'none';
+      const lbl = h('tPraticaCartella');
+      if (el.checked && lbl && !lbl.dataset.fissa) { const tt = h('tTitolo'); lbl.textContent = nomeCartellaPratica(oggiISO(), (tt && tt.value.trim()) || 'nome pratica'); }
+      break;
+    }
+    case 'scad-filtro-data-da-picker': SCAD_FILTRO.dataDa = el.value || ''; resetPagina('scadenze'); render(); break;
+    case 'scad-filtro-data-a-picker': SCAD_FILTRO.dataA = el.value || ''; resetPagina('scadenze'); render(); break;
+    case 'scad-cambia-importo': salvaImportoScadenza(id, el); break; // all'uscita dal campo: salva e formatta (1.234,56)
     // Task #173/#199: interruttore "avvia ngrok automaticamente a ogni avvio di Prisma" - un
     // booleano unico ora che clienti e collaboratori condividono la stessa porta/lo stesso tunnel.
     case 'ngrok-autoavvio-toggle': {
@@ -19980,6 +20162,15 @@ function onInputDelegato(e) {
   const action = el.dataset.action;
   const id = el.dataset.id;
   switch (action) {
+    case 'task-cerca-procedura': {
+      const sel = h('tProcedura'); if (!sel) break;
+      const f = el.value.trim();
+      sel.innerHTML = opzioniProcedureTask(sel.value || null, f);
+      const n = sel.querySelectorAll('option[value]:not([value=""])').length;
+      sel.size = f ? Math.min(8, n + 1) : 1; // durante la ricerca il menu diventa un elenco visibile: si vede subito cosa e stato trovato
+      break;
+    }
+    case 'scad-filtro-data-da': case 'scad-filtro-data-a': maschera_data_testo(el); break; // solo formattazione, nessun filtro finche non si esce dal campo
     // Task #171: autoformattazione "mentre si scrive" dei campi orario testuali (inserisce i due
     // punti da solo dopo le prime due cifre) - il salvataggio vero e proprio (dove previsto) è un
     // case separato con lo stesso nome dentro onChangeDelegato, scatenato al blur.
@@ -20071,7 +20262,10 @@ function onInputDelegato(e) {
     }
     case 'ann-nota': aggiornaAnnualeMeta(id, { nota: el.value }); break; // no render: non perdere il focus mentre si scrive
     case 'scad-cambia-nota': aggiornaScadenza(id, { nota: el.value }); break; // no render: non perdere il focus mentre si scrive
-    case 'scad-cambia-importo': salvaImportoScadenza(id, el); break; // no render, stesso motivo
+    // BUG: qui si salvava (e si RIFORMATTAVA il campo) a ogni tasto: dopo la prima cifra il campo diventava "1,00" e non si riusciva
+    // piu a scrivere. Durante la digitazione si lascia il campo in pace e si toglie solo la spunta di conferma; il salvataggio
+    // avviene all'uscita dal campo / Invio / tasto ✓ (vedi onChangeDelegato e scad-conferma-importo).
+    case 'scad-cambia-importo': { const ok = el.parentElement && el.parentElement.querySelector('button.importo-ok'); if (ok) ok.classList.remove('salvato'); break; }
     case 'proroga-cerca': { const t = el.value.trim().toLowerCase(); document.querySelectorAll('tr[data-prc-riga]').forEach(r => { r.style.display = (!t || r.dataset.prcRiga.includes(t)) ? '' : 'none'; }); break; }
     case 'proroga-conta': prcAggiornaConteggio(); break;
     case 'ann-filtro-q': ANN_FILTRO.q = el.value; resetPagina('annuali'); render(); restoreFocus('[data-action="ann-filtro-q"]'); break;
@@ -20115,9 +20309,19 @@ function restoreFocus(selector) {
 function onFocusOutDelegato(e) {
   const el = e.target.closest('[data-action]');
   if (!el) return;
+  // render() ricrea i campi: si ricorda dove andava il focus (es. dal campo "da" al campo "a" con Tab) e lo si rimette dopo.
+  const prossimo = e.relatedTarget && e.relatedTarget.closest ? e.relatedTarget.closest('[data-action]') : null;
+  const selProssimo = prossimo && /^(INPUT|SELECT|TEXTAREA)$/.test(prossimo.tagName) && prossimo.getAttribute('tabindex') !== '-1' ? `[data-action="${prossimo.dataset.action}"]` : null;
+  const applica = (campo) => {
+    const iso = parseDataTesto(el.value);
+    if (iso === null) { toast('Data non valida: scrivila come gg/mm/aaaa', true); SCAD_FILTRO[campo] = ''; }
+    else SCAD_FILTRO[campo] = iso;
+    resetPagina('scadenze'); render();
+    if (selProssimo) { const n = document.querySelector(selProssimo); if (n) { n.focus(); if (n.select && n.type === 'text') n.select(); } }
+  };
   switch (el.dataset.action) {
-    case 'scad-filtro-data-da': SCAD_FILTRO.dataDa = el.value; resetPagina('scadenze'); render(); break;
-    case 'scad-filtro-data-a': SCAD_FILTRO.dataA = el.value; resetPagina('scadenze'); render(); break;
+    case 'scad-filtro-data-da': applica('dataDa'); break;
+    case 'scad-filtro-data-a': applica('dataA'); break;
   }
 }
 
@@ -20688,6 +20892,14 @@ function init() {
     STATE.annoCorrente = Number(e.target.value);
     salvaStato(); render();
   });
+  // Frecce di navigazione: Alt+Freccia sinistra/destra e tasti laterali del mouse (indietro/avanti), come nel browser.
+  document.addEventListener('keydown', (e) => {
+    if (!e.altKey || e.ctrlKey || e.metaKey || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
+    const t = e.target; if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && t.type !== 'checkbox') return;
+    e.preventDefault();
+    if (e.key === 'ArrowLeft') navIndietro(); else navAvanti();
+  });
+  document.addEventListener('mouseup', (e) => { if (e.button === 3) { e.preventDefault(); navIndietro(); } else if (e.button === 4) { e.preventDefault(); navAvanti(); } });
   // Ricerca globale: Ctrl/Cmd+K apre la ricerca da qualsiasi punto dell'app (non solo dal
   // pulsante in topbar); frecce/Invio/Esc la navigano una volta aperta.
   document.addEventListener('keydown', (e) => {
@@ -21454,6 +21666,17 @@ window.aggiornaAnnualeMeta = aggiornaAnnualeMeta;
 window.modalBenvenutoDopoSetup = modalBenvenutoDopoSetup;
 window.renderNoteAggiornamento = renderNoteAggiornamento;
 window.cardAccessoRete = cardAccessoRete;
+window.nomeCartellaPratica = nomeCartellaPratica;
+window.htmlCampoPratica = htmlCampoPratica;
+window.opzioniProcedureTask = opzioniProcedureTask;
+window.navIndietro = navIndietro;
+window.navAvanti = navAvanti;
+window.navPuoIndietro = navPuoIndietro;
+window.navPuoAvanti = navPuoAvanti;
+window.resetNavStoriaTest = () => { NAV_STORIA = []; NAV_STORIA_POS = -1; };
+window.parseDataTesto = parseDataTesto;
+window.patchDaScelta = patchDaScelta;
+window.badgeAddebitoF24 = badgeAddebitoF24;
 window.operatoreObbligatorio = operatoreObbligatorio;
 window.modalSelettoreOperatore = modalSelettoreOperatore;
 window.modalPasswordOperatore = modalPasswordOperatore;

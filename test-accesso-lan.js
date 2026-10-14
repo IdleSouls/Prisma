@@ -6,6 +6,7 @@ const env = Object.assign({}, process.env, { PRISMA_PORTA: String(PORTA), PRISMA
 // Copia di server.js in una cartella temporanea SENZA licensing/: cosi' il controllo licenza non scatta.
 for (const f of ['server.js', 'gestionale.htm', 'portale-cliente.htm', 'portale-sw.js', 'package.json']) { try { fs.copyFileSync(path.join(__dirname, f), path.join(dir, f)); } catch (e) { /* facoltativo */ } }
 env.NODE_PATH = path.join(__dirname, 'node_modules');
+fs.writeFileSync(path.join(dir, 'responsabili-password.json'), JSON.stringify({ Matteo: 'segreta12' }));
 const figlio = spawn(process.execPath, [path.join(dir, 'server.js')], { env, stdio: 'ignore' });
 function chiedi(metodo, p, { remoto, cookie, corpo } = {}) {
   return new Promise((ok, ko) => {
@@ -44,6 +45,18 @@ let falliti = 0; const verifica = (c, m) => { if (!c) { falliti++; console.log('
   r = await chiedi('POST', '/lan-login', { remoto: true, corpo: { password: pwd } }); verifica(r.s === 429, 'dopo troppi errori il login si blocca (429)');
   r = await chiedi('GET', '/', {}); verifica(r.h['x-content-type-options'] === 'nosniff' && r.h['x-frame-options'] === 'SAMEORIGIN', 'header di sicurezza presenti');
   r = await chiedi('POST', '/api/accesso-lan/password', { corpo: { password: 'corta' } }); verifica(r.s === 400, 'password nuova troppo corta rifiutata');
+  r = await chiedi('POST', '/api/documenti/cartella', { corpo: { clienteId: 'cli_abcdef123456', clienteNome: 'Rossi Srl', sottocartella: '2026.13.10 - Variazione sede' } });
+  const cart = JSON.parse(r.b); verifica(r.s === 200 && cart.ok && fs.existsSync(path.join(dir, 'doc', cart.percorso)) && /2026\.13\.10 - Variazione sede$/.test(cart.percorso), 'cartella pratica creata nei documenti del cliente (' + cart.percorso + ')');
+  r = await chiedi('POST', '/api/documenti/cartella', { remoto: true, corpo: { clienteId: 'x', clienteNome: 'y', sottocartella: 'z' } }); verifica(r.s === 401, 'remoto non autorizzato: cartella pratica rifiutata');
+  // sessione operatore: resta valida finche il server e acceso (nessuna nuova password per inattivita)
+  r = await chiedi('POST', '/api/operatore-login', { corpo: { nome: 'Matteo', password: 'segreta12', deviceId: 'dev-A' } });
+  const login = JSON.parse(r.b); verifica(login.ok && login.token, 'login operatore con password');
+  r = await chiedi('POST', '/api/presenza', { corpo: { operatore: 'Matteo', deviceId: 'dev-A', token: login.token } });
+  verifica(!JSON.parse(r.b).sessioneScaduta, 'heartbeat con il token: sessione valida');
+  r = await chiedi('POST', '/api/presenza', { corpo: { operatore: 'Matteo', deviceId: 'dev-B', token: login.token } });
+  verifica(JSON.parse(r.b).sessioneScaduta === true, 'un altro dispositivo non puo usare il token altrui');
+  r = await chiedi('POST', '/api/operatore-login', { corpo: { nome: 'Matteo', password: 'segreta12', deviceId: 'dev-B' } });
+  verifica(JSON.parse(r.b).occupato === true, 'secondo dispositivo mentre il primo e attivo: nome occupato');
   figlio.kill(); fs.rmSync(dir, { recursive: true, force: true });
   console.log(falliti ? '\n❌ ' + falliti + ' controlli falliti' : '\n✅ TUTTI I CONTROLLI DI ACCESSO PASSATI'); process.exit(falliti ? 1 : 0);
 })().catch(e => { console.log('❌ errore test', e.message); figlio.kill(); process.exit(1); });
