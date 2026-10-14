@@ -1,113 +1,28 @@
 {
-  "versione": "([^",
-  "note": "Codice diviso in più file (stile + 16 moduli) per renderlo stabile e manutenibile: nessun cambiamento visibile | Si applica al riavvio del server dopo il download",
+  "versione": "1.25.2",
+  "note": "Aggiornamento ponte: correzione della lettura della versione e preparazione alla divisione del codice in più file (nessun cambiamento visibile)",
   "richiedeNpmInstall": false,
   "file": [
     {
       "nome": "gestionale.htm",
-      "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale.htm",
-      "sha256": "bd40b1fe37ff0205033f257477acf5e09f6c26ed38a24d48f256b3d54708cacb"
+      "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/dfbc0d5f16adf7e88d030f4772a8961af7a1512b/gestionale.htm",
+      "sha256": "224f95fad0b824220d6b21fe2345bb2b3af4b8d6e094c3c3c233156d7f7e234f"
     },
     {
       "nome": "server.js",
-      "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/server.js",
-      "sha256": "e0416bf54cbea4b59349bd9ee649ea7da26e6064d60bba7d76164d1b8cb7667c"
+      "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/dfbc0d5f16adf7e88d030f4772a8961af7a1512b/server.js",
+      "sha256": "88852f6cf8f6978acebf4c5bfe02b444f7cc98beba5029f7dc68eed990a3eb39"
     },
     {
       "nome": "portale-cliente.htm",
-      "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/portale-cliente.htm",
+      "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/dfbc0d5f16adf7e88d030f4772a8961af7a1512b/portale-cliente.htm",
       "sha256": "bb200433791165cee0aa20fb945997ae243300d3b34e9bda8957d9571ffb612b"
     },
     {
       "nome": "portale-sw.js",
-      "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/portale-sw.js",
+      "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/dfbc0d5f16adf7e88d030f4772a8961af7a1512b/portale-sw.js",
       "sha256": "2ef5a0fe81a09f871a56489a86ae276f0e2f123d845afa484ff703650b47b24e"
-    },
-    {
-      "nome": "gestionale-01-motore.js",
-      "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale-01-motore.js",
-      "sha256": "544f2b216fd451e0ee1e9541f4b2ad29dc63b9f85afe51c4dfa6a185e2cfbec3"
-    },
-    {
-      "nome": "gestionale-02-stato.js",
-      "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale-02-stato.js",
-      "sha256": "2e160c67b4c5a01ca1ebad1455e8861003e8ac71b93d31fc51fa555aaa579fd6"
-    },
-    {
-      "nome": "gestionale-03-utilita.js",
-      "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale-03-utilita.js",
-      "sha256": "cf00c16ee248e26471b12d0b4239ef38f6bbcf86a6d05727b0151d8ffd7eba3d"
-    },
-    {
-      "nome": "gestionale-04-modelli-documento.js",
-      "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale-04-modelli-documento.js",
-      "sha256": "33cdad9b709a9d68508ca702c857d331342dec9733dba2f2c943d066d5cc8720"
-    },
-    {
-      "nome": "gestionale-05-interfaccia-base.js",
-      "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale-05-interfaccia-base.js",
-      "sha256": "0ff362b0b45914e2fdc383760a14bc8112e3899a41cf47b90f6c4020d3e8ffff"
-    },
-    {
-      "nome": "gestionale-06-clienti.js",
-      "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale-06-clienti.js",
-      "sha256": "93ea2e003d55172d9c9c323ab58ed05f74157c9b2ca7c94c43f12c86a26860a6"
-    },
-    {
-      "nome": "gestionale-07-scadenze.js",
-      "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale-07-scadenze.js",
-      "sha256": "949df019ae35cf02f8f6bbb204290f619a72b986d15d751a5691ad8dbcdbef7d"
-    },
-    {
-      "nome": "gestionale-08-comunicazioni.js",
-      "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale-08-comunicazioni.js",
-      "sha256": "1622008bc56af7f4ebcfe7428bbe63ca0369ded9192973ab5eca12e821d182d7"
-    },
-    {
-      "nome": "gestionale-09-incassi-libri.js",
-      "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale-09-incassi-libri.js",
-      "sha256": "e5f444bc07e18f9ebf407584d5252896c003af1d5be6aaad6f325cd07ea18f99"
-    },
-    {
-      "nome": "gestionale-10-preventivi-task.js",
-      "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale-10-preventivi-task.js",
-      "sha256": "e8bc5e84c865d84c27590063445f03df5e45974a4b5c40183691050d221f0ef3"
-    },
-    {
-      "nome": "gestionale-11-bilanci.js",
-      "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale-11-bilanci.js",
-      "sha256": "605523458bb44465580b404a715bb256e9d61e437a6a545d624daabcefa34650"
-    },
-    {
-      "nome": "gestionale-12-portale-calendario.js",
-      "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale-12-portale-calendario.js",
-      "sha256": "f894f72aa27d2583f2dea16a4bb891fcbfe0777395c0e59abf56b2be95adf29a"
-    },
-    {
-      "nome": "gestionale-13-impostazioni.js",
-      "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale-13-impostazioni.js",
-      "sha256": "59d7157db3b97a63cbd965bca23cfb885ba218901579267d143e22ce6c0c1a57"
-    },
-    {
-      "nome": "gestionale-14-dati-esempio.js",
-      "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale-14-dati-esempio.js",
-      "sha256": "1a739c36526f1a508c8383d74da752f69831cc34f63deb2a71b7e222d022d7fa"
-    },
-    {
-      "nome": "gestionale-15-eventi.js",
-      "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale-15-eventi.js",
-      "sha256": "89e3f1611975106b90a24811c7b748993cc3627ae8ee90448c54062215503ee0"
-    },
-    {
-      "nome": "gestionale-16-avvio.js",
-      "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale-16-avvio.js",
-      "sha256": "68a4da8667c7d11182f357897c8e8a9ea44d01b1593ace947d07e15cb735c761"
-    },
-    {
-      "nome": "gestionale.css",
-      "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale.css",
-      "sha256": "526d3adec3886e705e9dfa825466ab00a2f0f941acbde034bcd4e0cf36aa313c"
     }
   ],
-  "firma": "kKarhtlk02CZLV6uq82JyY4yXHVOFcHk3jhhRIj1KTvGerzLUMSb+IOqgF5zRT3MnPVgp8DqTCJj2ztNgsfjBw=="
+  "firma": "YP48SIL+rtMivot4yv8OTld9Ly9yPGXg1D62ATvKBFV0FDHHHP6WfizV5+RbiFeTyaf8eVb5B7T+MDt3QyCfAA=="
 }
