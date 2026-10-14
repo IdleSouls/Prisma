@@ -1,22 +1,22 @@
 {
-  "versione": "1.20.1",
-  "note": "Task: nuovo selettore della procedura collegata, con ricerca e elenco ampio | I risultati mostrano il nome intero con la categoria e la parola cercata evidenziata, ordinati per pertinenza | Si sceglie con un clic oppure con le frecce e Invio; la procedura scelta compare in alto con una X per scollegarla",
+  "versione": "1.21.0",
+  "note": "Task: ricerca per contenuto, filtro per date e date di inserimento/completamento | Cartelle standard del cliente per aree tematiche (pulsante nella sezione Documenti) | Scroll corretto in Impostazioni > Intelligenza artificiale, azioni IA limitate a una decina di righe | Scadenze: nuovo stato \"Versamento in ritardo\" (completa la scadenza, crea l'F24 non pagato e un alert in scheda cliente) | Portale cliente: pulsante \"Scegli file\" uniformato, simulatore ravvedimento non torna più su \"Importo libero\" | Strumenti PDF: tolto il pulsante ridondante di salvataggio cartella",
   "richiedeNpmInstall": false,
   "file": [
     {
       "nome": "gestionale.htm",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale.htm",
-      "sha256": "30b5d6c8b73092d98635188d45d12ae8f079cff94570f86d57dcb46c60084872"
+      "sha256": "7f17bff75ac26bfd187736020c4955b9b36b2f8331309b31a6168bfdc07927a5"
     },
     {
       "nome": "server.js",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/server.js",
-      "sha256": "f8a891e354f62e63ff5bdad118e264055fc7b0b8a3ba05df9e6565435d83d6ab"
+      "sha256": "a006ec833521a65cf19ad9f09907eccc1f8627a4acb8a293331e4906d7db17f7"
     },
     {
       "nome": "portale-cliente.htm",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/portale-cliente.htm",
-      "sha256": "7b1f36fadd46340c0f445beb9aba4ca3ddccb9fb569c07711af2b6655133e4eb"
+      "sha256": "1eed2029cd31e3a5584e392dfe66805721cd26a0e4ee2cc7d5f36f56bf86dd5a"
     },
     {
       "nome": "portale-sw.js",
@@ -24,5 +24,5 @@
       "sha256": "2ef5a0fe81a09f871a56489a86ae276f0e2f123d845afa484ff703650b47b24e"
     }
   ],
-  "firma": "AiXHEtEXTUGjrnzLe++I8l+Uwg41pFhCkDuznnbfo1o74StMVE0drQz0ui98VAamB/IbnP6rz7A/f5+O0p7DAg=="
+  "firma": "gz/RRuXCRcXG0jvYK3SrHqzOE5DEIdbMqq+8uJnILMItp80P3OunYlQA9R+JM48lPdkkczkZR8PzyM2msmc4AA=="
 }

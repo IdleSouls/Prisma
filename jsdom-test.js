@@ -492,22 +492,32 @@ async function main() {
 
   // nuovo stato "Cliente non può pagare": selezionabile, colorato, resta aperto e arriva al portale come pagamento in ritardo
   const rigaNP = qa('[data-action="scad-cambia-stato"]')[7];
-  assert([...rigaNP.options].some(o => o.value === 'Cliente non può pagare'), 'il menu avanzamento deve offrire "Cliente non può pagare"');
+  assert([...rigaNP.options].some(o => o.value === 'Versamento in ritardo'), 'il menu avanzamento deve offrire "Cliente non può pagare"');
   const idNP = rigaNP.dataset.id;
-  setVal(rigaNP, 'Cliente non può pagare');
+  setVal(rigaNP, 'Versamento in ritardo');
   await wait(20);
-  assert(window.getSTATE().scadenzeOverrides[idNP].stato === 'Cliente non può pagare', 'stato "Cliente non può pagare" non salvato');
-  assert(qa('select.statoSel.stato-cliente-non-puo-pagare').length >= 1, 'select senza la classe colore del nuovo stato');
-  assert(!window.STATI_SCADENZA_CHIUSI || !window.STATI_SCADENZA_CHIUSI.includes('Cliente non può pagare'), 'il nuovo stato non deve chiudere la scadenza');
-  // arriva nel portale cliente esterno come "pagamento in ritardo" (e sparisce dall'elenco scadenze normale)
+  assert(window.getSTATE().scadenzeOverrides[idNP].stato === 'Versamento in ritardo', 'stato "Cliente non può pagare" non salvato');
+  assert(qa('select.statoSel.stato-versamento-in-ritardo').length >= 1, 'select senza la classe colore del nuovo stato');
+  assert(window.STATI_SCADENZA_CHIUSI && window.STATI_SCADENZA_CHIUSI.includes('Versamento in ritardo'), 'il nuovo stato deve contare la scadenza come completata');
   {
+    const ST = window.getSTATE();
+    const ov = ST.scadenzeOverrides[idNP];
+    assert(ov.ritardoVersamento === true && ov.dataCompletamento, 'alert ritardoVersamento / data completamento mancanti');
+    const f24n = ST.f24.filter(f => f.scadenzaRif === idNP);
+    assert(f24n.length === 1 && f24n[0].stato === 'Da pagare' && f24n[0].ritardoVersamento, 'deve nascere un F24 non pagato collegato alla scadenza');
+    window.aggiornaScadenza(idNP, { stato: 'Versamento in ritardo' });
+    assert(ST.f24.filter(f => f.scadenzaRif === idNP).length === 1, 'riselezionando lo stato non deve duplicare l\'F24');
     const sc = window.derivati().tutteScadenze.find(s => s.id === idNP);
     window.aggiornaScadenza(idNP, { importo: 2500 });
-    const cl = window.getSTATE().clienti.find(c => c.id === sc.clienteId);
-    const dp = window.datiPortaleCliente(cl);
-    assert(dp.scadenzeClienteTutte.some(s => s.id === idNP && s.stato === 'Cliente non può pagare'), 'la scadenza "non può pagare" deve restare tra quelle aperte del cliente');
+    // migrazione vecchio nome
+    const m = { scadenzeOverrides: { x1: { stato: 'Cliente non può pagare' } } };
+    window.migraStatoVersamentoRitardo(m);
+    assert(m.scadenzeOverrides.x1.stato === 'Versamento in ritardo' && m.scadenzeOverrides.x1.ritardoVersamento, 'migrazione del vecchio stato non riuscita');
+    ST.f24 = ST.f24.filter(f => f.scadenzaRif !== idNP);
+    delete ov.f24Id; delete ov.ritardoVersamento;
   }
   window.aggiornaScadenza(idNP, { stato: 'Da fare', fase: null, importo: null });
+  window.setView('scadenze');
   window.render(); await wait(20);
   console.log('=== Stato "Cliente non può pagare" OK');
 
@@ -640,6 +650,30 @@ async function main() {
     assert(!window.opzioniProcedureTask(null, 'zzzzzzzzqqq').includes('<option value="' + procs[0].id), 'filtro senza risultati: nessuna procedura');
     assert(window.opzioniProcedureTask(procs[0].id, 'zzzzzzzzqqq').includes('value="' + procs[0].id + '"'), 'la procedura gia selezionata resta nel menu anche se non corrisponde al filtro');
   }
+  // struttura cartelle cliente: aree tematiche / anno / sottocartelle
+  {
+    window.setHttpSyncAttivoTest(true);
+    click(q('[data-nav="documenti"]'));
+    await wait(20);
+    const bCart = q('[data-action="crea-struttura-cartelle"]');
+    assert(bCart && bCart.disabled, 'Documenti: il pulsante cartelle standard e disattivato finche non si sceglie un cliente');
+    const clDoc = window.getSTATE().clienti[0];
+    setVal(q('[data-action="doc-filtro-cliente"]'), clDoc.id);
+    await wait(20);
+    assert(!q('[data-action="crea-struttura-cartelle"]').disabled && q('[data-action="crea-struttura-cartelle"]').textContent.includes('del cliente'), 'Documenti: con un cliente scelto il pulsante e attivo e per singolo cliente');
+    setVal(q('[data-action="doc-filtro-cliente"]'), 'Tutti');
+    window.setHttpSyncAttivoTest(false);
+    click(q('[data-nav="scadenze"]'));
+    await wait(20);
+
+    assert(window.sottocartellaArea('fiscale', 2026) === '_Fiscale/2026', 'area fiscale: atteso _Fiscale/2026');
+    assert(window.sottocartellaArea('fiscale', 2026, 'Redditi') === '_Fiscale/2026/Redditi', 'sottocartella dentro l\'anno');
+    assert(window.sottocartellaArea('pratiche', null, '2026.13.10 - X') === 'Pratiche/2026.13.10 - X', 'le pratiche stanno direttamente in Pratiche, senza anno');
+    assert(window.sottocartellaPerCategoria('Bilancio', '2025-03-04') === '_Contabilita/2025', 'Bilancio -> _Contabilita/anno');
+    assert(window.sottocartellaPerCategoria('F24', '2025-03-04') === '_Fiscale/2025', 'F24 -> _Fiscale/anno');
+    assert(window.sottocartellaPerCategoria('Verbale / decisione societaria', '2025-03-04') === 'Libri e registri/2025', 'verbali -> Libri e registri/anno');
+    assert(window.sottocartellaPerCategoria('Contratto', '2025-03-04') === 'Documenti/2025', 'contratti -> Documenti/anno');
+  }
   // selettore procedura del task: ricerca, elenco, selezione con clic e rimozione
   {
     const procsS = (window.getSTATE().procedureInterne || []).filter(pp => pp.attivo);
@@ -669,6 +703,7 @@ async function main() {
   }
   // Task "pratica": casella, nome cartella, salvataggio dei campi
   {
+    assert(window.nomeCartellaPratica('2026-10-13', 'Cambio sede 1/2: "prova"') === '2026.13.10 - Cambio sede 1 2 prova', 'nome cartella pratica: caratteri vietati e barre vanno tolti, trovato ' + window.nomeCartellaPratica('2026-10-13', 'Cambio sede 1/2: "prova"'));
     assert(window.nomeCartellaPratica('2026-10-13', 'Variazione sede') === '2026.13.10 - Variazione sede', 'nome cartella pratica: atteso "aaaa.gg.mm - nome", trovato ' + window.nomeCartellaPratica('2026-10-13', 'Variazione sede'));
     click(q('[data-nav="taskteam"]'));
     await wait(20);
@@ -5099,7 +5134,7 @@ async function main() {
   if (estere) assert(estere.fasi.join('|') === 'Registrate|Inviate' && estere.conImporto === false, 'fatture estere: attese fasi Registrate/Inviate e nessun importo');
   // menu avanzamento: Da fare + fasi + Errore + Non applicabile
   const selAvanz = q(`[data-action="scad-cambia-stato"][data-id="${primaScadenza.id}"]`);
-  assert(selAvanz && Array.from(selAvanz.options).map(o => o.value || o.textContent).join('|') === ['Da fare'].concat(primaScadenza.fasi, ['Errore', 'Cliente non può pagare', 'Non applicabile']).join('|'), 'menu avanzamento non coerente con le fasi del tipo');
+  assert(selAvanz && Array.from(selAvanz.options).map(o => o.value || o.textContent).join('|') === ['Da fare'].concat(primaScadenza.fasi, ['Errore', 'Versamento in ritardo', 'Non applicabile']).join('|'), 'menu avanzamento non coerente con le fasi del tipo');
   // fase intermedia: scadenza ancora aperta; ultima fase: scadenza chiusa con data di completamento
   setVal(selAvanz, primaScadenza.fasi[1]);
   await wait(20);
@@ -6081,7 +6116,6 @@ async function main() {
     assert(corpoConverti.nomeFile === 'Preventivo Rossi.docx' && corpoConverti.formatoDestinazione === 'pdf' && corpoConverti.contenutoBase64, '/api/converti non ha ricevuto nomeFile/formatoDestinazione/contenutoBase64 corretti');
     assert(window.document.body.textContent.includes('Conversione completata') && window.document.body.textContent.includes('documento.pdf'), 'dopo la conversione riuscita non compare il messaggio di completamento col nome del file risultante');
     assert(q('[data-action="strumenti-scarica"]'), 'manca il pulsante "Scarica" dopo una conversione riuscita');
-    assert(q('[data-action="strumenti-salva-cartella"]'), 'manca il pulsante "Salva nella cartella del file originario" dopo una conversione riuscita (task #202)');
     console.log('=== Strumenti: upload .docx, conversione via /api/converti, risultato scaricabile mostrato correttamente OK');
 
     // Task #202 (Matteo: "aggiungiamo anche la possibilità di trascinare i file"): la dropzone
@@ -6231,7 +6265,6 @@ async function main() {
     assert(Array.isArray(corpoUnisci.file) && corpoUnisci.file.length === 2, '/api/pdf-unisci non ha ricevuto i due file rimasti nell\'ordine corretto');
     assert(window.document.body.textContent.includes('documenti-uniti.pdf'), 'dopo l\'unione riuscita non compare il nome del file risultante');
     assert(q('[data-action="pdfu-scarica"]'), 'manca il pulsante "Scarica" dopo un\'unione riuscita');
-    assert(q('[data-action="pdfu-salva-cartella"]'), 'manca il pulsante "Salva nella cartella del file originario" dopo un\'unione riuscita (task #204)');
     console.log('=== Strumenti: Unisci PDF - selezione multipla, riordino, rimozione e unione via /api/pdf-unisci OK (task #204)');
 
     click(q('[data-action="pdfu-reset"]'));
@@ -6277,7 +6310,6 @@ async function main() {
     assert(corpoDividi.da === 2 && corpoDividi.a === 4 && corpoDividi.nomeFile === 'Fattura.pdf', '/api/pdf-dividi non ha ricevuto nomeFile/da/a corretti (attesi Fattura.pdf, 2, 4)');
     assert(window.document.body.textContent.includes('Fattura_pag2-4.pdf'), 'dopo la divisione riuscita non compare il nome del file estratto');
     assert(q('[data-action="pdfd-scarica"]'), 'manca il pulsante "Scarica" dopo una divisione riuscita');
-    assert(q('[data-action="pdfd-salva-cartella"]'), 'manca il pulsante "Salva nella cartella del file originario" dopo una divisione riuscita (task #204)');
     console.log('=== Strumenti: Dividi PDF - numero pagine letto dal server, intervallo modificabile, divisione via /api/pdf-dividi OK (task #204)');
 
     click(q('[data-action="pdfd-reset"]'));
@@ -7581,6 +7613,57 @@ async function main() {
       await wait(20);
     }
     console.log('=== Note aggiornamento a elenco + Invio nel login operatore OK');
+  }
+
+  // ---------- Task: ricerca per contenuto, filtro date, date inserimento/completamento nello storico ----------
+  {
+    const ST = window.getSTATE();
+    const prima = ST.taskTeam.slice();
+    const R = ST.meta.responsabili[0];
+    window.aggiungiTaskTeam({ titolo: 'TKA alfa', assegnatoA: R, descrizione: 'niente', stato: 'Da fare', creatoIl: '2026-03-10' });
+    window.aggiungiTaskTeam({ titolo: 'TKB beta', assegnatoA: R, stato: 'In attesa', creatoIl: '2026-05-20', noteStorico: [{ id: 'n1', testo: 'Serve il verbale AMMINISTRATORE nuovo', autore: R, data: '2026-05-21' }] });
+    window.aggiungiTaskTeam({ titolo: 'TKC gamma', assegnatoA: R, stato: 'Da fare', creatoIl: '2026-07-01', scadenza: '2026-08-15' });
+    const tka = ST.taskTeam.find(x => x.titolo === 'TKA alfa'), tkc = ST.taskTeam.find(x => x.titolo === 'TKC gamma');
+    tka.creatoIl = '2026-03-10'; ST.taskTeam.find(x => x.titolo === 'TKB beta').creatoIl = '2026-05-20'; tkc.creatoIl = '2026-07-01';
+    window.aggiornaTaskTeam(tka.id, { stato: 'Fatto' }); tka.fattoIl = '2026-04-02';
+    window.setView('taskteam'); window.render(); await wait(20);
+    const tutteSel = () => { setVal(q('[data-action="task-filtro-assegnato"]'), 'Tutti'); setVal(q('[data-action="task-filtro-cliente"]'), 'Tutti'); };
+    tutteSel(); await wait(20);
+    let c = q('#content').textContent;
+    assert(c.includes('TKA alfa') && c.includes('TKB beta') && c.includes('TKC gamma'), 'task: senza filtri devono comparire tutti');
+    // ricerca nelle note operative
+    setVal(q('[data-action="task-filtro-q"]'), 'amministratore'); await wait(20);
+    c = q('#content').textContent;
+    assert(c.includes('TKB beta') && !c.includes('TKA alfa') && !c.includes('TKC gamma'), 'task: la ricerca deve trovare il testo dentro le note');
+    assert(q('[data-action="task-filtro-azzera"]'), 'task: manca "Azzera ricerca" con un filtro attivo');
+    click(q('[data-action="task-filtro-azzera"]')); await wait(20);
+    c = q('#content').textContent;
+    assert(c.includes('TKA alfa') && c.includes('TKC gamma'), 'task: Azzera ricerca deve rimostrare tutto');
+    // filtro data inserimento
+    setVal(q('[data-action="task-filtro-campo-data"]'), 'creatoIl'); await wait(20);
+    setVal(q('input[data-action="task-filtro-data-da"]'), '01/05/2026'); fire(q('input[data-action="task-filtro-data-da"]'), 'focusout'); await wait(20);
+    c = q('#content').textContent;
+    assert(!c.includes('TKA alfa') && c.includes('TKB beta') && c.includes('TKC gamma'), 'task: filtro "dal" sulla data di inserimento errato');
+    setVal(q('input[data-action="task-filtro-data-a"]'), '30/06/2026'); fire(q('input[data-action="task-filtro-data-a"]'), 'focusout'); await wait(20);
+    c = q('#content').textContent;
+    assert(c.includes('TKB beta') && !c.includes('TKC gamma'), 'task: filtro "al" sulla data di inserimento errato');
+    // data completamento
+    click(q('[data-action="task-filtro-azzera"]')); await wait(20);
+    setVal(q('[data-action="task-filtro-campo-data"]'), 'fattoIl'); await wait(20);
+    setVal(q('input[data-action="task-filtro-data-da"]'), '01/04/2026'); fire(q('input[data-action="task-filtro-data-da"]'), 'focusout'); await wait(20);
+    c = q('#content').textContent;
+    assert(c.includes('TKA alfa') && !c.includes('TKB beta') && !c.includes('TKC gamma'), 'task: filtro sulla data di completamento errato');
+    assert(c.includes('Inserito il 10/03/2026') && c.includes('completato il 02/04/2026'), 'task: la card deve mostrare data inserimento e completamento');
+    // storico nel dettaglio
+    window.apriDettaglioTaskTeam ? window.apriDettaglioTaskTeam(tka.id) : click(q(`[data-action="apri-dettaglio-task-team"][data-id="${tka.id}"]`));
+    await wait(20);
+    const m = q('#modalRoot').textContent;
+    assert(/Inserito in Prisma il/.test(m) && /Completato il/.test(m), 'task: il dettaglio deve riportare inserimento e completamento');
+    window.chiudiModal(); 
+    setVal(q('[data-action="task-filtro-campo-data"]'), 'scadenza');
+    click(q('[data-action="task-filtro-azzera"]')); await wait(20);
+    ST.taskTeam = prima; window.setView('dashboard');
+    console.log('=== Task: ricerca per contenuto, filtro date, date inserimento/completamento OK');
   }
 
   console.log('\n✅ TUTTI I TEST END-TO-END PASSATI (' + errors.length + ' errori console catturati)');

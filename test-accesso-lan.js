@@ -47,6 +47,16 @@ let falliti = 0; const verifica = (c, m) => { if (!c) { falliti++; console.log('
   r = await chiedi('POST', '/api/accesso-lan/password', { corpo: { password: 'corta' } }); verifica(r.s === 400, 'password nuova troppo corta rifiutata');
   r = await chiedi('POST', '/api/documenti/cartella', { corpo: { clienteId: 'cli_abcdef123456', clienteNome: 'Rossi Srl', sottocartella: '2026.13.10 - Variazione sede' } });
   const cart = JSON.parse(r.b); verifica(r.s === 200 && cart.ok && fs.existsSync(path.join(dir, 'doc', cart.percorso)) && /2026\.13\.10 - Variazione sede$/.test(cart.percorso), 'cartella pratica creata nei documenti del cliente (' + cart.percorso + ')');
+  r = await chiedi('POST', '/api/documenti/cartella', { corpo: { clienteId: 'cli_abcdef123456', clienteNome: 'Rossi Srl', sottocartella: 'Pratiche/2026.13.10 - SCIA x' } });
+  const cart2 = JSON.parse(r.b); const baseR = path.join(dir, 'doc', 'Rossi Srl [123456]');
+  verifica(r.s === 200 && fs.existsSync(path.join(baseR, 'Pratiche', '2026.13.10 - SCIA x')), 'cartella pratica dentro Pratiche (' + cart2.percorso + ')');
+  verifica(['_Contabilita', '_Fiscale', 'Documenti', 'Libri e registri', 'Pratiche'].every(a => fs.existsSync(path.join(baseR, a))), 'aree standard create nella cartella del cliente');
+  r = await chiedi('POST', '/api/documenti/carica', { corpo: { clienteId: 'cli_abcdef123456', clienteNome: 'Rossi Srl', sottocartella: '_Fiscale/2026/Redditi', nomeFile: 'prova.txt', contenutoBase64: Buffer.from('ciao').toString('base64') } });
+  verifica(r.s === 200 && fs.existsSync(path.join(baseR, '_Fiscale', '2026', 'Redditi', 'prova.txt')), 'upload dentro Area/Anno/Sottocartella');
+  r = await chiedi('POST', '/api/documenti/carica', { corpo: { clienteId: 'cli_abcdef123456', clienteNome: 'Rossi Srl', sottocartella: '../../fuori', nomeFile: 'x.txt', contenutoBase64: Buffer.from('x').toString('base64') } });
+  verifica(!fs.existsSync(path.join(dir, 'fuori')) && !fs.existsSync(path.join(dir, 'doc', 'fuori')), 'path traversal con .. neutralizzato');
+  r = await chiedi('POST', '/api/documenti/struttura', { corpo: { clienti: [{ id: 'zzz_999999', nome: 'Bianchi Spa' }] } });
+  verifica(r.s === 200 && fs.existsSync(path.join(dir, 'doc', 'Bianchi Spa [999999]', '_Fiscale', String(new Date().getFullYear()))), 'struttura standard per tutti i clienti (aree + anno corrente)');
   r = await chiedi('POST', '/api/documenti/cartella', { remoto: true, corpo: { clienteId: 'x', clienteNome: 'y', sottocartella: 'z' } }); verifica(r.s === 401, 'remoto non autorizzato: cartella pratica rifiutata');
   // sessione operatore: resta valida finche il server e acceso (nessuna nuova password per inattivita)
   r = await chiedi('POST', '/api/operatore-login', { corpo: { nome: 'Matteo', password: 'segreta12', deviceId: 'dev-A' } });

@@ -431,7 +431,7 @@ scriviLog('Avvio di Prisma...');
 const URL_MANIFESTO_AGGIORNAMENTI = 'https://raw.githubusercontent.com/IdleSouls/Prisma/main/versione.json';
 // Cambiala qui a ogni nuova versione pubblicata (deve combaciare con quella scritta nel
 // "versione.json" caricato su GitHub, altrimenti il confronto non ha senso).
-const VERSIONE_LOCALE = '1.20.1';
+const VERSIONE_LOCALE = '1.21.0';
 // Solo questi file possono essere sovrascritti da un aggiornamento - mai un nome libero/a piacere
 // del manifesto, per non correre il rischio (anche solo teorico, es. account GitHub compromesso)
 // di far scrivere un file arbitrario altrove sul PC del cliente.
@@ -853,6 +853,25 @@ function mimeDaEstensione(nomeFile) {
   return TIPI_MIME[ext] || 'application/octet-stream';
 }
 
+// Struttura standard della cartella di ogni cliente (come in studio): aree tematiche, dentro ogni area le cartelle degli anni
+// (e dentro gli anni eventuali sottocartelle: Redditi, 770, CU...); "Pratiche" contiene direttamente le cartelle delle pratiche.
+const AREE_CARTELLA_CLIENTE = ['_Contabilita', '_Fiscale', 'Documenti', 'Libri e registri', 'Pratiche'];
+// Un percorso relativo "Area/Anno/Sotto" -> segmenti puliti (niente "..", niente caratteri vietati), sempre DENTRO la cartella cliente.
+function segmentiCartellaSicuri(sottocartella) {
+  return String(sottocartella || '').split(/[\\/]+/).map(x => x.trim()).filter(x => x && x !== '.' && x !== '..').map(nomeCartellaSicuro);
+}
+function cartellaBaseCliente(clienteId, clienteNome) {
+  const idPulito = String(clienteId || '').trim();
+  const nomePulito = String(clienteNome || idPulito || 'Cliente').trim();
+  return path.join(CARTELLA_DOCUMENTI, nomeCartellaSicuro(nomePulito) + ' [' + idPulito.slice(-6) + ']');
+}
+// Crea (se mancano) le aree tematiche standard dentro la cartella del cliente; per le aree con anni crea anche l'anno indicato.
+function assicuraStrutturaCliente(cartellaCliente, anno) {
+  for (const area of AREE_CARTELLA_CLIENTE) {
+    fs.mkdirSync(path.join(cartellaCliente, area), { recursive: true });
+    if (anno && area !== 'Pratiche') fs.mkdirSync(path.join(cartellaCliente, area, String(anno)), { recursive: true });
+  }
+}
 // Scrittura vera e propria di un file caricato dentro la cartella del cliente - stessa logica
 // usata da /api/documenti/carica (upload dal gestionale, task #73) e ora anche da
 // /api/portale-messaggio / /api/portale-risposta quando un CLIENTE allega un file dal proprio
@@ -862,12 +881,13 @@ function mimeDaEstensione(nomeFile) {
 function scriviFileClienteCaricato({ clienteId, clienteNome, sottocartella, nomeFile, contenutoBase64 }) {
   const idPulito = String(clienteId || '').trim();
   const nomePulito = String(clienteNome || idPulito || 'Cliente').trim();
-  const sottocartellaPulita = sottocartella ? nomeCartellaSicuro(String(sottocartella)) : '';
+  const segmenti = segmentiCartellaSicuri(sottocartella);
   const nomeFileVoluto = nomeFileSicuro(String(nomeFile || 'documento'));
   if (!idPulito || !contenutoBase64) throw new Error('Dati mancanti (clienteId o contenuto file)');
-  const cartellaCliente = path.join(CARTELLA_DOCUMENTI, nomeCartellaSicuro(nomePulito) + ' [' + idPulito.slice(-6) + ']');
-  const cartellaFinale = sottocartellaPulita ? path.join(cartellaCliente, sottocartellaPulita) : cartellaCliente;
+  const cartellaCliente = cartellaBaseCliente(idPulito, nomePulito);
+  const cartellaFinale = segmenti.length ? path.join(cartellaCliente, ...segmenti) : cartellaCliente;
   fs.mkdirSync(cartellaFinale, { recursive: true });
+  try { assicuraStrutturaCliente(cartellaCliente, null); } catch (e) { /* le aree standard sono un di piu: non bloccano il salvataggio */ }
   const nomeLibero = nomeFileLibero(cartellaFinale, nomeFileVoluto);
   const buffer = Buffer.from(contenutoBase64, 'base64');
   fs.writeFileSync(path.join(cartellaFinale, nomeLibero), buffer);
@@ -2330,18 +2350,42 @@ function gestisciRichiesta(req, res) {
 
   // Crea (se non esiste) una sottocartella nella cartella documenti di un cliente - usata dalle "pratiche" dei task:
   // la cartella "aaaa.gg.mm - nome pratica" esiste subito, anche prima di allegare il primo file.
+  // Crea le aree standard (+ anno corrente) nella cartella di tutti i clienti indicati: [{ id, nome }].
+  if (url === '/api/documenti/struttura' && req.method === 'POST') {
+    leggiCorpoRichiesta(req, (corpo) => {
+      try {
+        const dati = JSON.parse(corpo);
+        const anno = new Date().getFullYear();
+        let n = 0;
+        for (const c of (Array.isArray(dati.clienti) ? dati.clienti : [])) {
+          if (!c || !c.id) continue;
+          assicuraStrutturaCliente(cartellaBaseCliente(c.id, c.nome), anno);
+          n++;
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: true, clienti: n, aree: AREE_CARTELLA_CLIENTE }));
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, errore: err.message }));
+      }
+    });
+    return;
+  }
+
   if (url === '/api/documenti/cartella' && req.method === 'POST') {
     leggiCorpoRichiesta(req, (corpo) => {
       try {
         const dati = JSON.parse(corpo);
         const idPulito = String(dati.clienteId || '').trim();
         const nomePulito = String(dati.clienteNome || idPulito || 'Cliente').trim();
-        const sotto = nomeCartellaSicuro(String(dati.sottocartella || ''));
-        if (!idPulito || !String(dati.sottocartella || '').trim()) throw new Error('Dati mancanti (clienteId o nome cartella)');
-        const cartella = path.join(CARTELLA_DOCUMENTI, nomeCartellaSicuro(nomePulito) + ' [' + idPulito.slice(-6) + ']', sotto);
+        const segmenti = segmentiCartellaSicuri(dati.sottocartella);
+        if (!idPulito || !segmenti.length) throw new Error('Dati mancanti (clienteId o nome cartella)');
+        const base = cartellaBaseCliente(idPulito, nomePulito);
+        const cartella = path.join(base, ...segmenti);
         fs.mkdirSync(cartella, { recursive: true });
+        try { assicuraStrutturaCliente(base, null); } catch (e) { /* non blocca */ }
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ ok: true, sottocartella: sotto, percorso: path.relative(CARTELLA_DOCUMENTI, cartella) }));
+        res.end(JSON.stringify({ ok: true, sottocartella: segmenti.join('/'), percorso: path.relative(CARTELLA_DOCUMENTI, cartella) }));
       } catch (err) {
         res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ ok: false, errore: err.message }));
@@ -2834,7 +2878,7 @@ function gestisciRichiesta(req, res) {
         try {
           const scritto = scriviFileClienteCaricato({
             clienteId: clienteToken.id, clienteNome: clienteToken.ragioneSociale,
-            sottocartella: 'Dal cliente', nomeFile: dati.nomeFile, contenutoBase64: dati.contenutoBase64,
+            sottocartella: 'Documenti/' + new Date().getFullYear() + '/Dal cliente', nomeFile: dati.nomeFile, contenutoBase64: dati.contenutoBase64,
           });
           fileInfo = { percorso: scritto.percorso, nomeFile: scritto.nomeFile, dimensione: scritto.dimensione };
         } catch (err) {
@@ -2897,7 +2941,7 @@ function gestisciRichiesta(req, res) {
         try {
           const scritto = scriviFileClienteCaricato({
             clienteId: clienteToken.id, clienteNome: clienteToken.ragioneSociale,
-            sottocartella: 'Dal cliente', nomeFile: dati.nomeFile, contenutoBase64: dati.contenutoBase64,
+            sottocartella: 'Documenti/' + new Date().getFullYear() + '/Dal cliente', nomeFile: dati.nomeFile, contenutoBase64: dati.contenutoBase64,
           });
           fileInfo = { percorso: scritto.percorso, nomeFile: scritto.nomeFile, dimensione: scritto.dimensione };
         } catch (err) {

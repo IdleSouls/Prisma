@@ -206,6 +206,7 @@ td button, td .btn, td select, td .badge, td .pill-delta, td label { -webkit-use
 .badge.stato-comunicato-al-cliente{background:var(--viola-bg);color:var(--viola);}
 .badge.stato-errore{background:var(--rosso-bg);color:var(--rosso);}
 .badge.stato-non-applicabile{background:var(--grigio-bg);color:var(--grigio);}
+.badge.stato-versamento-in-ritardo{background:#FBE0CC;color:#B4531A;}
 .badge.stato-cliente-non-puo-pagare{background:#FBE0CC;color:#B4531A;}
 button.importo-ok{padding:3px 8px;}
 button.importo-ok.salvato{background:var(--verde-bg);color:var(--verde);border-color:transparent;}
@@ -220,6 +221,7 @@ select.statoSel.stato-inviato-telematicamente{background:var(--verde-bg);color:v
 select.statoSel.stato-comunicato-al-cliente{background:var(--viola-bg);color:var(--viola);border-color:transparent;}
 select.statoSel.stato-errore{background:var(--rosso-bg);color:var(--rosso);border-color:transparent;}
 select.statoSel.stato-non-applicabile{background:var(--grigio-bg);color:var(--grigio);border-color:transparent;}
+select.statoSel.stato-versamento-in-ritardo{background:#FBE0CC;color:#B4531A;border-color:transparent;}
 select.statoSel.stato-cliente-non-puo-pagare{background:#FBE0CC;color:#B4531A;border-color:transparent;}
 
 .pill-delta{font-weight:700;font-size:12px;padding:2px 8px;border-radius:6px;white-space:nowrap;display:inline-block;}
@@ -805,7 +807,8 @@ const GIORNI_IT = ['Lun','Mar','Mer','Gio','Ven','Sab','Dom'];
 /* "Cliente non può pagare": il cliente ha già detto/si sa che non riuscirà a versare l'importo (es.
    società in ritardo con più versamenti IVA). Resta una scadenza APERTA (va ancora gestita, es. con
    ravvedimento), ma con uno stato visibilmente diverso da "Da fare". */
-const STATO_NON_PUO_PAGARE = 'Cliente non può pagare';
+const STATO_NON_PUO_PAGARE = 'Versamento in ritardo';
+const STATO_NON_PUO_PAGARE_LEGACY = 'Cliente non può pagare'; // vecchio nome, migrato all'apertura (migraStatoVersamentoRitardo)
 const STATI_SCADENZA = ['Da fare', 'Calcolato', 'Inviato telematicamente', 'Comunicato al cliente', 'Errore', STATO_NON_PUO_PAGARE, 'Non applicabile'];
 /* Importi nelle scadenze: formato italiano (1.234,56) in visualizzazione, numero in memoria. */
 function formatImportoIT(n) {
@@ -821,7 +824,8 @@ function parseImportoIT(testo) {
   const n = Number(t);
   return isNaN(n) ? NaN : Math.round(n * 100) / 100;
 }
-const STATI_SCADENZA_DEFINITIVI = ['Inviato telematicamente', 'Comunicato al cliente'];
+/* 'Versamento in ritardo': il lavoro dello studio e finito (F24 predisposto), il cliente non ha ancora versato: la scadenza conta come completata e resta l'F24 'Da pagare' come promemoria. */
+const STATI_SCADENZA_DEFINITIVI = ['Inviato telematicamente', 'Comunicato al cliente', 'Versamento in ritardo'];
 const STATI_SCADENZA_CHIUSI = [...STATI_SCADENZA_DEFINITIVI, 'Non applicabile'];
 const STATI_RITENUTA = ['In attesa di pagamento', 'Da pagare', 'Pagata', 'Inviata', 'Non pagata'];
 
@@ -2281,6 +2285,7 @@ function normalizzaStatoCaricato(parsed) {
   migraAdempimentiDuplicati(stato);
   migraDocumentiContabiliConti(stato);
   migraNoteTaskTeam(stato);
+  migraStatoVersamentoRitardo(stato);
   migraCampiCredenziali(stato);
   unisciLibriSociali(stato);
   assicuraLibriSocieta(stato);
@@ -3112,6 +3117,26 @@ async function inizializzaSyncViaServerLocale() {
    puo' scrivere un file in una cartella vera. Negli altri due contesti l'upload resta disabilitato
    e si registra solo il metadato, esattamente come prima di questa funzione — nessuna perdita di
    dati, solo una funzionalita' in piu' quando disponibile. */
+/* Struttura delle cartelle di ogni cliente, come in studio: aree tematiche (_Contabilita, _Fiscale, Documenti, Libri e registri,
+   Pratiche); dentro ogni area le cartelle degli anni (e, se serve, una sottocartella: Redditi, 770, CU...); "Pratiche" contiene
+   direttamente le cartelle delle pratiche. Qui si decide dove finisce ogni file nuovo. */
+const AREE_CARTELLA = { contabilita: '_Contabilita', fiscale: '_Fiscale', documenti: 'Documenti', libri: 'Libri e registri', pratiche: 'Pratiche' };
+const AREA_PER_CATEGORIA_DOCUMENTO = {
+  'Anagrafica': 'documenti', 'Visura camerale': 'documenti', 'Atto costitutivo/Statuto': 'documenti', 'Contratto': 'documenti',
+  'Corrispondenza Enti': 'documenti', 'Polizza assicurativa': 'documenti', 'Altro': 'documenti',
+  'Bilancio': 'contabilita', 'Registro contabile': 'contabilita', 'Busta paga': 'contabilita',
+  'Dichiarazione fiscale': 'fiscale', 'F24': 'fiscale', 'Certificazione': 'fiscale',
+  'Verbale / decisione societaria': 'libri', 'Pratiche': 'pratiche',
+};
+function sottocartellaArea(area, anno, sotto) {
+  const nomeArea = AREE_CARTELLA[area] || AREE_CARTELLA.documenti;
+  if (area === 'pratiche') return [nomeArea, sotto].filter(Boolean).join('/');
+  return [nomeArea, String(anno || new Date().getFullYear()), sotto].filter(Boolean).join('/');
+}
+function sottocartellaPerCategoria(categoria, dataISO) {
+  const anno = String(dataISO || oggiISO()).slice(0, 4);
+  return sottocartellaArea(AREA_PER_CATEGORIA_DOCUMENTO[categoria] || 'documenti', anno);
+}
 function uploadFileReale(file, clienteId, clienteNome, sottocartella) {
   return new Promise((resolve, reject) => {
     if (!HTTP_SYNC_ATTIVO) { reject(new Error('Upload file reale disponibile solo con il server locale (server.js) attivo.')); return; }
@@ -3759,7 +3784,25 @@ function aggiornaScadenza(id, patch, fasiNote) {
     // se si torna indietro da uno stato definitivo, non cancelliamo la data automaticamente per non perdere lo storico
   }
   STATE.scadenzeOverrides[id] = next;
+  if (patch.stato === STATO_NON_PUO_PAGARE) creaF24VersamentoInRitardo(id);
   salvaStato();
+}
+/* Scadenza segnata 'Versamento in ritardo': si crea (una sola volta) l'F24 relativo con stato 'Da pagare', cosi il cliente lo ritrova
+   nel portale, e la scadenza resta marcata con un alert (ritardoVersamento) visibile in scheda cliente e nell'elenco F24. */
+function creaF24VersamentoInRitardo(id) {
+  const ov = STATE.scadenzeOverrides[id]; if (!ov) return null;
+  ov.ritardoVersamento = true;
+  if (ov.f24Id && STATE.f24.some(f => f.id === ov.f24Id)) return ov.f24Id;
+  const sc = derivati().tutteScadenze.find(x => x.id === id); if (!sc) return null;
+  const importo = typeof sc.importo === 'number' ? sc.importo : (Number(ov.importo) || 0);
+  const f = aggiungiF24({ clienteId: sc.clienteId, tipo: 'F24', data: sc.data, importo, descrizione: sc.nome + ' (versamento in ritardo)', scadenzaRif: id, ritardoVersamento: true, righe: [{ id: uid('f24r'), codiceTributo: '', descrizione: sc.nome, importo, importoPagato: 0 }] });
+  ov.f24Id = f.id;
+  return f.id;
+}
+/* Vecchio stato 'Cliente non può pagare' -> 'Versamento in ritardo' (con F24 e alert). */
+function migraStatoVersamentoRitardo(stato) {
+  const ov = stato.scadenzeOverrides || {};
+  Object.keys(ov).forEach(k => { if (ov[k] && ov[k].stato === STATO_NON_PUO_PAGARE_LEGACY) { ov[k].stato = STATO_NON_PUO_PAGARE; ov[k].ritardoVersamento = true; if (!ov[k].dataCompletamento) ov[k].dataCompletamento = oggiISO(); } });
 }
 /* Salva l'importo di una scadenza periodica scritto in formato italiano (1.234,56), lo riformatta nel
    campo e segna il tasto ✓ come confermato. Senza render(): non si perde il focus. */
@@ -5415,6 +5458,7 @@ function setView(view, params) {
   try { window.scrollTo(0,0); } catch (e) {}
 }
 
+let ULTIMA_VIEW_RENDERIZZATA = null;
 function render() {
   // Task #156: ricontrollato anche qui (non solo in setView) perché VIEW può restare quella di
   // prima anche quando cambia chi può vederla - tipicamente cambiando operatore da "Chi sta
@@ -5430,6 +5474,9 @@ function render() {
   document.getElementById('pageSub').textContent = sub;
   const btnGuida = document.getElementById('btnGuidaTab'); if (btnGuida) btnGuida.style.display = GUIDA_TAB[VIEW] ? '' : 'none';
   const content = document.getElementById('content');
+  // Un re-render della STESSA sezione (aggiornamento dal server, presenza colleghi...) non deve far saltare la pagina: si ricorda
+  // lo scorrimento e lo si rimette dopo aver ridisegnato.
+  const scrollPrima = ULTIMA_VIEW_RENDERIZZATA === VIEW ? navScrollAttuale() : 0;
   // Task #196: ogni render() ricrea il DOM e la conversazione della chat ripartiva dal primo
   // messaggio. Si ricorda la posizione (e se si era in fondo) PRIMA di ridisegnare, poi si
   // ripristina: in fondo se si era in fondo o se è un'altra conversazione, altrimenti dov'eravamo.
@@ -5475,6 +5522,8 @@ function render() {
     case 'chat': content.innerHTML = renderChat(); break;
     default: content.innerHTML = '<div class="empty">Vista non trovata.</div>';
   }
+  ULTIMA_VIEW_RENDERIZZATA = VIEW;
+  if (scrollPrima > 0) { try { window.scrollTo(0, scrollPrima); } catch (e) { /* ignora */ } }
   if (VIEW === 'chat') {
     const corpoChat = document.getElementById('chatThreadCorpo');
     if (corpoChat) {
@@ -6080,6 +6129,7 @@ function renderSchedaCliente() {
       <div>
         <div style="font-size:19px;font-weight:800;">${escapeHtml(cliente.ragioneSociale)} ${cliente.stato==='cessato'?'<span class="badge cessato">CESSATO</span>':''}${cliente.stato==='potenziale'?'<span class="badge info">POTENZIALE</span>':''}${contabilitaDaTerzi(cliente)?' <span class="badge" title="Contabilità tenuta da terzi">contab. terzi</span>':''}</div>
         ${(() => { const l = livelliMancantiCliente(cliente); if (!l.gravi.length && !l.leggeri.length) return ''; const g = l.gravi.length > 0; return `<div style="margin-top:6px;padding:8px 10px;border-left:4px solid ${g?'var(--rosso)':'var(--giallo)'};background:${g?'var(--rosso-bg)':'var(--giallo-bg)'};border-radius:6px;font-size:13px;">${g?'⚠':'ℹ'} <strong>Anagrafica da completare</strong>${l.gravi.length ? ` — importanti: <strong>${l.gravi.map(escapeHtml).join(', ')}</strong>` : ''}${l.leggeri.length ? ` — utili: ${l.leggeri.map(escapeHtml).join(', ')}` : ''}. <button class="btn small" data-action="modifica-cliente" data-id="${cliente.id}">Completa ora</button></div>`; })()}
+        ${(() => { const nv = STATE.f24.filter(f => f.clienteId === cliente.id && f.ritardoVersamento && statoF24(f) !== 'Pagato'); if (!nv.length) return ''; const tot = nv.reduce((x, f) => x + Math.max(0, (Number(f.importo) || 0) - (Number(f.importoPagato) || 0)), 0); return `<div style="margin-top:6px;padding:8px 10px;border-radius:8px;background:#FBE0CC;color:#B4531A;font-size:12.5px;"><b>⚠ ${nv.length} versament${nv.length === 1 ? 'o' : 'i'} in ritardo</b> (F24 da pagare${tot > 0 ? ': ' + fmtEuro(tot) : ''}): ${nv.map(f => escapeHtml(f.descrizione || 'F24')).join(' · ')}</div>`; })()}
         ${cliente.stato==='cessato' ? `<div class="helptext" style="margin-top:2px;color:var(--rosso);">Cessato${cliente.dataCessazione?' il '+fmtData(cliente.dataCessazione):''}${cliente.motivoCessazione?' · '+escapeHtml(cliente.motivoCessazione):''}</div>` : ''}
         ${(() => { const ce = annualiCedutiCliente(cliente.id); const aperti = derivati().annuali.filter(a => a.clienteId === cliente.id && !a.completato); return cliente.stato==='cessato' ? `<div class="helptext" style="margin-top:2px;">${ce.length ? 'Ceduti al nuovo commercialista: ' + ce.map(x => escapeHtml(x.nome) + ' ' + x.anno).join(', ') : 'Nessun adempimento ceduto'}${aperti.length ? ' · <strong>Ancora in carico allo studio:</strong> ' + aperti.map(a => escapeHtml(a.tipoNome)).join(', ') : ''}</div>` : ''; })()}
         <div style="margin-top:6px;">${cliente.stato==='cessato' ? `<button class="btn small" data-action="riattiva-cliente" data-id="${cliente.id}">Riattiva cliente</button>` : (cliente.stato==='attivo' ? `<button class="btn small" data-action="cessa-cliente-apri" data-id="${cliente.id}">Cessa cliente…</button>` : '')} ${cliente.stato==='attivo' ? `<button class="btn small" data-action="report-mensile-apri" data-cliente="${cliente.id}">Report mensile…</button>` : ''}</div>
@@ -8314,7 +8364,10 @@ function renderDocumenti() {
       <option value="Tutti" ${DOC_FILTRO.categoria==='Tutti'?'selected':''}>Tutti</option>
       ${CATEGORIE_DOCUMENTO.map(c=>`<option ${DOC_FILTRO.categoria===c?'selected':''}>${c}</option>`).join('')}
     </select></div>
-    <div class="field" style="margin-left:auto;"><label>&nbsp;</label><button class="btn primary" data-action="nuovo-documento">+ Nuovo documento</button></div>
+    <div class="field" style="margin-left:auto;"><label>&nbsp;</label><div style="display:flex;gap:8px;flex-wrap:wrap;">
+      ${HTTP_SYNC_ATTIVO ? `<button class="btn" data-action="crea-struttura-cartelle" ${DOC_FILTRO.cliente === 'Tutti' ? 'disabled title="Scegli prima un cliente nel filtro"' : `title="Crea nella cartella di questo cliente le aree standard: ${escapeHtml(Object.values(AREE_CARTELLA).join(', '))} (con l\'anno corrente)"`}>📁 Crea cartelle standard${DOC_FILTRO.cliente === 'Tutti' ? '' : ' del cliente'}</button>` : ''}
+      <button class="btn primary" data-action="nuovo-documento">+ Nuovo documento</button>
+    </div></div>
   </div>`;
 
   if (STATE.clienti.length === 0) {
@@ -11254,16 +11307,28 @@ function confermaMotivoStatoTask(id, testo) {
 }
 function htmlStoricoStatiTask(t) {
   const v = (t.storicoStati || []).slice().reverse();
-  if (!v.length) return '';
   const col = (st) => COLORI_STATO_TASK[st] || COLORI_STATO_TASK['Da fare'];
-  return `<div class="field full" style="grid-column:1/-1;margin-top:10px;"><label>Storico attese e blocchi</label>
+  const dataTask = (d) => d ? (String(d).length > 10 ? fmtDataOra(d) : fmtData(d)) : '—';
+  const righeDate = `<div class="field full" style="grid-column:1/-1;margin-top:10px;"><label>Date del task</label>
+    <div style="border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12.5px;">📥 Inserito in Prisma il <b>${dataTask(t.creatoIl)}</b>${t.fattoIl ? `<br>✅ Completato il <b>${dataTask(t.fattoIl)}</b>` : ''}</div></div>`;
+  if (!v.length) return righeDate;
+  return righeDate + `<div class="field full" style="grid-column:1/-1;margin-top:10px;"><label>Storico attese e blocchi</label>
     <div style="max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:6px 10px;">${v.map(x => `<div style="padding:5px 0;border-bottom:1px solid var(--border);">
       <div style="font-size:10.5px;font-weight:700;text-transform:uppercase;margin-bottom:2px;"><span style="color:${col(x.stato).c};">${escapeHtml(x.stato)}</span> · ${escapeHtml(x.autore || '—')} · ${fmtDataOra(x.data)}${x.chiusoIl ? ` · <span style="color:var(--verde);">risolta il ${fmtData(x.chiusoIl)}</span>` : ' · <span style="color:' + col(x.stato).c + ';">in corso</span>'}</div>
       <div style="font-size:12.5px;white-space:pre-wrap;">${escapeHtml(x.motivo)}</div>
       ${(x.modifiche || []).length ? `<details style="margin-top:3px;"><summary class="helptext" style="cursor:pointer;">✎ modificato ${x.modifiche.length === 1 ? '1 volta' : x.modifiche.length + ' volte'}</summary>${x.modifiche.slice().reverse().map(m => `<div class="helptext" style="margin:4px 0 0 10px;padding-left:8px;border-left:2px solid var(--border);"><b>${escapeHtml(m.autore || '—')}</b> · ${fmtDataOra(m.data)} — versione precedente:<div style="white-space:pre-wrap;">${escapeHtml(m.testo)}</div></div>`).join('')}</details>` : ''}
     </div>`).join('')}</div></div>`;
 }
-let TASK_FILTRO = { assegnato: 'Tutti', cliente: 'Tutti', mostraFatti: true, stato: 'Tutti' };
+let TASK_FILTRO = { assegnato: 'Tutti', cliente: 'Tutti', mostraFatti: true, stato: 'Tutti', q: '', campoData: 'scadenza', dataDa: '', dataA: '' };
+const CAMPI_DATA_TASK = { scadenza: 'Scadenza', creatoIl: 'Inserimento in Prisma', fattoIl: 'Completamento' };
+/* Testo in cui cerca il filtro "Cerca": titolo, descrizione, note operative, motivo attesa/blocco, cliente, procedura, assegnatario, stato, pratica. */
+function testoRicercaTask(t) {
+  const proc = t.procedureId ? procedureById(t.procedureId) : null;
+  return [t.titolo, t.descrizione, t.note, t.motivoStato, t.assegnatoA, t.stato, t.praticaCartella,
+    t.clienteId ? nomeCliente(t.clienteId) : '', proc ? proc.nome : '',
+    ...(t.noteStorico || []).map(n => n.testo), ...(t.storicoStati || []).map(v => v.motivo)
+  ].filter(Boolean).join(' \n ').toLowerCase();
+}
 
 function taskInRitardo(t) {
   return t.stato !== 'Fatto' && t.scadenza && giorniTra(oggiISO(), t.scadenza) < 0;
@@ -11316,6 +11381,11 @@ function renderTaskTeam() {
       <option value="__nessuno__" ${TASK_FILTRO.cliente==='__nessuno__'?'selected':''}>— Nessuno (task generale) —</option>
       ${STATE.clienti.slice().sort((a,b)=>a.ragioneSociale.localeCompare(b.ragioneSociale)).map(c=>`<option value="${c.id}" ${TASK_FILTRO.cliente===c.id?'selected':''}>${escapeHtml(c.ragioneSociale)}</option>`).join('')}
     </select></div>
+    <div class="field"><label>Cerca</label><input type="search" data-action="task-filtro-q" value="${escapeHtml(TASK_FILTRO.q)}" placeholder="titolo, note, cliente, procedura…" autocomplete="off" style="min-width:210px;"></div>
+    <div class="field"><label>Data</label><select data-action="task-filtro-campo-data">${Object.keys(CAMPI_DATA_TASK).map(k => `<option value="${k}" ${TASK_FILTRO.campoData===k?'selected':''}>${CAMPI_DATA_TASK[k]}</option>`).join('')}</select></div>
+    <div class="field"><label>Dal</label>${campoDataTesto('task-filtro-data-da', TASK_FILTRO.dataDa)}</div>
+    <div class="field"><label>Al</label>${campoDataTesto('task-filtro-data-a', TASK_FILTRO.dataA)}</div>
+    ${(TASK_FILTRO.q || TASK_FILTRO.dataDa || TASK_FILTRO.dataA) ? `<div class="field" style="min-width:max-content;"><label>&nbsp;</label><button class="btn small" data-action="task-filtro-azzera">✕ Azzera ricerca</button></div>` : ''}
     <div class="field" style="min-width:max-content;"><label>&nbsp;</label><label class="checkline" style="white-space:nowrap;"><input type="checkbox" data-action="task-filtro-mostra-fatti" ${TASK_FILTRO.mostraFatti?'checked':''}> Mostra completati</label></div>
     <div class="field" style="margin-left:auto;"><label>&nbsp;</label><button class="btn primary" data-action="nuovo-task-team">+ Nuovo task</button></div>
   </div>`;
@@ -11329,6 +11399,12 @@ function renderTaskTeam() {
   if (TASK_FILTRO.cliente === '__nessuno__') filtrati = filtrati.filter(t => !t.clienteId);
   else if (TASK_FILTRO.cliente !== 'Tutti') filtrati = filtrati.filter(t => t.clienteId === TASK_FILTRO.cliente);
   if (!TASK_FILTRO.mostraFatti) filtrati = filtrati.filter(t => t.stato !== 'Fatto');
+  const qTask = TASK_FILTRO.q.trim().toLowerCase();
+  if (qTask) { const parole = qTask.split(/\s+/); filtrati = filtrati.filter(t => { const tx = testoRicercaTask(t); return parole.every(w => tx.includes(w)); }); }
+  if (TASK_FILTRO.dataDa || TASK_FILTRO.dataA) {
+    filtrati = filtrati.filter(t => { const d = String(t[TASK_FILTRO.campoData] || '').slice(0, 10); if (!d) return false;
+      return (!TASK_FILTRO.dataDa || d >= TASK_FILTRO.dataDa) && (!TASK_FILTRO.dataA || d <= TASK_FILTRO.dataA); });
+  }
 
   const cardTask = (t) => {
     const ritardo = taskInRitardo(t);
@@ -11365,6 +11441,7 @@ function renderTaskTeam() {
         ${t.scadenza ? `<span class="pill-delta ${ritardo?'scaduto':'lontano'}">${ritardo?'In ritardo — ':'Entro '}${fmtDataBreve(t.scadenza)}</span>` : ''}
         ${nNoteOperative ? `<span class="badge" title="Note operative: ${nNoteOperative}">📝 ${nNoteOperative}</span>` : ''}
       </div>
+      <div class="helptext" style="margin:2px 0 4px;">Inserito il ${t.creatoIl ? fmtData(String(t.creatoIl).slice(0,10)) : '—'}${t.fattoIl ? ` · completato il ${fmtData(String(t.fattoIl).slice(0,10))}` : ''}</div>
       ${boxMotivo}
       ${anteprimaNota}
       <div class="azioni">
@@ -11535,7 +11612,9 @@ const FORMATO_DATA_CARTELLA_PRATICA = 'aaaa.gg.mm'; // per avere l'ordine per da
 function nomeCartellaPratica(dataISO, titolo) {
   const [a, m, g] = String(dataISO || oggiISO()).split('-');
   const data = FORMATO_DATA_CARTELLA_PRATICA.replace('aaaa', a).replace('gg', g).replace('mm', m);
-  return `${data} - ${String(titolo || '').trim()}`;
+  // niente barre o caratteri vietati nei nomi di cartella (una barra creerebbe una sottocartella in piu)
+  const nome = String(titolo || '').replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim();
+  return `${data} - ${nome}`;
 }
 function documentiDiTask(taskId) { return (STATE.documenti || []).filter(d => d.taskId === taskId); }
 function htmlCampoPratica(t, editing) {
@@ -11544,7 +11623,7 @@ function htmlCampoPratica(t, editing) {
   return `<div class="field full" style="grid-column:1/-1;border:1px solid var(--border);border-radius:10px;padding:10px 12px;">
     <label class="checkline" style="display:flex;gap:8px;align-items:center;"><input type="checkbox" id="tPratica" data-action="task-pratica-toggle" ${t.pratica ? 'checked' : ''}> <b>È una pratica</b> <span class="helptext">(richiede comunicazioni a istituzioni o enti)</span></label>
     <div id="tPraticaBox" style="display:${t.pratica ? 'block' : 'none'};margin-top:8px;">
-      <div class="helptext">Nei documenti del cliente si crea la cartella: <b id="tPraticaCartella">${escapeHtml(nomeCart)}</b>${t.praticaCartella ? '' : ' <span>(il nome usa il titolo del task)</span>'}</div>
+      <div class="helptext">Nella cartella del cliente, dentro «Pratiche», si crea: <b id="tPraticaCartella">${escapeHtml(nomeCart)}</b>${t.praticaCartella ? '' : ' <span>(il nome usa il titolo del task)</span>'}</div>
       ${docs.length ? `<div style="margin-top:8px;font-size:12.5px;"><div class="helptext" style="font-weight:700;">Documenti della pratica</div>${docs.map(d => `<div style="display:flex;gap:8px;align-items:center;padding:2px 0;">📎 ${d.filePercorso ? `<a href="${linkScaricaFileReale(d.filePercorso)}" target="_blank" rel="noopener">${escapeHtml(d.nome)}</a>` : escapeHtml(d.nome)}</div>`).join('')}${t.praticaPercorso ? `<button type="button" class="btn small ghost" style="margin-top:4px;" data-action="apri-cartella-documento" data-percorso="${escapeHtml(t.praticaPercorso)}">📂 Apri cartella</button>` : ''}</div>` : (t.praticaPercorso ? `<button type="button" class="btn small ghost" style="margin-top:6px;" data-action="apri-cartella-documento" data-percorso="${escapeHtml(t.praticaPercorso)}">📂 Apri cartella</button>` : '')}
       <div style="margin-top:8px;"><label style="font-size:12px;font-weight:600;">Allega documenti (opzionale)</label><input type="file" id="tPraticaFile" multiple style="display:block;margin-top:4px;max-width:100%;"></div>
       ${HTTP_SYNC_ATTIVO ? '' : '<div class="helptext" style="color:var(--giallo);margin-top:6px;">Cartella e file si creano solo con il server di Prisma attivo.</div>'}
@@ -11558,22 +11637,22 @@ function sincronizzaPratica(taskId, files) {
   const cl = clienteById(t.clienteId);
   if (!cl) return;
   if (!HTTP_SYNC_ATTIVO) { toast('Pratica segnata, ma la cartella non è stata creata: serve il server di Prisma attivo.', true); return; }
-  fetch('/api/documenti/cartella', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clienteId: cl.id, clienteNome: cl.ragioneSociale, sottocartella: t.praticaCartella }) })
+  fetch('/api/documenti/cartella', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clienteId: cl.id, clienteNome: cl.ragioneSociale, sottocartella: sottocartellaArea('pratiche', null, t.praticaCartella) }) })
     .then(r => r.json())
     .then(async (esito) => {
       if (!esito || !esito.ok) throw new Error((esito && esito.errore) || 'cartella non creata');
-      t.praticaCartella = esito.sottocartella; t.praticaPercorso = esito.percorso; t.praticaClienteId = cl.id;
+      t.praticaCartella = esito.sottocartella.split('/').pop(); t.praticaPercorso = esito.percorso; t.praticaClienteId = cl.id;
       salvaStato();
       let caricati = 0;
       for (const f of (files || [])) {
         try {
-          const up = await uploadFileReale(f, cl.id, cl.ragioneSociale, esito.sottocartella);
-          aggiungiDocumento({ clienteId: cl.id, categoria: 'Corrispondenza Enti', nome: f.name, dataCaricamento: oggiISO(), dataScadenza: null, taskId: t.id, praticaCartella: esito.sottocartella, filePercorso: up.percorso, fileNome: up.nomeFile, fileDimensione: up.dimensione });
+          const up = await uploadFileReale(f, cl.id, cl.ragioneSociale, sottocartellaArea('pratiche', null, t.praticaCartella));
+          aggiungiDocumento({ clienteId: cl.id, categoria: 'Corrispondenza Enti', nome: f.name, dataCaricamento: oggiISO(), dataScadenza: null, taskId: t.id, praticaCartella: t.praticaCartella, filePercorso: up.percorso, fileNome: up.nomeFile, fileDimensione: up.dimensione });
           caricati++;
         } catch (err) { toast('Il file "' + f.name + '" non è stato caricato: ' + err.message, true); }
       }
       render();
-      toast(caricati ? `Pratica: cartella «${esito.sottocartella}» pronta, ${caricati} ${caricati === 1 ? 'documento caricato' : 'documenti caricati'}.` : `Pratica: cartella «${esito.sottocartella}» creata nei documenti del cliente.`);
+      toast(caricati ? `Pratica: cartella «${t.praticaCartella}» pronta, ${caricati} ${caricati === 1 ? 'documento caricato' : 'documenti caricati'}.` : `Pratica: cartella «${t.praticaCartella}» creata in Pratiche, nei documenti del cliente.`);
     })
     .catch(err => toast('Pratica segnata, ma la cartella non è stata creata: ' + err.message, true));
 }
@@ -16542,7 +16621,6 @@ function renderStrumenti() {
       ${STRUMENTI_RISULTATO ? `<div style="margin-top:14px;padding:12px;background:var(--verde-bg);border-radius:8px;">
         <div style="font-weight:600;font-size:13.5px;color:var(--verde);">✅ Conversione completata: ${escapeHtml(STRUMENTI_RISULTATO.nomeFile)}</div>
         <button class="btn primary small" style="margin-top:8px;" data-action="strumenti-scarica">⬇ Scarica</button>
-        <button class="btn small" style="margin-top:8px;margin-left:8px;" data-action="strumenti-salva-cartella">📁 Salva nella cartella del file originario</button>
       </div>` : ''}
     </div>`;
   }
@@ -16752,7 +16830,6 @@ function renderUnisciDividiPdf() {
     ${PDFU_RISULTATO ? `<div style="margin-top:14px;padding:12px;background:var(--verde-bg);border-radius:8px;">
       <div style="font-weight:600;font-size:13.5px;color:var(--verde);">✅ PDF unito: ${escapeHtml(PDFU_RISULTATO.nomeFile)}</div>
       <button class="btn primary small" style="margin-top:8px;" data-action="pdfu-scarica">⬇ Scarica</button>
-      <button class="btn small" style="margin-top:8px;margin-left:8px;" data-action="pdfu-salva-cartella">📁 Salva nella cartella del file originario</button>
     </div>` : ''}
   </div>`;
 
@@ -16778,7 +16855,6 @@ function renderUnisciDividiPdf() {
     ${PDFD_RISULTATO ? `<div style="margin-top:14px;padding:12px;background:var(--verde-bg);border-radius:8px;">
       <div style="font-weight:600;font-size:13.5px;color:var(--verde);">✅ Estratto creato: ${escapeHtml(PDFD_RISULTATO.nomeFile)}</div>
       <button class="btn primary small" style="margin-top:8px;" data-action="pdfd-scarica">⬇ Scarica</button>
-      <button class="btn small" style="margin-top:8px;margin-left:8px;" data-action="pdfd-salva-cartella">📁 Salva nella cartella del file originario</button>
     </div>` : ''}
   </div>`;
 
@@ -17312,13 +17388,14 @@ function renderImpostazioniIA() {
     <div class="section-title">Azioni dell'IA (registro e conferma)</div>
     <div class="helptext" style="margin-bottom:10px;">Tutto ciò che Claude fa in Prisma tramite MCP viene registrato qui. Se attivi la conferma, ogni azione compare in una finestra e parte solo dopo il tuo OK.</div>
     <label style="display:flex;align-items:center;gap:8px;font-weight:400;margin-bottom:12px;"><input type="checkbox" data-action="toggle-mcp-conferma" ${STATE.meta.mcpChiediConferma ? 'checked' : ''}> Chiedi la mia conferma prima di ogni azione dell'IA</label>
-    ${(STATE.auditMcp || []).length ? `<table class="compact"><thead><tr><th>Quando</th><th>Azione</th><th>Esito</th><th>Dettagli</th></tr></thead><tbody>
-      ${(STATE.auditMcp || []).slice(-40).reverse().map(a => `<tr>
+    ${(STATE.auditMcp || []).length ? `<div class="helptext" style="margin-bottom:6px;">Ultime azioni in alto: scorri nel riquadro per vedere quelle passate (${(STATE.auditMcp || []).length} registrate).</div>
+    <div style="max-height:360px;overflow-y:auto;border:1px solid var(--border);border-radius:10px;"><table class="compact" style="margin:0;"><thead><tr><th style="position:sticky;top:0;background:var(--card-bg);z-index:1;">Quando</th><th style="position:sticky;top:0;background:var(--card-bg);z-index:1;">Azione</th><th style="position:sticky;top:0;background:var(--card-bg);z-index:1;">Esito</th><th style="position:sticky;top:0;background:var(--card-bg);z-index:1;">Dettagli</th></tr></thead><tbody>
+      ${(STATE.auditMcp || []).slice().reverse().map(a => `<tr>
         <td style="white-space:nowrap;">${fmtDataOra(a.data)}</td>
         <td>${escapeHtml(etichettaAzioneMCP(a.azione))}</td>
         <td>${a.esito === 'eseguita' ? '<span class="badge attivo">Eseguita</span>' : (a.esito === 'rifiutata' ? '<span class="badge">Rifiutata</span>' : '<span class="badge stato-errore">Fallita</span>')}</td>
         <td class="helptext" style="max-width:380px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(a.parametri || '')}">${escapeHtml(a.errore || a.parametri || '')}</td>
-      </tr>`).join('')}</tbody></table>` : '<div class="helptext">Nessuna azione registrata finora.</div>'}
+      </tr>`).join('')}</tbody></table></div>` : '<div class="helptext">Nessuna azione registrata finora.</div>'}
   </div>
 
   ${renderImpostazioniGuide()}`;
@@ -18087,6 +18164,14 @@ function onClickDelegatoInterno(e) {
     case 'goto-clienti-incompleti': CLI_FILTRO.soloIncompleti = true; CLI_FILTRO.soloGravi = nClientiGravi() > 0; resetPagina('clienti'); setView('clienti'); break;
     case 'cli-filtro-incompleti-vai': CLI_FILTRO.soloIncompleti = true; CLI_FILTRO.soloGravi = nClientiGravi() > 0; resetPagina('clienti'); render(); break;
     case 'nav': setView(el.dataset.nav); break;
+    case 'crea-struttura-cartelle': {
+      const cl = DOC_FILTRO.cliente !== 'Tutti' ? clienteById(DOC_FILTRO.cliente) : null;
+      if (!cl) { toast('Scegli prima un cliente nel filtro.', true); break; }
+      fetch('/api/documenti/struttura', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clienti: [{ id: cl.id, nome: cl.ragioneSociale }] }) })
+        .then(r => r.json()).then(d => toast(d && d.ok ? `Cartelle standard create per ${cl.ragioneSociale}: ${(d.aree || []).join(', ')}.` : ('Non riuscito: ' + ((d && d.errore) || 'errore')), !(d && d.ok)))
+        .catch(() => toast('Server non raggiungibile.', true));
+      break;
+    }
     case 'task-proc-scegli': impostaProceduraTask(el.dataset.id); break;
     case 'task-proc-rimuovi': impostaProceduraTask(''); break;
     case 'nav-indietro': navIndietro(); break;
@@ -18259,7 +18344,7 @@ function onClickDelegatoInterno(e) {
         // allegato: una copia per ciascun destinatario, nella sua cartella (stessa logica di Documenti/Contabilità)
         Promise.all(clienteIds.map(clienteId => {
           const cliente = clienteById(clienteId);
-          return uploadFileReale(fileCom, clienteId, cliente.ragioneSociale, 'Comunicazioni')
+          return uploadFileReale(fileCom, clienteId, cliente.ragioneSociale, sottocartellaArea('documenti', null, 'Comunicazioni'))
             .then(esito => ({ clienteId, esito }))
             .catch(err => ({ clienteId, errore: err.message }));
         })).then(risultati => {
@@ -18348,7 +18433,7 @@ function onClickDelegatoInterno(e) {
       const file = (inputFile && inputFile.files && inputFile.files[0]) || null;
       if (file) {
         const clienteNome = clienteById(clienteId).ragioneSociale;
-        uploadFileReale(file, clienteId, clienteNome).then(esito => {
+        uploadFileReale(file, clienteId, clienteNome, sottocartellaPerCategoria(categoria, dataCaricamento)).then(esito => {
           aggiungiDocumento(Object.assign({}, datiBase, { filePercorso: esito.percorso, fileNome: esito.nomeFile, fileDimensione: esito.dimensione }));
           chiudiModal(); render(); toast('Documento e file caricati.');
         }).catch(err => {
@@ -18377,6 +18462,7 @@ function onClickDelegatoInterno(e) {
       break;
     // Task #215: bottoni della checklist di avvio in "Oggi". "manuale" = passo senza un dato che lo
     // dimostri (es. team): si considera fatto nel momento in cui l'utente ci va.
+    case 'task-filtro-azzera': TASK_FILTRO.q = ''; TASK_FILTRO.dataDa = ''; TASK_FILTRO.dataA = ''; TASK_FILTRO.stato = 'Tutti'; STATI_TASK_TEAM.forEach(s=>resetPagina('taskteam-'+s)); render(); break;
     case 'task-filtro-stato': TASK_FILTRO.stato = TASK_FILTRO.stato === el.dataset.stato ? 'Tutti' : el.dataset.stato; STATI_TASK_TEAM.forEach(s=>resetPagina('taskteam-'+s)); render(); break;
     case 'task-motivo-conferma': { const inp = document.getElementById('motivo_' + id); if (!confermaMotivoStatoTask(id, inp ? inp.value : '')) { toast('Scrivi il motivo prima di confermare.', true); break; } render(); toast('Motivo confermato e salvato nello storico del task.'); break; }
     case 'task-motivo-modifica': MOTIVO_IN_MODIFICA = id; render(); { const inp = document.getElementById('motivo_' + id); if (inp) inp.focus(); } break;
@@ -18763,7 +18849,7 @@ function onClickDelegatoInterno(e) {
       const inputFile = h('atFile'); const file = (inputFile && inputFile.files && inputFile.files[0]) || null;
       const salva = (extraDoc) => { const nuovo = aggiungiDocumento(Object.assign({}, base, extraDoc || {})); assegnaAttoLibro(nuovo.id, dati); chiudiModal(); render(); };
       if (file) {
-        uploadFileReale(file, clienteId, clienteById(clienteId).ragioneSociale).then(esito => { salva({ filePercorso: esito.percorso, fileNome: esito.nomeFile, fileDimensione: esito.dimensione }); toast('Atto e file caricati.'); })
+        uploadFileReale(file, clienteId, clienteById(clienteId).ragioneSociale, sottocartellaArea('libri')).then(esito => { salva({ filePercorso: esito.percorso, fileNome: esito.nomeFile, fileDimensione: esito.dimensione }); toast('Atto e file caricati.'); })
           .catch(err => { salva(); toast('Atto registrato, ma il file non è stato caricato: ' + err.message, true); });
       } else { salva(); toast('Atto registrato (senza file).'); }
       break;
@@ -18813,7 +18899,7 @@ function onClickDelegatoInterno(e) {
         toast(r && r.attivato ? 'Preventivo accettato: cliente attivato, onboarding avviato.' : 'Accettazione registrata.');
       };
       if (file) {
-        uploadFileReale(file, p.clienteId, nomeCliente(p.clienteId)).then(fine).catch(err => { console.error('Upload firmato non riuscito:', err.message); fine(null); toast('Accettazione registrata, ma il file non è stato caricato: ' + err.message, true); });
+        uploadFileReale(file, p.clienteId, nomeCliente(p.clienteId), sottocartellaArea('documenti', null, 'Preventivi')).then(fine).catch(err => { console.error('Upload firmato non riuscito:', err.message); fine(null); toast('Accettazione registrata, ma il file non è stato caricato: ' + err.message, true); });
       } else fine(null);
       break;
     }
@@ -19189,7 +19275,7 @@ function onClickDelegatoInterno(e) {
         toast('Messaggio simulato inviato: comparirà come "Dal cliente" nel thread Comunicazioni dello studio.');
       };
       if (file && cliente) {
-        uploadFileReale(file, clienteId, cliente.ragioneSociale, 'Dal cliente')
+        uploadFileReale(file, clienteId, cliente.ragioneSociale, sottocartellaArea('documenti', null, 'Dal cliente'))
           .then(esito => inviaConAllegato({ percorso: esito.percorso, nomeFile: esito.nomeFile, dimensione: esito.dimensione }))
           .catch(err => { toast('Allegato non caricato: ' + err.message, true); });
       } else {
@@ -19214,7 +19300,7 @@ function onClickDelegatoInterno(e) {
         toast('Risposta simulata inviata.');
       };
       if (file && cliente) {
-        uploadFileReale(file, clienteId, cliente.ragioneSociale, 'Dal cliente')
+        uploadFileReale(file, clienteId, cliente.ragioneSociale, sottocartellaArea('documenti', null, 'Dal cliente'))
           .then(esito => inviaConAllegato({ percorso: esito.percorso, nomeFile: esito.nomeFile, dimensione: esito.dimensione }))
           .catch(err => { toast('Allegato non caricato: ' + err.message, true); });
       } else {
@@ -19358,7 +19444,7 @@ function onClickDelegatoInterno(e) {
       const fileContab = (inputFileContab && inputFileContab.files && inputFileContab.files[0]) || null;
       if (fileContab) {
         const clienteNome = clienteById(clienteId).ragioneSociale;
-        uploadFileReale(fileContab, clienteId, clienteNome, 'Contabilità').then(esito => {
+        uploadFileReale(fileContab, clienteId, clienteNome, sottocartellaArea('contabilita')).then(esito => {
           registraDocumentoContabile(clienteId, tipo, dataRiferimento, note, contoId, esito);
           chiudiModal(); render(); toast('Documento e file caricati.');
         }).catch(err => {
@@ -20068,6 +20154,9 @@ function onChangeDelegato(e) {
     case 'task-filtro-cliente': TASK_FILTRO.cliente = el.value; STATI_TASK_TEAM.forEach(s=>resetPagina('taskteam-'+s)); render(); break;
     case 'task-filtro-stato': TASK_FILTRO.stato = TASK_FILTRO.stato === el.dataset.stato ? 'Tutti' : el.dataset.stato; STATI_TASK_TEAM.forEach(s=>resetPagina('taskteam-'+s)); render(); break;
     case 'task-filtro-mostra-fatti': TASK_FILTRO.mostraFatti = el.checked; STATI_TASK_TEAM.forEach(s=>resetPagina('taskteam-'+s)); render(); break;
+    case 'task-filtro-campo-data': TASK_FILTRO.campoData = el.value; STATI_TASK_TEAM.forEach(s=>resetPagina('taskteam-'+s)); render(); break;
+    case 'task-filtro-data-da-picker': TASK_FILTRO.dataDa = el.value || ''; STATI_TASK_TEAM.forEach(s=>resetPagina('taskteam-'+s)); render(); break;
+    case 'task-filtro-data-a-picker': TASK_FILTRO.dataA = el.value || ''; STATI_TASK_TEAM.forEach(s=>resetPagina('taskteam-'+s)); render(); break;
     case 'cli-tipo-cambia': { const fs = document.getElementById('fsAssociazione'); if (fs) fs.style.display = el.value === 'associazione' ? '' : 'none'; break; }
     case 'task-cambia-stato': aggiornaTaskTeam(id, { stato: el.value }); render(); { const tt = STATE.taskTeam.find(x => x.id === id); if (tt && tt.stato === 'Fatto' && tt.stampaVerbale) toast('Verbale da stampare: lo trovi in Libri sociali.'); } break;
 
@@ -20238,7 +20327,8 @@ function onInputDelegato(e) {
   const id = el.dataset.id;
   switch (action) {
     case 'task-cerca-procedura': mostraListaProcedureTask(); break;
-    case 'scad-filtro-data-da': case 'scad-filtro-data-a': maschera_data_testo(el); break; // solo formattazione, nessun filtro finche non si esce dal campo
+    case 'task-filtro-q': TASK_FILTRO.q = el.value; STATI_TASK_TEAM.forEach(s=>resetPagina('taskteam-'+s)); render(); restoreFocus('[data-action="task-filtro-q"]'); break;
+    case 'scad-filtro-data-da': case 'scad-filtro-data-a': case 'task-filtro-data-da': case 'task-filtro-data-a': maschera_data_testo(el); break; // solo formattazione, nessun filtro finche non si esce dal campo
     // Task #171: autoformattazione "mentre si scrive" dei campi orario testuali (inserisce i due
     // punti da solo dopo le prime due cifre) - il salvataggio vero e proprio (dove previsto) è un
     // case separato con lo stesso nome dentro onChangeDelegato, scatenato al blur.
@@ -20388,6 +20478,14 @@ function onFocusOutDelegato(e) {
     if (selProssimo) { const n = document.querySelector(selProssimo); if (n) { n.focus(); if (n.select && n.type === 'text') n.select(); } }
   };
   switch (el.dataset.action) {
+    case 'task-filtro-data-da': case 'task-filtro-data-a': {
+      const campo = el.dataset.action === 'task-filtro-data-da' ? 'dataDa' : 'dataA';
+      const iso = parseDataTesto(el.value);
+      if (iso === null) { toast('Data non valida: scrivila come gg/mm/aaaa', true); TASK_FILTRO[campo] = ''; } else TASK_FILTRO[campo] = iso;
+      STATI_TASK_TEAM.forEach(s=>resetPagina('taskteam-'+s)); render();
+      if (selProssimo) { const n = document.querySelector(selProssimo); if (n) { n.focus(); if (n.select && n.type === 'text') n.select(); } }
+      break;
+    }
     case 'scad-filtro-data-da': applica('dataDa'); break;
     case 'scad-filtro-data-a': applica('dataA'); break;
   }
@@ -21688,6 +21786,7 @@ window.modalSocio = modalSocio;
 window.FASI_F24 = FASI_F24;
 window.quadratura770 = quadratura770;
 window.STATI_SCADENZA_CHIUSI = STATI_SCADENZA_CHIUSI;
+window.migraStatoVersamentoRitardo = migraStatoVersamentoRitardo;
 window.opzioniAvanzamento = opzioniAvanzamento;
 window.etichettaStatoScadenza = etichettaStatoScadenza;
 window.CATEGORIE_DOCUMENTO = CATEGORIE_DOCUMENTO;
@@ -21734,6 +21833,8 @@ window.aggiornaAnnualeMeta = aggiornaAnnualeMeta;
 window.modalBenvenutoDopoSetup = modalBenvenutoDopoSetup;
 window.renderNoteAggiornamento = renderNoteAggiornamento;
 window.cardAccessoRete = cardAccessoRete;
+window.sottocartellaArea = sottocartellaArea;
+window.sottocartellaPerCategoria = sottocartellaPerCategoria;
 window.procedureTaskFiltrate = procedureTaskFiltrate;
 window.htmlListaProcedureTask = htmlListaProcedureTask;
 window.impostaProceduraTask = impostaProceduraTask;

@@ -46,7 +46,9 @@ button{font-family:inherit;cursor:pointer;}
    facevano a mano (es. le select di filtro documenti). ::file-selector-button è lo pseudo-elemento
    standard per il bottone di un input file (supportato da Chrome/Edge, quindi da Electron). */
 input, select, textarea{font-family:inherit;}
-input::file-selector-button{font-family:inherit;font-size:inherit;}
+input[type=file]{font-family:inherit;font-size:12.5px;color:var(--testo-sec,#5b6478);}
+input::file-selector-button{font-family:inherit;font-size:12.5px;font-weight:600;padding:7px 12px;margin-right:10px;border-radius:9px;border:1px solid var(--blu-mid);background:#fff;color:var(--blu-mid);cursor:pointer;}
+input::file-selector-button:hover{background:var(--blu-mid);color:#fff;}
 ::-webkit-scrollbar{width:10px;height:10px;}
 ::-webkit-scrollbar-thumb{background:#c9d0dd;border-radius:20px;}
 
@@ -906,7 +908,7 @@ async function ricaricaVista() {
     VISTA = dati.vista;
     renderHero();
     renderTabbar();
-    if (!corpoHaBozzaInCorso()) renderCorpo();
+    if (!corpoHaBozzaInCorso()) { ravSalvaCampi(); renderCorpo(); ravRipristinaCampi(); }
   } catch (err) { /* refresh in background: un errore qui non deve disturbare il cliente */ }
 }
 function iniziaPolling() {
@@ -1092,10 +1094,18 @@ function panelF24() {
 // all'altra solo mostrando/nascondendo, MAI con un re-render) proprio per non perdere quello che il
 // cliente ha già digitato durante un refresh in background - vedi corpoHaBozzaInCorso più sotto,
 // esteso apposta per questo pannello dopo il bug già segnalato da Matteo sulla bozza di risposta.
+let RAV_MODALITA = null; // scelta del cliente (f24/libero): sopravvive ai refresh in background che ricreano il pannello
+let RAV_CAMPI = {};      // F24 scelto e data di versamento, stessa ragione
+function ravSalvaCampi() {
+  ['ravF24Select', 'ravF24Versamento', 'ravLiberoVersamento'].forEach(id => { const e = document.getElementById(id); if (e) RAV_CAMPI[id] = e.value; });
+}
+function ravRipristinaCampi() {
+  Object.keys(RAV_CAMPI).forEach(id => { const e = document.getElementById(id); if (e && RAV_CAMPI[id] !== undefined) { try { e.value = RAV_CAMPI[id]; } catch (x) {} } });
+}
 function panelRavvedimento() {
   const eleggibili = (VISTA.f24Tutti || []).filter(f => f.stato !== 'Pagato');
   const oggi = new Date().toISOString().slice(0, 10);
-  const modalitaIniziale = eleggibili.length ? 'f24' : 'libero';
+  const modalitaIniziale = RAV_MODALITA && (RAV_MODALITA === 'libero' || eleggibili.length) ? RAV_MODALITA : (eleggibili.length ? 'f24' : 'libero');
   const opzioniF24 = eleggibili.map(f => {
     const residuo = Math.max(0, (Number(f.importo) || 0) - (Number(f.importoPagato) || 0));
     return `<option value="${escapeHtml(f.id)}">${escapeHtml(f.descrizione || ('F24 ' + f.tipo))} — ${fmtData(f.data)} — residuo ${fmtEuro(residuo)}</option>`;
@@ -2129,6 +2139,7 @@ function gestisciClicCorpo(e) {
     // Puro toggle di visibilità fra le due forme (mai un re-render): entrambe restano nel DOM così
     // non si perde quello che il cliente ha già digitato nell'altra, se torna indietro a cambiarla.
     const modalita = el.dataset.modalita;
+    RAV_MODALITA = modalita;
     const formF24 = document.getElementById('ravFormF24');
     const formLibero = document.getElementById('ravFormLibero');
     const btnF24 = document.getElementById('ravBtnF24');
