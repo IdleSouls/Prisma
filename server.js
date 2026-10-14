@@ -119,7 +119,14 @@ const È_SEA = (() => {
    toccare quelli in uso; l'aggiornamento prende piede al prossimo avvio del server, ed e questo blocco (eseguito per primo,
    prima di caricare tutto il resto) ad applicarlo. Se server.js stesso e cambiato, il file nuovo viene ricaricato subito. */
 const CARTELLA_AGG_PRONTO = path.join(CARTELLA, 'aggiornamento-pronto');
-const FILE_AGG_AVVIO = ['gestionale.htm', 'server.js', 'portale-cliente.htm', 'portale-sw.js'];
+/* File di codice dell'app: i 4 storici + (dalla 1.26) la pagina divisa in gestionale.css e gestionale-NN-nome.js. Elenco dinamico dalla cartella. */
+const RE_FILE_CODICE = /^(server\.js|gestionale\.htm|gestionale\.css|portale-cliente\.htm|portale-sw\.js|gestionale-\d\d-[a-z0-9-]+\.js)$/;
+function èFileCodice(nome) { return typeof nome === 'string' && RE_FILE_CODICE.test(nome); }
+function elencoFileCodice(cartella) {
+  const base = ['gestionale.htm', 'server.js', 'portale-cliente.htm', 'portale-sw.js'];
+  try { fs.readdirSync(cartella).filter(èFileCodice).forEach((f) => { if (!base.includes(f)) base.push(f); }); } catch (err) { /* cartella non leggibile: solo i file base */ }
+  return base;
+}
 function leggiAggiornamentoPronto() {
   try { const m = JSON.parse(fs.readFileSync(path.join(CARTELLA_AGG_PRONTO, 'manifesto-pronto.json'), 'utf8')); return m && m.versione && Array.isArray(m.file) ? m : null; }
   catch (err) { return null; }
@@ -135,7 +142,7 @@ function applicaAggiornamentoPronto() {
   if (!versionePiuNuova(m.versione, versioneAttuale)) { pulisci(); return { applicato: false, serverCambiato: false }; }
   const pronti = [];
   for (const voce of m.file) {
-    if (!voce || !FILE_AGG_AVVIO.includes(voce.nome)) continue;
+    if (!voce || !èFileCodice(voce.nome)) continue;
     let contenuto;
     try { contenuto = fs.readFileSync(path.join(CARTELLA_AGG_PRONTO, voce.nome)); } catch (err) { console.log('Aggiornamento pronto incompleto (' + voce.nome + '): non applicato.'); return { applicato: false, serverCambiato: false }; }
     if (crypto.createHash('sha256').update(contenuto).digest('hex').toLowerCase() !== String(voce.sha256 || '').toLowerCase()) { console.log('Aggiornamento pronto alterato (' + voce.nome + '): scartato.'); pulisci(); return { applicato: false, serverCambiato: false }; }
@@ -472,11 +479,11 @@ scriviLog('Avvio di Prisma...');
 const URL_MANIFESTO_AGGIORNAMENTI = 'https://raw.githubusercontent.com/IdleSouls/Prisma/main/versione.json';
 // Cambiala qui a ogni nuova versione pubblicata (deve combaciare con quella scritta nel
 // "versione.json" caricato su GitHub, altrimenti il confronto non ha senso).
-const VERSIONE_LOCALE = '1.25.0';
+const VERSIONE_LOCALE = '1.25.1';
 // Solo questi file possono essere sovrascritti da un aggiornamento - mai un nome libero/a piacere
 // del manifesto, per non correre il rischio (anche solo teorico, es. account GitHub compromesso)
 // di far scrivere un file arbitrario altrove sul PC del cliente.
-const FILE_AGGIORNABILI = ['gestionale.htm', 'server.js', 'portale-cliente.htm', 'portale-sw.js'];
+// (whitelist degli aggiornamenti: èFileCodice, definita in cima)
 // Anche l'host da cui si scaricano i file va verificato, non solo il nome: evita che un manifesto
 // alterato reindirizzi il download altrove.
 const HOST_CONSENTITO_AGGIORNAMENTI = 'raw.githubusercontent.com';
@@ -569,7 +576,7 @@ async function scaricaAggiornamento(manifesto) {
   const scaricati = [];
   for (const voce of manifesto.file) {
     if (!voce || typeof voce.nome !== 'string' || typeof voce.url !== 'string') continue;
-    if (!FILE_AGGIORNABILI.includes(voce.nome)) {
+    if (!èFileCodice(voce.nome)) {
       scriviLog('Aggiornamento: ignorato file non in whitelist "' + voce.nome + '".');
       continue;
     }
@@ -1294,7 +1301,7 @@ function elencoBackup() {
 // dati-studio.json - stesso ritmo (8/12/16 + avvio), stessa rotazione 30 giorni, stessa dedup
 // "non ricreare se identico all'ultimo". Un ripristino da qui riporta ANCHE il codice a un punto
 // nel tempo preciso, non solo i dati.
-const FILE_PIATTAFORMA_BACKUP = ['gestionale.htm', 'server.js', 'portale-cliente.htm', 'portale-sw.js'];
+const FILE_PIATTAFORMA_BACKUP = elencoFileCodice(CARTELLA);
 
 function pulisciBackupVecchi() {
   try {

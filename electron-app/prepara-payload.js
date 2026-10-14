@@ -7,7 +7,7 @@ const RADICE = path.join(__dirname, '..');
 const DEST = path.join(__dirname, 'payload');
 fs.rmSync(DEST, { recursive: true, force: true });
 fs.mkdirSync(DEST, { recursive: true });
-const file = ['gestionale.htm', 'portale-cliente.htm', 'portale-sw.js', 'server.js', 'package.json', 'versione.json', 'Prisma.mcpb'];
+const file = ['gestionale.htm', 'portale-cliente.htm', 'portale-sw.js', 'server.js', 'package.json', 'versione.json', 'Prisma.mcpb'].concat(fs.readdirSync(RADICE).filter((f) => /^(gestionale\.css|gestionale-\d\d-[a-z0-9-]+\.js)$/.test(f)));
 const cartelle = ['logo', 'asset', 'mcp-server', 'node_modules', 'Documenti-Prisma'];
 const escludi = (x) => !/node_modules[\\/]\.bin([\\/]|$)/.test(x) && !/[\\/]\.git([\\/]|$)/.test(x) && !/mcp-server[\\/]node_modules/.test(x) && !/mcp-server[\\/]gestionale-mcp\.json/.test(x) && !/mcp-server[\\/]test-/.test(x)
   && !/Documenti-Prisma[\\/](ANALISI|.*\.docx$)/.test(x);

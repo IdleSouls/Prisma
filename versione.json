@@ -1,6 +1,6 @@
 {
   "versione": "([^",
-  "note": "Accettazione preventivo: crea in automatico gli incassi da riscuotere (unica soluzione o 50%+50%) | Incassi: nuovo pulsante Riconcilia estratto conto (CSV/Excel) che abbina le entrate agli incassi aperti per importo e origine, da confermare | Cartelle pratica nel portale: formato aaaa.gg.mm",
+  "note": "Preparazione alla divisione del codice in più file: l'aggiornamento automatico, i backup e l'installer accettano i nuovi file (nessun cambiamento visibile)",
   "richiedeNpmInstall": false,
   "file": [
     {
@@ -11,7 +11,7 @@
     {
       "nome": "server.js",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/server.js",
-      "sha256": "e9b4603a3a68f80a1cbd1c310d9f1a2174c6a4ded7a4c4ba33f76c45c5a2c74f"
+      "sha256": "2207eb6a28bd85a5b0901bfed0f8214b8e258dc62bf8291b7fd77cc4b5fd5898"
     },
     {
       "nome": "portale-cliente.htm",
@@ -24,5 +24,5 @@
       "sha256": "2ef5a0fe81a09f871a56489a86ae276f0e2f123d845afa484ff703650b47b24e"
     }
   ],
-  "firma": "Apbwt6Gej0tfEiMsuVPWzqyJvZQfXxEHZzyy7nolyHNrQV1b3G2ouellFW4dwvtXub/Ga3gkB+qYmFvhlu2OAw=="
+  "firma": "Y5y/BlAh2w14Gu0g5XcIZYGEXLBbBSSaSmr7xYfKi71EP9XwBZz0yprJjQIbu5cBKje5YmgZ6hTbavuybrTuCA=="
 }

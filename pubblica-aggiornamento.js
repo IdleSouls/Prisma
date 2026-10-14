@@ -8,7 +8,7 @@
 const { execFileSync } = require('child_process');
 const crypto = require('crypto');
 const fs = require('fs');
-const FILE = ['gestionale.htm', 'server.js', 'portale-cliente.htm', 'portale-sw.js'];
+const FILE = ['gestionale.htm', 'server.js', 'portale-cliente.htm', 'portale-sw.js'].concat(fs.readdirSync('.').filter((f) => /^(gestionale\.css|gestionale-\d\d-[a-z0-9-]+\.js)$/.test(f)).sort());
 const BASE = process.env.PRISMA_BASE_URL || 'https://raw.githubusercontent.com/IdleSouls/Prisma/main/';
 const versione = (fs.readFileSync('server.js', 'utf8').match(/const VERSIONE_LOCALE = '([^']+)'/) || [])[1];
 if (!versione) { console.error('VERSIONE_LOCALE non trovata in server.js'); process.exit(1); }
