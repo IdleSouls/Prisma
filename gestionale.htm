@@ -1379,6 +1379,24 @@ const ONBOARDING_DEF = [
   { categoria: 'Attivazione deleghe', chiave: 'delegaCassettoPrev', nome: 'Delega cassetto previdenziale attivata' },
 ];
 
+/* Passi per aprire la posizione di un nuovo cliente, ricavati dalla scheda cliente (foglio guida dell'appuntamento):
+   es. forfettario con INPS artigiani e INAIL -> apertura P.IVA, iscrizione Camera di Commercio, INPS artigiani, INAIL. */
+function stepAperturaPosizione(c) {
+  const out = [], add = (chiave, nome) => out.push({ chiave, nome });
+  if (!c) return out;
+  const tipo = c.tipo, prev = c.previdenza || '', flags = c.flags || {};
+  const societa = ['societa_persone', 'societa_capitali', 'cooperativa', 'impresa_sociale'].includes(tipo);
+  if (tipo === 'associazione') { add('assocCf', 'Registrazione atto costitutivo/statuto e attribuzione codice fiscale'); add('assocPiva', 'Apertura partita IVA (se attività commerciale)'); }
+  else if (societa) { add('costituzione', 'Costituzione della società e attribuzione P.IVA'); add('registroImprese', 'Iscrizione al Registro Imprese (Camera di Commercio)'); }
+  else { add('apriPiva', 'Apertura partita IVA'); if (tipo === 'ditta_individuale' || /Artigiani/.test(prev)) add('registroImprese', 'Iscrizione Camera di Commercio'); }
+  if (c.regimeFiscale === 'Forfettario') add('forfettario', 'Verifica requisiti e opzione per il regime forfettario');
+  if (/Artigiani/.test(prev)) add('inps', 'Iscrizione INPS artigiani/commercianti');
+  else if (/Separata/.test(prev)) add('inps', 'Iscrizione INPS gestione separata');
+  else if (/Cassa/.test(prev) || /Inarcassa|Forense|Geometri/.test(prev)) add('cassa', 'Iscrizione alla cassa previdenziale privata');
+  if (flags.inail) add('inail', 'Apertura posizione INAIL');
+  if (c.haDipendenti === 'SI') add('dipendenti', 'Apertura posizioni per il personale (INPS datore di lavoro, comunicazioni assunzione)');
+  return out;
+}
 function nuovoOnboarding() {
   const voci = {};
   for (const v of ONBOARDING_DEF) voci[v.chiave] = false;
@@ -1387,8 +1405,10 @@ function nuovoOnboarding() {
 function percentualeOnboarding(voci) {
   if (!voci) return 0;
   const chiavi = ONBOARDING_DEF.map(v => v.chiave);
-  const fatte = chiavi.filter(k => voci[k]).length;
-  return chiavi.length ? Math.round((fatte / chiavi.length) * 100) : 0;
+  const ap = Array.isArray(voci.apertura) ? voci.apertura : [];
+  const fatte = chiavi.filter(k => voci[k]).length + ap.filter(x => x.fatto).length;
+  const tot = chiavi.length + ap.length;
+  return tot ? Math.round((fatte / tot) * 100) : 0;
 }
 
 /* Task #119: fascicolo Antiriciclaggio/AML per cliente — DISTINTO dall'onboarding (che ha solo la
@@ -2236,6 +2256,8 @@ function migraDocumentiContabiliConti(stato) {
    quindi usiamo l'assegnatario del task come attribuzione più plausibile piuttosto che lasciarla
    vuota o inventare "Matteo" a prescindere. */
 function migraNoteTaskTeam(stato) {
+  // Task creati da fonti esterne (IA/MCP) senza data di inserimento: si ricava dalla prima nota o, in mancanza, da oggi.
+  (stato.taskTeam || []).forEach(t => { if (!t.creatoIl) { const n = (t.noteStorico || []).map(x => x.data).filter(Boolean).sort()[0]; t.creatoIl = n ? String(n).slice(0, 10) : oggiISO(); } });
   if (!Array.isArray(stato.taskTeam)) return 0;
   let migrati = 0;
   stato.taskTeam.forEach(t => {
@@ -2286,6 +2308,7 @@ function normalizzaStatoCaricato(parsed) {
   migraDocumentiContabiliConti(stato);
   migraNoteTaskTeam(stato);
   migraStatoVersamentoRitardo(stato);
+  migraModelloPreventivoStudio(stato);
   migraCampiCredenziali(stato);
   unisciLibriSociali(stato);
   assicuraLibriSocieta(stato);
@@ -3800,6 +3823,20 @@ function creaF24VersamentoInRitardo(id) {
   return f.id;
 }
 /* Vecchio stato 'Cliente non può pagare' -> 'Versamento in ritardo' (con F24 e alert). */
+/* Modello di preventivo dello studio (testo del preventivo Toby: attività, pagamento, condizioni generali, accettazione) con
+   impaginazione 'lettera' (logo in testa). Si aggiunge una volta sola se non esiste già un modello Preventivo attivo con
+   {{dettaglioAttivita}}, e diventa quello predefinito: e il testo che il form semplificato di Nuovo preventivo compila. */
+function migraModelloPreventivoStudio(stato) {
+  const mod = stato.modelliDocumento = stato.modelliDocumento || [];
+  stato.meta = stato.meta || {};
+  if (stato.meta.modelloPreventivoStudio) return; // una volta sola: se poi lo si disattiva non lo si riaggiunge
+  if (mod.some(m => m.categoria === 'Preventivo' && m.attivo !== false && /dettaglioAttivita/.test(m.corpo || ''))) return;
+  const base = modelliDocumentoDefault().find(m => m.categoria === 'Preventivo' && /dettaglioAttivita/.test(m.corpo));
+  if (!base) return;
+  mod.forEach(m => { if (m.categoria === 'Preventivo') m.predefinito = false; });
+  stato.meta.modelloPreventivoStudio = true;
+  mod.push(Object.assign({}, base, { id: uid('mod'), nome: 'Preventivo (modello studio)', attivo: true, predefinito: true, stile: 'lettera', creatoIl: oggiISO() }));
+}
 function migraStatoVersamentoRitardo(stato) {
   const ov = stato.scadenzeOverrides || {};
   Object.keys(ov).forEach(k => { if (ov[k] && ov[k].stato === STATO_NON_PUO_PAGARE_LEGACY) { ov[k].stato = STATO_NON_PUO_PAGARE; ov[k].ritardoVersamento = true; if (!ov[k].dataCompletamento) ov[k].dataCompletamento = oggiISO(); } });
@@ -4595,13 +4632,19 @@ function accettaPreventivo(id, opz) {
     if (attivato && continuativo && cliente.preventivoAnnuo == null && p.importo != null) patch.preventivoAnnuo = p.importo;
     if (Object.keys(patch).length) aggiornaCliente(cliente.id, patch);
     if (attivato) {
+      if (opz.responsabile) aggiornaCliente(cliente.id, { responsabileStudio: opz.responsabile });
       if (!STATE.onboarding[cliente.id]) STATE.onboarding[cliente.id] = nuovoOnboarding();
       STATE.onboarding[cliente.id].mandato = true;
+      const steps = stepAperturaPosizione(clienteById(cliente.id));
+      if (steps.length) STATE.onboarding[cliente.id].apertura = steps.map(x => ({ chiave: x.chiave, nome: x.nome.replace(/^./, ch => ch), fatto: false }));
       const d = new Date(); d.setDate(d.getDate() + 7);
+      const testoTask = steps.length
+        ? 'Da aprire: ' + steps.map(x => x.nome.charAt(0).toLowerCase() + x.nome.slice(1)).join(', ') + '. Spunta gli step completati in Onboarding.'
+        : 'Preventivo accettato: completare scheda anagrafica, documenti, antiriciclaggio e deleghe (vedi Onboarding).';
       aggiungiTaskTeam({
-        titolo: `Avvio cliente: ${cliente.ragioneSociale} (preventivo accettato)`, assegnatoA: cliente.responsabileStudio || null,
+        titolo: `Apertura posizione cliente ${cliente.ragioneSociale}`, assegnatoA: opz.assegnatarioApertura || opz.responsabile || cliente.responsabileStudio || null,
         clienteId: cliente.id, scadenza: d.toISOString().slice(0, 10), stato: STATI_TASK_TEAM[0],
-        noteStorico: [{ id: uid('nota'), testo: 'Preventivo accettato: completare scheda anagrafica, documenti, antiriciclaggio e deleghe (vedi Onboarding).', autore: operatoreCorrente() || null, data: oggiISO() }],
+        noteStorico: [{ id: uid('nota'), testo: testoTask, autore: operatoreCorrente() || null, data: oggiISO() }],
         creatoIl: oggiISO(),
       });
       salvaStato();
@@ -7636,11 +7679,17 @@ function renderOnboarding() {
       `).join('')}
     </div>`).join('');
 
+  const apertura = Array.isArray(voci.apertura) ? voci.apertura : [];
+  const aperturaHtml = apertura.length ? `<div style="margin-bottom:14px;">
+      <div style="font-size:11px;font-weight:700;color:var(--text-mut);text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px;">Apertura posizioni</div>
+      ${apertura.map(x => `<label class="checkline"><input type="checkbox" data-action="onboard-apertura-toggle" data-chiave="${escapeHtml(x.chiave)}" ${x.fatto ? 'checked' : ''}> ${escapeHtml(x.nome)}${x.fatto && x.fattoDa ? ` <span class="helptext" style="display:inline;">— ${escapeHtml(x.fattoDa)}, ${escapeHtml(fmtData(x.fattoIl))}</span>` : ''}</label>`).join('')}
+    </div>` : '';
   return `<div style="display:grid;grid-template-columns:280px 1fr;gap:18px;align-items:flex-start;">
     <div class="card">${ricerca}${listaHtml}</div>
     <div class="card">
       <div class="section-title">${escapeHtml(cliente.ragioneSociale)} <span class="cnt">${pct}% completato</span></div>
       <div class="progress" style="margin-bottom:16px;"><div style="width:${pct}%"></div></div>
+      ${aperturaHtml}
       ${checklistHtml}
     </div>
   </div>`;
@@ -10268,7 +10317,7 @@ function modalReportMensile(clienteId, mese) {
    cliente (vedi renderAntiriciclaggio) pur condividendo esattamente lo stesso STATE.preventivi,
    lo stesso motore di generazione e le stesse azioni (apri/modifica/elimina/stampa/esporta). */
 const STATI_PREVENTIVO = ['Bozza', 'Inviato', 'Accettato', 'Rifiutato'];
-let PREV_FILTRO = { cliente: 'Tutti', categoria: 'Tutti', stato: 'Tutti' };
+let PREV_FILTRO = { cliente: 'Tutti', categoria: 'Tutti', stato: 'Tutti', soloPotenziali: false };
 
 /* Apre una finestra separata con il documento pronto per la stampa: window.print() richiede un
    vero contesto browser (non implementato in jsdom, quindi mai testabile end-to-end) — avvolto in
@@ -10480,6 +10529,7 @@ function renderPreventiviBase() {
       <option value="Tutti" ${PREV_FILTRO.stato==='Tutti'?'selected':''}>Tutti</option>
       ${STATI_PREVENTIVO.map(s=>`<option ${PREV_FILTRO.stato===s?'selected':''}>${s}</option>`).join('')}
     </select></div>
+    <div class="field" style="min-width:max-content;"><label>&nbsp;</label><label class="checkline" style="white-space:nowrap;"><input type="checkbox" data-action="prev-filtro-potenziali" ${PREV_FILTRO.soloPotenziali ? 'checked' : ''}> Solo potenziali clienti</label></div>
     <div class="field" style="margin-left:auto;"><label>&nbsp;</label><button class="btn" data-action="nuovo-potenziale-apri">+ Preventivo a nuovo cliente</button> <button class="btn primary" data-action="nuovo-preventivo">+ Nuovo documento</button></div>
   </div>`;
 
@@ -10498,6 +10548,7 @@ function renderPreventiviBase() {
   if (PREV_FILTRO.cliente !== 'Tutti') lista = lista.filter(p => p.clienteId === PREV_FILTRO.cliente);
   if (PREV_FILTRO.categoria !== 'Tutti') lista = lista.filter(p => p.categoria === PREV_FILTRO.categoria);
   if (PREV_FILTRO.stato !== 'Tutti') lista = lista.filter(p => p.stato === PREV_FILTRO.stato);
+  if (PREV_FILTRO.soloPotenziali) lista = lista.filter(p => { const c = clienteById(p.clienteId); return c && c.stato === 'potenziale'; });
   if (lista.length === 0) {
     return kpi + toolbar + `<div class="card"><div class="empty">Nessun documento corrisponde ai filtri.</div></div>`;
   }
@@ -10525,10 +10576,71 @@ function renderPreventiviBase() {
    documento per il cliente sbagliato. soloAml filtra quali modelli sono selezionabili: solo quelli
    con categoria "AML*" se true, solo gli altri se false — così lo stesso modale serve sia Preventivi
    e mandati sia la sezione Documenti del fascicolo Antiriciclaggio. */
+/* Form semplificato per i nuovi preventivi (richiesta Matteo: il vecchio modale aveva troppe funzioni inutili):
+   cliente, oggetto, righe di attivita con compenso, modalita di pagamento, data e validita. Il testo si genera dal modello. */
+let PREV_FORM_COMPLETO = false;
+const PAGAMENTI_PREVENTIVO = [
+  { v: 'unica', l: 'Unica soluzione alla firma del mandato' },
+  { v: '5050', l: '50% alla firma del mandato + 50% al completamento delle attività' },
+  { v: 'libero', l: 'Altro (scrivo io)' },
+];
+function rigaPreventivoHtml(r) {
+  r = r || {};
+  return `<div class="riga-prev" style="display:flex;gap:8px;align-items:flex-start;margin-bottom:6px;" data-richiede-mandato="${r.richiedeMandato ? '1' : '0'}" data-id-catalogo="${escapeHtml(r.id || '')}">
+    <textarea class="riga-prev-desc" rows="2" placeholder="Descrizione dell'attività" style="flex:1;min-height:40px;">${escapeHtml(r.nome || '')}</textarea>
+    <input type="number" step="0.01" class="riga-prev-importo" data-action="prev-riga-importo" placeholder="€" value="${r.prezzo != null ? r.prezzo : ''}" style="width:110px;">
+    <button type="button" class="btn small" data-action="prev-riga-rimuovi" title="Togli la riga">✕</button>
+  </div>`;
+}
+function totaleRighePreventivo() {
+  return Array.from(document.querySelectorAll('.riga-prev-importo')).reduce((s, i) => s + (Number(i.value) || 0), 0);
+}
+function aggiornaTotalePreventivoSemplice() { const t = document.getElementById('pTotale'); if (t) t.textContent = fmtEuro(totaleRighePreventivo()); }
+function modalPreventivoSemplice(modello, modelliDisponibili, clienteCorrenteId, clienteBloccato) {
+  const clientiAttivi = STATE.clienti.filter(c => c.stato !== 'cessato');
+  const catalogo = STATE.catalogoAttivitaStudio || [];
+  const selCliente = clienteBloccato
+    ? `<div class="field"><label>Cliente</label><div class="helptext" style="padding-top:6px;">${escapeHtml(nomeCliente(clienteCorrenteId))}</div></div>`
+    : `<div class="field"><label>Cliente *</label><select id="pCliente">${clientiAttivi.map(c => `<option value="${c.id}" ${clienteCorrenteId === c.id ? 'selected' : ''}>${escapeHtml(c.ragioneSociale)}${c.stato === 'potenziale' ? ' (potenziale)' : ''}</option>`).join('')}</select></div>`;
+  const altriModelli = (modelliDisponibili || []).filter(m => m.categoria === 'Preventivo' && /dettaglioAttivita/.test(m.corpo || ''));
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
+    <div class="modal" data-contesto-aml="0" data-cliente-bloccato="${clienteBloccato ? '1' : '0'}" data-cliente-attuale="${clienteCorrenteId || ''}" style="max-width:640px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div><h2>Nuovo preventivo</h2><div class="modal-sub">Il testo si compone dal modello: compili solo attività e compenso.</div></div>
+        <button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button>
+      </div>
+      <form id="formPreventivoSemplice" onsubmit="return false;">
+        <div class="grid2">
+          ${selCliente}
+          <div class="field"><label>Modello</label><select id="pModelloSemplice">${altriModelli.map(m => `<option value="${m.id}" ${m.id === modello.id ? 'selected' : ''}>${escapeHtml(m.nome)}</option>`).join('')}</select></div>
+          <div class="field full" style="grid-column:1/-1;"><label>Oggetto *</label><input id="pOggetto" placeholder="es. Apertura partita IVA e gestione contabile forfettario"></div>
+        </div>
+        <div class="section-title" style="margin-top:12px;">Attività e compenso</div>
+        <div id="righePreventivo">${rigaPreventivoHtml()}</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px;">
+          <button type="button" class="btn small" data-action="prev-riga-aggiungi">+ Aggiungi riga</button>
+          ${catalogo.length ? `<select id="pDaCatalogo" data-action="prev-riga-da-catalogo" style="max-width:260px;"><option value="">+ Dal catalogo studio…</option>${catalogo.map(a => `<option value="${a.id}">${escapeHtml(a.nome)}${a.prezzo != null ? ' — ' + escapeHtml(fmtEuro(a.prezzo)) : ''}</option>`).join('')}</select>` : ''}
+          <span style="margin-left:auto;font-weight:700;">Totale: <span id="pTotale">${fmtEuro(0)}</span> <span class="helptext" style="display:inline;">+ C.P. 4%</span></span>
+        </div>
+        <div class="grid2" style="margin-top:12px;">
+          <div class="field full" style="grid-column:1/-1;"><label>Pagamento</label><select id="pPagamento" data-action="prev-pagamento-cambia">${PAGAMENTI_PREVENTIVO.map(o => `<option value="${o.v}">${escapeHtml(o.l)}</option>`).join('')}</select></div>
+          <div class="field full" id="pPagamentoLiberoWrap" style="grid-column:1/-1;display:none;"><label>Condizioni di pagamento</label><textarea id="pPagamentoLibero" rows="2"></textarea></div>
+          <div class="field"><label>Data emissione</label><input type="date" id="pDataEmissione" value="${oggiISO()}"></div>
+          <div class="field"><label>Validità (giorni)</label><input type="number" id="pValiditaGiorni" value="15" min="1"></div>
+        </div>
+      </form>
+      <div class="modal-actions">
+        <button class="btn small" data-action="prev-form-completo" style="margin-right:auto;" title="Il vecchio modulo con tutte le opzioni">Modulo completo</button>
+        <button class="btn" data-action="chiudi-modal">Annulla</button>
+        <button class="btn primary" data-action="salva-preventivo-semplice">Crea preventivo</button>
+      </div>
+    </div></div>`;
+}
 function modalPreventivo(id, clienteIdCorrente, soloAml, modelloIdForzato, clienteBloccatoForzato) {
   const editing = id ? STATE.preventivi.find(x => x.id === id) : null;
   if (id && !editing) { toast('Documento non trovato.'); return; }
   if (!editing && STATE.clienti.length === 0) { toast('Aggiungi prima almeno un cliente.'); return; }
+  if (!id && !soloAml) migraModelloPreventivoStudio(STATE);
   const clientiAttivi = STATE.clienti.filter(c => c.stato !== 'cessato');
   /* clienteBloccatoForzato è un flag esplicito (non dedotto dalla presenza di clienteIdCorrente):
      un documento aperto dal fascicolo di un cliente specifico resta bloccato su quel cliente anche
@@ -10547,8 +10659,13 @@ function modalPreventivo(id, clienteIdCorrente, soloAml, modelloIdForzato, clien
       toast(soloAml ? 'Nessun modello antiriciclaggio attivo: creane uno in "Modelli documenti".' : 'Nessun modello attivo: creane uno in "Modelli documenti".');
       return;
     }
-    const modelloId = modelloIdForzato || (modelliDisponibili.find(m => m.predefinito) || modelliDisponibili[0]).id;
+    const compatibile = (m) => m.categoria === 'Preventivo' && /dettaglioAttivita/.test(m.corpo || '');
+    const modelloId = modelloIdForzato || (modelliDisponibili.find(m => m.predefinito && compatibile(m)) || modelliDisponibili.find(compatibile) || modelliDisponibili.find(m => m.predefinito && m.categoria === 'Preventivo') || modelliDisponibili.find(m => m.categoria === 'Preventivo') || modelliDisponibili.find(m => m.predefinito) || modelliDisponibili[0]).id;
     modello = modelliDisponibili.find(m => m.id === modelloId) || modelliDisponibili[0];
+  }
+  if (!editing && !soloAml && modello && modello.categoria === 'Preventivo' && /dettaglioAttivita/.test(modello.corpo || '') && !PREV_FORM_COMPLETO) {
+    modalPreventivoSemplice(modello, modelliDisponibili, clienteCorrenteId, clienteBloccato);
+    return;
   }
   if (modello) campiPersonalizzati = placeholderPersonalizzatiModello(modello.corpo);
   const valoriCustomEsistenti = editing ? (editing.valoriCustom || {}) : {};
@@ -10731,7 +10848,12 @@ function modalAccettazionePreventivo(id) {
         <div class="field"><label>Nota (opzionale)</label><input id="accNota" placeholder="es. firmato via mail"></div>
         ${sezioneFile}
       </div></form>
-      ${potenziale ? `<div class="helptext" style="margin-top:8px;">Il cliente "${escapeHtml(c.ragioneSociale)}" è potenziale: con l'accettazione diventa <b>attivo</b>, parte l'onboarding e viene creato un task di avvio.</div>` : ''}
+      ${potenziale ? `<div class="grid2" style="margin-top:10px;">
+        <div class="field"><label>Responsabile del cliente</label><select id="accResp">${(STATE.meta.responsabili || []).map(r => `<option ${r === c.responsabileStudio ? 'selected' : ''}>${escapeHtml(r)}</option>`).join('')}</select></div>
+        <div class="field"><label>Chi apre le posizioni</label><select id="accApertura">${(STATE.meta.responsabili || []).map(r => `<option ${r === c.responsabileStudio ? 'selected' : ''}>${escapeHtml(r)}</option>`).join('')}</select></div>
+        <div class="field full" style="grid-column:1/-1;"><div class="helptext">Posizioni da aprire (dalla scheda cliente): ${stepAperturaPosizione(c).map(x => escapeHtml(x.nome)).join(' · ') || 'nessuna indicata'}</div></div>
+      </div>
+      <div class="helptext" style="margin-top:8px;">Il cliente "${escapeHtml(c.ragioneSociale)}" è potenziale: con l'accettazione diventa <b>attivo</b>, parte l'onboarding e viene creato un task di avvio.</div>` : ''}
       <div class="modal-actions">
         <button class="btn" data-action="chiudi-modal">Annulla</button>
         <button class="btn primary" data-action="preventivo-accetta-conferma" data-id="${p.id}">Conferma accettazione</button>
@@ -11826,7 +11948,8 @@ function modalTaskTeam(taskId, presetClienteId) {
 }
 
 function aggiungiTaskTeam(t) {
-  const task = Object.assign({ id: uid('task'), noteStorico: [] }, t);
+  const task = Object.assign({ id: uid('task'), noteStorico: [], creatoIl: oggiISO() }, t);
+  if (!task.creatoIl) task.creatoIl = oggiISO(); // anche se il chiamante (es. ponte MCP/IA) lo passa vuoto
   // Difensivo: un chiamante esterno (es. il ponte MCP) potrebbe non passare uno stato - senza
   // questo default il task risulterebbe comunque "aperto" nei KPI (stato !== 'Fatto') ma
   // invisibile nelle 3 colonne della vista a kanban, che fanno un confronto esatto con
@@ -18928,17 +19051,43 @@ function onClickDelegatoInterno(e) {
     case 'preventivo-accetta-conferma': {
       const p = STATE.preventivi.find(x => x.id === id);
       if (!p) return;
+      { const cp = clienteById(p.clienteId); if (cp && cp.stato === 'potenziale' && !confermaAzione('Confermi l\'accettazione? Il cliente diventa attivo: vengono create la scheda cliente, le scadenze collegate e il task di apertura posizione.')) return; }
       const data = h('accData').value || oggiISO(), nota = h('accNota').value.trim();
       const inputFile = h('accFile');
       const file = (inputFile && inputFile.files && inputFile.files[0]) || null;
       const fine = (esito) => {
-        const r = accettaPreventivo(id, { data, nota, file: esito });
+        const r = accettaPreventivo(id, { data, nota, file: esito, responsabile: h('accResp') ? h('accResp').value : null, assegnatarioApertura: h('accApertura') ? h('accApertura').value : null });
         chiudiModal(); render(); modalDettaglioPreventivo(id);
         toast(r && r.attivato ? 'Preventivo accettato: cliente attivato, onboarding avviato.' : 'Accettazione registrata.');
       };
       if (file) {
         uploadFileReale(file, p.clienteId, nomeCliente(p.clienteId), sottocartellaArea('documenti', null, 'Preventivi')).then(fine).catch(err => { console.error('Upload firmato non riuscito:', err.message); fine(null); toast('Accettazione registrata, ma il file non è stato caricato: ' + err.message, true); });
       } else fine(null);
+      break;
+    }
+    case 'prev-riga-aggiungi': { const c = document.getElementById('righePreventivo'); if (c) c.insertAdjacentHTML('beforeend', rigaPreventivoHtml()); break; }
+    case 'prev-riga-rimuovi': { const r = el.closest('.riga-prev'); const c = document.getElementById('righePreventivo'); if (r && c) { if (c.children.length > 1) r.remove(); else { r.querySelector('.riga-prev-desc').value = ''; r.querySelector('.riga-prev-importo').value = ''; } aggiornaTotalePreventivoSemplice(); } break; }
+    case 'prev-form-completo': { const m = document.querySelector('.modal'); const cid = h('pCliente') ? h('pCliente').value : (m ? m.dataset.clienteAttuale : null); const bl = m && m.dataset.clienteBloccato === '1'; PREV_FORM_COMPLETO = true; modalPreventivo(null, cid, false, null, bl); PREV_FORM_COMPLETO = false; break; }
+    case 'salva-preventivo-semplice': {
+      const m = document.querySelector('.modal');
+      const clienteId = h('pCliente') ? h('pCliente').value : (m ? m.dataset.clienteAttuale : null);
+      const oggetto = h('pOggetto').value.trim();
+      const righe = Array.from(document.querySelectorAll('.riga-prev')).map(r => ({ nome: r.querySelector('.riga-prev-desc').value.trim(), prezzo: r.querySelector('.riga-prev-importo').value === '' ? null : Number(r.querySelector('.riga-prev-importo').value), id: r.dataset.idCatalogo || uid('att'), richiedeMandato: r.dataset.richiedeMandato === '1' })).filter(r => r.nome);
+      if (!clienteId || !oggetto) { toast('Indica cliente e oggetto.', true); return; }
+      if (!righe.length) { toast('Inserisci almeno un\'attività.', true); return; }
+      const totale = righe.reduce((x, r) => x + (r.prezzo || 0), 0);
+      const pag = h('pPagamento').value;
+      const fmt2 = (n) => fmtEuro(n);
+      let condizioni;
+      if (pag === 'unica') condizioni = `Pagamento in unica soluzione: ${fmt2(totale)} + C.P. alla firma del mandato professionale.`;
+      else if (pag === '5050') condizioni = `1° acconto (50%): ${fmt2(totale / 2)} + C.P. alla firma del mandato professionale.\n2° saldo (50%): ${fmt2(totale / 2)} + C.P. al completamento delle attività.`;
+      else condizioni = h('pPagamentoLibero').value.trim();
+      const dataEmissione = h('pDataEmissione').value || oggiISO();
+      const gg = Number(h('pValiditaGiorni').value) || 15;
+      const vf = new Date(dataEmissione + 'T00:00:00'); vf.setDate(vf.getDate() + gg);
+      const modelloId = h('pModelloSemplice').value;
+      creaPreventivoDaModello({ clienteId, modelloId, oggetto, importo: totale, dataEmissione, validoFino: vf.toISOString().slice(0, 10), stato: 'Bozza', note: '', valoriCustom: { condizioniPagamento: condizioni, dettaglioAttivita: testoElencoAttivita(righe) }, attivitaScelte: righe });
+      chiudiModal(); render(); toast('Preventivo creato.');
       break;
     }
     case 'nuovo-potenziale-apri': modalNuovoPotenziale(); break;
@@ -20140,6 +20289,8 @@ function onChangeDelegato(e) {
     // insieme alla select, senza dover chiudere e riaprire a mano.
     case 'app-cambia-procedura': aggiornaAppuntamento(id, { procedureId: el.value || PROC_NESSUNA }); apriModalAppuntamento(id); break;
     case 'app-cambia-note': aggiornaAppuntamento(id, { note: el.value }); break;
+    case 'prev-pagamento-cambia': { const w = document.getElementById('pPagamentoLiberoWrap'); if (w) w.style.display = el.value === 'libero' ? '' : 'none'; break; }
+    case 'prev-riga-da-catalogo': { const a = (STATE.catalogoAttivitaStudio || []).find(x => x.id === el.value); if (a) { const c = document.getElementById('righePreventivo'); const prima = c.children.length === 1 && !c.querySelector('.riga-prev-desc').value.trim() && c.querySelector('.riga-prev-importo').value === ''; if (prima) c.innerHTML = ''; c.insertAdjacentHTML('beforeend', rigaPreventivoHtml({ id: a.id, nome: a.nome, prezzo: a.prezzo, richiedeMandato: a.richiedeMandato })); aggiornaTotalePreventivoSemplice(); el.value = ''; } break; }
     case 'potenziale-da-appuntamento': modalNuovoPotenziale(el.value || null); break;
     case 'app-foglio-campo': { const a = trovaAppuntamento(id); if (!a) break; const foglio = Object.assign({}, a.foglio || {}); foglio[el.dataset.campo] = el.type === 'checkbox' ? el.checked : el.value; aggiornaAppuntamento(id, { foglio }); break; }
     case 'nuovo-evento-scad-frequenza': aggiornaVisibilitaMeseScadenzaRicorrente(); break;
@@ -20196,6 +20347,7 @@ function onChangeDelegato(e) {
       break;
     }
     case 'onboard-toggle': aggiornaOnboarding(ONBOARD_SELECTED, el.dataset.chiave, el.checked); render(); break;
+    case 'onboard-apertura-toggle': { const o = STATE.onboarding[ONBOARD_SELECTED]; const x = o && (o.apertura || []).find(v => v.chiave === el.dataset.chiave); if (x) { x.fatto = el.checked; x.fattoDa = el.checked ? (operatoreCorrente() || null) : null; x.fattoIl = el.checked ? oggiISO() : null; salvaStato(); } render(); break; }
 
     case 'aml-toggle-checklist': aggiornaChecklistAntiriciclaggio(AML_SELECTED, el.dataset.chiave, el.checked); render(); break;
     case 'aml-cambia-rischio': aggiornaCampoAntiriciclaggio(AML_SELECTED, 'profiloRischio', el.value); render(); break;
@@ -20285,6 +20437,7 @@ function onChangeDelegato(e) {
     case 'prev-filtro-cliente': PREV_FILTRO.cliente = el.value; resetPagina('preventivi'); render(); break;
     case 'prev-filtro-categoria': PREV_FILTRO.categoria = el.value; resetPagina('preventivi'); render(); break;
     case 'prev-filtro-stato': PREV_FILTRO.stato = el.value; resetPagina('preventivi'); render(); break;
+    case 'prev-filtro-potenziali': PREV_FILTRO.soloPotenziali = el.checked; resetPagina('preventivi'); render(); break;
     case 'prev-cambia-stato': {
       const pp = STATE.preventivi.find(x => x.id === id);
       if (pp && pp.categoria === 'Preventivo' && el.value === 'Accettato' && pp.stato !== 'Accettato') { modalAccettazionePreventivo(id); break; }
@@ -20385,6 +20538,7 @@ function onInputDelegato(e) {
   const id = el.dataset.id;
   switch (action) {
     case 'task-cerca-procedura': mostraListaProcedureTask(); break;
+    case 'prev-riga-importo': aggiornaTotalePreventivoSemplice(); break;
     case 'task-filtro-q': TASK_FILTRO.q = el.value; STATI_TASK_TEAM.forEach(s=>resetPagina('taskteam-'+s)); render(); restoreFocus('[data-action="task-filtro-q"]'); break;
     case 'scad-filtro-data-da': case 'scad-filtro-data-a': case 'task-filtro-data-da': case 'task-filtro-data-a': maschera_data_testo(el); break; // solo formattazione, nessun filtro finche non si esce dal campo
     // Task #171: autoformattazione "mentre si scrive" dei campi orario testuali (inserisce i due
@@ -21683,7 +21837,7 @@ window.aggiornaAccettazione = aggiornaAccettazione; window.accettazioneCompleta 
 window.libriPrevistiCliente = libriPrevistiCliente; window.lacuneLibriCliente = lacuneLibriCliente; window.assegnaAttoLibro = assegnaAttoLibro; window.attiLibroCliente = attiLibroCliente; window.attiDaTrascrivere = attiDaTrascrivere;
 window.datiCruscotto = datiCruscotto; window.annualiCedutiCliente = annualiCedutiCliente;
 window.aggiungiDocumento = aggiungiDocumento; window.aggiungiLibroSociale = aggiungiLibroSociale; window.aggiornaLibroSociale = aggiornaLibroSociale;
-window.fogliPronti = fogliPronti; window.apriModalAppuntamento = apriModalAppuntamento; window.modalNuovoPotenziale = modalNuovoPotenziale; window.aggiungiAppuntamento = aggiungiAppuntamento; window.accettaPreventivo = accettaPreventivo; window.creaClientePotenziale = creaClientePotenziale; window.aggiungiAttivitaFatturabile = aggiungiAttivitaFatturabile; window.segnaAttivitaFatturate = segnaAttivitaFatturate; window.prossimaFatturazioneCliente = prossimaFatturazioneCliente; window.attivitaAperteCliente = attivitaAperteCliente;
+window.modalPreventivo = modalPreventivo; window.modalDettaglioPreventivo = modalDettaglioPreventivo; window.modalAccettazionePreventivo = modalAccettazionePreventivo; window.setPrevFormCompleto = (v) => { PREV_FORM_COMPLETO = !!v; }; window.stepAperturaPosizione = stepAperturaPosizione; window.fogliPronti = fogliPronti; window.apriModalAppuntamento = apriModalAppuntamento; window.modalNuovoPotenziale = modalNuovoPotenziale; window.aggiungiAppuntamento = aggiungiAppuntamento; window.accettaPreventivo = accettaPreventivo; window.creaClientePotenziale = creaClientePotenziale; window.aggiungiAttivitaFatturabile = aggiungiAttivitaFatturabile; window.segnaAttivitaFatturate = segnaAttivitaFatturate; window.prossimaFatturazioneCliente = prossimaFatturazioneCliente; window.attivitaAperteCliente = attivitaAperteCliente;
 window.clienteAttivo = clienteAttivo; window.cessaCliente = cessaCliente; window.riattivaCliente = riattivaCliente; window.configContabTerzi = configContabTerzi;
 /* Area cliente interattiva (task #88): stessa logica di sopra, ma in scrittura. */
 window.aggiungiMessaggioPortaleClienteEsterno = aggiungiMessaggioPortaleClienteEsterno;

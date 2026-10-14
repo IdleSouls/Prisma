@@ -1,17 +1,17 @@
 {
-  "versione": "1.22.0",
-  "note": "Appuntamenti: foglio guida del consulente (posizione da aprire, regime, posizione contributiva, INAIL, ATECO) da consegnare alla segreteria | Preventivi > Preventivo a nuovo cliente: si parte dal foglio guida e il cliente potenziale si crea precompilato",
+  "versione": "1.23.0",
+  "note": "Nuovo preventivo semplificato: cliente, oggetto, righe di attività con compenso, pagamento (unica soluzione o 50/50), validità; testo dal modello studio con logo in testa | Preventivi: filtro \"Solo potenziali clienti\" | Accettazione del preventivo: conferma, scelta del responsabile del cliente e di chi apre le posizioni; si crea il task \"Apertura posizione cliente\" e gli step (P.IVA, Camera di Commercio, INPS, INAIL...) compaiono nell'Onboarding | Task creati dall'IA: ora hanno sempre la data di inserimento (anche quelli già esistenti)",
   "richiedeNpmInstall": false,
   "file": [
     {
       "nome": "gestionale.htm",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale.htm",
-      "sha256": "c32633ced2442c76deef7dfd00d537ecb61da06cd872a100097c0610b7198a1b"
+      "sha256": "52416fdad9897ca257106b483949160fa1c47199677d1ff45bbe4cbf8838c3f0"
     },
     {
       "nome": "server.js",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/server.js",
-      "sha256": "d7f8a926b1b6a873366d224bd79b4914111c75ba4436d239bccfcad6e8238422"
+      "sha256": "a8fbc549846f39cb30ddecc208b60c136c55ff55d06c6e6d39f4cddc949cf286"
     },
     {
       "nome": "portale-cliente.htm",
@@ -24,5 +24,5 @@
       "sha256": "2ef5a0fe81a09f871a56489a86ae276f0e2f123d845afa484ff703650b47b24e"
     }
   ],
-  "firma": "KAbx4dc9OxBWY+xVKyldz70yyfcKCBMCy3xcE6VqAC6bwmcUw4OipQe9LGuRxVWoA3dzxXmwD0Mq/u+Q7+NXBw=="
+  "firma": "9jaBUbLJeqk3W7P+ePwE10coPMX9kuf8TifYYc+Oq/HDiIc8lxGE+363YZiyP/J4o9XTkb/vjJiD96MOx2rIBg=="
 }

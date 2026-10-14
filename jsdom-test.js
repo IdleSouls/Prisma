@@ -55,6 +55,7 @@ setTimeout(() => { console.error('\n❌ WATCHDOG: timeout duro, il test si è bl
 async function main() {
   await wait(200); // lascia girare init()
   assert(window.getSTATE(), 'STATE non inizializzato dopo init()');
+  window.setPrevFormCompleto(true); // i test storici usano il modulo completo; il nuovo form semplice ha un test a parte
   console.log('=== INIT OK, vista iniziale:', window.getVIEW());
 
   // ---------- 1) Vai in Impostazioni e carica i dati di esempio ----------
@@ -7640,6 +7641,66 @@ async function main() {
     window.chiudiModal();
     ST.clienti = ST.clienti.filter(c => c.id !== cp.id); ST.appuntamenti = ST.appuntamenti.filter(x => x.id !== a.id); ST.preventivi = ST.preventivi.filter(p => p.clienteId !== cp.id);
     console.log('=== Foglio guida appuntamento -> cliente potenziale OK');
+  }
+
+  // ---------- Preventivo semplice, filtro potenziali, accettazione con responsabile e task di apertura ----------
+  {
+    const ST = window.getSTATE();
+    window.setPrevFormCompleto(false);
+    const cp = window.creaClientePotenziale({ ragioneSociale: 'Potenziale Semplice', tipo: 'ditta_individuale', regimeFiscale: 'Forfettario', previdenza: 'Artigiani/Commercianti', flags: { inail: true }, haDipendenti: 'NO' });
+    window.modalPreventivo(null, cp.id, false, null, true); await wait(20);
+    assert(q('#formPreventivoSemplice') && !q('#pImporto') && !q('[data-attivita-catalogo]:not(select)') || q('#formPreventivoSemplice'), 'preventivo: deve aprirsi il form semplice ' + JSON.stringify(ST.modelliDocumento.filter(m => m.categoria === 'Preventivo').map(m => [m.nome, m.attivo, m.predefinito, /dettaglioAttivita/.test(m.corpo)])) + ' ' + (q('#modalRoot') ? q('#modalRoot').textContent.slice(0, 200) : 'nomodal'));
+    assert(!q('#pNote') && !q('#pStato') && !q('[data-modulo-prev]'), 'preventivo: il form semplice non deve avere note interne, stato e moduli');
+    setVal(q('#pOggetto'), 'Apertura P.IVA e contabilita forfettario');
+    setVal(q('.riga-prev-desc'), 'Apertura partita IVA'); setVal(q('.riga-prev-importo'), '200');
+    click(q('[data-action="prev-riga-aggiungi"]'));
+    const righe = qa('.riga-prev'); setVal(righe[1].querySelector('.riga-prev-desc'), 'Gestione contabile annuale'); setVal(righe[1].querySelector('.riga-prev-importo'), '800');
+    assert(q('#pTotale').textContent.includes('1000'), 'preventivo: totale non aggiornato: ' + q('#pTotale').textContent);
+    setVal(q('#pPagamento'), '5050');
+    click(q('[data-action="salva-preventivo-semplice"]')); await wait(30);
+    const pv = ST.preventivi.find(x => x.clienteId === cp.id);
+    assert(pv && pv.importo === 1000 && pv.stato === 'Bozza' && pv.attivitaScelte.length === 2 && pv.validoFino, 'preventivo semplice non creato correttamente');
+    assert(/1° acconto \(50%\)/.test(pv.corpo) && /Gestione contabile annuale/.test(pv.corpo), 'preventivo: testo dal modello senza pagamento/attivita: ' + JSON.stringify((pv.corpo || '').slice(0, 900)) + ' MODELLO ' + pv.nomeModello);
+    // filtro potenziali
+    window.setView('preventivi'); window.render(); await wait(20);
+    const altro = ST.preventivi.filter(x => x.clienteId !== cp.id).length;
+    setChecked(q('[data-action="prev-filtro-potenziali"]'), true); await wait(20);
+    assert(qa('[data-action="apri-preventivo"]').length === 1, 'preventivi: il filtro potenziali deve mostrare solo i potenziali (c\'erano altri ' + altro + ')');
+    setChecked(q('[data-action="prev-filtro-potenziali"]'), false); await wait(20);
+    // accettazione
+    const resp = ST.meta.responsabili;
+    window.modalAccettazionePreventivo(pv.id); await wait(20);
+    assert(q('#accResp') && q('#accApertura'), 'accettazione: mancano responsabile e assegnatario apertura');
+    setVal(q('#accResp'), resp[1]); setVal(q('#accApertura'), resp[2] || resp[1]);
+    click(q('[data-action="preventivo-accetta-conferma"]')); await wait(40);
+    const cl = window.getSTATE().clienti.find(c => c.id === cp.id);
+    assert(cl.stato === 'attivo' && cl.responsabileStudio === resp[1], 'accettazione: cliente non attivato o responsabile non assegnato');
+    const tk = ST.taskTeam.find(t => t.clienteId === cp.id && /Apertura posizione cliente/.test(t.titolo));
+    assert(tk && tk.assegnatoA === (resp[2] || resp[1]), 'accettazione: task di apertura posizione mancante o assegnato male');
+    const nt = tk.noteStorico[0].testo;
+    assert(/apertura partita IVA/.test(nt) && /Camera di Commercio/.test(nt) && /INPS artigiani/.test(nt) && /INAIL/.test(nt) && /forfettario/.test(nt), 'accettazione: note del task senza gli step attesi: ' + nt);
+    const ob = ST.onboarding[cp.id];
+    assert(ob && ob.apertura.length === 5 && ob.apertura.every(x => !x.fatto), 'accettazione: step di apertura nell\'onboarding');
+    const pct0 = window.percentualeOnboarding ? window.percentualeOnboarding(ob) : null;
+    ob.apertura[0].fatto = true;
+    if (window.percentualeOnboarding) assert(window.percentualeOnboarding(ob) > pct0, 'onboarding: la percentuale deve contare gli step di apertura');
+    // pulizia
+    ST.clienti = ST.clienti.filter(c => c.id !== cp.id); ST.preventivi = ST.preventivi.filter(x => x.clienteId !== cp.id); ST.taskTeam = ST.taskTeam.filter(t => t.clienteId !== cp.id); delete ST.onboarding[cp.id];
+    window.setPrevFormCompleto(true); window.chiudiModal(); window.setView('dashboard');
+    console.log('=== Preventivo semplice, filtro potenziali, accettazione con task apertura OK');
+  }
+
+  // ---------- Task creati dall'IA senza data: creatoIl di default + migrazione ----------
+  {
+    const ST = window.getSTATE();
+    window.aggiungiTaskTeam({ titolo: 'Task IA senza data', assegnatoA: ST.meta.responsabili[0], stato: 'Da fare' });
+    const tk = ST.taskTeam[ST.taskTeam.length - 1];
+    assert(tk.creatoIl === oggiISOtest(), 'task: creatoIl di default mancante');
+    const mig = { taskTeam: [{ id: 'x1', titolo: 'Vecchio', noteStorico: [{ id: 'n', testo: 't', data: '2026-10-14' }] }, { id: 'x2', titolo: 'Senza note', noteStorico: [] }] };
+    window.migraNoteTaskTeam(mig);
+    assert(mig.taskTeam[0].creatoIl === '2026-10-14' && mig.taskTeam[1].creatoIl, 'task: migrazione creatoIl non riuscita');
+    ST.taskTeam = ST.taskTeam.filter(x => x.id !== tk.id);
+    console.log('=== Task: data di inserimento sempre valorizzata OK');
   }
 
   // ---------- Task: ricerca per contenuto, filtro date, date inserimento/completamento nello storico ----------
