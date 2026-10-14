@@ -4,7 +4,7 @@ const { spawn } = require('child_process'); const fs = require('fs'); const os =
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'prisma-lan-')); const PORTA = 18420 + Math.floor(Math.random() * 500);
 const env = Object.assign({}, process.env, { PRISMA_PORTA: String(PORTA), PRISMA_DIR_DATI: dir, PRISMA_DIR_DOCUMENTI: path.join(dir, 'doc'), PRISMA_DIR_LOG: path.join(dir, 'log'), PRISMA_DIR_BACKUP: path.join(dir, 'bk'), PRISMA_SKIP_AUTOOPEN: '1' });
 // Copia di server.js in una cartella temporanea SENZA licensing/: cosi' il controllo licenza non scatta.
-for (const f of ['server.js', 'gestionale.htm', 'portale-cliente.htm', 'portale-sw.js', 'package.json']) { try { fs.copyFileSync(path.join(__dirname, f), path.join(dir, f)); } catch (e) { /* facoltativo */ } }
+for (const f of ['server.js', 'gestionale.htm', 'portale-cliente.htm', 'portale-sw.js', 'package.json'].concat(fs.readdirSync(__dirname).filter((x) => /^(gestionale\.css|gestionale-\d\d-[a-z0-9-]+\.js)$/.test(x)))) { try { fs.copyFileSync(path.join(__dirname, f), path.join(dir, f)); } catch (e) { /* facoltativo */ } }
 env.NODE_PATH = path.join(__dirname, 'node_modules');
 fs.writeFileSync(path.join(dir, 'responsabili-password.json'), JSON.stringify({ Matteo: 'segreta12' }));
 // Aggiornamento "scaricato, in attesa di riavvio": all'avvio i file vanno al loro posto e il server riparte con il codice nuovo.
@@ -31,6 +31,23 @@ let falliti = 0; const verifica = (c, m) => { if (!c) { falliti++; console.log('
   for (let i = 0; i < 400; i++) { try { await chiedi('GET', '/api/presenza'); break; } catch (e) { await new Promise(r => setTimeout(r, 500)); } } // l'avvio di server.js puo richiedere oltre un minuto su macchine lente
   verifica(fs.readFileSync(path.join(dir, 'gestionale.htm'), 'utf8').startsWith('<!-- AGGIORNATO-TEST -->') && !fs.existsSync(stag), 'aggiornamento scaricato: applicato all\'avvio e cartella di attesa svuotata');
   { const st = JSON.parse((await chiedi('GET', '/api/aggiornamenti/stato')).b); verifica(st.ok && st.versioneLocale === '99.0.0' && st.scaricata === null, 'dopo il riavvio gira il server.js nuovo (versione 99.0.0), nessun aggiornamento in attesa'); }
+  { // pagina divisa in file: la pagina li referenzia, il server li serve, un nome inesistente da 404
+    const pag = (await chiedi('GET', '/')).b; const riferiti = [...pag.matchAll(/<script src="(gestionale-\d\d-[a-z0-9-]+\.js)"><\/script>/g)].map(m => m[1]);
+    verifica(riferiti.length >= 10 && /href="gestionale\.css"/.test(pag), 'la pagina referenzia gestionale.css e i file js divisi (' + riferiti.length + ')');
+    let tuttiOk = true; for (const f of riferiti.concat(['gestionale.css'])) { const r = await chiedi('GET', '/' + f); if (r.s !== 200 || r.b.length < 100) { tuttiOk = false; console.log('  manca ' + f + ' -> ' + r.s); } }
+    verifica(tuttiOk, 'il server serve tutti i file di codice divisi');
+    verifica((await chiedi('GET', '/gestionale-99-inesistente.js')).s === 404, 'file di codice inesistente: 404');
+    try { // la pagina vera, con gli script esterni caricati dal server come farebbe il browser: deve partire senza errori
+      const { JSDOM, VirtualConsole, ResourceLoader } = require('jsdom'); const errori = [];
+      class Caricatore extends ResourceLoader { fetch(url, o) { return /^http:\/\/127\.0\.0\.1/.test(url) ? super.fetch(url, o) : null; } }
+      const vc = new VirtualConsole(); vc.on('jsdomError', e => { if (!/Could not load|Not implemented/.test(e.message)) errori.push(e.message); }); vc.on('error', (...a) => errori.push(a.join(' ')));
+      const dom = new JSDOM(pag, { url: 'http://127.0.0.1:' + PORTA + '/', runScripts: 'dangerously', resources: new Caricatore(), pretendToBeVisual: true, virtualConsole: vc });
+      await new Promise(r => dom.window.addEventListener('load', r)); await new Promise(r => setTimeout(r, 1500));
+      verifica(errori.length === 0 && dom.window.document.getElementById("pageTitle").textContent.trim().length > 2 && dom.window.document.getElementById('navMenu').children.length > 10, 'pagina caricata con script esterni: nessun errore, menu e titolo presenti' + (errori.length ? ' - ' + errori[0] : '') + ' [titolo="' + dom.window.document.getElementById('pageTitle').textContent + '" voci=' + dom.window.document.getElementById('navMenu').children.length + ']');
+      dom.window.close();
+    } catch (e) { verifica(false, 'caricamento pagina con script esterni: ' + e.message); }
+    verifica((await chiedi('GET', '/gestionale-01-motore.js', { remoto: true })).s !== 200, 'da un altro dispositivo senza accesso i file di codice non si scaricano');
+  }
   const pwd = fs.readFileSync(path.join(dir, 'password-accesso-rete-locale.txt'), 'utf8').split(/\r?\n/)[1].trim();
   verifica(pwd.length >= 12, 'password iniziale generata');
   verifica(!fs.readFileSync(path.join(dir, 'accesso-lan.json'), 'utf8').includes(pwd), 'la password non e nel file di configurazione (solo hash)');

@@ -479,7 +479,7 @@ scriviLog('Avvio di Prisma...');
 const URL_MANIFESTO_AGGIORNAMENTI = 'https://raw.githubusercontent.com/IdleSouls/Prisma/main/versione.json';
 // Cambiala qui a ogni nuova versione pubblicata (deve combaciare con quella scritta nel
 // "versione.json" caricato su GitHub, altrimenti il confronto non ha senso).
-const VERSIONE_LOCALE = '1.25.1';
+const VERSIONE_LOCALE = '1.26.0';
 // Solo questi file possono essere sovrascritti da un aggiornamento - mai un nome libero/a piacere
 // del manifesto, per non correre il rischio (anche solo teorico, es. account GitHub compromesso)
 // di far scrivere un file arbitrario altrove sul PC del cliente.
@@ -707,7 +707,7 @@ function motorePortale() {
   if (!JSDOM) return { win: null, errore: 'Il modulo "jsdom" non è installato in questa cartella. Per attivare il portale clienti esegui "npm install jsdom" qui dentro e riavvia il server (le altre funzioni del gestionale non ne hanno bisogno).' };
   if (motorePortaleWindow) return { win: motorePortaleWindow, errore: null };
   try {
-    const html = fs.readFileSync(FILE_PAGINA, 'utf8');
+    const html = htmlAssemblato();
     const dom = new JSDOM(html, {
       runScripts: 'dangerously',
       // NIENT'AFFATTO 'usable': lo script di gestionale.htm è tutto inline (gira comunque con
@@ -1538,6 +1538,19 @@ function eseguiRiavvioServerOra() {
 // ---------------------------------------------------------------------------
 // Piccolo helper per servire file statici (solo gestionale.htm ci interessa)
 // ---------------------------------------------------------------------------
+/* La pagina e divisa in gestionale.htm + gestionale.css + gestionale-NN-nome.js (stessa cartella). Per il motore del portale (jsdom, senza rete)
+   si ricompone una pagina con gli script inline, uno per file (stesso ordine e stessa separazione che ha il browser). */
+function htmlAssemblato() {
+  const h = fs.readFileSync(FILE_PAGINA, 'utf8');
+  return h.replace(/<script src="(gestionale-\d\d-[a-z0-9-]+\.js)"><\/script>/g, (m, f) => '<script>\n' + fs.readFileSync(path.join(CARTELLA, f), 'utf8') + '\n</script>');
+}
+function serviFileCodice(res, nome) {
+  fs.readFile(path.join(CARTELLA, nome), (err, contenuto) => {
+    if (err) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('File non trovato: ' + nome); return; }
+    res.writeHead(200, { 'Content-Type': (nome.endsWith('.css') ? 'text/css' : 'application/javascript') + '; charset=utf-8', 'Cache-Control': 'no-cache' });
+    res.end(contenuto);
+  });
+}
 function serviGestionale(res) {
   fs.readFile(FILE_PAGINA, (err, contenuto) => {
     if (err) {
@@ -1611,6 +1624,10 @@ function gestisciRichiesta(req, res) {
 
   if (url === '/' || url === '/gestionale.htm') {
     serviGestionale(res);
+    return;
+  }
+  if (req.method === 'GET' && /^\/(gestionale\.css|gestionale-\d\d-[a-z0-9-]+\.js)$/.test(url)) {
+    serviFileCodice(res, url.slice(1));
     return;
   }
 

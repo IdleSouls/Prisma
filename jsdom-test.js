@@ -5,7 +5,8 @@ const fs = require('fs');
 const path = require('path');
 const { JSDOM } = require('jsdom');
 
-const html = fs.readFileSync(path.join(__dirname, 'gestionale.htm'), 'utf8');
+// La pagina e divisa in gestionale.htm + gestionale-NN-*.js: si ricompone con uno <script> inline per file (come li carica il browser, nello stesso ordine).
+const html = fs.readFileSync(path.join(__dirname, 'gestionale.htm'), 'utf8').replace(/<script src="(gestionale-\d\d-[a-z0-9-]+\.js)"><\/script>/g, (m, f) => '<script>\n' + fs.readFileSync(path.join(__dirname, f), 'utf8') + '\n</script>');
 
 const errors = [];
 const dom = new JSDOM(html, {
