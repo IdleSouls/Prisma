@@ -4699,7 +4699,108 @@ function accettaPreventivo(id, opz) {
       salvaStato();
     }
   }
+  if (cliente && p.categoria === 'Preventivo') creaIncassiDaPreventivo(p.id, data);
   return { attivato, documentoId };
+}
+
+/* Incasso da riscuotere creato all'accettazione: una riga per rata (unica soluzione = 1; 50%+50% = 2). La fattura la emette lo studio
+   col programma di fatturazione: qui si tiene solo traccia di cosa va incassato; il numero fattura si aggiunge a mano. Non duplica mai. */
+function creaIncassiDaPreventivo(preventivoId, data) {
+  const p = STATE.preventivi.find(x => x.id === preventivoId);
+  if (!p || !(Number(p.importo) > 0)) return [];
+  if ((STATE.incassi || []).some(i => i.preventivoId === preventivoId)) return [];
+  const tot = Math.round(Number(p.importo) * 100) / 100, base = p.oggetto || 'Preventivo';
+  const rate = p.pagamentoModo === '5050'
+    ? [{ n: '1° acconto 50% (firma mandato)', imp: Math.round(tot * 50) / 100, scad: aggiungiGiorniISO(data, 15) }, { n: '2° saldo 50% (a completamento attività)', imp: Math.round((tot - Math.round(tot * 50) / 100) * 100) / 100, scad: '' }]
+    : [{ n: p.pagamentoModo === 'unica' ? 'Unica soluzione (firma mandato)' : 'Compenso da preventivo', imp: tot, scad: aggiungiGiorniISO(data, 15) }];
+  return rate.map((r, k) => aggiungiIncasso({ clienteId: p.clienteId, descrizione: `${base} — ${r.n}`, importo: r.imp, dataEmissione: data, dataScadenza: r.scad, preventivoId, rata: k + 1, note: 'Da fatturare/incassare (preventivo accettato). Importi al netto di C.P. e IVA.' }));
+}
+
+/* -------------------- RICONCILIAZIONE ESTRATTO CONTO (CSV/Excel) -------------------- */
+function dataIsoDaCella(v) {
+  if (v instanceof Date && !isNaN(v)) return v.toISOString().slice(0, 10);
+  const t = String(v == null ? '' : v).trim(); let m;
+  if ((m = t.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})/))) { const a = m[3].length === 2 ? '20' + m[3] : m[3]; return `${a}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`; }
+  if ((m = t.match(/^(\d{4})-(\d{2})-(\d{2})/))) return `${m[1]}-${m[2]}-${m[3]}`;
+  return null;
+}
+/* righe = array di array (CSV o foglio Excel). Restituisce solo i movimenti in ENTRATA: {data, importo, descrizione}. */
+function parseEstrattoConto(righe) {
+  const idx = { data: -1, desc: -1, avere: -1, importo: -1 };
+  let inizio = 0;
+  for (let r = 0; r < Math.min(righe.length, 25); r++) {
+    const c = (righe[r] || []).map(x => String(x == null ? '' : x).toLowerCase());
+    const d = c.findIndex(x => /^data/.test(x.trim())), a = c.findIndex(x => /avere|accredit|entrat/.test(x)), i = c.findIndex(x => /importo|ammontare/.test(x));
+    const ds = c.findIndex(x => /descri|causale|operazione|dettagl|motivo/.test(x));
+    if (d >= 0 && (a >= 0 || i >= 0)) { idx.data = d; idx.avere = a; idx.importo = i; idx.desc = ds; inizio = r + 1; break; }
+  }
+  const out = [];
+  for (let r = inizio; r < righe.length; r++) {
+    const riga = righe[r] || [];
+    const data = dataIsoDaCella(idx.data >= 0 ? riga[idx.data] : riga.find(x => dataIsoDaCella(x)));
+    if (!data) continue;
+    let imp = null;
+    if (idx.avere >= 0) { const n = parseNumeroIt(riga[idx.avere]); if (n && n > 0) imp = n; }
+    else if (idx.importo >= 0) { const n = parseNumeroIt(riga[idx.importo]); if (n && n > 0) imp = n; }
+    else { const nums = riga.map(parseNumeroIt).filter(n => n != null && !(Number.isInteger(n) && n > 1900 && n < 2100)); if (nums.length) { const n = nums[nums.length - 1]; if (n > 0) imp = n; } }
+    if (!imp) continue;
+    const descrizione = (idx.desc >= 0 ? [riga[idx.desc]] : riga.filter(x => typeof x === 'string' && isNaN(parseNumeroIt(x)) && !dataIsoDaCella(x))).join(' ').replace(/\s+/g, ' ').trim();
+    out.push({ data, importo: Math.round(imp * 100) / 100, descrizione });
+  }
+  return out;
+}
+function tokenNomeCliente(c) {
+  return String(c && c.ragioneSociale || '').toLowerCase().replace(/[^a-z0-9àèéìòù ]/g, ' ').split(/\s+/).filter(t => t.length >= 3 && !['srl', 'snc', 'sas', 'spa', 'sagl', 'ssd', 'aps', 'ets', 'societa', 'società', 'studio', 'the', 'di', 'del', 'dei'].includes(t));
+}
+/* Abbina ogni entrata a un incasso aperto: importo uguale al residuo (o all'importo) + origine (nome cliente o n. fattura nella causale). */
+function abbinaMovimenti(movimenti) {
+  const aperti = (STATE.incassi || []).filter(i => residuoIncasso(i) > 0.004);
+  const usati = new Set();
+  return movimenti.map(m => {
+    const desc = m.descrizione.toLowerCase();
+    const cand = aperti.filter(i => !usati.has(i.id) && (Math.abs(residuoIncasso(i) - m.importo) < 0.01 || Math.abs((Number(i.importo) || 0) - m.importo) < 0.01));
+    const conOrigine = cand.filter(i => { const c = clienteById(i.clienteId); const tk = tokenNomeCliente(c); return (i.numero && desc.includes(String(i.numero).toLowerCase())) || (tk.length && tk.some(t => desc.includes(t))); });
+    let sc = null, livello = 'nessuno';
+    if (conOrigine.length === 1) { sc = conOrigine[0]; livello = 'sicuro'; }
+    else if (conOrigine.length > 1) { conOrigine.sort((x, y) => (x.rata || 0) - (y.rata || 0) || String(x.dataEmissione).localeCompare(String(y.dataEmissione))); sc = conOrigine[0]; livello = conOrigine.every(i => i.clienteId === sc.clienteId) ? 'sicuro' : 'dubbio'; } // stesso cliente e stesso importo: si salda prima la rata più vecchia
+    else if (cand.length === 1) { sc = cand[0]; livello = 'possibile'; }
+    else if (cand.length > 1) { sc = cand[0]; livello = 'dubbio'; }
+    if (sc) usati.add(sc.id);
+    return Object.assign({}, m, { incassoId: sc ? sc.id : null, livello });
+  });
+}
+let RICONC = null;
+function importaEstrattoConto(inputEl) {
+  const file = inputEl.files && inputEl.files[0]; if (!file) return;
+  const nome = file.name.toLowerCase();
+  const fine = (righe) => { const mov = parseEstrattoConto(righe); if (!mov.length) { toast('Nessuna entrata riconosciuta nel file. Servono colonne data, descrizione e importo/avere.', true); return; } RICONC = { file: file.name, mov: abbinaMovimenti(mov) }; modalRiconciliazione(); };
+  if (nome.endsWith('.pdf')) { toast('Per gli estratti PDF chiedi a Claude (connessione IA): legge il PDF e registra gli incassi con lo stesso abbinamento. Qui CSV o Excel.', true); inputEl.value = ''; return; }
+  if (nome.endsWith('.csv')) { const rd = new FileReader(); rd.onload = () => { try { fine(parseCSV(rd.result)); } catch (e) { toast('CSV non valido: ' + e.message, true); } }; rd.readAsText(file, 'UTF-8'); }
+  else {
+    if (typeof XLSX === 'undefined') { toast('Libreria Excel non disponibile (serve internet al primo caricamento). Usa il CSV.', true); inputEl.value = ''; return; }
+    const rd = new FileReader(); rd.onload = () => { try { const wb = XLSX.read(rd.result, { type: 'array', cellDates: true }); fine(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: '' })); } catch (e) { toast('Excel non valido: ' + e.message, true); } }; rd.readAsArrayBuffer(file);
+  }
+  inputEl.value = '';
+}
+function modalRiconciliazione() {
+  const aperti = (STATE.incassi || []).filter(i => residuoIncasso(i) > 0.004);
+  const etich = { sicuro: ['Importo + origine', 'var(--verde,#2a8f4a)'], possibile: ['Solo importo', 'var(--giallo)'], dubbio: ['Più candidati', 'var(--giallo)'], nessuno: ['Nessun abbinamento', 'var(--text-mut)'] };
+  const righe = RICONC.mov.map((m, k) => `<tr>
+    <td><input type="checkbox" data-action="riconc-spunta" data-k="${k}" ${m.incassoId && m.livello === 'sicuro' ? 'checked' : ''} ${m.incassoId ? '' : 'disabled'}></td>
+    <td>${fmtData(m.data)}</td><td style="max-width:240px;font-size:12px;">${escapeHtml(m.descrizione)}</td><td style="text-align:right;white-space:nowrap;">${fmtEuro(m.importo)}</td>
+    <td><select data-action="riconc-incasso" data-k="${k}"><option value="">— nessuno —</option>${aperti.map(i => `<option value="${i.id}" ${m.incassoId === i.id ? 'selected' : ''}>${escapeHtml(nomeCliente(i.clienteId))} · ${escapeHtml((i.descrizione || '').slice(0, 40))} · ${fmtEuro(residuoIncasso(i))}</option>`).join('')}</select>
+      <div style="font-size:11px;color:${etich[m.livello][1]};">${etich[m.livello][0]}</div></td></tr>`).join('');
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop"><div class="modal" style="max-width:900px;">
+    <div style="display:flex;justify-content:space-between;"><div><h2>Riconciliazione estratto conto</h2><div class="modal-sub">${escapeHtml(RICONC.file)} · ${RICONC.mov.length} entrate. Spuntati solo gli abbinamenti sicuri (importo + origine): controlla gli altri prima di confermare.</div></div><button class="icon-x" data-action="chiudi-modal">✕</button></div>
+    <div style="overflow:auto;max-height:55vh;"><table class="tabella"><thead><tr><th></th><th>Data</th><th>Causale</th><th>Importo</th><th>Incasso abbinato</th></tr></thead><tbody>${righe}</tbody></table></div>
+    <div class="modal-actions"><button class="btn" data-action="chiudi-modal">Annulla</button><button class="btn primary" data-action="riconc-conferma">Registra incassi spuntati</button></div></div></div>`;
+}
+function confermaRiconciliazione() {
+  let n = 0;
+  RICONC.mov.forEach(m => { if (m.spunta && m.incassoId) { const i = (STATE.incassi || []).find(x => x.id === m.incassoId); if (!i) return; try { registraPagamentoIncasso(i.id, Math.min(m.importo, residuoIncasso(i)) || m.importo, m.data); n++; } catch (e) { /* saltato */ } } });
+  if (!STATE.riconciliazioni) STATE.riconciliazioni = [];
+  STATE.riconciliazioni.push({ id: uid('ric'), data: oggiISO(), file: RICONC.file, registrati: n, entrate: RICONC.mov.length }); salvaStato();
+  RICONC = null; chiudiModal(); render(); toast(n ? `Registrati ${n} incassi dall'estratto conto.` : 'Nessun incasso registrato.');
 }
 
 /* -------------------- VALUTAZIONE RISCHIO ANTIRICICLAGGIO (modale + generazione documenti) -------------------- */
@@ -4836,7 +4937,7 @@ function creaPreventivoDaModello(dati) {
     clienteId, categoria: modello.categoria, modelloId, nomeModello: modello.nome,
     oggetto, importo: importo != null ? importo : null, dataEmissione: dataEm, validoFino: validoFino || null,
     stato: stato || 'Bozza', note: note || '', valoriCustom: valoriCustom || {}, corpo, attivitaScelte: attivitaScelte || [],
-    stile: modello.stile || undefined,
+    stile: modello.stile || undefined, pagamentoModo: (dati && dati.pagamentoModo) || undefined,
   });
 }
 /* -------------------- PRECOMPILAZIONE IMPORTI STATUTARI --------------------
@@ -9393,7 +9494,7 @@ function renderIncassi() {
     <div class="field"><label>Stato</label><select data-action="inc-filtro-stato">
       ${['Da incassare', 'Scaduti', 'Incassati', 'Tutti'].map(x => `<option ${INC_FILTRO.stato === x ? 'selected' : ''}>${x}</option>`).join('')}
     </select></div>
-    <div class="field" style="margin-left:auto;"><label>&nbsp;</label><button class="btn primary" data-action="nuovo-incasso">+ Nuovo incasso</button></div>
+    <div class="field" style="margin-left:auto;"><label>&nbsp;</label><label class="btn" style="margin:0 8px 0 0;" title="Carica l'estratto conto (CSV/Excel): le entrate vengono abbinate agli incassi aperti per importo e origine">🏦 Riconcilia estratto conto<input type="file" accept=".csv,.xlsx,.xls,.pdf" style="display:none;" data-action="riconc-file"></label><button class="btn primary" data-action="nuovo-incasso">+ Nuovo incasso</button></div>
   </div>`;
   let lista = tutti.slice();
   if (INC_FILTRO.cliente !== 'Tutti') lista = lista.filter(i => i.clienteId === INC_FILTRO.cliente);
@@ -18410,6 +18511,7 @@ function onClickDelegatoInterno(e) {
     case 'nav-toggle-gruppo': toggleNavGruppo(el.dataset.gruppo); renderNav(); break;
     case 'import-cli-conferma': confermaWizardImportClienti(); break;
     case 'nuovo-incasso': modalIncasso(null); break;
+    case 'riconc-conferma': if (RICONC) confermaRiconciliazione(); break;
     case 'modifica-incasso': modalIncasso(id); break;
     case 'incasso-registra-apri': modalRegistraIncasso(id); break;
     case 'salva-incasso': {
@@ -19265,7 +19367,7 @@ function onClickDelegatoInterno(e) {
       const gg = Number(h('pValiditaGiorni').value) || 15;
       const vf = new Date(dataEmissione + 'T00:00:00'); vf.setDate(vf.getDate() + gg);
       const modelloId = h('pModelloSemplice').value;
-      creaPreventivoDaModello({ clienteId, modelloId, oggetto, importo: totale, dataEmissione, validoFino: vf.toISOString().slice(0, 10), stato: 'Bozza', note: '', valoriCustom: { condizioniPagamento: condizioni, dettaglioAttivita: testoElencoAttivita(righe) }, attivitaScelte: righe });
+      creaPreventivoDaModello({ clienteId, modelloId, oggetto, importo: totale, dataEmissione, validoFino: vf.toISOString().slice(0, 10), stato: 'Bozza', note: '', valoriCustom: { condizioniPagamento: condizioni, dettaglioAttivita: testoElencoAttivita(righe) }, attivitaScelte: righe, pagamentoModo: pag });
       chiudiModal(); render(); toast('Preventivo creato.');
       break;
     }
@@ -20657,6 +20759,9 @@ function onChangeDelegato(e) {
     case 'bilancio-seleziona-cliente': BILANCIO_CLIENTE = el.value; render(); break;
     case 'importa-bilancio': importaBilancio(el); break;
     case 'importa-clienti-file': importaClienti(el); break;
+    case 'riconc-file': importaEstrattoConto(el); break;
+    case 'riconc-spunta': if (RICONC) RICONC.mov[Number(el.dataset.k)].spunta = el.checked; break;
+    case 'riconc-incasso': if (RICONC) { const m = RICONC.mov[Number(el.dataset.k)]; m.incassoId = el.value || null; m.livello = el.value ? 'possibile' : 'nessuno'; m.spunta = !!el.value && m.spunta; } break;
 
     case 'contabilita-seleziona-cliente': CONTAB_CLIENTE = el.value; render(); break;
     case 'schcli-seleziona-cliente': SCHEDA_CLIENTE = el.value; render(); break;
@@ -22027,7 +22132,7 @@ window.aggiornaAccettazione = aggiornaAccettazione; window.accettazioneCompleta 
 window.libriPrevistiCliente = libriPrevistiCliente; window.lacuneLibriCliente = lacuneLibriCliente; window.assegnaAttoLibro = assegnaAttoLibro; window.attiLibroCliente = attiLibroCliente; window.attiDaTrascrivere = attiDaTrascrivere;
 window.datiCruscotto = datiCruscotto; window.annualiCedutiCliente = annualiCedutiCliente;
 window.aggiungiDocumento = aggiungiDocumento; window.aggiungiLibroSociale = aggiungiLibroSociale; window.aggiornaLibroSociale = aggiornaLibroSociale;
-window.calcolaValutazioneAml = calcolaValutazioneAml; window.modalValutazioneAml = modalValutazioneAml; window.confermaValutazioneAml = confermaValutazioneAml; window.AML_PRESTAZIONI = AML_PRESTAZIONI; window.AML_FATTORI = AML_FATTORI; window.modalPreventivo = modalPreventivo; window.modalDettaglioPreventivo = modalDettaglioPreventivo; window.modalAccettazionePreventivo = modalAccettazionePreventivo; window.setPrevFormCompleto = (v) => { PREV_FORM_COMPLETO = !!v; }; window.stepAperturaPosizione = stepAperturaPosizione; window.fogliPronti = fogliPronti; window.apriModalAppuntamento = apriModalAppuntamento; window.modalNuovoPotenziale = modalNuovoPotenziale; window.aggiungiAppuntamento = aggiungiAppuntamento; window.accettaPreventivo = accettaPreventivo; window.creaClientePotenziale = creaClientePotenziale; window.aggiungiAttivitaFatturabile = aggiungiAttivitaFatturabile; window.segnaAttivitaFatturate = segnaAttivitaFatturate; window.prossimaFatturazioneCliente = prossimaFatturazioneCliente; window.attivitaAperteCliente = attivitaAperteCliente;
+window.calcolaValutazioneAml = calcolaValutazioneAml; window.modalValutazioneAml = modalValutazioneAml; window.confermaValutazioneAml = confermaValutazioneAml; window.AML_PRESTAZIONI = AML_PRESTAZIONI; window.AML_FATTORI = AML_FATTORI; window.modalPreventivo = modalPreventivo; window.modalDettaglioPreventivo = modalDettaglioPreventivo; window.modalAccettazionePreventivo = modalAccettazionePreventivo; window.setPrevFormCompleto = (v) => { PREV_FORM_COMPLETO = !!v; }; window.stepAperturaPosizione = stepAperturaPosizione; window.fogliPronti = fogliPronti; window.apriModalAppuntamento = apriModalAppuntamento; window.modalNuovoPotenziale = modalNuovoPotenziale; window.aggiungiAppuntamento = aggiungiAppuntamento; window.accettaPreventivo = accettaPreventivo; window.parseEstrattoConto = parseEstrattoConto; window.abbinaMovimenti = abbinaMovimenti; window.creaIncassiDaPreventivo = creaIncassiDaPreventivo; window.creaClientePotenziale = creaClientePotenziale; window.aggiungiAttivitaFatturabile = aggiungiAttivitaFatturabile; window.segnaAttivitaFatturate = segnaAttivitaFatturate; window.prossimaFatturazioneCliente = prossimaFatturazioneCliente; window.attivitaAperteCliente = attivitaAperteCliente;
 window.clienteAttivo = clienteAttivo; window.cessaCliente = cessaCliente; window.riattivaCliente = riattivaCliente; window.configContabTerzi = configContabTerzi;
 /* Area cliente interattiva (task #88): stessa logica di sopra, ma in scrittura. */
 window.aggiungiMessaggioPortaleClienteEsterno = aggiungiMessaggioPortaleClienteEsterno;

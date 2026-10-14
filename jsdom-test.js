@@ -7764,6 +7764,30 @@ async function main() {
     console.log('=== Task: ricerca per contenuto, filtro date, date inserimento/completamento OK');
   }
 
+  // ---------- Fase 3: incassi da preventivo accettato + riconciliazione estratto conto ----------
+  {
+    const ST = window.getSTATE();
+    const cl = ST.clienti.find(c => c.stato !== 'potenziale') || ST.clienti[0];
+    const mod = ST.modelliDocumento.find(m => m.categoria === 'Preventivo');
+    const pv = window.creaPreventivoDaModello ? null : null;
+    const prev = window.accettaPreventivo && (function () {
+      const pp = ST.preventivi.push({ id: 'pvF3', clienteId: cl.id, categoria: 'Preventivo', oggetto: 'Test F3', importo: 1000, stato: 'Inviato', pagamentoModo: '5050', dataEmissione: '2026-10-01', attivitaScelte: [], corpo: '' });
+      return ST.preventivi[ST.preventivi.length - 1];
+    })();
+    window.accettaPreventivo('pvF3', { data: '2026-10-10' });
+    const inc = ST.incassi.filter(i => i.preventivoId === 'pvF3');
+    assert(inc.length === 2 && inc[0].importo === 500 && inc[1].importo === 500, 'F3: 50%+50% devono creare 2 incassi da 500');
+    window.accettaPreventivo('pvF3', { data: '2026-10-11' });
+    assert(ST.incassi.filter(i => i.preventivoId === 'pvF3').length === 2, 'F3: riaccettare non deve duplicare gli incassi');
+    const nomeTok = (cl.ragioneSociale || '').split(/\s+/).find(t => t.length >= 3) || cl.ragioneSociale;
+    const mov = window.parseEstrattoConto([['Data', 'Descrizione', 'Dare', 'Avere'], ['12/10/2026', 'Bonifico da ' + nomeTok + ' compenso', '', '500,00'], ['13/10/2026', 'Bonifico sconosciuto', '', '7,13'], ['14/10/2026', 'Pagamento fornitore', '200,00', '']]);
+    assert(mov.length === 2 && mov[0].importo === 500 && mov[0].data === '2026-10-12', 'F3: parse estratto conto (solo entrate)');
+    const ab = window.abbinaMovimenti(mov);
+    assert(ab[0].incassoId === inc[0].id && ab[0].livello === 'sicuro' && !ab[1].incassoId, 'F3: abbinamento per importo+origine, nessun abbinamento per importo ignoto, trovato ' + ab[0].livello);
+    ST.incassi = ST.incassi.filter(i => i.preventivoId !== 'pvF3'); ST.preventivi = ST.preventivi.filter(x => x.id !== 'pvF3');
+    console.log('=== Fase 3: incassi da preventivo e riconciliazione estratto conto OK');
+  }
+
   console.log('\n✅ TUTTI I TEST END-TO-END PASSATI (' + errors.length + ' errori console catturati)');
   if (errors.length) {
     console.log('--- Dettaglio errori console/jsdom catturati durante il test ---');

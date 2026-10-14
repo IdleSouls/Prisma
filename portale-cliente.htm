@@ -1375,7 +1375,7 @@ function renderDocumenti() {
   // La prima area (quella col documento più recente) parte già aperta, le altre chiuse.
   const gruppiArea = new Map();
   documentiFiltrati.forEach(d => {
-    // Documenti di una pratica: la sottocartella porta il titolo della cartella della pratica (aaaa.mm.gg - nome pratica)
+    // Documenti di una pratica: la sottocartella porta il titolo della cartella della pratica (aaaa.gg.mm - nome pratica)
     const cat = d.praticaCartella || d.categoria || 'Altro';
     const area = d.praticaCartella ? 'Pratiche e contratti' : areaPerCategoriaDocumento(d.categoria || 'Altro');
     if (!gruppiArea.has(area)) gruppiArea.set(area, new Map());
