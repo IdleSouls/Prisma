@@ -572,7 +572,7 @@ select[multiple]{min-height:150px;}
 .task-board{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:14px;align-items:start;}
 .task-tessere{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:8px;}
 .task-tessera{background:var(--tbg);color:var(--tc);border-radius:10px;padding:10px 12px;border-top:3px solid var(--tc);cursor:pointer;transition:transform .1s,box-shadow .1s;}
-.task-tessera.ritardo{cursor:default;}
+.task-tessera.ritardo{cursor:pointer;}
 .task-tessera:not(.ritardo):hover{transform:translateY(-1px);box-shadow:var(--shadow-sm);}
 .task-tessera.attiva{box-shadow:0 0 0 2px var(--tc);}
 .task-tessera .n{font-size:22px;font-weight:800;line-height:1.1;} .task-tessera .l{font-size:10.5px;font-weight:700;letter-spacing:.04em;}
@@ -1377,6 +1377,17 @@ const ONBOARDING_DEF = [
   { categoria: 'Attivazione deleghe', chiave: 'delegaFatture', nome: 'Delega fatture e corrispettivi attivata' },
   { categoria: 'Attivazione deleghe', chiave: 'delegaCassettoFiscale', nome: 'Delega cassetto fiscale attivata' },
   { categoria: 'Attivazione deleghe', chiave: 'delegaCassettoPrev', nome: 'Delega cassetto previdenziale attivata' },
+  { categoria: 'Mandato e antiriciclaggio', chiave: 'inviaMandatoAml', nome: 'Mandato e dichiarazione antiriciclaggio inviati al cliente da firmare' },
+  { categoria: 'Mandato e antiriciclaggio', chiave: 'amlFirmata', nome: 'Dichiarazione antiriciclaggio firmata ricevuta' },
+  { categoria: 'Procedura di studio', chiave: 'stampaPreventivo', nome: 'Stampa preventivo accettato' },
+  { categoria: 'Procedura di studio', chiave: 'cartellinaAml', nome: 'Apertura cartellina antiriciclaggio' },
+  { categoria: 'Procedura di studio', chiave: 'stampaA3', nome: 'Stampa A3' },
+  { categoria: 'Procedura di studio', chiave: 'provaIb', nome: 'Attivazione prova gratuita IB' },
+  { categoria: 'Procedura di studio', chiave: 'accountIbFt', nome: 'Abilitazione account IB per invio fatture elettroniche' },
+  { categoria: 'Procedura di studio', chiave: 'anagraficaIb', nome: 'Inserimento cliente in anagrafica clienti IB (Quadra/Federico)' },
+  { categoria: 'Procedura di studio', chiave: 'fileClienti', nome: 'Inserimento in file clienti (comunicare a Sabrina nome e data di presa in carico)' },
+  { categoria: 'Procedura di studio', chiave: 'attivitaIb', nome: 'Clienti Quadra: inserire attività da fatturare in IB secondo rateizzazione' },
+  { categoria: 'Procedura di studio', chiave: 'guidaDeleghe', nome: 'Invio guida per deleghe cassetto fiscale' },
 ];
 
 /* Passi per aprire la posizione di un nuovo cliente, ricavati dalla scheda cliente (foglio guida dell'appuntamento):
@@ -1428,6 +1439,34 @@ const AML_CHECKLIST_DEF = [
   { categoria: 'Conservazione', chiave: 'registroAntiriciclaggio', nome: 'Dati registrati in Archivio Unico Informatico' },
 ];
 const PROFILI_RISCHIO_AML = ['Non valutato', 'Basso', 'Medio', 'Alto'];
+/* Valutazione del rischio antiriciclaggio (scheda "Pre-analisi" + "Rischio effettivo" dello studio): rischio inerente della
+   prestazione (30%) + rischio specifico di cliente e prestazione (70%) -> grado di rischio e tipo di adeguata verifica. */
+const AML_PRESTAZIONI = [
+  ['Amministrazione e liquidazione di aziende, patrimoni, singoli beni', 2], ['Amministrazione di società, enti, trust o strutture analoghe', 3],
+  ['Assistenza, consulenza e rappresentanza in materia tributaria', 2], ['Assistenza per richiesta finanziamenti', 3],
+  ['Assistenza e consulenza societaria continuativa e generica', 3], ["Attività di valutazione tecnica dell'iniziativa di impresa e di asseverazione dei business plan per l'accesso a finanziamenti pubblici", 3],
+  ['Consulenza aziendale', 3], ['Consulenza contrattuale', 2], ['Consulenza economico-finanziaria', 3], ['Costituzione/liquidazione di società, enti, trust o strutture analoghe', 3],
+  ['Custodia e conservazione di beni e aziende', 2], ['Consulenza in operazioni di finanza straordinaria', 4], ['Tenuta della contabilità', 3],
+  ['Consulenza in materia di redazione del bilancio', 3], ['Revisione legale dei conti', 3], ["Valutazione di aziende, rami d'azienda, patrimoni, singoli beni e diritti", 2],
+].map(([nome, punti]) => ({ nome, punti }));
+const AML_FATTORI = [{"k": "A.1", "titolo": "Natura giuridica", "fattori": ["Non congruità della natura giuridica prescelta in relazione all’attività svolta e alle sue dimensioni", "Articolazione giuridica, complessità e opacità della struttura volte ad ostacolare l’identificazione del titolare effettivo o l’attività concretamente svolta", "Partecipazione di persone politicamente esposte (cliente, esecutore, titolare effettivo)", "Incarichi in società, associazioni, fondazioni, organizzazioni non lucrative, organizzazioni non governative soprattutto se aventi sede in paesi ad alto rischio o non collaborativi", "Processi penali o indagini in corso per circostanze attinenti al terrorismo, al riciclaggio o all’autoriciclaggio – Misure di prevenzione o provvedimenti di sequestro - Familiarità/stretti legami con soggetti sottoposti a indagini o a procedimenti penali o provvedimenti di sequestro o censiti nelle liste delle persone o degli enti attivi nel finanziamento del terrorismo[1]", "Altro"]}, {"k": "A.2", "titolo": "Prevalente attività svolta", "fattori": ["Attività esposte al rischio di infiltrazioni criminali e terroristiche secondo le periodiche pubblicazioni delle Autorità in materia, sia a livello sovranazionale (Relazione UE sulla valutazione del rischio sovranazionale), sia a livello nazionale (triennale: “Analisi nazionale dei rischi di riciclaggio e finanziamento del terrorismo” MEF/CSF e annuale: “Rapporto annuale dell’Unità di Informazione Finanziaria” UIF/Bankitalia nonché la Relazione annuale al Parlamento del MEF)", "Struttura organizzativa e dimensionale non coerente con l’attività svolta", "Non conformità dell’attività svolta rispetto a quella indicata nell’atto costitutivo", "Altro"]}, {"k": "A.3", "titolo": "Comportamento tenuto al momento del conferimento dell’incarico", "fattori": ["Cliente non presente fisicamente", "Presenza di soggetti terzi con ruolo non definito", "Comportamento non trasparente e collaborativo", "Difficoltà nell’individuazione del titolare effettivo", "Altro"]}, {"k": "A.4", "titolo": "Area geografica di residenza del cliente", "fattori": ["Residenza/localizzazione in : comune italiano a rischio a causa dell’utilizzo eccessivo di contante – Residenza in Paesi terzi ad alto rischio individuati dalle Autorità – Paesi terzi non dotati di efficaci sistemi di prevenzione del riciclaggio e del finanziamento del terrorismo coerenti con le raccomandazioni del GAFI – Paesi terzi caratterizzati da un elevato livello di corruzione o di permeabilità ad altre attività criminose – Aree di conflitto in cui sono presenti organizzazioni terroristiche o in zone limitrofe o di transito – Paese soggetto a sanzioni o embarghi o misure analoghe stabilite dall’O.N.U. o altri organismi internazionali - (vedasi le pubblicazioni periodiche delle Autorità in materia, sia a livello sovranazionale, sia a livello nazionale)", "Lontananza della residenza del cliente rispetto alla sede del professionista", "Altro"]}, {"k": "B.1", "titolo": "Tipologia", "fattori": ["Operazione ordinaria/straordinaria rispetto al profilo soggettivo del cliente", "Operazione che prevede schemi negoziali che possono agevolare l’opacità delle relazioni economiche e finanziarie intercorrenti tra il cliente e la controparte", "Articolazione contrattuale ingiustificata", "Altro"]}, {"k": "B.2", "titolo": "Modalità di svolgimento", "fattori": ["Utilizzo di mezzi di pagamento non tracciati - Utilizzo di valute virtuali", "Utilizzo di conti non propri per trasferire/ricevere fondi", "Ricorso reiterato a procure", "Ricorso a domiciliazioni di comodo", "Altro"]}, {"k": "B.3", "titolo": "Ammontare dell’operazione", "fattori": ["Incoerenza dell’ammontare rispetto al profilo economico e finanziario del cliente", "Presenza di frazionamenti artificiosi", "Altro"]}, {"k": "B.4", "titolo": "Frequenza e volume delle operazioni/durata della prestazione professionale", "fattori": ["Non congruità della frequenza dell’operazione rispetto all’attività esercitata – Operatività improvvisa e poco giustificata rispetto all’ordinaria attività – Operazioni di ammontare consistente, concentrate in un ristretto arco temporale", "Rapporto professionale continuativo o occasionale", "Altro"]}, {"k": "B.5", "titolo": "Ragionevolezza", "fattori": ["Irragionevolezza dell’operazione rispetto all’attività svolta dal cliente", "Irragionevolezza dell’operazione rispetto all’entità delle risorse economiche nella disponibilità del cliente", "Non congruità dell’operazione rispetto alle finalità dichiarate", "Altro"]}, {"k": "B.6", "titolo": "Area geografica di destinazione", "fattori": ["Destinazione in : comune italiano a rischio a causa dell’utilizzo eccessivo di contante – Paesi terzi ad alto rischio individuati dalle Autorità – Paesi terzi non dotati di efficaci sistemi di prevenzione del riciclaggio e del finanziamento del terrorismo coerenti con le raccomandazioni del GAFI – Paesi terzi caratterizzati da un elevato livello di corruzione o di permeabilità ad altre attività criminose – Aree di conflitto in cui sono presenti organizzazioni terroristiche o in zone limitrofe o di transito – Paese soggetto a sanzioni o embarghi o misure analoghe stabilite dall’O.N.U. o altri organismi internazionali - (vedasi le pubblicazioni periodiche delle Autorità in materia, sia a livello sovranazionale, sia a livello nazionale)", "Inesistenza di riferimenti tradizionali nell’area geografica di destinazione (ad es. assenza di organismi equivalenti alle Camere di Commercio che detengono registri pubblici)", "Irragionevolezza e non congruità della ricerca di interazione con altre aree geografiche (ad es. vendita di determinati prodotti in aree geografiche nelle quali notoriamente gli stessi non risultano utilizzati)", "Altro"]}];
+const AML_GRADI = ['Non significativo', 'Poco significativo', 'Abbastanza significativo', 'Molto significativo'];
+/* Ogni quanti mesi si rinnova la dichiarazione del cliente: piu alto il rischio, piu spesso. Modificabile in meta.validitaAml. */
+const VALIDITA_AML_DEFAULT = { 'Non significativo': 36, 'Poco significativo': 36, 'Abbastanza significativo': 24, 'Molto significativo': 12 };
+function validitaAmlMesi(grado) { return Number(((STATE.meta || {}).validitaAml || {})[grado]) || VALIDITA_AML_DEFAULT[grado] || 24; }
+function calcolaValutazioneAml(v) {
+  const pr = AML_PRESTAZIONI[v.prestazione];
+  const inerente = pr ? pr.punti : 0;
+  const lv = (k) => Number(((v.fattori || {})[k] || {}).livello) || 1;
+  const totA = ['A.1', 'A.2', 'A.3', 'A.4'].reduce((x, k) => x + lv(k), 0);
+  const totB = v.sezioneB === false ? 0 : ['B.1', 'B.2', 'B.3', 'B.4', 'B.5', 'B.6'].reduce((x, k) => x + lv(k), 0);
+  const specifico = totB === 0 ? totA / 4 : (totA + totB) / 10;
+  const effettivo = 0.3 * inerente + 0.7 * specifico;
+  const grado = effettivo < 1.3 ? AML_GRADI[0] : effettivo < 2.6 ? AML_GRADI[1] : effettivo < 3.7 ? AML_GRADI[2] : AML_GRADI[3];
+  const verifica = grado === AML_GRADI[3] ? 'RAFFORZATA' : grado === AML_GRADI[2] ? 'ORDINARIA' : 'SEMPLIFICATA';
+  const profilo = grado === AML_GRADI[3] ? 'Alto' : grado === AML_GRADI[2] ? 'Medio' : 'Basso';
+  return { inerente, totA, totB, specifico: Math.round(specifico * 100) / 100, effettivo: Math.round(effettivo * 100) / 100, grado, verifica, profilo };
+}
 function nuovoFascicoloAntiriciclaggio() {
   const checklist = {};
   for (const v of AML_CHECKLIST_DEF) checklist[v.chiave] = false;
@@ -4647,10 +4686,131 @@ function accettaPreventivo(id, opz) {
         noteStorico: [{ id: uid('nota'), testo: testoTask, autore: operatoreCorrente() || null, data: oggiISO() }],
         creatoIl: oggiISO(),
       });
+      const fa = fascicoloAntiriciclaggio(cliente.id);
+      if (!fa.valutazione) {
+        fa.valutazioneRichiesta = true;
+        aggiungiTaskTeam({
+          titolo: `Valutazione antiriciclaggio ${cliente.ragioneSociale}`, assegnatoA: operatoreCorrente() || opz.responsabile || cliente.responsabileStudio || null,
+          clienteId: cliente.id, scadenza: d.toISOString().slice(0, 10), stato: STATI_TASK_TEAM[0],
+          noteStorico: [{ id: uid('nota'), testo: 'Preventivo accettato: fare la valutazione del rischio (Antiriciclaggio). Alla conferma si generano mandato e dichiarazione da far firmare al cliente.', autore: operatoreCorrente() || null, data: oggiISO() }],
+          creatoIl: oggiISO(),
+        });
+      }
       salvaStato();
     }
   }
   return { attivato, documentoId };
+}
+
+/* -------------------- VALUTAZIONE RISCHIO ANTIRICICLAGGIO (modale + generazione documenti) -------------------- */
+let AML_VAL_DRAFT = null;
+function aggiungiMesiISO(iso, n) { const d = new Date(iso + 'T00:00:00'); d.setMonth(d.getMonth() + n); return d.toISOString().slice(0, 10); }
+function testoRischioAml(e) {
+  const mesi = validitaAmlMesi(e.grado);
+  return `Il Professionista, sulla base della valutazione del rischio inerente e specifico (cliente + prestazione), classifica il rapporto come: ${e.grado} (rischio effettivo ${String(e.effettivo).replace('.', ',')}) – adeguata verifica ${e.verifica}. La presente dichiarazione ha validità di ${mesi} mesi dalla sottoscrizione e va rinnovata alla scadenza.`;
+}
+function esitoAmlHtml(v) {
+  const e = calcolaValutazioneAml(v);
+  const colore = e.grado === AML_GRADI[3] ? 'var(--rosso)' : e.grado === AML_GRADI[2] ? 'var(--giallo)' : 'var(--verde,#2a8f4a)';
+  return `<div style="border:2px solid ${colore};border-radius:10px;padding:10px 14px;">
+    <div style="display:flex;gap:18px;flex-wrap:wrap;font-size:12.5px;">
+      <div>Rischio inerente <b>${e.inerente}</b></div><div>Specifico <b>${String(e.specifico).replace('.', ',')}</b></div><div>Effettivo <b>${String(e.effettivo).replace('.', ',')}</b> <span class="helptext" style="display:inline;">(30% inerente + 70% specifico)</span></div>
+    </div>
+    <div style="margin-top:6px;font-size:14px;font-weight:800;color:${colore};">${e.grado} · adeguata verifica ${e.verifica}</div>
+    <div class="helptext" style="margin-top:4px;">Dichiarazione del cliente valida ${validitaAmlMesi(e.grado)} mesi${e.verifica === 'RAFFORZATA' ? '; con rischio molto significativo serve anche la nota di accettazione dell\'incarico' : ''}.</div>
+  </div>`;
+}
+function modalValutazioneAml(cid) {
+  const c = clienteById(cid); if (!c) return;
+  const f = fascicoloAntiriciclaggio(cid);
+  const sv = f.valutazione;
+  const idxTenuta = AML_PRESTAZIONI.findIndex(x => x.nome === 'Tenuta della contabilità');
+  const prestazione = sv ? sv.prestazione : idxTenuta;
+  AML_VAL_DRAFT = { cid, prestazione, sezioneB: sv ? sv.sezioneB !== false : ![idxTenuta, AML_PRESTAZIONI.findIndex(x => x.nome === 'Revisione legale dei conti')].includes(prestazione), fattori: JSON.parse(JSON.stringify(sv ? sv.fattori : {})) };
+  disegnaModalValutazioneAml();
+}
+function disegnaModalValutazioneAml() {
+  const v = AML_VAL_DRAFT; const c = clienteById(v.cid); if (!c) return;
+  const sezione = (cat) => {
+    const d = (v.fattori[cat.k] = v.fattori[cat.k] || { checks: [], livello: 1 });
+    return `<div style="border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px;"><b style="font-size:12.5px;">${cat.k} · ${escapeHtml(cat.titolo)}</b>
+        <label style="font-size:11.5px;">Livello <select data-action="aml-val-livello" data-k="${cat.k}">${[1, 2, 3, 4].map(n => `<option ${Number(d.livello) === n ? 'selected' : ''}>${n}</option>`).join('')}</select></label></div>
+      ${cat.fattori.map((t, i) => `<label class="checkline" style="font-size:12px;align-items:flex-start;"><input type="checkbox" data-action="aml-val-fattore" data-k="${cat.k}" data-i="${i}" ${d.checks[i] ? 'checked' : ''}> <span>${escapeHtml(t)}</span></label>`).join('')}
+    </div>`;
+  };
+  const A = AML_FATTORI.filter(x => x.k[0] === 'A'), B = AML_FATTORI.filter(x => x.k[0] === 'B');
+  const html = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop"><div class="modal" style="max-width:820px;max-height:92vh;overflow-y:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+      <div><h2>Valutazione del rischio antiriciclaggio</h2><div class="modal-sub">${escapeHtml(c.ragioneSociale)} — D.Lgs. 231/2007, art. 17 c. 3</div></div>
+      <button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button></div>
+    <div class="section-title" style="margin-top:8px;">I · Rischio inerente (prestazione)</div>
+    <div class="field"><select data-action="aml-val-prestazione">${AML_PRESTAZIONI.map((x, i) => `<option value="${i}" ${v.prestazione === i ? 'selected' : ''}>${escapeHtml(x.nome)} (${x.punti})</option>`).join('')}</select></div>
+    <div class="section-title" style="margin-top:12px;">II · Rischio specifico</div>
+    <div class="helptext" style="margin-bottom:6px;">A. Aspetti connessi al cliente: spunta i fattori riscontrati e scegli il livello (1-4) per ogni gruppo.</div>
+    ${A.map(sezione).join('')}
+    <label class="checkline" style="margin:8px 0 4px;"><input type="checkbox" data-action="aml-val-sezioneb" ${v.sezioneB ? 'checked' : ''}> Compila anche la sezione B (aspetti connessi alla prestazione) <span class="helptext" style="display:inline;">— da non compilare per tenuta contabilità e revisione legale</span></label>
+    ${v.sezioneB ? B.map(sezione).join('') : ''}
+    <div class="section-title" style="margin-top:12px;">III-IV · Esito</div>
+    <div id="amlEsito">${esitoAmlHtml(v)}</div>
+    <div class="helptext" style="margin-top:8px;">Confermando: si aggiorna il fascicolo (profilo di rischio e prossima revisione) e si generano in bozza il mandato (se il preventivo lo richiede), la dichiarazione antiriciclaggio del cliente e, per rischio molto significativo, la nota di accettazione.</div>
+    <div class="modal-actions"><button class="btn" data-action="chiudi-modal">Annulla</button><button class="btn primary" data-action="aml-val-conferma">Conferma e genera documenti</button></div>
+  </div></div>`;
+  const root = document.getElementById('modalRoot');
+  const prec = root.querySelector('.modal'); const sc = prec ? prec.scrollTop : 0;
+  root.innerHTML = html;
+  const nuovo = root.querySelector('.modal'); if (nuovo) nuovo.scrollTop = sc;
+}
+function confermaValutazioneAml() {
+  const v = AML_VAL_DRAFT; if (!v) return null;
+  const cid = v.cid, c = clienteById(cid); if (!c) return null;
+  const e = calcolaValutazioneAml(v);
+  const f = fascicoloAntiriciclaggio(cid);
+  const oggi = oggiISO(), mesi = validitaAmlMesi(e.grado);
+  const scadenza = aggiungiMesiISO(oggi, mesi);
+  const pr = AML_PRESTAZIONI[v.prestazione];
+  const risultato = { mandatoId: null, dichiarazioneId: null, notaId: null };
+  f.valutazione = { prestazione: v.prestazione, sezioneB: v.sezioneB, fattori: JSON.parse(JSON.stringify(v.fattori)), esito: e, data: oggi, valutatore: operatoreCorrente() || null, scadenza };
+  f.profiloRischio = e.profilo; f.dataAdeguataVerifica = oggi; f.scadenzaRevisione = scadenza; f.valutazioneRichiesta = false;
+  f.checklist.questionarioRischio = true;
+  aggiungiNotaAntiriciclaggio(cid, `Valutazione del rischio: ${e.grado} (effettivo ${e.effettivo}), adeguata verifica ${e.verifica}. Dichiarazione valida ${mesi} mesi, revisione entro ${fmtData(scadenza)}.`);
+  if (!STATE.onboarding[cid]) STATE.onboarding[cid] = nuovoOnboarding();
+  STATE.onboarding[cid].questionarioAr = true;
+  const prev = STATE.preventivi.filter(p => p.clienteId === cid && p.categoria === 'Preventivo' && p.stato === 'Accettato').sort((a, b) => (b.dataAccettazione || '').localeCompare(a.dataAccettazione || ''))[0];
+  if (prev && (prev.attivitaScelte || []).some(a => a.richiedeMandato)) { const m = generaMandatoDaPreventivo(prev, true); if (m) risultato.mandatoId = m.id; }
+  const modAml = (cat) => STATE.modelliDocumento.find(m => m.attivo && m.categoria === cat);
+  const mDich = modAml('AML - Dichiarazione cliente');
+  const attivita = [(c.atecoCodici || []).join(', '), c.settore].filter(Boolean).join(' – ');
+  const scopo = (pr ? pr.nome : '') + (prev && prev.oggetto ? ' — ' + prev.oggetto : '');
+  if (mDich) { try { const d = creaPreventivoDaModello({ clienteId: cid, modelloId: mDich.id, oggetto: 'Dichiarazione del cliente ai fini antiriciclaggio', importo: null, stato: 'Bozza', note: `Rischio ${e.grado}; validità ${mesi} mesi.`, valoriCustom: { scopoPrestazione: scopo, valutazioneRischio: testoRischioAml(e), attivitaCliente: attivita } }); risultato.dichiarazioneId = d.id; } catch (err) { console.error('Dichiarazione AML non generata:', err.message); } }
+  if (e.verifica === 'RAFFORZATA') {
+    const mNota = modAml('AML - Nota di accettazione incarico');
+    const elementi = AML_FATTORI.map(cat => { const d = v.fattori[cat.k] || {}; return (d.checks || []).map((ch, i) => ch ? '- ' + cat.k + ' ' + cat.titolo + ': ' + cat.fattori[i] : null).filter(Boolean); }).reduce((x, y) => x.concat(y), []);
+    if (mNota) { try { const n = creaPreventivoDaModello({ clienteId: cid, modelloId: mNota.id, oggetto: 'Nota di accettazione incarico (adeguata verifica rafforzata)', importo: null, stato: 'Bozza', note: '', valoriCustom: { valutazioneRischio: testoRischioAml(e), elementiRischio: elementi.join('\n') || 'Nessun fattore specifico spuntato; rischio determinato dal rischio inerente della prestazione.', misureAdottate: 'Adeguata verifica rafforzata (artt. 24-25 D.Lgs. 231/2007): acquisizione di informazioni aggiuntive su titolare effettivo, origine dei fondi e scopo del rapporto; controllo costante nel corso dell\'incarico.' } }); risultato.notaId = n.id; } catch (err) { console.error('Nota di accettazione non generata:', err.message); } }
+  }
+  Object.assign(f.valutazione, risultato);
+  salvaStato();
+  AML_VAL_DRAFT = null;
+  return { esito: e, risultato };
+}
+
+/* Genera (una volta sola) il mandato professionale dal preventivo accettato; null se manca il modello. */
+function generaMandatoDaPreventivo(p, silenzioso) {
+  if (p.mandatoGeneratoId && STATE.preventivi.some(x => x.id === p.mandatoGeneratoId)) return STATE.preventivi.find(x => x.id === p.mandatoGeneratoId);
+  const modelliMandato = STATE.modelliDocumento.filter(m => m.attivo && m.categoria === 'Mandato professionale');
+  if (modelliMandato.length === 0) { if (!silenzioso) toast('Nessun modello "Mandato professionale" attivo: creane uno in Modelli documenti.'); return null; }
+  const modello = modelliMandato.find(m => m.predefinito) || modelliMandato[0];
+  const valoriRiservati = { oggetto: p.oggetto || '', importo: p.importo != null ? fmtNum2(p.importo) : '', dataEmissione: fmtData(oggiISO()), validoFino: '' };
+  const valoriCustom = Object.assign({}, p.valoriCustom || {}, { dettaglioAttivita: testoElencoAttivita(p.attivitaScelte) || (p.valoriCustom && p.valoriCustom.dettaglioAttivita) || '' });
+  const corpo = risolviTemplateDocumento(modello.corpo, p.clienteId, Object.assign({}, valoriRiservati, valoriCustom));
+  const mandato = aggiungiPreventivo({
+    clienteId: p.clienteId, categoria: modello.categoria, modelloId: modello.id, nomeModello: modello.nome,
+    oggetto: p.oggetto, importo: p.importo, dataEmissione: oggiISO(), validoFino: null, stato: 'Bozza',
+    note: `Generato automaticamente dal preventivo accettato "${p.oggetto}".`, valoriCustom, corpo,
+    attivitaScelte: p.attivitaScelte || [], preventivoOrigineId: p.id,
+  });
+  aggiornaPreventivo(p.id, { mandatoGeneratoId: mandato.id });
+  return mandato;
 }
 function creaClientePotenziale(dati) {
   return aggiungiCliente(Object.assign({}, dati, { stato: 'potenziale' }));
@@ -7764,6 +7924,13 @@ function renderAntiriciclaggio() {
     </div>`).join('');
 
   const revisione = statoRevisioneAml(fascicolo);
+  const val = fascicolo.valutazione;
+  const valutazioneBlocco = `<div style="border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:16px;${fascicolo.valutazioneRichiesta ? 'border-color:var(--giallo);background:var(--giallo-bg);' : ''}">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+      <div><b style="font-size:13px;">Valutazione del rischio</b>
+        <div class="helptext" style="margin-top:2px;">${val ? `${escapeHtml(val.esito.grado)} · adeguata verifica ${escapeHtml(val.esito.verifica)} · del ${escapeHtml(fmtData(val.data))}, dichiarazione valida fino al ${escapeHtml(fmtData(val.scadenza))}` : (fascicolo.valutazioneRichiesta ? '⚠ Preventivo accettato: da fare prima di mandato e dichiarazione.' : 'Non ancora eseguita.')}</div></div>
+      <button class="btn small ${val ? '' : 'primary'}" data-action="aml-valutazione-apri">${val ? 'Rivedi / rifai la valutazione' : 'Esegui la valutazione'}</button>
+    </div></div>`;
   const storico = fascicolo.storico || [];
   const storicoHtml = storico.length
     ? `<div style="max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:8px;">${storico.slice().reverse().map(n => `<div style="padding:5px 0;border-bottom:1px solid var(--border);"><div style="font-size:10.5px;font-weight:700;color:var(--text-mut);text-transform:uppercase;margin-bottom:2px;">${escapeHtml(n.autore || '—')} · ${fmtData(n.data)}</div><div style="font-size:12.5px;white-space:pre-wrap;line-height:1.4;">${escapeHtml(n.testo)}</div></div>`).join('')}</div>`
@@ -7798,6 +7965,7 @@ function renderAntiriciclaggio() {
         <div class="field"><label>Ultima adeguata verifica</label><input type="date" data-action="aml-cambia-verifica" value="${fascicolo.dataAdeguataVerifica||''}"></div>
         <div class="field"><label>Prossima revisione <span id="amlBadgeRevisione" class="badge ${revisione.cls}" style="margin-left:4px;font-size:9.5px;">${revisione.txt}</span></label><input type="date" data-action="aml-cambia-revisione" value="${fascicolo.scadenzaRevisione||''}"></div>
       </div>
+      ${valutazioneBlocco}
       ${checklistHtml}
       <div style="margin-top:6px;">
         <label style="font-size:11px;font-weight:700;color:var(--text-mut);text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px;display:block;">Storico verifiche <span class="cnt" style="font-size:9.5px;font-weight:700;background:var(--bg);border-radius:20px;padding:2px 8px;text-transform:none;letter-spacing:normal;">${storico.length}</span></label>
@@ -11454,7 +11622,7 @@ function htmlStoricoStatiTask(t) {
       ${(x.modifiche || []).length ? `<details style="margin-top:3px;"><summary class="helptext" style="cursor:pointer;">✎ modificato ${x.modifiche.length === 1 ? '1 volta' : x.modifiche.length + ' volte'}</summary>${x.modifiche.slice().reverse().map(m => `<div class="helptext" style="margin:4px 0 0 10px;padding-left:8px;border-left:2px solid var(--border);"><b>${escapeHtml(m.autore || '—')}</b> · ${fmtDataOra(m.data)} — versione precedente:<div style="white-space:pre-wrap;">${escapeHtml(m.testo)}</div></div>`).join('')}</details>` : ''}
     </div>`).join('')}</div></div>`;
 }
-let TASK_FILTRO = { assegnato: 'Tutti', cliente: 'Tutti', mostraFatti: true, stato: 'Tutti', q: '', campoData: 'scadenza', dataDa: '', dataA: '' };
+let TASK_FILTRO = { assegnato: 'Tutti', cliente: 'Tutti', mostraFatti: true, stato: 'Tutti', q: '', campoData: 'scadenza', dataDa: '', dataA: '', ritardo: false };
 const CAMPI_DATA_TASK = { scadenza: 'Scadenza', creatoIl: 'Inserimento in Prisma', fattoIl: 'Completamento' };
 /* Testo in cui cerca il filtro "Cerca": titolo, descrizione, note operative, motivo attesa/blocco, cliente, procedura, assegnatario, stato, pratica. */
 function testoRicercaTask(t) {
@@ -11502,7 +11670,7 @@ function renderTaskTeam() {
   const conta = (st) => tutti.filter(t => t.stato === st).length;
   const tessere = STATI_TASK_TEAM.map(st => { const col = COLORI_STATO_TASK[st]; const attiva = TASK_FILTRO.stato === st;
     return `<div class="task-tessera${attiva ? ' attiva' : ''}" style="--tc:${col.c};--tbg:${col.bg};" data-action="task-filtro-stato" data-stato="${st}" title="${attiva ? 'Tocca per mostrare tutti gli stati' : 'Mostra solo ' + st}"><div class="n">${conta(st)}</div><div class="l">${st.toUpperCase()}</div></div>`; }).join('')
-    + `<div class="task-tessera ritardo" style="--tc:var(--rosso);--tbg:var(--rosso-bg);"><div class="n">${inRitardo}</div><div class="l">IN RITARDO</div></div>`;
+    + `<div class="task-tessera ritardo${TASK_FILTRO.ritardo ? ' attiva' : ''}" style="--tc:var(--rosso);--tbg:var(--rosso-bg);" data-action="task-filtro-ritardo" title="${TASK_FILTRO.ritardo ? 'Tocca per mostrare tutti i task' : 'Mostra solo i task scaduti'}"><div class="n">${inRitardo}</div><div class="l">IN RITARDO</div></div>`;
   const barra = tutti.length ? `<div class="task-barra" title="Ripartizione dei task per stato">${STATI_TASK_TEAM.filter(st => conta(st)).map(st => `<span style="flex:${conta(st)};background:${COLORI_STATO_TASK[st].c};"></span>`).join('')}</div>` : '';
   const kpi = `<div class="task-tessere">${tessere}</div>${barra}`;
 
@@ -11520,7 +11688,7 @@ function renderTaskTeam() {
     <div class="field"><label>Data</label><select data-action="task-filtro-campo-data">${Object.keys(CAMPI_DATA_TASK).map(k => `<option value="${k}" ${TASK_FILTRO.campoData===k?'selected':''}>${CAMPI_DATA_TASK[k]}</option>`).join('')}</select></div>
     <div class="field"><label>Dal</label>${campoDataTesto('task-filtro-data-da', TASK_FILTRO.dataDa)}</div>
     <div class="field"><label>Al</label>${campoDataTesto('task-filtro-data-a', TASK_FILTRO.dataA)}</div>
-    ${(TASK_FILTRO.q || TASK_FILTRO.dataDa || TASK_FILTRO.dataA) ? `<div class="field" style="min-width:max-content;"><label>&nbsp;</label><button class="btn small" data-action="task-filtro-azzera">✕ Azzera ricerca</button></div>` : ''}
+    ${(TASK_FILTRO.q || TASK_FILTRO.dataDa || TASK_FILTRO.dataA || TASK_FILTRO.ritardo) ? `<div class="field" style="min-width:max-content;"><label>&nbsp;</label><button class="btn small" data-action="task-filtro-azzera">✕ Azzera ricerca</button></div>` : ''}
     <div class="field" style="min-width:max-content;"><label>&nbsp;</label><label class="checkline" style="white-space:nowrap;"><input type="checkbox" data-action="task-filtro-mostra-fatti" ${TASK_FILTRO.mostraFatti?'checked':''}> Mostra completati</label></div>
     <div class="field" style="margin-left:auto;"><label>&nbsp;</label><button class="btn primary" data-action="nuovo-task-team">+ Nuovo task</button></div>
   </div>`;
@@ -11534,6 +11702,7 @@ function renderTaskTeam() {
   if (TASK_FILTRO.cliente === '__nessuno__') filtrati = filtrati.filter(t => !t.clienteId);
   else if (TASK_FILTRO.cliente !== 'Tutti') filtrati = filtrati.filter(t => t.clienteId === TASK_FILTRO.cliente);
   if (!TASK_FILTRO.mostraFatti) filtrati = filtrati.filter(t => t.stato !== 'Fatto');
+  if (TASK_FILTRO.ritardo) filtrati = filtrati.filter(taskInRitardo);
   const qTask = TASK_FILTRO.q.trim().toLowerCase();
   if (qTask) { const parole = qTask.split(/\s+/); filtrati = filtrati.filter(t => { const tx = testoRicercaTask(t); return parole.every(w => tx.includes(w)); }); }
   if (TASK_FILTRO.dataDa || TASK_FILTRO.dataA) {
@@ -13954,6 +14123,7 @@ function costruisciVistaPortaleClienteEsterna(token, password) {
     id: d.id,
     nome: d.nome,
     categoria: d.categoria,
+    praticaCartella: d.praticaCartella || null,
     dataCaricamento: d.dataCaricamento || null,
     dataScadenza: d.dataScadenza || null,
     documentoToken: d.filePercorso ? ('doc_' + d.id) : null,
@@ -16104,6 +16274,15 @@ function ripristinaBackupServer(file) {
    contatta mai internet da solo/in background, solo quando l'utente lo chiede esplicitamente. */
 let AGGIORNAMENTI_CACHE = null; // null = non ancora controllato, 'errore', 'caricamento', oppure l'oggetto risposta
 let AGGIORNAMENTI_IN_CORSO = false; // true mentre si sta scaricando/applicando l'aggiornamento vero e proprio
+let AGGIORNAMENTO_SCARICATO; // undefined = non ancora chiesto al server; null = niente di scaricato; oppure { versione, versioneLocale }
+function caricaStatoAggiornamentoScaricato() {
+  if (AGGIORNAMENTO_SCARICATO !== undefined || !HTTP_SYNC_ATTIVO) return;
+  AGGIORNAMENTO_SCARICATO = null;
+  fetch('/api/aggiornamenti/stato').then(r => r.json()).then(info => {
+    AGGIORNAMENTO_SCARICATO = info && info.ok && info.scaricata ? { versione: info.scaricata.versione, versioneLocale: info.versioneLocale } : null;
+    if (VIEW === 'impostazioni') render();
+  }).catch(() => {});
+}
 let AGGIORNAMENTI_RISULTATO = null; // esito dell'ultima applicazione: {ok, messaggio} - mostrato una volta, poi si può richiudere
 function verificaAggiornamenti() {
   if (!HTTP_SYNC_ATTIVO) return;
@@ -16111,31 +16290,34 @@ function verificaAggiornamenti() {
   render();
   fetch('/api/aggiornamenti/verifica').then(r => r.json()).then(info => {
     AGGIORNAMENTI_CACHE = (info && info.ok) ? info : 'errore';
+    if (info && info.ok) AGGIORNAMENTO_SCARICATO = info.scaricata ? { versione: info.scaricata.versione, versioneLocale: info.versioneLocale } : null;
   }).catch(() => { AGGIORNAMENTI_CACHE = 'errore'; })
     .finally(() => { if (VIEW === 'impostazioni') render(); });
 }
 async function applicaAggiornamentoConferma() {
-  if (!confermaAzione('Installare la nuova versione ora? "gestionale.htm" si aggiorna subito (basta ricaricare la pagina); se anche "server.js" cambia, serve chiudere e riaprire Prisma perché la modifica abbia effetto.')) return;
+  if (!confermaAzione('Scaricare la nuova versione? Non viene installata subito: i file restano in attesa e si attivano quando riavvii il server.')) return;
   AGGIORNAMENTI_IN_CORSO = true;
   AGGIORNAMENTI_RISULTATO = null;
   render();
   try {
-    const r = await fetch('/api/aggiornamenti/applica', { method: 'POST' });
+    const r = await fetch('/api/aggiornamenti/scarica', { method: 'POST' });
     const info = await r.json();
     if (info && info.ok) {
-      AGGIORNAMENTI_RISULTATO = { ok: true, messaggio: 'Aggiornati: ' + info.file.join(', ') + '. Ricarica la pagina (F5) per usare la nuova versione; se è cambiato anche server.js, chiudi e riapri Prisma.' };
-      AGGIORNAMENTI_CACHE = null; // il prossimo controllo rileggerà la versione appena installata
+      const vNuova = AGGIORNAMENTI_CACHE && AGGIORNAMENTI_CACHE.versioneRemota, vAtt = AGGIORNAMENTI_CACHE && AGGIORNAMENTI_CACHE.versioneLocale;
+      AGGIORNAMENTO_SCARICATO = { versione: vNuova, versioneLocale: vAtt };
+      AGGIORNAMENTI_RISULTATO = null;
     } else {
       AGGIORNAMENTI_RISULTATO = { ok: false, messaggio: (info && info.errore) || 'Errore sconosciuto.' };
     }
   } catch (err) {
-    AGGIORNAMENTI_RISULTATO = { ok: false, messaggio: 'Aggiornamento non riuscito: ' + err.message };
+    AGGIORNAMENTI_RISULTATO = { ok: false, messaggio: 'Download non riuscito: ' + err.message };
   } finally {
     AGGIORNAMENTI_IN_CORSO = false;
     render();
   }
 }
 function cardAggiornamentiELog() {
+  caricaStatoAggiornamentoScaricato();
   if (!HTTP_SYNC_ATTIVO) {
     return `<div class="card">
       <div class="section-title">Aggiornamenti, log e assistenza</div>
@@ -16151,15 +16333,22 @@ function cardAggiornamentiELog() {
     corpoVersione = `<div class="helptext">⚠️ Non sono riuscito a controllare (nessuna connessione internet, o l'aggiornamento non è ancora stato configurato). <button class="btn small" data-action="verifica-aggiornamenti">Riprova</button></div>`;
   } else if (AGGIORNAMENTI_CACHE.aggiornamentoDisponibile) {
     corpoVersione = `<div class="helptext" style="margin-bottom:8px;">Versione installata: ${escapeHtml(AGGIORNAMENTI_CACHE.versioneLocale)} → <b>nuova versione disponibile: ${escapeHtml(AGGIORNAMENTI_CACHE.versioneRemota)}</b></div>${renderNoteAggiornamento(AGGIORNAMENTI_CACHE.note, AGGIORNAMENTI_CACHE.versioneRemota)}
-      <button class="btn primary small" data-action="applica-aggiornamento" ${AGGIORNAMENTI_IN_CORSO ? 'disabled' : ''}>${AGGIORNAMENTI_IN_CORSO ? 'Installazione…' : 'Installa aggiornamento'}</button>`;
+      <button class="btn primary small" data-action="applica-aggiornamento" ${AGGIORNAMENTI_IN_CORSO || (AGGIORNAMENTO_SCARICATO && AGGIORNAMENTO_SCARICATO.versione === AGGIORNAMENTI_CACHE.versioneRemota) ? 'disabled' : ''}>${AGGIORNAMENTI_IN_CORSO ? 'Download…' : (AGGIORNAMENTO_SCARICATO && AGGIORNAMENTO_SCARICATO.versione === AGGIORNAMENTI_CACHE.versioneRemota ? 'Già scaricato' : 'Scarica aggiornamento')}</button>`;
   } else {
     corpoVersione = `<div class="helptext">Versione installata: ${escapeHtml(AGGIORNAMENTI_CACHE.versioneLocale)} — già la più recente. <button class="btn small ghost" data-action="verifica-aggiornamenti">Ricontrolla</button></div>`;
   }
+  const sc = AGGIORNAMENTO_SCARICATO;
+  const alertScaricato = sc ? `<div style="border:2px solid var(--arancio,#e08a2c);background:#fff4e5;border-radius:10px;padding:10px 14px;margin-bottom:10px;">
+      <div style="font-weight:800;color:#a85d00;">⬇ Aggiornamento scaricato, in attesa di riavvio</div>
+      <div style="font-size:13px;margin-top:4px;">La versione attuale è la <b>${escapeHtml(sc.versioneLocale || (AGGIORNAMENTI_CACHE && AGGIORNAMENTI_CACHE.versioneLocale) || '—')}</b> e l'aggiornamento per la <b>${escapeHtml(sc.versione || '—')}</b> è già scaricato: basta riavviare il server per attuarlo.</div>
+      <button class="btn small primary" style="margin-top:8px;" data-action="riavvia-server">🔄 Riavvia il server ora</button>
+    </div>` : '';
   const esito = AGGIORNAMENTI_RISULTATO ? `<div class="helptext" style="margin-top:8px;${AGGIORNAMENTI_RISULTATO.ok ? '' : 'color:var(--rosso);'}">${escapeHtml(AGGIORNAMENTI_RISULTATO.messaggio)}</div>` : '';
   return `<div class="card">
     <div class="section-title">Aggiornamenti, log e assistenza</div>
     <div style="margin-bottom:14px;">
       <div style="font-size:11px;font-weight:700;color:var(--text-mut);text-transform:uppercase;letter-spacing:.03em;margin-bottom:8px;">Aggiornamenti</div>
+      ${alertScaricato}
       ${corpoVersione}
       ${esito}
     </div>
@@ -18623,7 +18812,8 @@ function onClickDelegatoInterno(e) {
       break;
     // Task #215: bottoni della checklist di avvio in "Oggi". "manuale" = passo senza un dato che lo
     // dimostri (es. team): si considera fatto nel momento in cui l'utente ci va.
-    case 'task-filtro-azzera': TASK_FILTRO.q = ''; TASK_FILTRO.dataDa = ''; TASK_FILTRO.dataA = ''; TASK_FILTRO.stato = 'Tutti'; STATI_TASK_TEAM.forEach(s=>resetPagina('taskteam-'+s)); render(); break;
+    case 'task-filtro-azzera': TASK_FILTRO.q = ''; TASK_FILTRO.dataDa = ''; TASK_FILTRO.dataA = ''; TASK_FILTRO.stato = 'Tutti'; TASK_FILTRO.ritardo = false; STATI_TASK_TEAM.forEach(s=>resetPagina('taskteam-'+s)); render(); break;
+    case 'task-filtro-ritardo': TASK_FILTRO.ritardo = !TASK_FILTRO.ritardo; STATI_TASK_TEAM.forEach(s=>resetPagina('taskteam-'+s)); render(); break;
     case 'task-filtro-stato': TASK_FILTRO.stato = TASK_FILTRO.stato === el.dataset.stato ? 'Tutti' : el.dataset.stato; STATI_TASK_TEAM.forEach(s=>resetPagina('taskteam-'+s)); render(); break;
     case 'task-motivo-conferma': { const inp = document.getElementById('motivo_' + id); if (!confermaMotivoStatoTask(id, inp ? inp.value : '')) { toast('Scrivi il motivo prima di confermare.', true); break; } render(); toast('Motivo confermato e salvato nello storico del task.'); break; }
     case 'task-motivo-modifica': MOTIVO_IN_MODIFICA = id; render(); { const inp = document.getElementById('motivo_' + id); if (inp) inp.focus(); } break;
@@ -18922,19 +19112,8 @@ function onClickDelegatoInterno(e) {
     case 'preventivo-genera-mandato': {
       const p = STATE.preventivi.find(x => x.id === id);
       if (!p) return;
-      const modelliMandato = STATE.modelliDocumento.filter(m => m.attivo && m.categoria === 'Mandato professionale');
-      if (modelliMandato.length === 0) { toast('Nessun modello "Mandato professionale" attivo: creane uno in Modelli documenti.'); return; }
-      const modello = modelliMandato.find(m => m.predefinito) || modelliMandato[0];
-      const valoriRiservati = { oggetto: p.oggetto || '', importo: p.importo != null ? fmtNum2(p.importo) : '', dataEmissione: fmtData(oggiISO()), validoFino: '' };
-      const valoriCustom = Object.assign({}, p.valoriCustom || {}, { dettaglioAttivita: testoElencoAttivita(p.attivitaScelte) || (p.valoriCustom && p.valoriCustom.dettaglioAttivita) || '' });
-      const corpo = risolviTemplateDocumento(modello.corpo, p.clienteId, Object.assign({}, valoriRiservati, valoriCustom));
-      const mandato = aggiungiPreventivo({
-        clienteId: p.clienteId, categoria: modello.categoria, modelloId: modello.id, nomeModello: modello.nome,
-        oggetto: p.oggetto, importo: p.importo, dataEmissione: oggiISO(), validoFino: null, stato: 'Bozza',
-        note: `Generato automaticamente dal preventivo accettato "${p.oggetto}".`, valoriCustom, corpo,
-        attivitaScelte: p.attivitaScelte || [], preventivoOrigineId: p.id,
-      });
-      aggiornaPreventivo(p.id, { mandatoGeneratoId: mandato.id });
+      const mandato = generaMandatoDaPreventivo(p);
+      if (!mandato) return;
       modalDettaglioPreventivo(mandato.id);
       toast('Mandato generato dal preventivo accettato.');
       break;
@@ -19278,6 +19457,13 @@ function onClickDelegatoInterno(e) {
     case 'onboard-seleziona': ONBOARD_SELECTED = id; render(); break;
 
     case 'aml-seleziona': AML_SELECTED = id; render(); break;
+    case 'aml-valutazione-apri': modalValutazioneAml(AML_SELECTED); break;
+    case 'aml-val-conferma': {
+      const r = confermaValutazioneAml(); if (!r) break;
+      chiudiModal(); render();
+      toast(`Valutazione registrata: ${r.esito.grado}. Documenti generati in bozza (${[r.risultato.mandatoId && 'mandato', r.risultato.dichiarazioneId && 'dichiarazione AML', r.risultato.notaId && 'nota di accettazione'].filter(Boolean).join(', ') || 'nessuno: manca un modello attivo'}).`);
+      break;
+    }
     case 'aml-aggiungi-nota': {
       const campo = h('amlNuovaNota');
       const testo = campo ? campo.value : '';
@@ -20289,6 +20475,10 @@ function onChangeDelegato(e) {
     // insieme alla select, senza dover chiudere e riaprire a mano.
     case 'app-cambia-procedura': aggiornaAppuntamento(id, { procedureId: el.value || PROC_NESSUNA }); apriModalAppuntamento(id); break;
     case 'app-cambia-note': aggiornaAppuntamento(id, { note: el.value }); break;
+    case 'aml-val-prestazione': if (AML_VAL_DRAFT) { AML_VAL_DRAFT.prestazione = Number(el.value); const n = AML_PRESTAZIONI[AML_VAL_DRAFT.prestazione].nome; AML_VAL_DRAFT.sezioneB = !['Tenuta della contabilità', 'Revisione legale dei conti'].includes(n); disegnaModalValutazioneAml(); } break;
+    case 'aml-val-sezioneb': if (AML_VAL_DRAFT) { AML_VAL_DRAFT.sezioneB = el.checked; disegnaModalValutazioneAml(); } break;
+    case 'aml-val-livello': if (AML_VAL_DRAFT) { const d = (AML_VAL_DRAFT.fattori[el.dataset.k] = AML_VAL_DRAFT.fattori[el.dataset.k] || { checks: [], livello: 1 }); d.livello = Number(el.value); const e = document.getElementById('amlEsito'); if (e) e.innerHTML = esitoAmlHtml(AML_VAL_DRAFT); } break;
+    case 'aml-val-fattore': if (AML_VAL_DRAFT) { const d = (AML_VAL_DRAFT.fattori[el.dataset.k] = AML_VAL_DRAFT.fattori[el.dataset.k] || { checks: [], livello: 1 }); d.checks[Number(el.dataset.i)] = el.checked; } break;
     case 'prev-pagamento-cambia': { const w = document.getElementById('pPagamentoLiberoWrap'); if (w) w.style.display = el.value === 'libero' ? '' : 'none'; break; }
     case 'prev-riga-da-catalogo': { const a = (STATE.catalogoAttivitaStudio || []).find(x => x.id === el.value); if (a) { const c = document.getElementById('righePreventivo'); const prima = c.children.length === 1 && !c.querySelector('.riga-prev-desc').value.trim() && c.querySelector('.riga-prev-importo').value === ''; if (prima) c.innerHTML = ''; c.insertAdjacentHTML('beforeend', rigaPreventivoHtml({ id: a.id, nome: a.nome, prezzo: a.prezzo, richiedeMandato: a.richiedeMandato })); aggiornaTotalePreventivoSemplice(); el.value = ''; } break; }
     case 'potenziale-da-appuntamento': modalNuovoPotenziale(el.value || null); break;
@@ -21837,7 +22027,7 @@ window.aggiornaAccettazione = aggiornaAccettazione; window.accettazioneCompleta 
 window.libriPrevistiCliente = libriPrevistiCliente; window.lacuneLibriCliente = lacuneLibriCliente; window.assegnaAttoLibro = assegnaAttoLibro; window.attiLibroCliente = attiLibroCliente; window.attiDaTrascrivere = attiDaTrascrivere;
 window.datiCruscotto = datiCruscotto; window.annualiCedutiCliente = annualiCedutiCliente;
 window.aggiungiDocumento = aggiungiDocumento; window.aggiungiLibroSociale = aggiungiLibroSociale; window.aggiornaLibroSociale = aggiornaLibroSociale;
-window.modalPreventivo = modalPreventivo; window.modalDettaglioPreventivo = modalDettaglioPreventivo; window.modalAccettazionePreventivo = modalAccettazionePreventivo; window.setPrevFormCompleto = (v) => { PREV_FORM_COMPLETO = !!v; }; window.stepAperturaPosizione = stepAperturaPosizione; window.fogliPronti = fogliPronti; window.apriModalAppuntamento = apriModalAppuntamento; window.modalNuovoPotenziale = modalNuovoPotenziale; window.aggiungiAppuntamento = aggiungiAppuntamento; window.accettaPreventivo = accettaPreventivo; window.creaClientePotenziale = creaClientePotenziale; window.aggiungiAttivitaFatturabile = aggiungiAttivitaFatturabile; window.segnaAttivitaFatturate = segnaAttivitaFatturate; window.prossimaFatturazioneCliente = prossimaFatturazioneCliente; window.attivitaAperteCliente = attivitaAperteCliente;
+window.calcolaValutazioneAml = calcolaValutazioneAml; window.modalValutazioneAml = modalValutazioneAml; window.confermaValutazioneAml = confermaValutazioneAml; window.AML_PRESTAZIONI = AML_PRESTAZIONI; window.AML_FATTORI = AML_FATTORI; window.modalPreventivo = modalPreventivo; window.modalDettaglioPreventivo = modalDettaglioPreventivo; window.modalAccettazionePreventivo = modalAccettazionePreventivo; window.setPrevFormCompleto = (v) => { PREV_FORM_COMPLETO = !!v; }; window.stepAperturaPosizione = stepAperturaPosizione; window.fogliPronti = fogliPronti; window.apriModalAppuntamento = apriModalAppuntamento; window.modalNuovoPotenziale = modalNuovoPotenziale; window.aggiungiAppuntamento = aggiungiAppuntamento; window.accettaPreventivo = accettaPreventivo; window.creaClientePotenziale = creaClientePotenziale; window.aggiungiAttivitaFatturabile = aggiungiAttivitaFatturabile; window.segnaAttivitaFatturate = segnaAttivitaFatturate; window.prossimaFatturazioneCliente = prossimaFatturazioneCliente; window.attivitaAperteCliente = attivitaAperteCliente;
 window.clienteAttivo = clienteAttivo; window.cessaCliente = cessaCliente; window.riattivaCliente = riattivaCliente; window.configContabTerzi = configContabTerzi;
 /* Area cliente interattiva (task #88): stessa logica di sopra, ma in scrittura. */
 window.aggiungiMessaggioPortaleClienteEsterno = aggiungiMessaggioPortaleClienteEsterno;

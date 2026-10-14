@@ -7,6 +7,14 @@ const env = Object.assign({}, process.env, { PRISMA_PORTA: String(PORTA), PRISMA
 for (const f of ['server.js', 'gestionale.htm', 'portale-cliente.htm', 'portale-sw.js', 'package.json']) { try { fs.copyFileSync(path.join(__dirname, f), path.join(dir, f)); } catch (e) { /* facoltativo */ } }
 env.NODE_PATH = path.join(__dirname, 'node_modules');
 fs.writeFileSync(path.join(dir, 'responsabili-password.json'), JSON.stringify({ Matteo: 'segreta12' }));
+// Aggiornamento "scaricato, in attesa di riavvio": all'avvio i file vanno al loro posto e il server riparte con il codice nuovo.
+const crypto = require('crypto');
+const stag = path.join(dir, 'aggiornamento-pronto'); fs.mkdirSync(stag);
+const nuovoHtml = '<!-- AGGIORNATO-TEST -->' + fs.readFileSync(path.join(dir, 'gestionale.htm'), 'utf8');
+const nuovoServer = fs.readFileSync(path.join(dir, 'server.js'), 'utf8').replace(/^const VERSIONE_LOCALE = '[^']+'/m, "const VERSIONE_LOCALE = '99.0.0'");
+fs.writeFileSync(path.join(stag, 'gestionale.htm'), nuovoHtml); fs.writeFileSync(path.join(stag, 'server.js'), nuovoServer);
+const sha = (t) => crypto.createHash('sha256').update(t).digest('hex');
+fs.writeFileSync(path.join(stag, 'manifesto-pronto.json'), JSON.stringify({ versione: '99.0.0', note: 'test', scaricatoIl: new Date().toISOString(), file: [{ nome: 'gestionale.htm', sha256: sha(nuovoHtml) }, { nome: 'server.js', sha256: sha(nuovoServer) }] }));
 const figlio = spawn(process.execPath, [path.join(dir, 'server.js')], { env, stdio: 'ignore' });
 function chiedi(metodo, p, { remoto, cookie, corpo } = {}) {
   return new Promise((ok, ko) => {
@@ -21,6 +29,8 @@ function chiedi(metodo, p, { remoto, cookie, corpo } = {}) {
 let falliti = 0; const verifica = (c, m) => { if (!c) { falliti++; console.log('❌ ' + m); } else console.log('✅ ' + m); };
 (async () => {
   for (let i = 0; i < 400; i++) { try { await chiedi('GET', '/api/presenza'); break; } catch (e) { await new Promise(r => setTimeout(r, 500)); } } // l'avvio di server.js puo richiedere oltre un minuto su macchine lente
+  verifica(fs.readFileSync(path.join(dir, 'gestionale.htm'), 'utf8').startsWith('<!-- AGGIORNATO-TEST -->') && !fs.existsSync(stag), 'aggiornamento scaricato: applicato all\'avvio e cartella di attesa svuotata');
+  { const st = JSON.parse((await chiedi('GET', '/api/aggiornamenti/stato')).b); verifica(st.ok && st.versioneLocale === '99.0.0' && st.scaricata === null, 'dopo il riavvio gira il server.js nuovo (versione 99.0.0), nessun aggiornamento in attesa'); }
   const pwd = fs.readFileSync(path.join(dir, 'password-accesso-rete-locale.txt'), 'utf8').split(/\r?\n/)[1].trim();
   verifica(pwd.length >= 12, 'password iniziale generata');
   verifica(!fs.readFileSync(path.join(dir, 'accesso-lan.json'), 'utf8').includes(pwd), 'la password non e nel file di configurazione (solo hash)');
@@ -67,6 +77,6 @@ let falliti = 0; const verifica = (c, m) => { if (!c) { falliti++; console.log('
   verifica(JSON.parse(r.b).sessioneScaduta === true, 'un altro dispositivo non puo usare il token altrui');
   r = await chiedi('POST', '/api/operatore-login', { corpo: { nome: 'Matteo', password: 'segreta12', deviceId: 'dev-B' } });
   verifica(JSON.parse(r.b).occupato === true, 'secondo dispositivo mentre il primo e attivo: nome occupato');
-  figlio.kill(); fs.rmSync(dir, { recursive: true, force: true });
+  figlio.kill(); try { require('child_process').execSync('pkill -f ' + JSON.stringify(dir)); } catch (e) {}; fs.rmSync(dir, { recursive: true, force: true });
   console.log(falliti ? '\n❌ ' + falliti + ' controlli falliti' : '\n✅ TUTTI I CONTROLLI DI ACCESSO PASSATI'); process.exit(falliti ? 1 : 0);
 })().catch(e => { console.log('❌ errore test', e.message); figlio.kill(); process.exit(1); });

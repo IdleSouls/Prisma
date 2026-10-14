@@ -115,6 +115,47 @@ const È_SEA = (() => {
   try { const sea = require('node:sea'); return !!(sea && typeof sea.isSea === 'function' && sea.isSea()); }
   catch (err) { return false; }
 })();
+/* Aggiornamenti in due tempi (richiesta Matteo): "Scarica" mette i file verificati nella cartella "aggiornamento-pronto" SENZA
+   toccare quelli in uso; l'aggiornamento prende piede al prossimo avvio del server, ed e questo blocco (eseguito per primo,
+   prima di caricare tutto il resto) ad applicarlo. Se server.js stesso e cambiato, il file nuovo viene ricaricato subito. */
+const CARTELLA_AGG_PRONTO = path.join(CARTELLA, 'aggiornamento-pronto');
+const FILE_AGG_AVVIO = ['gestionale.htm', 'server.js', 'portale-cliente.htm', 'portale-sw.js'];
+function leggiAggiornamentoPronto() {
+  try { const m = JSON.parse(fs.readFileSync(path.join(CARTELLA_AGG_PRONTO, 'manifesto-pronto.json'), 'utf8')); return m && m.versione && Array.isArray(m.file) ? m : null; }
+  catch (err) { return null; }
+}
+function versioneNumeri(v) { return String(v || '').split('.').map(n => parseInt(n, 10) || 0); }
+function versionePiuNuova(a, b) { const x = versioneNumeri(a), y = versioneNumeri(b); for (let i = 0; i < Math.max(x.length, y.length); i++) { const d = (x[i] || 0) - (y[i] || 0); if (d) return d > 0; } return false; }
+function applicaAggiornamentoPronto() {
+  const m = leggiAggiornamentoPronto();
+  if (!m) return { applicato: false, serverCambiato: false };
+  const pulisci = () => { try { fs.rmSync(CARTELLA_AGG_PRONTO, { recursive: true, force: true }); } catch (err) { /* ignorato */ } };
+  let versioneAttuale = '0';
+  try { versioneAttuale = (fs.readFileSync(path.join(CARTELLA, 'server.js'), 'utf8').match(/const VERSIONE_LOCALE = '([^']+)'/) || [])[1] || '0'; } catch (err) { /* ignorato */ }
+  if (!versionePiuNuova(m.versione, versioneAttuale)) { pulisci(); return { applicato: false, serverCambiato: false }; }
+  const pronti = [];
+  for (const voce of m.file) {
+    if (!voce || !FILE_AGG_AVVIO.includes(voce.nome)) continue;
+    let contenuto;
+    try { contenuto = fs.readFileSync(path.join(CARTELLA_AGG_PRONTO, voce.nome)); } catch (err) { console.log('Aggiornamento pronto incompleto (' + voce.nome + '): non applicato.'); return { applicato: false, serverCambiato: false }; }
+    if (crypto.createHash('sha256').update(contenuto).digest('hex').toLowerCase() !== String(voce.sha256 || '').toLowerCase()) { console.log('Aggiornamento pronto alterato (' + voce.nome + '): scartato.'); pulisci(); return { applicato: false, serverCambiato: false }; }
+    pronti.push({ nome: voce.nome, contenuto });
+  }
+  if (!pronti.length) { pulisci(); return { applicato: false, serverCambiato: false }; }
+  for (const f of pronti) { const dest = path.join(CARTELLA, f.nome); fs.writeFileSync(dest + '.aggiornamento-tmp', f.contenuto); fs.renameSync(dest + '.aggiornamento-tmp', dest); }
+  pulisci();
+  try { fs.appendFileSync(path.join(CARTELLA, 'logs', 'prisma.log'), '[' + new Date().toISOString() + '] Aggiornamento applicato all\'avvio: versione ' + m.versione + ' (' + pronti.map(f => f.nome).join(', ') + ')\n'); } catch (err) { /* log non disponibile ancora: va bene */ }
+  console.log('Aggiornamento applicato: versione ' + m.versione + '.');
+  return { applicato: true, serverCambiato: pronti.some(f => f.nome === 'server.js') };
+}
+const ESITO_AGG_AVVIO = applicaAggiornamentoPronto();
+if (ESITO_AGG_AVVIO.serverCambiato && !È_SEA) {
+  // server.js e stato sostituito: questo processo ha ancora il codice vecchio in memoria, quindi si rilancia il file nuovo e si esce.
+  try { spawn(process.execPath, [path.join(CARTELLA, 'server.js'), ...process.argv.slice(2)], { cwd: CARTELLA, detached: true, stdio: 'ignore', windowsHide: false }).unref(); }
+  catch (err) { console.log('Rilancio dopo aggiornamento non riuscito: ' + err.message + ' - riavvia a mano.'); }
+  process.exit(0);
+}
+
 /* Task Matteo ("il riavvio del server non funziona, si chiude e basta"): prima il pulsante "Riavvia
    server" chiudeva SOLO il processo, per design - il riavvio vero e proprio andava fatto a mano
    (rilanciare "node server.js" o ririaprire l'eseguibile). Confuso per chi si aspetta un vero
@@ -431,7 +472,7 @@ scriviLog('Avvio di Prisma...');
 const URL_MANIFESTO_AGGIORNAMENTI = 'https://raw.githubusercontent.com/IdleSouls/Prisma/main/versione.json';
 // Cambiala qui a ogni nuova versione pubblicata (deve combaciare con quella scritta nel
 // "versione.json" caricato su GitHub, altrimenti il confronto non ha senso).
-const VERSIONE_LOCALE = '1.23.0';
+const VERSIONE_LOCALE = '1.24.0';
 // Solo questi file possono essere sovrascritti da un aggiornamento - mai un nome libero/a piacere
 // del manifesto, per non correre il rischio (anche solo teorico, es. account GitHub compromesso)
 // di far scrivere un file arbitrario altrove sul PC del cliente.
@@ -498,6 +539,11 @@ async function verificaAggiornamentoDisponibile() {
 // avrebbe dovuto risultare "disponibile" in nessun caso, ma un controllo automatico scritto senza
 // passare da QUESTA stessa funzione lo ha scaricato lo stesso. Ogni punto che decide se applicare
 // un aggiornamento (manuale o automatico) deve passare da qui, un'unica fonte di verità.
+function statoAggiornamentoScaricato() {
+  const m = leggiAggiornamentoPronto();
+  if (!m || !versionePiuNuova(m.versione, VERSIONE_LOCALE)) return null;
+  return { versione: m.versione, scaricatoIl: m.scaricatoIl || null, note: m.note || '' };
+}
 function versioneENuova(remota, locale) {
   const norm = (v) => String(v || '0').trim().split('.').map((n) => parseInt(n, 10) || 0);
   const a = norm(remota), b = norm(locale);
@@ -509,12 +555,12 @@ function versioneENuova(remota, locale) {
   return false; // uguali: non è un aggiornamento
 }
 
-async function applicaAggiornamento(manifesto) {
+async function scaricaAggiornamento(manifesto) {
   // Task Matteo (incidente 25/09/2026): MAI sovrascrivere i file di codice senza prima metterli in
   // sicurezza - senza questo, un manifesto sbagliato (vecchio, corrotto, o un domani un account
   // GitHub compromesso) cancella l'unica copia buona senza lasciare nulla da cui tornare indietro.
   eseguiBackup('prima di un aggiornamento verso la versione ' + manifesto.versione);
-  scriviLog('Aggiornamento in corso verso la versione ' + manifesto.versione + '...');
+  scriviLog('Download aggiornamento verso la versione ' + manifesto.versione + '...');
   // Fase 1: scarica e VERIFICA tutto prima di toccare un solo file (un aggiornamento a metà, con
   // gestionale.htm nuovo e server.js vecchio, è peggio di nessun aggiornamento). Ogni file deve
   // avere lo sha256 nel manifesto: se non combacia (manifesto e file non ancora allineati sulla
@@ -549,17 +595,20 @@ async function applicaAggiornamento(manifesto) {
     scaricati.push({ nome: voce.nome, contenuto });
   }
   if (!scaricati.length) throw new Error('Il manifesto non contiene nessun file aggiornabile.');
-  // Fase 2: scrittura (prima su temporaneo, poi rename: mai un file lasciato a metà).
+  // Fase 2: i file verificati vanno nella cartella "aggiornamento-pronto" (niente sovrascritture dei file in uso):
+  // l'aggiornamento si attua al prossimo riavvio del server (vedi applicaAggiornamentoPronto in cima al file).
+  try { fs.rmSync(CARTELLA_AGG_PRONTO, { recursive: true, force: true }); } catch (err) { /* ignorato */ }
+  fs.mkdirSync(CARTELLA_AGG_PRONTO, { recursive: true });
   const risultati = [];
+  const elencoManifesto = [];
   for (const f of scaricati) {
-    const destinazione = path.join(CARTELLA, f.nome);
-    const temporaneo = destinazione + '.aggiornamento-tmp';
-    fs.writeFileSync(temporaneo, f.contenuto);
-    fs.renameSync(temporaneo, destinazione);
+    fs.writeFileSync(path.join(CARTELLA_AGG_PRONTO, f.nome), f.contenuto);
+    elencoManifesto.push({ nome: f.nome, sha256: crypto.createHash('sha256').update(f.contenuto).digest('hex') });
     risultati.push(f.nome);
-    scriviLog('Aggiornamento: scritto "' + f.nome + '" (' + f.contenuto.length + ' byte).');
+    scriviLog('Aggiornamento: scaricato "' + f.nome + '" (' + f.contenuto.length + ' byte), in attesa di riavvio.');
   }
-  scriviLog('Aggiornamento completato: ' + risultati.join(', ') + '.');
+  fs.writeFileSync(path.join(CARTELLA_AGG_PRONTO, 'manifesto-pronto.json'), JSON.stringify({ versione: manifesto.versione, note: manifesto.note || '', scaricatoIl: new Date().toISOString(), file: elencoManifesto }, null, 2));
+  scriviLog('Aggiornamento ' + manifesto.versione + ' scaricato: sara attivo al prossimo riavvio del server.');
   return risultati;
 }
 
@@ -1740,6 +1789,13 @@ function gestisciRichiesta(req, res) {
     return;
   }
 
+  // Stato locale (nessun contatto con internet): c'e un aggiornamento gia scaricato in attesa di riavvio?
+  if (url === '/api/aggiornamenti/stato' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ ok: true, versioneLocale: VERSIONE_LOCALE, scaricata: statoAggiornamentoScaricato() }));
+    return;
+  }
+
   // Verifica se c'è una versione più recente pubblicata - SOLO su richiesta esplicita dall'interfaccia
   // (mai automatico/in background): scarica solo il piccolo manifesto JSON, non i file veri.
   if (url === '/api/aggiornamenti/verifica' && req.method === 'GET') {
@@ -1751,6 +1807,7 @@ function gestisciRichiesta(req, res) {
         versioneRemota: manifesto.versione,
         aggiornamentoDisponibile: versioneENuova(manifesto.versione, VERSIONE_LOCALE),
         note: manifesto.note || '',
+        scaricata: statoAggiornamentoScaricato(),
       }));
     }).catch((err) => {
       scriviLog('Verifica aggiornamenti non riuscita: ' + err.message);
@@ -1762,7 +1819,7 @@ function gestisciRichiesta(req, res) {
 
   // Applica l'aggiornamento: ri-scarica il manifesto (non si fida di uno passato dal client) e poi
   // i file - solo quelli in whitelist, solo da GitHub, vedi applicaAggiornamento() più sopra.
-  if (url === '/api/aggiornamenti/applica' && req.method === 'POST') {
+  if ((url === '/api/aggiornamenti/scarica' || url === '/api/aggiornamenti/applica') && req.method === 'POST') {
     verificaAggiornamentoDisponibile()
       .then((manifesto) => {
         // Difesa in profondità: anche se qualcosa chiama questo endpoint senza passare prima da
@@ -1772,7 +1829,7 @@ function gestisciRichiesta(req, res) {
         if (!versioneENuova(manifesto.versione, VERSIONE_LOCALE)) {
           throw new Error('Il manifesto remoto (versione ' + manifesto.versione + ') non è più recente della versione locale (' + VERSIONE_LOCALE + '): nessun aggiornamento da applicare.');
         }
-        return applicaAggiornamento(manifesto);
+        return scaricaAggiornamento(manifesto);
       })
       .then((fileAggiornati) => {
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });

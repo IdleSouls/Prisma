@@ -1094,6 +1094,10 @@ function panelF24() {
 // all'altra solo mostrando/nascondendo, MAI con un re-render) proprio per non perdere quello che il
 // cliente ha già digitato durante un refresh in background - vedi corpoHaBozzaInCorso più sotto,
 // esteso apposta per questo pannello dopo il bug già segnalato da Matteo sulla bozza di risposta.
+// Cartelle documenti aperte/chiuse dal cliente: sopravvivono ai refresh in background che ricreano il pannello
+const CARTELLE_STATO = {};
+function cartellaAperta(k, predefinito) { return Object.prototype.hasOwnProperty.call(CARTELLE_STATO, k) ? CARTELLE_STATO[k] : predefinito; }
+document.addEventListener('toggle', (ev) => { const d = ev.target; if (d && d.tagName === 'DETAILS' && d.dataset && d.dataset.k) CARTELLE_STATO[d.dataset.k] = d.open; }, true);
 let RAV_MODALITA = null; // scelta del cliente (f24/libero): sopravvive ai refresh in background che ricreano il pannello
 let RAV_CAMPI = {};      // F24 scelto e data di versamento, stessa ragione
 function ravSalvaCampi() {
@@ -1371,8 +1375,9 @@ function renderDocumenti() {
   // La prima area (quella col documento più recente) parte già aperta, le altre chiuse.
   const gruppiArea = new Map();
   documentiFiltrati.forEach(d => {
-    const cat = d.categoria || 'Altro';
-    const area = areaPerCategoriaDocumento(cat);
+    // Documenti di una pratica: la sottocartella porta il titolo della cartella della pratica (aaaa.mm.gg - nome pratica)
+    const cat = d.praticaCartella || d.categoria || 'Altro';
+    const area = d.praticaCartella ? 'Pratiche e contratti' : areaPerCategoriaDocumento(d.categoria || 'Altro');
     if (!gruppiArea.has(area)) gruppiArea.set(area, new Map());
     const gruppiCat = gruppiArea.get(area);
     if (!gruppiCat.has(cat)) gruppiCat.set(cat, []);
@@ -1383,7 +1388,7 @@ function renderDocumenti() {
     const nDocArea = [...gruppiCat.values()].reduce((s, arr) => s + arr.length, 0);
     const categorieOrdinate = [...gruppiCat.keys()].sort((x, y) => {
       const ix = ORDINE_CATEGORIE_DOCUMENTO.indexOf(x), iy = ORDINE_CATEGORIE_DOCUMENTO.indexOf(y);
-      if (ix === -1 && iy === -1) return x.localeCompare(y);
+      if (ix === -1 && iy === -1) return /^\d{4}[.\-]/.test(x) && /^\d{4}[.\-]/.test(y) ? y.localeCompare(x) : x.localeCompare(y);
       if (ix === -1) return 1;
       if (iy === -1) return -1;
       return ix - iy;
@@ -1395,12 +1400,12 @@ function renderDocumenti() {
           <div class="s">caricato il ${fmtData(d.dataCaricamento)}${d.dataScadenza ? ' · scade ' + fmtData(d.dataScadenza) : ''}</div>
           ${d.documentoToken ? `<div class="allegato-link">📎 <a href="${linkDocumento(d.documentoToken)}" target="_blank" rel="noopener">Apri documento</a></div>` : ''}
         </div>`).join('');
-      return `<details class="cartella-doc" style="margin-left:14px;">
+      return `<details class="cartella-doc" data-k="c:${escapeHtml(a.area + '/' + cat)}"${cartellaAperta('c:' + a.area + '/' + cat, false) ? ' open' : ''} style="margin-left:14px;">
         <summary>📁 ${escapeHtml(cat)} <span class="cnt-cartella">${docs.length}</span></summary>
         <div style="margin-top:6px;">${righe}</div>
       </details>`;
     }).join('');
-    return `<details class="cartella-doc cartella-area"${ia === 0 ? ' open' : ''}>
+    return `<details class="cartella-doc cartella-area" data-k="a:${escapeHtml(a.area)}"${cartellaAperta('a:' + a.area, ia === 0) ? ' open' : ''}>
       <summary><span class="cartella-icona" style="background:${a.sfondo};color:${a.colore};">${a.icona}</span>${escapeHtml(a.area)} <span class="cnt-cartella">${nDocArea}</span></summary>
       <div style="margin-top:6px;">${sottocartelle}</div>
     </details>`;

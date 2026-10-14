@@ -76,3 +76,4 @@ mcp-server/token-ia.txt
 # Accesso rete locale: hash password e dispositivi autorizzati + password iniziale in chiaro
 accesso-lan.json
 password-accesso-rete-locale.txt
+aggiornamento-pronto/

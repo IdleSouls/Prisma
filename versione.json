@@ -1,22 +1,22 @@
 {
-  "versione": "1.23.0",
-  "note": "Nuovo preventivo semplificato: cliente, oggetto, righe di attività con compenso, pagamento (unica soluzione o 50/50), validità; testo dal modello studio con logo in testa | Preventivi: filtro \"Solo potenziali clienti\" | Accettazione del preventivo: conferma, scelta del responsabile del cliente e di chi apre le posizioni; si crea il task \"Apertura posizione cliente\" e gli step (P.IVA, Camera di Commercio, INPS, INAIL...) compaiono nell'Onboarding | Task creati dall'IA: ora hanno sempre la data di inserimento (anche quelli già esistenti)",
+  "versione": "([^",
+  "note": "Aggiornamenti in due tempi: il download non installa subito, compare un avviso con la versione scaricata e basta riavviare il server per attuarla | Task: il box In ritardo filtra tutti i task scaduti | Portale cliente: i documenti delle pratiche stanno in cartelle col titolo della pratica (aaaa.mm.gg - nome) e le cartelle aperte non si chiudono più da sole | Nuovo cliente: valutazione AML separata, mandato e dichiarazione AML generati, onboarding con procedura di studio",
   "richiedeNpmInstall": false,
   "file": [
     {
       "nome": "gestionale.htm",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/gestionale.htm",
-      "sha256": "52416fdad9897ca257106b483949160fa1c47199677d1ff45bbe4cbf8838c3f0"
+      "sha256": "063ac265ce6b742bdbf4f3346d325d70cb8d1065432aeee324207adcc869ad62"
     },
     {
       "nome": "server.js",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/server.js",
-      "sha256": "a8fbc549846f39cb30ddecc208b60c136c55ff55d06c6e6d39f4cddc949cf286"
+      "sha256": "217543d5415235b200eb0891b2ec147b4090d6baa828e15e73e174cddc1f65d4"
     },
     {
       "nome": "portale-cliente.htm",
       "url": "https://raw.githubusercontent.com/IdleSouls/Prisma/main/portale-cliente.htm",
-      "sha256": "1eed2029cd31e3a5584e392dfe66805721cd26a0e4ee2cc7d5f36f56bf86dd5a"
+      "sha256": "593765db31f768082d62259f163925d03e839886c59dbda6923d5e69f7af8a43"
     },
     {
       "nome": "portale-sw.js",
@@ -24,5 +24,5 @@
       "sha256": "2ef5a0fe81a09f871a56489a86ae276f0e2f123d845afa484ff703650b47b24e"
     }
   ],
-  "firma": "9jaBUbLJeqk3W7P+ePwE10coPMX9kuf8TifYYc+Oq/HDiIc8lxGE+363YZiyP/J4o9XTkb/vjJiD96MOx2rIBg=="
+  "firma": "7m6iV2W00miaaWPD1Fz0hNbEhqoC34QfdPiPh85aJjA7MsyCVRMFMT9SE/wURVf3n0xU/ZnMYux64a0epWi1BQ=="
 }

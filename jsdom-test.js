@@ -929,8 +929,8 @@ async function main() {
   click(q(`[data-action="onboard-seleziona"][data-id="${clienteForfettario.id}"]`));
   await wait(20);
   const checkOnboard = qa('[data-action="onboard-toggle"]');
-  assert(checkOnboard.length === 9, `attese 9 voci onboarding, trovate ${checkOnboard.length}`);
-  for (let guard = 0; guard < 12; guard++) {
+  assert(checkOnboard.length >= 19, `attese almeno 19 voci onboarding (base + procedura di studio), trovate ${checkOnboard.length}`);
+  for (let guard = 0; guard < 40; guard++) {
     const nonSpuntate = qa('[data-action="onboard-toggle"]').filter(c => !c.checked);
     if (nonSpuntate.length === 0) break;
     setChecked(nonSpuntate[0], true);
@@ -7727,6 +7727,16 @@ async function main() {
     click(q('[data-action="task-filtro-azzera"]')); await wait(20);
     c = q('#content').textContent;
     assert(c.includes('TKA alfa') && c.includes('TKC gamma'), 'task: Azzera ricerca deve rimostrare tutto');
+    // tessera "In ritardo": mostra solo i task scaduti
+    tka.stato = 'Da fare'; tka.scadenza = '2020-01-01'; ST.taskTeam.find(x => x.titolo === 'TKB beta').scadenza = '2099-01-01'; tkc.scadenza = '';
+    window.render(); await wait(20);
+    click(q('[data-action="task-filtro-ritardo"]')); await wait(20);
+    c = q('#content').textContent;
+    assert(c.includes('TKA alfa') && !c.includes('TKB beta') && !c.includes('TKC gamma'), 'task: la tessera In ritardo deve mostrare solo i task scaduti');
+    click(q('[data-action="task-filtro-ritardo"]')); await wait(20);
+    c = q('#content').textContent;
+    assert(c.includes('TKB beta') && c.includes('TKC gamma'), 'task: secondo click sulla tessera In ritardo deve rimostrare tutto');
+    tka.stato = 'Fatto';
     // filtro data inserimento
     setVal(q('[data-action="task-filtro-campo-data"]'), 'creatoIl'); await wait(20);
     setVal(q('input[data-action="task-filtro-data-da"]'), '01/05/2026'); fire(q('input[data-action="task-filtro-data-da"]'), 'focusout'); await wait(20);
