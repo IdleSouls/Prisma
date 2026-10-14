@@ -7615,6 +7615,33 @@ async function main() {
     console.log('=== Note aggiornamento a elenco + Invio nel login operatore OK');
   }
 
+  // ---------- Foglio guida appuntamento -> cliente potenziale ----------
+  {
+    const ST = window.getSTATE();
+    const a = window.aggiungiAppuntamento({ data: '2026-11-03', ora: '10:00', oggetto: 'Nuovo cliente TEST', prenotatoDaSegreteria: true, nomeChiamante: 'Mario Foglio', email: 'mario@foglio.it', telefono: '333111', tipoRichiesta: 'Nuova attività', consulente: ST.meta.responsabili[0] });
+    Object.assign(a, { nomeChiamante: 'Mario Foglio', email: 'mario@foglio.it' });
+    window.apriModalAppuntamento(a.id); await wait(20);
+    assert(q('#modalRoot [data-action="app-foglio-completa"]'), 'foglio guida: manca il pulsante di consegna');
+    click(q('#modalRoot [data-action="app-foglio-completa"]'));
+    assert(!window.fogliPronti().some(x => x.id === a.id), 'foglio guida: non si deve poter consegnare incompleto');
+    const campo = (c) => q(`#modalRoot [data-action="app-foglio-campo"][data-campo="${c}"]`);
+    setVal(campo('tipo'), 'ditta_individuale'); setVal(campo('regimeFiscale'), 'Forfettario'); setVal(campo('posizioneContributiva'), 'INPS artigiani / commercianti');
+    setVal(campo('ateco'), '47.91.10'); setChecked(campo('inail'), true);
+    click(q('#modalRoot [data-action="app-foglio-completa"]')); await wait(20);
+    assert(window.fogliPronti().some(x => x.id === a.id), 'foglio guida: dopo la consegna deve risultare pronto per la segreteria');
+    window.chiudiModal();
+    window.modalNuovoPotenziale(); await wait(20);
+    setVal(q('#potAppuntamento'), a.id); await wait(20);
+    assert(q('#potNome').value === 'Mario Foglio' && q('#potTipo').value === 'ditta_individuale' && q('#potRegime').value === 'Forfettario' && q('#potPrev').value === 'INPS artigiani / commercianti' && q('#potInail').checked, 'foglio guida: il modale potenziale deve precompilarsi');
+    click(q('#modalRoot [data-action="nuovo-potenziale-salva"]')); await wait(30);
+    const cp = ST.clienti.find(c => c.ragioneSociale === 'Mario Foglio');
+    assert(cp && cp.stato === 'potenziale' && cp.tipo === 'ditta_individuale' && cp.regimeFiscale === 'Forfettario' && cp.previdenza === 'Artigiani/Commercianti' && cp.flags.inail && cp.atecoCodici[0] === '47.91.10', 'foglio guida: dati non trasferiti sul potenziale cliente');
+    assert(ST.appuntamenti.find(x => x.id === a.id).clientePotenzialeId === cp.id && !window.fogliPronti().length, 'foglio guida: appuntamento non collegato al potenziale');
+    window.chiudiModal();
+    ST.clienti = ST.clienti.filter(c => c.id !== cp.id); ST.appuntamenti = ST.appuntamenti.filter(x => x.id !== a.id); ST.preventivi = ST.preventivi.filter(p => p.clienteId !== cp.id);
+    console.log('=== Foglio guida appuntamento -> cliente potenziale OK');
+  }
+
   // ---------- Task: ricerca per contenuto, filtro date, date inserimento/completamento nello storico ----------
   {
     const ST = window.getSTATE();

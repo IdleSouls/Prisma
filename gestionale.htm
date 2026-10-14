@@ -10738,7 +10738,11 @@ function modalAccettazionePreventivo(id) {
       </div>
     </div></div>`;
 }
-function modalNuovoPotenziale() {
+function modalNuovoPotenziale(appId) {
+  const pronti = fogliPronti();
+  const sel = appId ? trovaAppuntamento(appId) : null;
+  const f = (sel && sel.foglio) || {};
+  const opt = (arr, v) => `<option value="">— scegli —</option>` + arr.map(o => { const val = typeof o === 'string' ? o : o.v, l = typeof o === 'string' ? o : o.l; return `<option value="${escapeHtml(val)}" ${v === val ? 'selected' : ''}>${escapeHtml(l)}</option>`; }).join('');
   document.getElementById('modalRoot').innerHTML = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop">
     <div class="modal" style="max-width:480px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;">
@@ -10746,11 +10750,20 @@ function modalNuovoPotenziale() {
         <button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button>
       </div>
       <form id="formPotenziale" onsubmit="return false;"><div class="grid2">
-        <div class="field full" style="grid-column:1/-1;"><label>Ragione sociale / nome *</label><input id="potNome"></div>
-        <div class="field"><label>Email</label><input id="potEmail" type="email"></div>
-        <div class="field"><label>Telefono</label><input id="potTel"></div>
+        <div class="field full" style="grid-column:1/-1;"><label>Parti dal foglio guida di un appuntamento</label>
+          <select id="potAppuntamento" data-action="potenziale-da-appuntamento"><option value="">— nessuno (inserimento manuale) —</option>${pronti.map(a => `<option value="${a.id}" ${a.id === appId ? 'selected' : ''}>${escapeHtml(a.nomeChiamante || a.oggetto || 'Appuntamento')} · ${escapeHtml(fmtData(a.data))}</option>`).join('')}</select>
+          ${pronti.length ? '' : '<div class="helptext">Nessun foglio guida consegnato dai consulenti al momento.</div>'}</div>
+        <div class="field full" style="grid-column:1/-1;"><label>Ragione sociale / nome *</label><input id="potNome" value="${escapeHtml(sel ? (sel.nomeChiamante || '') : '')}"></div>
+        <div class="field"><label>Email</label><input id="potEmail" type="email" value="${escapeHtml(sel ? (sel.email || '') : '')}"></div>
+        <div class="field"><label>Telefono</label><input id="potTel" value="${escapeHtml(sel ? (sel.telefono || '') : '')}"></div>
         <div class="field"><label>Partita IVA</label><input id="potPiva"></div>
         <div class="field"><label>Codice fiscale</label><input id="potCf"></div>
+        <div class="field"><label>Tipologia di posizione</label><select id="potTipo">${opt(TIPI_CLIENTE, f.tipo)}</select></div>
+        <div class="field"><label>Regime fiscale</label><select id="potRegime">${opt(REGIMI_FISCALI, f.regimeFiscale)}</select></div>
+        <div class="field"><label>Posizione contributiva</label><select id="potPrev">${opt(POSIZIONI_PREV_FOGLIO, f.posizioneContributiva)}</select></div>
+        <div class="field"><label>Codice ATECO</label><input id="potAteco" value="${escapeHtml(f.ateco || '')}"></div>
+        <div class="field"><label class="checkline"><input type="checkbox" id="potInail" ${f.inail ? 'checked' : ''}> Posizione INAIL</label></div>
+        <div class="field"><label class="checkline"><input type="checkbox" id="potDip" ${f.dipendenti ? 'checked' : ''}> Dipendenti</label></div>
       </div></form>
       <div class="modal-actions">
         <button class="btn" data-action="chiudi-modal">Annulla</button>
@@ -15390,6 +15403,30 @@ function avvisaSeConflittoAppuntamento(id) {
   const conflitti = appuntamentiInConflitto(consulente, a.data, a.ora, durataAppuntamento(a), a.id);
   if (conflitti.length) toast(`⚠️ Si sovrappone con ${conflitti.length === 1 ? "un altro appuntamento" : conflitti.length + " altri appuntamenti"} di ${consulente} in questa fascia oraria.`, true);
 }
+/* Foglio guida dell'appuntamento: check list che il consulente compila durante/dopo l'incontro con un NUOVO cliente.
+   Quando e completo la segreteria lo usa per creare il cliente potenziale (Preventivi > + Preventivo a nuovo cliente). */
+const POSIZIONI_PREV_FOGLIO = ['Nessuna', 'INPS artigiani / commercianti', 'Gestione separata INPS', 'Cassa privata', 'Altro'];
+function foglioAppuntamento(a) { return a.foglio || {}; }
+function fogliPronti() { return (STATE.appuntamenti || []).filter(a => a.foglio && a.foglio.completato && !a.clientePotenzialeId); }
+function htmlFoglioGuida(a) {
+  const f = foglioAppuntamento(a), id = a.id;
+  const sel = (campo, opzioni, valore) => `<select data-action="app-foglio-campo" data-campo="${campo}" data-id="${id}"><option value="">— scegli —</option>${opzioni.map(o => { const v = typeof o === 'string' ? o : o.v, l = typeof o === 'string' ? o : o.l; return `<option value="${escapeHtml(v)}" ${valore === v ? 'selected' : ''}>${escapeHtml(l)}</option>`; }).join('')}</select>`;
+  return `<div class="card" style="margin:10px 0;border:1px solid var(--blu,#2f5bd1);">
+    <div class="section-title" style="margin-top:0;">📋 Foglio guida del consulente ${f.completato ? '<span class="badge verde" style="margin-left:6px;">Consegnato alla segreteria</span>' : ''}</div>
+    <div class="grid2">
+      <div class="field"><label>Posizione da aprire</label>${sel('tipo', TIPI_CLIENTE, f.tipo)}</div>
+      <div class="field"><label>Regime fiscale</label>${sel('regimeFiscale', REGIMI_FISCALI, f.regimeFiscale)}</div>
+      <div class="field"><label>Posizione contributiva</label>${sel('posizioneContributiva', POSIZIONI_PREV_FOGLIO, f.posizioneContributiva)}</div>
+      <div class="field"><label>Codice ATECO</label><input type="text" value="${escapeHtml(f.ateco || '')}" data-action="app-foglio-campo" data-campo="ateco" data-id="${id}" placeholder="es. 47.91.10"></div>
+      <div class="field"><label class="checkline"><input type="checkbox" ${f.inail ? 'checked' : ''} data-action="app-foglio-campo" data-campo="inail" data-id="${id}"> Apertura posizione INAIL</label></div>
+      <div class="field"><label class="checkline"><input type="checkbox" ${f.dipendenti ? 'checked' : ''} data-action="app-foglio-campo" data-campo="dipendenti" data-id="${id}"> Avra dipendenti</label></div>
+      <div class="field full" style="grid-column:1/-1;"><label>Attivita da svolgere / note per la segreteria</label><textarea rows="2" data-action="app-foglio-campo" data-campo="note" data-id="${id}">${escapeHtml(f.note || '')}</textarea></div>
+    </div>
+    <div style="margin-top:8px;">${f.completato
+      ? `<button class="btn small" data-action="app-foglio-riapri" data-id="${id}">Riapri il foglio</button>${a.clientePotenzialeId ? ' <span class="helptext" style="display:inline;">Cliente potenziale gia creato.</span>' : ''}`
+      : `<button class="btn small primary" data-action="app-foglio-completa" data-id="${id}">✓ Foglio completato: consegna alla segreteria</button>`}</div>
+  </div>`;
+}
 function apriModalAppuntamento(id) {
   const a = trovaAppuntamento(id);
   if (!a) return;
@@ -15437,6 +15474,7 @@ function apriModalAppuntamento(id) {
         <button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button>
       </div>
       ${bloccoSegreteria}
+      ${a.prenotatoDaSegreteria && a.tipoRichiesta !== 'Consulenza per attività esistente' ? htmlFoglioGuida(a) : ''}
       <div class="grid2">
         <div class="field"><label>Stato</label><select data-action="app-cambia-stato" data-id="${a.id}">${STATI_APPUNTAMENTO.map(s=>`<option value="${s}" ${a.stato===s?'selected':''}>${s}</option>`).join('')}</select></div>
         <div class="field"><label>Ora inizio</label>${campoOrarioHtml('appOraInizio_'+a.id, a.ora||'', {azione:'app-cambia-ora-inizio', extra:`data-id="${a.id}"`})}</div>
@@ -18907,7 +18945,17 @@ function onClickDelegatoInterno(e) {
     case 'nuovo-potenziale-salva': {
       const nome = h('potNome').value.trim();
       if (!nome) { toast('Inserisci il nome o la ragione sociale.'); return; }
-      const c = creaClientePotenziale({ ragioneSociale: nome, codiceFiscale: h('potCf').value.trim(), partitaIva: h('potPiva').value.trim(), contatti: { email: h('potEmail').value.trim(), emailAmministrazione: '', pec: '', telefono: h('potTel').value.trim(), indirizzo: '', cap: '', localita: '', provincia: '' } });
+      const PREV_MAP = { 'INPS artigiani / commercianti': 'Artigiani/Commercianti', 'Gestione separata INPS': 'Gestione Separata', 'Cassa privata': 'Cassa Privata', 'Nessuna': 'No previdenza' };
+      const dati = { ragioneSociale: nome, codiceFiscale: h('potCf').value.trim(), partitaIva: h('potPiva').value.trim(), contatti: { email: h('potEmail').value.trim(), emailAmministrazione: '', pec: '', telefono: h('potTel').value.trim(), indirizzo: '', cap: '', localita: '', provincia: '' } };
+      if (h('potTipo').value) dati.tipo = h('potTipo').value;
+      if (h('potRegime').value) dati.regimeFiscale = h('potRegime').value;
+      if (h('potPrev').value) dati.previdenza = PREV_MAP[h('potPrev').value] || 'No previdenza';
+      const at = h('potAteco').value.trim(); if (at) dati.atecoCodici = at.split(/[,;\s]+/).filter(Boolean);
+      dati.flags = { inail: !!h('potInail').checked };
+      dati.haDipendenti = h('potDip').checked ? 'SI' : 'NO';
+      const c = creaClientePotenziale(dati);
+      const appSel = h('potAppuntamento') ? h('potAppuntamento').value : '';
+      if (appSel) aggiornaAppuntamento(appSel, { clientePotenzialeId: c.id });
       chiudiModal(); render();
       modalPreventivo(null, c.id, false, null, true);
       break;
@@ -19510,6 +19558,14 @@ function onClickDelegatoInterno(e) {
     case 'nuovo-evento-salva-appuntamento': salvaNuovoAppuntamento(el.dataset.data); break;
     case 'nuovo-evento-salva-scadenza': salvaNuovaScadenzaRicorrente(); break;
     case 'stampa-riepilogo-appuntamento': apriRiepilogoAppuntamento(id); break;
+    case 'app-foglio-completa': {
+      const a = trovaAppuntamento(id); if (!a) break; const f = a.foglio || {};
+      const mancanti = [!f.tipo && 'posizione da aprire', !f.regimeFiscale && 'regime fiscale', !f.posizioneContributiva && 'posizione contributiva'].filter(Boolean);
+      if (mancanti.length) { toast('Mancano ancora: ' + mancanti.join(', ') + '.', true); break; }
+      aggiornaAppuntamento(id, { foglio: Object.assign({}, f, { completato: true, completatoDa: operatoreCorrente() || null, completatoIl: oggiISO() }) });
+      apriModalAppuntamento(id); toast('Foglio consegnato alla segreteria.'); break;
+    }
+    case 'app-foglio-riapri': { const a = trovaAppuntamento(id); if (!a) break; aggiornaAppuntamento(id, { foglio: Object.assign({}, a.foglio || {}, { completato: false }) }); apriModalAppuntamento(id); break; }
     case 'prenota-appuntamento': modalPrenotaAppuntamento(); break;
     // Bug segnalato da Matteo ("le frecce per cambiare settimana non fanno nulla"): questi tre sono
     // <button>, quindi un click su di loro non genera MAI un evento 'change' - erano finiti per
@@ -20084,6 +20140,8 @@ function onChangeDelegato(e) {
     // insieme alla select, senza dover chiudere e riaprire a mano.
     case 'app-cambia-procedura': aggiornaAppuntamento(id, { procedureId: el.value || PROC_NESSUNA }); apriModalAppuntamento(id); break;
     case 'app-cambia-note': aggiornaAppuntamento(id, { note: el.value }); break;
+    case 'potenziale-da-appuntamento': modalNuovoPotenziale(el.value || null); break;
+    case 'app-foglio-campo': { const a = trovaAppuntamento(id); if (!a) break; const foglio = Object.assign({}, a.foglio || {}); foglio[el.dataset.campo] = el.type === 'checkbox' ? el.checked : el.value; aggiornaAppuntamento(id, { foglio }); break; }
     case 'nuovo-evento-scad-frequenza': aggiornaVisibilitaMeseScadenzaRicorrente(); break;
     case 'prenota-cambia-consulente': PRENOTA_CONSULENTE = el.value; renderFormPrenotaAppuntamento(); break;
     case 'prenota-tipo-change': aggiornaVisibilitaClientePrenota(); break;
@@ -21625,7 +21683,7 @@ window.aggiornaAccettazione = aggiornaAccettazione; window.accettazioneCompleta 
 window.libriPrevistiCliente = libriPrevistiCliente; window.lacuneLibriCliente = lacuneLibriCliente; window.assegnaAttoLibro = assegnaAttoLibro; window.attiLibroCliente = attiLibroCliente; window.attiDaTrascrivere = attiDaTrascrivere;
 window.datiCruscotto = datiCruscotto; window.annualiCedutiCliente = annualiCedutiCliente;
 window.aggiungiDocumento = aggiungiDocumento; window.aggiungiLibroSociale = aggiungiLibroSociale; window.aggiornaLibroSociale = aggiornaLibroSociale;
-window.accettaPreventivo = accettaPreventivo; window.creaClientePotenziale = creaClientePotenziale; window.aggiungiAttivitaFatturabile = aggiungiAttivitaFatturabile; window.segnaAttivitaFatturate = segnaAttivitaFatturate; window.prossimaFatturazioneCliente = prossimaFatturazioneCliente; window.attivitaAperteCliente = attivitaAperteCliente;
+window.fogliPronti = fogliPronti; window.apriModalAppuntamento = apriModalAppuntamento; window.modalNuovoPotenziale = modalNuovoPotenziale; window.aggiungiAppuntamento = aggiungiAppuntamento; window.accettaPreventivo = accettaPreventivo; window.creaClientePotenziale = creaClientePotenziale; window.aggiungiAttivitaFatturabile = aggiungiAttivitaFatturabile; window.segnaAttivitaFatturate = segnaAttivitaFatturate; window.prossimaFatturazioneCliente = prossimaFatturazioneCliente; window.attivitaAperteCliente = attivitaAperteCliente;
 window.clienteAttivo = clienteAttivo; window.cessaCliente = cessaCliente; window.riattivaCliente = riattivaCliente; window.configContabTerzi = configContabTerzi;
 /* Area cliente interattiva (task #88): stessa logica di sopra, ma in scrittura. */
 window.aggiungiMessaggioPortaleClienteEsterno = aggiungiMessaggioPortaleClienteEsterno;
