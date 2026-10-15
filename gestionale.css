@@ -749,3 +749,7 @@ table.cli-tab .cli-sticky{position:sticky;left:0;z-index:3;background:inherit;}
 table.cli-tab td.cli-sticky{background:var(--card,#fff);z-index:1;}
 table.cli-tab tbody tr.cli-tr:hover td{background:#F0F4FF;}
 html[data-tema="scuro"] table.cli-tab tbody tr.cli-tr:hover td{background:#1A2540;}
+
+/* Mai scroll orizzontale della pagina: la sidebar è fissa e, se la pagina scorre di lato, copre il contenuto. Le tabelle larghe scorrono nel proprio contenitore. */
+html,body{overflow-x:clip;}
+#main{min-width:0;max-width:calc(100vw - var(--sidebar-w));}

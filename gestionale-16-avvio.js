@@ -1382,3 +1382,6 @@ window.datiAssociazione = datiAssociazione; window.testoModuliPreventivo = testo
 window.testoDocumentoToHtml = testoDocumentoToHtml; window.editorDocumentoToTesto = editorDocumentoToTesto; window.documentoStampaHtml = documentoStampaHtml;
 
 init();
+
+/* Se per qualsiasi motivo la pagina scorre in orizzontale (focus su un campo fuori vista, tabella larga), la si riporta a 0: la sidebar fissa coprirebbe il contenuto. */
+window.addEventListener('scroll', () => { if (window.scrollX) window.scrollTo(0, window.scrollY); }, { passive: true });
