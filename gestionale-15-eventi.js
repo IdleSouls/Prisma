@@ -153,6 +153,14 @@ function onClickDelegatoInterno(e) {
       break;
     }
     case 'nuovo-cliente': modalCliente(null); break;
+    case 'cli-col-sort': CLI_TAB.sort = { id: el.dataset.col, dir: CLI_TAB.sort.id === el.dataset.col ? -CLI_TAB.sort.dir : 1 }; render(); break;
+    case 'cli-col-scelta': CLI_TAB.sceltaAperta = !CLI_TAB.sceltaAperta; render(); break;
+    case 'cli-col-reset': CLI_TAB.filtri = {}; CLI_FILTRO.regime = 'Tutti'; CLI_FILTRO.resp = 'Tutti'; CLI_FILTRO.mandatario = 'Tutti'; resetPagina('clienti'); render(); break;
+    case 'cli-col-default': cliColonneVisibili(); CLI_TAB.visibili = CLI_COL_DEFAULT.slice(); cliSalvaColonne(); render(); break;
+    case 'cli-col-tutte': CLI_TAB.visibili = CLI_COLONNE.map(c => c.id); cliSalvaColonne(); render(); break;
+    case 'cli-esporta-vista': salvaFileScaricabile('clienti-' + oggiISO() + '.csv', new Blob([cliCsvVistaCorrente()], { type: 'text/csv;charset=utf-8' })); break;
+    case 'schcli-scegli': SCHEDA_CLIENTE = id; setView('schedacliente'); break;
+    case 'schcli-elenco': SCHEDA_CLIENTE = null; SCHEDA_RICERCA = ''; render(); break;
     case 'apri-cliente': chiudiModal(); SCHEDA_CLIENTE = id; setView('schedacliente'); break;
     case 'modifica-cliente': modalCliente(id); break;
     case 'elimina-cliente':
@@ -2089,6 +2097,8 @@ function onChangeDelegato(e) {
       break;
     }
 
+    case 'cli-col-filtro-sel': CLI_TAB.filtri[el.dataset.col] = el.value; resetPagina('clienti'); render(); break;
+    case 'cli-col-toggle': cliColonneVisibili(); { const i = CLI_TAB.visibili.indexOf(el.dataset.col); if (el.checked && i < 0) CLI_TAB.visibili.push(el.dataset.col); if (!el.checked && i >= 0) CLI_TAB.visibili.splice(i, 1); } cliSalvaColonne(); render(); break;
     case 'cli-filtro-regime': CLI_FILTRO.regime = el.value; resetPagina('clienti'); render(); break;
     case 'cli-filtro-resp': CLI_FILTRO.resp = el.value; resetPagina('clienti'); render(); break;
     case 'cli-filtro-mandatario': CLI_FILTRO.mandatario = el.value; resetPagina('clienti'); render(); break;
@@ -2445,6 +2455,8 @@ function onInputDelegato(e) {
     // case separato con lo stesso nome dentro onChangeDelegato, scatenato al blur.
     case 'orario-autoformat': case 'app-cambia-ora-inizio': case 'app-cambia-ora-fine': formattaInputOrario(el); break;
     case 'import-cli-filtro': filtraAnteprimaImportClienti(); break;
+    case 'cli-col-filtro': CLI_TAB.filtri[el.dataset.col] = el.value; resetPagina('clienti'); render(); restoreFocus('[data-action="cli-col-filtro"][data-col="' + el.dataset.col + '"]'); break;
+    case 'schcli-ricerca': SCHEDA_RICERCA = el.value; render(); restoreFocus('[data-action="schcli-ricerca"]'); break;
     case 'cli-filtro-q': CLI_FILTRO.q = el.value; resetPagina('clienti'); render(); restoreFocus('[data-action="cli-filtro-q"]'); break;
     case 'rubrica-filtro-q': RUBRICA_FILTRO.q = el.value; resetPagina('rubrica'); render(); restoreFocus('[data-action="rubrica-filtro-q"]'); break;
     case 'cred-filtro-q': CRED_FILTRO.q = el.value; resetPagina('credenziali'); render(); restoreFocus('[data-action="cred-filtro-q"]'); break;

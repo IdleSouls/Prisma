@@ -37,6 +37,7 @@ function assert(cond, msg) { if (!cond) { throw new Error('ASSERT FALLITO: ' + m
 function q(sel) { return window.document.querySelector(sel); }
 function qa(sel) { return Array.from(window.document.querySelectorAll(sel)); }
 function fire(el, type) { const ev = new window.Event(type, { bubbles: true }); el.dispatchEvent(ev); }
+function scegliPrimaScheda() { const r = q('[data-action="schcli-scegli"]'); if (r) fire(r, 'click'); }
 function click(el) { assert(el, 'elemento da cliccare non trovato'); fire(el, 'click'); }
 function oggiISOtest() { return new Date().toISOString().slice(0, 10); }
 function setVal(el, val) { assert(el, 'elemento input non trovato'); el.value = val; fire(el, 'input'); fire(el, 'change'); }
@@ -275,7 +276,7 @@ async function main() {
   assert(q('#fAteco').value === '62.01.00, 47.91.10, 63.11.20', `riapertura form: campo ATECO atteso "62.01.00, 47.91.10, 63.11.20", trovato "${q('#fAteco').value}"`);
   click(q('[data-action="chiudi-modal"]'));
   await wait(20);
-  click(q('[data-nav="schedacliente"]'));
+  click(q('[data-nav="schedacliente"]')); scegliPrimaScheda();
   await wait(20);
   setVal(q('[data-action="schcli-seleziona-cliente"]'), clienteMultiAteco.id);
   await wait(20);
@@ -1058,7 +1059,7 @@ async function main() {
 
   // collegamento dalla scheda cliente 360°: deve navigare alla vista Antiriciclaggio con quel
   // cliente già selezionato (stesso pattern di "schcli-apri-onboarding", task #115/#116)
-  click(q('[data-nav="schedacliente"]'));
+  click(q('[data-nav="schedacliente"]')); scegliPrimaScheda();
   await wait(20);
   setVal(q('[data-action="schcli-seleziona-cliente"]'), clienteRischioAltoId);
   await wait(20);
@@ -4573,7 +4574,7 @@ async function main() {
   await wait(20);
 
   // vista Scheda cliente: selezione cliente e coerenza dei riepiloghi con i dati grezzi
-  click(q('[data-nav="schedacliente"]'));
+  click(q('[data-nav="schedacliente"]')); scegliPrimaScheda();
   await wait(20);
   setVal(q('[data-action="schcli-seleziona-cliente"]'), clienteScheda.id);
   await wait(20);
@@ -4613,7 +4614,7 @@ async function main() {
   // sia davvero invisibile ovunque, senza toccare i dati sottostanti.
   window.getSTATE().meta.contabilitaAttiva = true;
   window.render();
-  click(q('[data-nav="schedacliente"]'));
+  click(q('[data-nav="schedacliente"]')); scegliPrimaScheda();
   await wait(20);
   click(q(`[data-action="schcli-apri-contabilita"][data-cliente="${clienteScheda.id}"]`));
   await wait(20);
@@ -4625,7 +4626,7 @@ async function main() {
   window.render();
   assert(!window.operatorePuoVedere('contabilita'), '#176: operatorePuoVedere dovrebbe negare "contabilita" quando la sezione è sospesa (default)');
   assert(!qa('.navitem').some(el => el.dataset.nav === 'contabilita'), '#176: la voce di menu Contabilità non dovrebbe comparire nel DOM quando la sezione è sospesa');
-  click(q('[data-nav="schedacliente"]'));
+  click(q('[data-nav="schedacliente"]')); scegliPrimaScheda();
   await wait(20);
   setVal(q('[data-action="schcli-seleziona-cliente"]'), clienteScheda.id);
   await wait(20);
@@ -4713,7 +4714,7 @@ async function main() {
     console.log('=== #215: checklist di avvio (passi automatici, conferma moduli, nascondi) OK');
   }
 
-  click(q('[data-nav="schedacliente"]'));
+  click(q('[data-nav="schedacliente"]')); scegliPrimaScheda();
   await wait(20);
   click(q(`[data-action="schcli-apri-task"][data-cliente="${clienteScheda.id}"]`));
   await wait(20);
@@ -4721,25 +4722,25 @@ async function main() {
   const taskTotaliCliente = window.getSTATE().taskTeam.filter(t => t.clienteId === clienteScheda.id).length;
   assert(qa('.task-card').length === taskTotaliCliente, `collegamento rapido Task team: il filtro cliente non è stato applicato (attesi ${taskTotaliCliente} task-card, trovate ${qa('.task-card').length})`);
 
-  click(q('[data-nav="schedacliente"]'));
+  click(q('[data-nav="schedacliente"]')); scegliPrimaScheda();
   await wait(20);
   click(q(`[data-action="schcli-apri-comunicazioni"][data-cliente="${clienteScheda.id}"]`));
   await wait(20);
   assert(window.getVIEW() === 'comunicazioni', 'collegamento rapido Comunicazioni: vista errata');
 
-  click(q('[data-nav="schedacliente"]'));
+  click(q('[data-nav="schedacliente"]')); scegliPrimaScheda();
   await wait(20);
   click(q(`[data-action="schcli-apri-documenti"][data-cliente="${clienteScheda.id}"]`));
   await wait(20);
   assert(window.getVIEW() === 'documenti', 'collegamento rapido Documenti: vista errata');
 
-  click(q('[data-nav="schedacliente"]'));
+  click(q('[data-nav="schedacliente"]')); scegliPrimaScheda();
   await wait(20);
   click(q(`[data-action="schcli-apri-portale"][data-cliente="${clienteScheda.id}"]`));
   await wait(20);
   assert(window.getVIEW() === 'portale', 'collegamento rapido Portale cliente: vista errata');
 
-  click(q('[data-nav="schedacliente"]'));
+  click(q('[data-nav="schedacliente"]')); scegliPrimaScheda();
   await wait(20);
   setVal(q('[data-action="schcli-seleziona-cliente"]'), clienteScheda.id);
   await wait(20);
@@ -4747,7 +4748,7 @@ async function main() {
   await wait(20);
   assert(window.getVIEW() === 'onboarding', 'collegamento rapido Onboarding: vista errata');
 
-  click(q('[data-nav="schedacliente"]'));
+  click(q('[data-nav="schedacliente"]')); scegliPrimaScheda();
   await wait(20);
   setVal(q('[data-action="schcli-seleziona-cliente"]'), clienteScheda.id);
   await wait(20);
@@ -4760,7 +4761,7 @@ async function main() {
 
   // scorciatoie "nuovo task"/"nuova comunicazione" dalla scheda: precompilano già il cliente
   const clientePerScorciatoie = window.getSTATE().clienti.find(c => c.stato !== 'cessato' && c.id !== clienteScheda.id);
-  click(q('[data-nav="schedacliente"]'));
+  click(q('[data-nav="schedacliente"]')); scegliPrimaScheda();
   await wait(20);
   setVal(q('[data-action="schcli-seleziona-cliente"]'), clientePerScorciatoie.id);
   await wait(20);
@@ -5053,7 +5054,7 @@ async function main() {
   assert(window.sociDiCliente(socioClienteA.id).some(s => s.id === socioCreato.id), 'sociDiCliente non trova il socio sul primo cliente collegato');
   assert(window.sociDiCliente(socioClienteB.id).some(s => s.id === socioCreato.id), 'sociDiCliente non trova il socio sul secondo cliente collegato (collegamento N:M)');
   // verifica che compaia anche nella Scheda cliente di entrambi i clienti collegati
-  click(q('[data-nav="schedacliente"]'));
+  click(q('[data-nav="schedacliente"]')); scegliPrimaScheda();
   await wait(20);
   setVal(q('[data-action="schcli-seleziona-cliente"]'), socioClienteA.id);
   await wait(20);
@@ -7142,21 +7143,44 @@ async function main() {
     c0.mandatario = 'Studio Prova'; c1.mandatario = 'Dott. Verdi';
     window.setView('clienti');
     await wait(20);
-    assert(q('[data-action="cli-filtro-mandatario"]'), 'Mandatario: il filtro deve comparire quando almeno un cliente ha il mandatario');
-    const sel = q('[data-action="cli-filtro-mandatario"]'); sel.value = 'Dott. Verdi'; fire(sel, 'change');
+    const SELM = '[data-action="cli-col-filtro-sel"][data-col="mandatario"]';
+    assert(q(SELM), 'Mandatario: il filtro di colonna deve esserci');
+    const sel = q(SELM); sel.value = 'Dott. Verdi'; fire(sel, 'change');
     await wait(20);
-    const righe = qa('.client-row');
-    assert(righe.length >= 1 && righe.every(r => /Mandatario Dott\. Verdi/.test(r.textContent)), 'Mandatario: il filtro deve mostrare solo i clienti con quel mandatario');
-    const sel2 = q('[data-action="cli-filtro-mandatario"]'); sel2.value = 'Studio Prova'; fire(sel2, 'change');
+    const righe = qa('tr.cli-tr');
+    assert(righe.length >= 1 && righe.every(r => /Dott\. Verdi/.test(r.textContent)), 'Mandatario: il filtro deve mostrare solo i clienti con quel mandatario');
+    const sel2 = q(SELM); sel2.value = 'Studio Prova'; fire(sel2, 'change');
     await wait(20);
+    // nuova tabella Excel-like: organo di controllo, ordinamento, scelta colonne, export, scheda iniziale
+    click(q('[data-action="cli-col-reset"]')); await wait(20);
+    const nTutti = qa('tr.cli-tr').length;
+    const cOrg = window.getSTATE().clienti[1]; const orgPrima = cOrg.organoControllo; cOrg.organoControllo = 'Sindaco unico'; window.render(); await wait(20);
+    const selOrg = q('[data-action="cli-col-filtro-sel"][data-col="organoControllo"]'); selOrg.value = 'Sindaco unico'; fire(selOrg, 'change'); await wait(20);
+    assert(qa('tr.cli-tr').length >= 1 && qa('tr.cli-tr').length < nTutti && qa('tr.cli-tr').every(r => /Sindaco unico/.test(r.textContent)), 'Clienti tabella: filtro "organo di controllo" non funziona');
+    click(q('[data-action="cli-col-reset"]')); await wait(20);
+    assert(qa('tr.cli-tr').length === nTutti, 'Clienti tabella: "Azzera filtri" deve ripristinare tutte le righe');
+    const thR = q('[data-action="cli-col-sort"][data-col="ragioneSociale"]'); click(thR); await wait(20);
+    const nomi = qa('tr.cli-tr td.cli-sticky strong').map(x => x.textContent);
+    assert(nomi.length > 1 && nomi[0].localeCompare(nomi[nomi.length - 1], 'it') >= 0, 'Clienti tabella: secondo click sulla colonna deve ordinare in senso inverso');
+    click(q('[data-action="cli-col-scelta"]')); await wait(20);
+    const chkNote = q('[data-action="cli-col-toggle"][data-col="note"]'); chkNote.checked = true; fire(chkNote, 'change'); await wait(20);
+    assert(q('[data-action="cli-col-sort"][data-col="note"]'), 'Clienti tabella: la colonna scelta deve comparire');
+    const csv = window.cliCsvVistaCorrente();
+    assert(/Ragione sociale;/.test(csv) && csv.split('\r\n').length === nTutti + 1, 'Clienti tabella: l\'export CSV deve contenere intestazione + righe filtrate');
+    cOrg.organoControllo = orgPrima;
+    // Scheda cliente: schermata iniziale invece del primo cliente
+    window.setSchedaClienteTest && window.setSchedaClienteTest(null);
+    click(q('[data-nav="schedacliente"]')); await wait(20);
+    assert(q('[data-action="schcli-ricerca"]') || q('[data-action="schcli-scegli"]'), 'Scheda cliente: deve apparire la schermata di scelta cliente');
+    click(q('[data-nav="clienti"]')); await wait(20);
+    { const sm = q(SELM); sm.value = 'Studio Prova'; fire(sm, 'change'); await wait(20); }
     click(q('[data-action="modifica-cliente"]'));
     await wait(20);
     assert(q('#fMandatario') && q('#fMandatario').value === 'Studio Prova', 'Mandatario: il modulo cliente deve mostrare il campo valorizzato');
     click(q('[data-action="chiudi-modal"]'));
     await wait(20);
     c0.mandatario = ''; c1.mandatario = '';
-    const sel3 = q('[data-action="cli-filtro-mandatario"]');
-    if (sel3) { sel3.value = 'Tutti'; fire(sel3, 'change'); } else { /* nessun mandatario: filtro nascosto, ma il valore resta */ }
+    click(q('[data-action="cli-col-reset"]')); await wait(20);
     window.getSTATE(); 
     // tema scuro
     assert(window.temaCorrente() === 'chiaro', 'Tema: di partenza chiaro');
@@ -7272,7 +7296,7 @@ async function main() {
       sel.removeAllRanges(); window.document.dispatchEvent(new window.Event('selectionchange'));
       assert(!window.staModificandoQualcosa(), 'senza selezione né campi attivi gli aggiornamenti possono procedere');
       // scheda cliente: riepilogo a gruppi
-      window.setView('schedacliente'); window.render(); await wait(20);
+      window.setView('schedacliente'); window.render(); await wait(20); scegliPrimaScheda(); await wait(20);
       assert(window.document.querySelectorAll('#content .scheda-dati .sd').length >= 12, 'scheda cliente: riepilogo dati a gruppi mancante');
       window.setView('dashboard');
       console.log('=== Selezione testo non interrotta dagli aggiornamenti; scheda cliente con riepilogo a gruppi OK');

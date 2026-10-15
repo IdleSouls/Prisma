@@ -737,3 +737,15 @@ html[data-tema="scuro"] ::-webkit-scrollbar-thumb{background:#38476A;}
 .sem770.rosso .dot{background:var(--rosso);} .sem770.verde .dot{background:var(--verde);} .sem770.giallo .dot{background:#E0A800;}
 .sem770 .esc{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;background:#333;color:#fff;font-size:11px;line-height:1;}
 html[data-tema="scuro"] .sem770 .esc{background:#ddd;color:#111;}
+
+/* Tabella clienti tipo Excel */
+.cli-tab-wrap{overflow:auto;max-height:68vh;border:1px solid var(--border);border-radius:8px;background:var(--card,#fff);}
+table.cli-tab{width:max-content;min-width:100%;}
+table.cli-tab th{position:sticky;top:0;z-index:2;white-space:nowrap;}
+table.cli-tab tr.cli-filtri th{top:33px;z-index:2;text-transform:none;padding:4px 6px;}
+table.cli-tab .cli-tab-filtro{width:100%;font-size:12px;padding:3px 5px;box-sizing:border-box;}
+table.cli-tab td{white-space:nowrap;padding:7px 10px;border-bottom:1px solid var(--border);}
+table.cli-tab .cli-sticky{position:sticky;left:0;z-index:3;background:inherit;}
+table.cli-tab td.cli-sticky{background:var(--card,#fff);z-index:1;}
+table.cli-tab tbody tr.cli-tr:hover td{background:#F0F4FF;}
+html[data-tema="scuro"] table.cli-tab tbody tr.cli-tr:hover td{background:#1A2540;}

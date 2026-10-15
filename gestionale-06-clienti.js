@@ -7,18 +7,123 @@ function mandatariEsistenti() {
   return Array.from(new Set((STATE.clienti || []).map(c => (c.mandatario || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
 }
 
-function renderClienti() {
+/* Tabella clienti "tipo Excel": una riga per cliente, una colonna per dato, filtro su ogni colonna.
+   Colonne scelte e filtri vivono in CLI_TAB (le colonne visibili si ricordano su questo dispositivo). */
+const CLI_COLONNE = (() => {
+  const co = c => c.contatti || {};
+  const sn = v => (v === true || v === 'Sì' || v === 'SI' || v === 'Si') ? 'Sì' : (v === false || v === 'No' ? 'No' : (v || ''));
+  const col = (id, label, get, sel, w) => ({ id, label, get, sel: !!sel, w: w || 120 });
+  const base = [
+    col('ragioneSociale', 'Ragione sociale', c => c.ragioneSociale || '', false, 240),
+    col('stato', 'Stato', c => ({ attivo: 'Attivo', cessato: 'Cessato', potenziale: 'Potenziale' }[c.stato || 'attivo'] || c.stato), true, 90),
+    col('tipo', 'Tipo', c => labelTipoCliente(c.tipo), true, 200),
+    col('codiceFiscale', 'Codice fiscale', c => c.codiceFiscale || '', false, 150),
+    col('partitaIva', 'Partita IVA', c => c.partitaIva || '', false, 110),
+    col('regimeFiscale', 'Regime fiscale', c => c.regimeFiscale || '', true, 150),
+    col('periodicitaIva', 'Periodicità IVA', c => c.periodicitaIva || '', true, 110),
+    col('periodicitaIntrastat', 'Intrastat', c => c.periodicitaIntrastat || '', true, 90),
+    col('responsabileStudio', 'Responsabile', c => c.responsabileStudio || '', true, 130),
+    col('mandatario', 'Mandatario', c => c.mandatario || '', true, 130),
+    col('contabilita', 'Contabilità', c => c.contabilita || '', true, 100),
+    col('addebitoF24', 'Addebito F24', c => c.addebitoF24 || '', true, 100),
+    col('previdenza', 'Previdenza', c => c.previdenza || '', true, 130),
+    col('organoControllo', 'Organo di controllo', c => c.organoControllo || '', true, 150),
+    col('pmiInnovativa', 'PMI innovativa', c => sn(c.pmiInnovativa), true, 90),
+    col('startupInnovativa', 'Start-up innovativa', c => sn(c.startupInnovativa), true, 100),
+    col('haDipendenti', 'Ha dipendenti', c => sn(c.haDipendenti), true, 90),
+    col('iscrittoRegistroImprese', 'Iscritto R.I.', c => sn(c.iscrittoRegistroImprese), true, 90),
+    col('ateco', 'ATECO', c => (c.atecoCodici || []).join(', '), false, 130),
+    col('settore', 'Attività / Settore', c => c.settore || '', false, 180),
+    col('email', 'Email', c => co(c).email || '', false, 190),
+    col('emailAmministrazione', 'Email amministrazione', c => co(c).emailAmministrazione || '', false, 190),
+    col('pec', 'PEC', c => co(c).pec || '', false, 190),
+    col('telefono', 'Telefono', c => co(c).telefono || '', false, 110),
+    col('indirizzo', 'Indirizzo', c => co(c).indirizzo || '', false, 180),
+    col('cap', 'CAP', c => co(c).cap || '', false, 70),
+    col('localita', 'Località', c => co(c).localita || '', false, 130),
+    col('provincia', 'Prov.', c => co(c).provincia || '', true, 60),
+    col('annoIngresso', 'Anno ingresso', c => c.annoIngresso ? String(c.annoIngresso) : '', true, 90),
+    col('dataIngresso', 'Data ingresso', c => c.dataIngresso ? fmtData(c.dataIngresso) : '', false, 100),
+    col('dataCostituzione', 'Data costituzione', c => c.dataCostituzione ? fmtData(c.dataCostituzione) : '', false, 110),
+    col('canaleAcquisizione', 'Canale acquisizione', c => c.canaleAcquisizione || '', true, 140),
+    col('tipoRapporto', 'Tipo rapporto', c => c.tipoRapporto || '', true, 150),
+    col('fatturazione', 'Fatturazione', c => c.fatturazione || '', true, 110),
+    col('preventivoAnnuo', 'Preventivo annuo (€)', c => (c.preventivoAnnuo || c.preventivoAnnuo === 0) && c.preventivoAnnuo !== '' ? String(c.preventivoAnnuo) : '', false, 110),
+    col('capitaleSociale', 'Capitale sociale (€)', c => (c.capitaleSociale || c.capitaleSociale === 0) && c.capitaleSociale !== '' ? String(c.capitaleSociale) : '', false, 110),
+    col('numeroSedi', 'N. sedi', c => c.numeroSedi ? String(c.numeroSedi) : '', false, 70),
+    col('portale', 'Portale avanzato', c => c.pacchettoPortale ? 'Sì' : 'No', true, 100),
+    col('onboarding', 'Onboarding %', c => String(percentualeOnboarding(STATE.onboarding[c.id])), false, 90),
+    col('mancanti', 'Dati mancanti', c => { const n = campiMancantiCliente(c).length; return n ? String(n) : ''; }, false, 90),
+    col('note', 'Note', c => c.note || '', false, 220),
+  ];
+  Object.keys(FLAG_LABELS).forEach(k => base.push(col('flag_' + k, FLAG_LABELS[k], c => (c.flags || {})[k] ? 'Sì' : 'No', true, 120)));
+  return base;
+})();
+const CLI_COL_DEFAULT = ['ragioneSociale', 'stato', 'tipo', 'partitaIva', 'regimeFiscale', 'periodicitaIva', 'responsabileStudio', 'mandatario', 'organoControllo', 'email', 'pec', 'telefono', 'localita'];
+const CLI_COL_LS = 'prisma_clienti_colonne';
+let CLI_TAB = { visibili: null, filtri: {}, sort: { id: 'ragioneSociale', dir: 1 }, sceltaAperta: false };
+function cliColonneVisibili() {
+  if (!CLI_TAB.visibili) {
+    let v = null;
+    try { v = JSON.parse(localStorage.getItem(CLI_COL_LS) || 'null'); } catch (e) { v = null; }
+    CLI_TAB.visibili = Array.isArray(v) && v.length ? v.filter(id => CLI_COLONNE.some(c => c.id === id)) : CLI_COL_DEFAULT.slice();
+    if (!CLI_TAB.visibili.includes('ragioneSociale')) CLI_TAB.visibili.unshift('ragioneSociale');
+  }
+  return CLI_COLONNE.filter(c => CLI_TAB.visibili.includes(c.id));
+}
+function cliSalvaColonne() { try { localStorage.setItem(CLI_COL_LS, JSON.stringify(CLI_TAB.visibili)); } catch (e) { /* ok */ } }
+function cliListaFiltrata() {
   const f = CLI_FILTRO;
+  const q = (f.q || '').toLowerCase();
+  const filtri = Object.keys(CLI_TAB.filtri).filter(k => CLI_TAB.filtri[k] !== '' && CLI_TAB.filtri[k] != null);
   let lista = STATE.clienti.filter(c => {
     if (!f.mostraCessati && !clienteAttivo(c)) return false;
     if (f.regime !== 'Tutti' && c.regimeFiscale !== f.regime) return false;
     if (f.resp !== 'Tutti' && c.responsabileStudio !== f.resp) return false;
     if (f.mandatario !== 'Tutti' && (c.mandatario || '') !== f.mandatario) return false;
-    if (f.q && !c.ragioneSociale.toLowerCase().includes(f.q.toLowerCase())) return false;
+    if (q && !(c.ragioneSociale || '').toLowerCase().includes(q)) return false;
     if (f.soloGravi && livelliMancantiCliente(c).gravi.length === 0) return false;
     if (f.soloIncompleti && campiMancantiCliente(c).length === 0) return false;
+    for (const k of filtri) {
+      const def = CLI_COLONNE.find(x => x.id === k); if (!def) continue;
+      const val = def.get(c) || '';
+      const fv = CLI_TAB.filtri[k];
+      if (def.sel) { if (fv === '__vuoto__' ? val !== '' : val !== fv) return false; }
+      else if (!val.toLowerCase().includes(String(fv).toLowerCase())) return false;
+    }
     return true;
-  }).sort((a,b) => a.ragioneSociale.localeCompare(b.ragioneSociale));
+  });
+  const sdef = CLI_COLONNE.find(x => x.id === CLI_TAB.sort.id) || CLI_COLONNE[0];
+  lista.sort((a, b) => {
+    const va = sdef.get(a) || '', vb = sdef.get(b) || '';
+    if (!va && vb) return 1; if (va && !vb) return -1;
+    return va.localeCompare(vb, 'it', { numeric: true, sensitivity: 'base' }) * CLI_TAB.sort.dir
+      || (a.ragioneSociale || '').localeCompare(b.ragioneSociale || '');
+  });
+  return lista;
+}
+function cliFiltroCella(def) {
+  const v = CLI_TAB.filtri[def.id] || '';
+  if (!def.sel) return `<input type="text" class="cli-tab-filtro" value="${escapeHtml(v)}" placeholder="filtra…" data-action="cli-col-filtro" data-col="${def.id}">`;
+  const vals = Array.from(new Set(STATE.clienti.map(c => def.get(c) || ''))).filter(Boolean).sort((a, b) => a.localeCompare(b, 'it', { numeric: true }));
+  const haVuoti = STATE.clienti.some(c => !(def.get(c) || ''));
+  return `<select class="cli-tab-filtro" data-action="cli-col-filtro-sel" data-col="${def.id}">
+    <option value="">(tutti)</option>${haVuoti ? `<option value="__vuoto__" ${v === '__vuoto__' ? 'selected' : ''}>(vuoto)</option>` : ''}
+    ${vals.map(x => `<option value="${escapeHtml(x)}" ${v === x ? 'selected' : ''}>${escapeHtml(x)}</option>`).join('')}</select>`;
+}
+function cliCsvVistaCorrente() {
+  const cols = cliColonneVisibili();
+  const esc = s => { s = String(s == null ? '' : s); return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const righe = [cols.map(c => esc(c.label)).join(';')];
+  cliListaFiltrata().forEach(c => righe.push(cols.map(d => esc(d.get(c))).join(';')));
+  return '﻿' + righe.join('\r\n');
+}
+
+function renderClienti() {
+  const f = CLI_FILTRO;
+  const cols = cliColonneVisibili();
+  const lista = cliListaFiltrata();
+  const nFiltriCol = Object.keys(CLI_TAB.filtri).filter(k => CLI_TAB.filtri[k] !== '').length;
 
   const nIncompleti = STATE.clienti.filter(c => campiMancantiCliente(c).length > 0).length;
   const nGravi = STATE.clienti.filter(c => livelliMancantiCliente(c).gravi.length > 0).length;
@@ -26,57 +131,49 @@ function renderClienti() {
 
   const toolbar = `<div class="toolbar">
     <div class="field grow"><label>Cerca</label><input type="text" placeholder="Nome o ragione sociale..." value="${escapeHtml(f.q)}" data-action="cli-filtro-q"></div>
-    <div class="field"><label>Regime fiscale</label><select data-action="cli-filtro-regime">
-      <option ${f.regime==='Tutti'?'selected':''}>Tutti</option>
-      ${REGIMI_FISCALI.map(r=>`<option ${f.regime===r?'selected':''}>${r}</option>`).join('')}
-    </select></div>
-    <div class="field"><label>Responsabile</label><select data-action="cli-filtro-resp">
-      <option ${f.resp==='Tutti'?'selected':''}>Tutti</option>
-      ${STATE.meta.responsabili.map(r=>`<option ${f.resp===r?'selected':''}>${escapeHtml(r)}</option>`).join('')}
-    </select></div>
-    ${mandatariEsistenti().length ? `<div class="field"><label>Mandatario</label><select data-action="cli-filtro-mandatario">
-      <option ${f.mandatario==='Tutti'?'selected':''}>Tutti</option>
-      ${mandatariEsistenti().map(m=>`<option ${f.mandatario===m?'selected':''}>${escapeHtml(m)}</option>`).join('')}
-    </select></div>` : ''}
     <div class="field" style="min-width:max-content;"><label>&nbsp;</label><label class="checkline" style="white-space:nowrap;"><input type="checkbox" data-action="cli-filtro-cessati" ${f.mostraCessati?'checked':''}> Mostra cessati e potenziali</label></div>
-    <div class="field" style="min-width:max-content;"><label>&nbsp;</label><label class="checkline" style="white-space:nowrap;"><input type="checkbox" data-action="cli-filtro-incompleti" ${f.soloIncompleti?'checked':''}> Solo da completare (${nIncompleti})</label></div>
-    <div class="field" style="min-width:max-content;"><label>&nbsp;</label><label class="checkline" style="white-space:nowrap;"><input type="checkbox" data-action="cli-filtro-gravi" ${f.soloGravi?'checked':''}> Solo importanti ⚠ (${nGravi})</label></div>
+    <div class="field" style="min-width:max-content;"><label>&nbsp;</label><label class="checkline" style="white-space:nowrap;"><input type="checkbox" data-action="cli-filtro-incompleti" ${f.soloIncompleti?'checked':''}> Solo con dati mancanti</label></div>
+    <div class="field" style="min-width:max-content;"><label>&nbsp;</label><label class="checkline" style="white-space:nowrap;"><input type="checkbox" data-action="cli-filtro-gravi" ${f.soloGravi?'checked':''}> Solo importanti</label></div>
+    <div class="field"><label>&nbsp;</label><button class="btn small" data-action="cli-col-reset" ${nFiltriCol || f.regime!=='Tutti' || f.resp!=='Tutti' || f.mandatario!=='Tutti' ? '' : 'disabled'}>✕ Azzera filtri${nFiltriCol ? ' (' + nFiltriCol + ')' : ''}</button></div>
+    <div class="field"><label>&nbsp;</label><button class="btn small" data-action="cli-col-scelta">☰ Colonne (${cols.length})</button></div>
+    <div class="field"><label>&nbsp;</label><button class="btn small" data-action="cli-esporta-vista">⬇ Esporta vista (CSV)</button></div>
     <div class="field" style="margin-left:auto;"><label>&nbsp;</label><button class="btn primary" data-action="nuovo-cliente">+ Nuovo cliente</button></div>
   </div>`;
+
+  const sceltaColonne = CLI_TAB.sceltaAperta ? `<div class="card" style="margin-bottom:10px;">
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;"><strong>Colonne visibili</strong>
+      <button class="btn small" data-action="cli-col-default">Predefinite</button><button class="btn small" data-action="cli-col-tutte">Tutte</button><button class="btn small" data-action="cli-col-scelta">Chiudi</button></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:4px 14px;">
+      ${CLI_COLONNE.map(c => `<label class="checkline"><input type="checkbox" data-action="cli-col-toggle" data-col="${c.id}" ${CLI_TAB.visibili.includes(c.id)?'checked':''} ${c.id==='ragioneSociale'?'disabled':''}> ${escapeHtml(c.label)}</label>`).join('')}
+    </div></div>` : '';
 
   const toolbarImport = `<div class="toolbar" style="margin-top:-10px;">
     <div class="field"><label>&nbsp;</label><button class="btn small" data-action="scarica-template-clienti">⬇ Scarica template Excel</button></div>
     <div class="field"><label>&nbsp;</label><label class="btn small" style="margin:0;">⬆ Importa clienti (Excel/CSV)<input type="file" accept=".csv,.xlsx,.xls" style="display:none;" data-action="importa-clienti-file"></label></div>
-    <div class="field grow"><label>&nbsp;</label><div class="helptext">Il template ha una seconda scheda con i valori ammessi per ogni colonna. I clienti già presenti (stessa Partita IVA o stesso Codice Fiscale) vengono riconosciuti e saltati, non duplicati.</div></div>
+    <div class="field grow"><label>&nbsp;</label><div class="helptext">Il template ha una seconda scheda con i valori ammessi per ogni colonna. I clienti già presenti (stessa Partita IVA o stesso Codice Fiscale) vengono aggiornati, non duplicati.</div></div>
   </div>`;
 
-  const bannerIncompleti = nIncompleti ? `<div class="card" style="border-left:4px solid ${nGravi ? 'var(--rosso)' : 'var(--giallo)'};padding:10px 14px;margin-bottom:10px;">${nGravi ? '⚠' : 'ℹ'} <strong>${nIncompleti} client${nIncompleti===1?'e':'i'} da completare</strong>: ${nGravi} con dati <strong>importanti</strong> mancanti (regime, periodicità IVA, responsabile, contabilità, CF/P.IVA), ${nIncompleti - nGravi} solo con dati utili mancanti. L'avviso resta finché i campi non sono compilati. <button class="btn small" data-action="cli-filtro-incompleti-vai">${nGravi ? 'Mostra i ' + nGravi + ' importanti' : 'Mostra'}</button></div>` : '';
+  const bannerIncompleti = nIncompleti ? `<div class="card" style="border-left:4px solid ${nGravi ? 'var(--rosso)' : 'var(--giallo)'};padding:10px 14px;margin-bottom:10px;">${nGravi ? '⚠' : 'ℹ'} <strong>${nIncompleti} client${nIncompleti===1?'e':'i'} con dati da completare</strong>${nGravi ? ` (${nGravi} con dati importanti)` : ''}. Usa «Solo con dati mancanti» o la colonna «Dati mancanti».</div>` : '';
   const header = bannerIncompleti + `<div class="section-title">Clienti <span class="cnt">${attivi} attivi · ${lista.length} mostrati</span></div>`;
 
-  if (lista.length === 0) {
-    return toolbar + toolbarImport + `<div class="card"><div class="empty"><div class="big">Nessun cliente trovato</div>Prova a cambiare i filtri, oppure aggiungi un nuovo cliente.</div></div>`;
-  }
+  const frecc = id => CLI_TAB.sort.id === id ? (CLI_TAB.sort.dir === 1 ? ' ▲' : ' ▼') : '';
+  const thead = `<thead><tr>${cols.map(d => `<th class="cli-th ${d.id==='ragioneSociale'?'cli-sticky':''}" style="min-width:${d.w}px;cursor:pointer;" data-action="cli-col-sort" data-col="${d.id}" title="Ordina">${escapeHtml(d.label)}${frecc(d.id)}</th>`).join('')}<th></th></tr>
+    <tr class="cli-filtri">${cols.map(d => `<th class="${d.id==='ragioneSociale'?'cli-sticky':''}">${cliFiltroCella(d)}</th>`).join('')}<th></th></tr></thead>`;
 
-  const pag = paginaLista('clienti', lista);
-  const righe = pag.pagina.map(c => {
-    const pct = percentualeOnboarding(STATE.onboarding[c.id]);
-    return `<div class="client-row" data-action="apri-cliente" data-id="${c.id}">
-      <div>
-        <div class="name">${escapeHtml(c.ragioneSociale)} ${c.stato==='cessato'?'<span class="badge cessato">CESSATO</span>':''}${c.stato==='potenziale'?'<span class="badge info">POTENZIALE</span>':''}${contabilitaDaTerzi(c)?' <span class="badge" title="Contabilità tenuta da terzi: le scadenze e le fasi sono quelle per contabilità non tenuta dallo studio">contab. terzi</span>':''}${badgeDatiMancanti(c)}</div>
-        <div class="meta">${escapeHtml(c.regimeFiscale||'—')} · Resp. ${escapeHtml(c.responsabileStudio||'—')} ${c.mandatario?'· Mandatario '+escapeHtml(c.mandatario):''} ${c.partitaIva?'· P.IVA '+escapeHtml(c.partitaIva):''} ${c.settore?'· '+escapeHtml(c.settore):''}</div>
-      </div>
-      <div class="right">
-        <div style="text-align:right;">
-          <div class="helptext">Onboarding</div>
-          <div style="font-weight:700;font-size:13px;">${pct}%</div>
-        </div>
-        <div style="width:90px;"><div class="progress"><div style="width:${pct}%"></div></div></div>
-        <button class="btn small" data-action="modifica-cliente" data-id="${c.id}">Modifica</button>
-      </div>
-    </div>`;
-  }).join('');
+  const pag = paginaLista('clienti', lista, 200);
+  const righe = pag.pagina.map(c => `<tr class="cli-tr" data-action="apri-cliente" data-id="${c.id}" style="cursor:pointer;">
+    ${cols.map(d => {
+      const v = d.get(c) || '';
+      if (d.id === 'ragioneSociale') return `<td class="cli-sticky"><strong>${escapeHtml(v)}</strong>${c.stato==='cessato'?' <span class="badge cessato">CESSATO</span>':''}${c.stato==='potenziale'?' <span class="badge info">POTENZIALE</span>':''}</td>`;
+      return `<td title="${escapeHtml(v)}">${v ? escapeHtml(v.length > 60 ? v.slice(0, 58) + '…' : v) : '<span class="helptext">—</span>'}</td>`;
+    }).join('')}
+    <td><button class="btn small" data-action="modifica-cliente" data-id="${c.id}">Modifica</button></td></tr>`).join('');
 
-  return toolbar + toolbarImport + header + righe + controlliPaginazione(pag);
+  const tabella = lista.length === 0
+    ? `<div class="card"><div class="empty"><div class="big">Nessun cliente trovato</div>Prova a cambiare i filtri, oppure aggiungi un nuovo cliente.</div></div>`
+    : `<div class="cli-tab-wrap"><table class="compact cli-tab">${thead}<tbody>${righe}</tbody></table></div>${controlliPaginazione(pag)}`;
+  // con zero risultati l'intestazione coi filtri deve restare raggiungibile per poterli togliere
+  return toolbar + toolbarImport + sceltaColonne + header + (lista.length === 0 ? `<div class="cli-tab-wrap"><table class="compact cli-tab">${thead}</table></div>` : '') + tabella;
 }
 
 /* -------------------- RENDER: RUBRICA (task #135) --------------------
@@ -141,17 +238,34 @@ function renderRubrica() {
    già filtrate su di lui. */
 let SCHEDA_CLIENTE = null;
 
+/* Schermata iniziale della Scheda cliente: si sceglie il cliente (ricerca + elenco) invece di aprire il primo in ordine alfabetico. */
+let SCHEDA_RICERCA = '';
+function renderSchedaClienteIniziale(tutti) {
+  const q = SCHEDA_RICERCA.trim().toLowerCase();
+  const att = tutti.filter(c => clienteAttivo(c));
+  const lista = (q ? tutti.filter(c => [c.ragioneSociale, c.partitaIva, c.codiceFiscale].filter(Boolean).join(' ').toLowerCase().includes(q)) : att);
+  return `<div class="card" style="max-width:760px;margin:0 auto;">
+    <div class="section-title" style="margin-top:0;">Scheda cliente</div>
+    <div class="helptext" style="margin-bottom:10px;">Scegli il cliente di cui vuoi vedere la scheda completa. Cerca per nome, partita IVA o codice fiscale${q ? '' : ' (qui sotto i clienti attivi)'}.</div>
+    <div class="field"><input type="text" id="schedaRicerca" placeholder="Cerca cliente..." value="${escapeHtml(SCHEDA_RICERCA)}" data-action="schcli-ricerca" autofocus></div>
+    <div style="margin-top:10px;max-height:60vh;overflow:auto;">
+      ${lista.length ? lista.map(c => `<div class="client-row" data-action="schcli-scegli" data-id="${c.id}"><div><div class="name">${escapeHtml(c.ragioneSociale)}${c.stato==='cessato'?' <span class="badge cessato">CESSATO</span>':''}${c.stato==='potenziale'?' <span class="badge info">POTENZIALE</span>':''}</div><div class="meta">${escapeHtml(labelTipoCliente(c.tipo))}${c.partitaIva?' · P.IVA '+escapeHtml(c.partitaIva):''}</div></div></div>`).join('') : '<div class="empty">Nessun cliente trovato</div>'}
+    </div></div>`;
+}
+
 function renderSchedaCliente() {
   if (VIEW_PARAMS.clienteId) { SCHEDA_CLIENTE = VIEW_PARAMS.clienteId; VIEW_PARAMS = {}; }
   const tutti = STATE.clienti.slice().sort((a,b)=>a.ragioneSociale.localeCompare(b.ragioneSociale));
   if (tutti.length === 0) return `<div class="card"><div class="empty"><div class="big">Nessun cliente in anagrafica</div>Aggiungi il primo cliente per vedere qui la sua scheda completa.</div></div>`;
-  if (!SCHEDA_CLIENTE || !tutti.find(c=>c.id===SCHEDA_CLIENTE)) SCHEDA_CLIENTE = tutti[0].id;
+  if (SCHEDA_CLIENTE && !tutti.find(c=>c.id===SCHEDA_CLIENTE)) SCHEDA_CLIENTE = null;
+  if (!SCHEDA_CLIENTE) return renderSchedaClienteIniziale(tutti);
   const cliente = clienteById(SCHEDA_CLIENTE);
 
   const toolbar = `<div class="toolbar">
     <div class="field grow"><label>Cliente</label><select data-action="schcli-seleziona-cliente">
       ${tutti.map(c=>`<option value="${c.id}" ${c.id===SCHEDA_CLIENTE?'selected':''}>${escapeHtml(c.ragioneSociale)}${c.stato==='cessato'?' (cessato)':''}</option>`).join('')}
     </select></div>
+    <div class="field"><label>&nbsp;</label><button class="btn small" data-action="schcli-elenco">☰ Elenco clienti</button></div>
     <div class="field"><label>&nbsp;</label><button class="btn small" data-action="modifica-cliente" data-id="${cliente.id}">✎ Modifica anagrafica</button></div>
   </div>`;
 
