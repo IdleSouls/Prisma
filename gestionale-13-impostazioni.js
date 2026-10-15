@@ -1733,6 +1733,7 @@ function renderCatalogoAttivitaStudio() {
       <tbody>${righe}</tbody></table>
     </div>`}
     <button class="btn small" style="margin-top:10px;" data-action="nuova-attivita-catalogo">+ Nuova attività</button>
+    <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border);max-width:460px;"><label style="font-weight:700;font-size:13px;">Compenso predefinito di una pratica (€)</label><input type="number" step="0.01" min="0" data-action="compenso-pratica-default" value="${compensoPraticaPredefinito() != null ? compensoPraticaPredefinito() : ''}" placeholder="es. 80"><div class="helptext">Proposto quando completi un task segnato «È una pratica»: potrai sempre sostituirlo con una voce del tariffario o con un importo libero, e confermare tu cosa addebitare.</div></div>
   </div>`;
 }
 function modalAttivitaCatalogo(id) {

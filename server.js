@@ -479,7 +479,7 @@ scriviLog('Avvio di Prisma...');
 const URL_MANIFESTO_AGGIORNAMENTI = 'https://raw.githubusercontent.com/IdleSouls/Prisma/main/versione.json';
 // Cambiala qui a ogni nuova versione pubblicata (deve combaciare con quella scritta nel
 // "versione.json" caricato su GitHub, altrimenti il confronto non ha senso).
-const VERSIONE_LOCALE = '1.26.1';
+const VERSIONE_LOCALE = '1.27.0';
 // Solo questi file possono essere sovrascritti da un aggiornamento - mai un nome libero/a piacere
 // del manifesto, per non correre il rischio (anche solo teorico, es. account GitHub compromesso)
 // di far scrivere un file arbitrario altrove sul PC del cliente.
@@ -3098,6 +3098,37 @@ function gestisciRichiesta(req, res) {
       }
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify({ ok: true }));
+    });
+    return;
+  }
+
+  // Portale avanzato (pacchetto per cliente): F24, ravvedimento, conferma di lettura. Ognuno agisce solo sul cliente del token.
+  const AZIONI_PORTALE_AVANZATO = {
+    '/api/portale-f24-modalita': { fn: 'portaleScegliModalitaF24', scrive: true, args: (d) => [d.token, d.f24Id, d.modalita], errore: 'Questo F24 non è più disponibile.' },
+    '/api/portale-f24-pagamento': { fn: 'portaleSegnalaPagamentoF24', scrive: true, args: (d) => [d.token, d.f24Id, d.pagamenti], errore: 'Indica almeno una voce pagata, con un importo valido.' },
+    '/api/portale-conferma-lettura': { fn: 'portaleConfermaLettura', scrive: true, args: (d) => [d.token, d.comunicazioneId], errore: 'Questa comunicazione non richiede conferma o non è più disponibile.' },
+    '/api/portale-ravvedimento-simula': { fn: 'portaleSimulaRavvedimento', scrive: false, args: (d) => [d.token, d], errore: null },
+  };
+  if (AZIONI_PORTALE_AVANZATO[url] && req.method === 'POST') {
+    const az = AZIONI_PORTALE_AVANZATO[url];
+    leggiCorpoRichiesta(req, (corpo) => {
+      const rispondi = (codice, oggetto) => { res.writeHead(codice, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(oggetto)); };
+      let dati; try { dati = JSON.parse(corpo); } catch (err) { return rispondi(400, { ok: false, errore: 'Richiesta non valida.' }); }
+      if (!dati || typeof dati.token !== 'string' || !dati.token.trim()) return rispondi(400, { ok: false, errore: 'Richiesta non valida.' });
+      dati.token = dati.token.trim();
+      const { win, errore } = motorePortale();
+      if (!win) { console.error('[gestionale] Portale avanzato non disponibile:', errore); return rispondi(503, { ok: false, errore: 'Il servizio non è al momento disponibile. Riprova più tardi o contatta lo studio.' }); }
+      try {
+        ricaricaDatiMotorePortale(win);
+        const r = win[az.fn](...az.args(dati));
+        if (az.scrive && r) { scriviDati(win.getSTATE()); notificaClientiSSE(null); }
+        if (az.fn === 'portaleSimulaRavvedimento') return rispondi(200, { ok: true, risultato: r || null });
+        if (!r) return rispondi(404, { ok: false, errore: az.errore });
+        return rispondi(200, { ok: true });
+      } catch (err) {
+        console.error('[gestionale] Errore nel portale avanzato (' + url + '):', err.message);
+        return rispondi(500, { ok: false, errore: 'Errore interno. Riprova più tardi.' });
+      }
     });
     return;
   }

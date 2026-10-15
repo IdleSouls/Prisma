@@ -547,6 +547,7 @@ function normalizzaStatoCaricato(parsed) {
   migraDocumentiContabiliConti(stato);
   migraNoteTaskTeam(stato);
   migraStatoVersamentoRitardo(stato);
+  migraPacchettoPortale(stato);
   migraModelloPreventivoStudio(stato);
   migraCampiCredenziali(stato);
   unisciLibriSociali(stato);

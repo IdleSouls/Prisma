@@ -819,8 +819,8 @@ function importaBilancio(inputEl) {
 let BILANCIO_CLIENTE = null;
 
 function renderBilanci() {
-  const attivi = STATE.clienti.filter(c=>clienteAttivo(c)).sort((a,b)=>a.ragioneSociale.localeCompare(b.ragioneSociale));
-  if (attivi.length === 0) return `<div class="card"><div class="empty"><div class="big">Nessun cliente attivo</div>Aggiungi un cliente per caricare i suoi dati di bilancio.</div></div>`;
+  const attivi = clientiPacchetto().filter(c=>clienteAttivo(c)).sort((a,b)=>a.ragioneSociale.localeCompare(b.ragioneSociale));
+  if (attivi.length === 0) return `<div class="card"><div class="empty"><div class="big">Nessun cliente con il pacchetto portale avanzato</div>Attiva il pacchetto per un cliente dalla scheda Portale (interruttore "Portale avanzato"): solo quei clienti hanno bilanci, ritenute e F24.</div></div>`;
   if (!BILANCIO_CLIENTE || !attivi.find(c=>c.id===BILANCIO_CLIENTE)) BILANCIO_CLIENTE = attivi[0].id;
   const cliente = clienteById(BILANCIO_CLIENTE);
   const anni = anniBilancioCliente(cliente.id);

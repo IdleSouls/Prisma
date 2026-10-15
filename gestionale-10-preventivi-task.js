@@ -589,7 +589,7 @@ function modalNuovoPotenziale(appId) {
 let F24_FILTRO = { cliente: 'Tutti', tipo: 'Tutti' };
 
 function renderF24() {
-  const tutti = STATE.f24 || [];
+  const tutti = (STATE.f24 || []).filter(f => clienteHaPacchetto(clienteById(f.clienteId)));
   const totDebito = tutti.filter(f => f.tipo === 'Debito').reduce((s,f) => s + (Number(f.importo)||0), 0);
   const totCredito = tutti.filter(f => f.tipo === 'Credito').reduce((s,f) => s + (Number(f.importo)||0), 0);
   const nDaPagare = tutti.filter(f => statoF24(f) !== 'Pagato').length;
@@ -608,7 +608,7 @@ function renderF24() {
   const toolbar = `<div class="toolbar">
     <div class="field"><label>Cliente</label><select data-action="f24-filtro-cliente">
       <option value="Tutti" ${F24_FILTRO.cliente==='Tutti'?'selected':''}>Tutti</option>
-      ${STATE.clienti.slice().sort((a,b)=>a.ragioneSociale.localeCompare(b.ragioneSociale)).map(c=>`<option value="${c.id}" ${F24_FILTRO.cliente===c.id?'selected':''}>${escapeHtml(c.ragioneSociale)}</option>`).join('')}
+      ${clientiPacchetto().sort((a,b)=>a.ragioneSociale.localeCompare(b.ragioneSociale)).map(c=>`<option value="${c.id}" ${F24_FILTRO.cliente===c.id?'selected':''}>${escapeHtml(c.ragioneSociale)}</option>`).join('')}
     </select></div>
     <div class="field"><label>Tipo</label><select data-action="f24-filtro-tipo">
       <option value="Tutti" ${F24_FILTRO.tipo==='Tutti'?'selected':''}>Tutti</option>
@@ -670,7 +670,7 @@ let F24_CLIENTE_QUERY = '';
 function risultatiClienteF24Html() {
   const q = F24_CLIENTE_QUERY.trim().toLowerCase();
   if (!q) return '';
-  const match = STATE.clienti.filter(c => clienteAttivo(c) && c.ragioneSociale.toLowerCase().includes(q))
+  const match = clientiPacchetto().filter(c => clienteAttivo(c) && c.ragioneSociale.toLowerCase().includes(q))
     .sort((a,b) => a.ragioneSociale.localeCompare(b.ragioneSociale)).slice(0, 30);
   if (!match.length) return `<div class="f24-cliente-vuoto">Nessun cliente trovato per "${escapeHtml(F24_CLIENTE_QUERY.trim())}".</div>`;
   return match.map(c => `<div class="f24-cliente-riga" data-action="f24-cliente-scegli" data-id="${c.id}">${escapeHtml(c.ragioneSociale)}</div>`).join('');
@@ -1371,6 +1371,72 @@ function aggiungiNotaTaskTeam(taskId, testo) {
    preme "Modifica" qui dentro, che apre il modale editabile (modalTaskTeam) vero e proprio: due
    modali distinti invece di uno solo "a volte editabile" perché altrimenti resterebbe troppo facile
    toccare per sbaglio uno stato/assegnatario mentre si sta solo dando un'occhiata. */
+
+/* ============================================================================================
+   PRATICA COMPLETATA -> ADDEBITO AL CLIENTE (sempre sotto conferma, mai automatico)
+   Quando un task segnato "È una pratica" passa a Fatto compare una finestra: compenso (dal tariffario o dal compenso predefinito
+   pratica in Impostazioni) + spese anticipate. Alla conferma finiscono in "Attività da fatturare": una voce per il compenso e una
+   per ogni spesa anticipata. "Decido dopo" lascia la proposta aperta (si riapre dal dettaglio del task); "Non addebitare" la chiude.
+   ============================================================================================ */
+let ADDEBITO_BOZZA = null;
+function compensoPraticaPredefinito() { const v = Number(STATE.meta && STATE.meta.compensoPraticaDefault); return v > 0 ? v : null; }
+function addebitoPraticaDaConfermare(t) { return !!(t && t.pratica && t.addebitoPratica && t.addebitoPratica.stato === 'da-confermare'); }
+function proponiAddebitoPratica(taskId) {
+  const t = STATE.taskTeam.find(x => x.id === taskId);
+  if (!addebitoPraticaDaConfermare(t) || !clienteById(t.clienteId)) return false;
+  modalAddebitoPratica(taskId); return true;
+}
+function modalAddebitoPratica(taskId) {
+  const t = STATE.taskTeam.find(x => x.id === taskId); if (!t) return;
+  const cl = clienteById(t.clienteId);
+  if (!cl) { toast('La pratica non ha un cliente: collegala a un cliente per poterla addebitare.', true); return; }
+  const def = compensoPraticaPredefinito();
+  ADDEBITO_BOZZA = { taskId, attivitaId: def != null ? '__default__' : '', compenso: def != null ? def : '', spese: [{ descrizione: '', importo: '', esente: true }] };
+  disegnaModalAddebito();
+}
+function totaleAddebito() { const b = ADDEBITO_BOZZA; return (Number(b.compenso) || 0) + b.spese.reduce((s, x) => s + (Number(x.importo) || 0), 0); }
+function disegnaModalAddebito() {
+  const b = ADDEBITO_BOZZA, t = STATE.taskTeam.find(x => x.id === b.taskId), cl = clienteById(t.clienteId), def = compensoPraticaPredefinito();
+  const opz = [def != null ? `<option value="__default__" ${b.attivitaId === '__default__' ? 'selected' : ''}>Compenso predefinito pratica — ${fmtEuro(def)}</option>` : '']
+    .concat((STATE.catalogoAttivitaStudio || []).map(a => `<option value="${a.id}" ${b.attivitaId === a.id ? 'selected' : ''}>${escapeHtml(a.nome)}${a.prezzo != null ? ' — ' + fmtEuro(a.prezzo) : ''}</option>`)).join('');
+  const righe = b.spese.map((x, i) => `<div style="display:grid;grid-template-columns:1fr 110px auto auto;gap:6px;align-items:center;margin-bottom:6px;">
+      <input data-action="addeb-spesa-desc" data-i="${i}" value="${escapeHtml(x.descrizione)}" placeholder="es. Diritti di segreteria Camera di Commercio">
+      <input type="number" step="0.01" min="0" data-action="addeb-spesa-importo" data-i="${i}" value="${x.importo}" placeholder="0,00">
+      <label class="checkline" title="Spesa anticipata in nome e per conto del cliente: esclusa da IVA (art. 15 DPR 633/72)" style="white-space:nowrap;font-size:12px;"><input type="checkbox" data-action="addeb-spesa-esente" data-i="${i}" ${x.esente ? 'checked' : ''}> escl. IVA art. 15</label>
+      <button class="btn small danger" data-action="addeb-spesa-elimina" data-i="${i}" title="Rimuovi">✕</button></div>`).join('');
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop"><div class="modal" style="max-width:640px;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;"><div><h2>Pratica completata: da addebitare?</h2>
+      <div class="modal-sub">${escapeHtml(t.titolo)} · ${escapeHtml(cl.ragioneSociale)}. Niente parte da solo: confermi tu cosa finisce in «Da fatturare».</div></div><button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button></div>
+    <div class="field"><label>Compenso della pratica</label><select data-action="addeb-attivita"><option value="">— importo libero —</option>${opz}</select></div>
+    <div class="field"><label>Importo compenso (€, + IVA e C.P.)</label><input type="number" step="0.01" min="0" id="addebCompenso" data-action="addeb-compenso" value="${b.compenso}" placeholder="0,00"></div>
+    <div style="margin-top:12px;font-weight:700;font-size:13px;">Spese anticipate da addebitare</div>
+    <div class="helptext" style="margin-bottom:6px;">Bolli, diritti camerali, visure, marche… pagati dallo studio per conto del cliente.</div>
+    ${righe}<button class="btn small" data-action="addeb-spesa-aggiungi">+ Aggiungi spesa</button>
+    <div style="margin-top:14px;font-size:14px;">Totale da addebitare: <b id="addebTotale">${fmtEuro(totaleAddebito())}</b></div>
+    <div class="modal-actions" style="flex-wrap:wrap;"><button class="btn" data-action="addeb-dopo">Decido dopo</button><button class="btn danger" data-action="addeb-no">Non addebitare</button><button class="btn primary" data-action="addeb-conferma">Aggiungi a «Da fatturare»</button></div>
+  </div></div>`;
+}
+function confermaAddebitoPratica() {
+  const b = ADDEBITO_BOZZA; if (!b) return null;
+  const t = STATE.taskTeam.find(x => x.id === b.taskId); if (!t) return null;
+  const compenso = Number(b.compenso) || 0, spese = b.spese.filter(x => (x.descrizione || '').trim() && Number(x.importo) > 0);
+  if (!(compenso > 0) && !spese.length) { toast('Indica un compenso o almeno una spesa anticipata.', true); return null; }
+  const att = (STATE.catalogoAttivitaStudio || []).find(a => a.id === b.attivitaId);
+  const creati = [];
+  if (compenso > 0) creati.push(aggiungiAttivitaFatturabile({ clienteId: t.clienteId, descrizione: 'Pratica: ' + t.titolo + (att ? ' (' + att.nome + ')' : ''), importo: compenso, taskId: t.id, tipoVoce: 'compenso', note: 'Compenso pratica, + IVA e C.P.' }));
+  spese.forEach(x => creati.push(aggiungiAttivitaFatturabile({ clienteId: t.clienteId, descrizione: 'Spesa anticipata — ' + x.descrizione.trim() + ' (pratica: ' + t.titolo + ')', importo: Number(x.importo), taskId: t.id, tipoVoce: 'spesa', esenteIva: !!x.esente, note: x.esente ? 'Esclusa da IVA, art. 15 DPR 633/72' : '' })));
+  t.addebitoPratica = { stato: 'addebitato', data: oggiISO(), attivitaIds: creati.map(a => a.id), totale: Math.round((compenso + spese.reduce((s, x) => s + Number(x.importo), 0)) * 100) / 100 };
+  salvaStato();
+  return t.addebitoPratica;
+}
+function htmlAddebitoPraticaTask(t) {
+  if (!t || !t.pratica || !t.addebitoPratica) return '';
+  const a = t.addebitoPratica;
+  if (a.stato === 'da-confermare') return `<div class="card" style="margin:0 0 14px;border:1px solid var(--giallo);"><b>💶 Addebito al cliente da confermare</b><div class="helptext">La pratica è completata: scegli compenso e spese anticipate da mettere in «Da fatturare».</div><button class="btn small primary" data-action="addeb-apri" data-id="${t.id}" style="margin-top:6px;">Imposta l'addebito</button></div>`;
+  if (a.stato === 'addebitato') return `<div class="helptext" style="margin:0 0 14px;">💶 Addebitato il ${fmtData(a.data)}: ${fmtEuro(a.totale)} (compenso e spese) in «Da fatturare».</div>`;
+  return `<div class="helptext" style="margin:0 0 14px;">💶 Addebito escluso il ${fmtData(a.data)}. <button class="btn small" data-action="addeb-apri" data-id="${t.id}">Riapri</button></div>`;
+}
+
 function modalDettaglioTaskTeam(taskId) {
   const t = STATE.taskTeam.find(x => x.id === taskId);
   if (!t) { toast('Task non trovato.'); return; }
@@ -1409,6 +1475,7 @@ function modalDettaglioTaskTeam(taskId) {
         ${t.clienteId ? `<span class="badge viola">${escapeHtml(nomeCliente(t.clienteId))}</span>` : ''}
         ${t.scadenza ? `<span class="pill-delta ${ritardo?'scaduto':'lontano'}">${ritardo?'In ritardo — ':'Entro '}${fmtDataBreve(t.scadenza)}</span>` : '<span class="helptext">Nessuna scadenza</span>'}
       </div>
+      ${htmlAddebitoPraticaTask(t)}
       ${panelProcedura}
       ${panelNoteCompletamento}
       <label style="font-size:11px;font-weight:700;color:var(--text-mut);text-transform:uppercase;letter-spacing:.02em;">Note operative</label>
@@ -1696,6 +1763,7 @@ function aggiornaTaskTeam(id, patch) {
   const statoPrima = t.stato;
   Object.assign(t, patch);
   if ('stato' in patch) { if (t.stato === 'Fatto') { if (!t.fattoIl) t.fattoIl = oggiISO(); } else delete t.fattoIl; }
+  if (patch.stato === 'Fatto' && statoPrima !== 'Fatto' && t.pratica && (!t.addebitoPratica || t.addebitoPratica.stato === 'escluso')) t.addebitoPratica = { stato: 'da-confermare', da: oggiISO() };
   if ('stato' in patch && patch.stato !== statoPrima) {
     t.statoDal = oggiISO();
     const voce = t.motivoVoceId && (t.storicoStati || []).find(v => v.id === t.motivoVoceId);

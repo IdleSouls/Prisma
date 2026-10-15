@@ -215,7 +215,7 @@ function pannelloQuadratura770() {
 function renderRitenute() {
   // I placeholder (dataPagamento non ancora impostata) vanno in cima: sono quelli che
   // richiedono un'azione da parte dello studio (chiedere/verificare quando il cliente paga).
-  const righe = STATE.ritenuteRighe.slice().sort((a,b) => (a.dataPagamento||'').localeCompare(b.dataPagamento||''));
+  const righe = STATE.ritenuteRighe.filter(r => clienteHaPacchetto(clienteById(r.clienteId))).slice().sort((a,b) => (a.dataPagamento||'').localeCompare(b.dataPagamento||''));
   const { scadenzaPerRigaId, inAttesaPerRigaId } = calcolaScadenzeRitenute(righe);
   const nPlaceholder = righe.filter(r => !r.dataPagamento).length;
 
@@ -274,7 +274,7 @@ function modalRitenuta() {
       </div>
       <form id="formRitenuta" onsubmit="return false;">
         <div class="grid2">
-          <div class="field"><label>Cliente *</label><select id="rCliente">${STATE.clienti.filter(c=>clienteAttivo(c)).map(c=>`<option value="${c.id}">${escapeHtml(c.ragioneSociale)}</option>`).join('')}</select></div>
+          <div class="field"><label>Cliente *</label><select id="rCliente">${clientiPacchetto().filter(c=>clienteAttivo(c)).map(c=>`<option value="${c.id}">${escapeHtml(c.ragioneSociale)}</option>`).join('')}</select></div>
           <div class="field"><label>Percipiente / Fornitore *</label><input id="rPercipiente" required></div>
           <div class="field"><label>Data fattura *</label><input type="date" id="rDataFattura" required></div>
           <div class="field"><label>Data pagamento</label><input type="date" id="rDataPagamento"></div>

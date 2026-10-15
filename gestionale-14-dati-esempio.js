@@ -7,7 +7,7 @@ function generaDatiEsempio() {
     contatti: { pec: '' }, addebitoF24: 'NOI', contabilita: 'ESTERNA', stato: 'attivo',
     periodicitaIva: 'N.A.', periodicitaIntrastat: 'N.A.', previdenza: 'No previdenza',
     flags: {}, dirittoCameraleScelta: null, versamentoImposteScelta: SCELTE_VERSAMENTO_IMPOSTE[1], adempimentiAnnualiApplicabili: [], note: '', creatoIl: oggiISO(),
-    settore: '', annoIngresso: anno, canaleAcquisizione: 'Passaparola', preventivoAnnuo: null,
+    settore: '', annoIngresso: anno, canaleAcquisizione: 'Passaparola', preventivoAnnuo: null, pacchettoPortale: true,
   }, over);
 
   const clienti = [

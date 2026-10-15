@@ -862,15 +862,14 @@ const SETUP_DOMANDE = [
   { id: 'prev', q: 'Fate preventivi, mandati e lettere d\'incarico e l\'onboarding dei nuovi clienti?', moduli: ['preventivi', 'onboarding'] },
   { id: 'fatt', q: 'Volete tenere traccia di cosa fatturare e degli incassi dei compensi?', moduli: ['fatturazione', 'incassi'] },
   { id: 'compl', q: 'Volete gestire l\'antiriciclaggio (adeguata verifica e profilo di rischio)?', moduli: ['antiriciclaggio'] },
-  { id: 'fisc', q: 'Seguite ritenute d\'acconto e F24?', moduli: ['fiscale'] },
-  { id: 'bil', q: 'Analizzate bilanci e KPI dei clienti?', moduli: ['bilanci'] },
+  { id: 'serv', q: 'Offrite ad alcuni clienti ritenute, F24 e bilanci/KPI nel portale (pacchetto avanzato, attivabile cliente per cliente)?', moduli: ['servizi'] },
   { id: 'libri', q: 'Tenete i libri sociali dei clienti?', moduli: ['libri'] },
   { id: 'tit', q: 'Il titolare vuole una vista d\'insieme (cruscotto, carico di lavoro, proroghe, CPB)?', moduli: ['cruscotto', 'carico', 'cpb'] },
   { id: 'proc', q: 'Volete procedure interne e un archivio password dello studio?', moduli: ['procedure', 'credenziali'] },
 ];
 const SETUP_PROFILI = [
   { id: 'essenziale', nome: 'Essenziale', desc: 'Solo il nucleo: scadenze, adempimenti annuali, clienti e documenti. Ideale per partire.', risposte: [] },
-  { id: 'strutturato', nome: 'Studio strutturato', desc: 'Più collaboratori, calendario e appuntamenti, preventivi e mandati, antiriciclaggio, incassi, ritenute e F24.', risposte: ['squadra', 'cal', 'prev', 'fatt', 'compl', 'fisc'] },
+  { id: 'strutturato', nome: 'Studio strutturato', desc: 'Più collaboratori, calendario e appuntamenti, preventivi e mandati, antiriciclaggio, incassi, ritenute e F24.', risposte: ['squadra', 'cal', 'prev', 'fatt', 'compl', 'serv'] },
   { id: 'completo', nome: 'Completo', desc: 'Tutti i moduli attivi: potrai spegnere in seguito quelli che non servono.', risposte: SETUP_DOMANDE.map(d => d.id) },
 ];
 let SETUP = null;
@@ -1294,7 +1293,7 @@ window.modalSocio = modalSocio;
 window.FASI_F24 = FASI_F24;
 window.quadratura770 = quadratura770;
 window.STATI_SCADENZA_CHIUSI = STATI_SCADENZA_CHIUSI;
-window.migraStatoVersamentoRitardo = migraStatoVersamentoRitardo;
+window.migraStatoVersamentoRitardo = migraStatoVersamentoRitardo; window.migraPacchettoPortale = migraPacchettoPortale; window.proponiAddebitoPratica = proponiAddebitoPratica; window.confermaAddebitoPratica = confermaAddebitoPratica; window.getAddebitoBozza = () => ADDEBITO_BOZZA; window.modalAddebitoPratica = modalAddebitoPratica; window.clienteHaPacchetto = clienteHaPacchetto; window.clientiPacchetto = clientiPacchetto;
 window.opzioniAvanzamento = opzioniAvanzamento;
 window.etichettaStatoScadenza = etichettaStatoScadenza;
 window.CATEGORIE_DOCUMENTO = CATEGORIE_DOCUMENTO;

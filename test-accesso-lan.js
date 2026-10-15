@@ -7,6 +7,14 @@ const env = Object.assign({}, process.env, { PRISMA_PORTA: String(PORTA), PRISMA
 for (const f of ['server.js', 'gestionale.htm', 'portale-cliente.htm', 'portale-sw.js', 'package.json'].concat(fs.readdirSync(__dirname).filter((x) => /^(gestionale\.css|gestionale-\d\d-[a-z0-9-]+\.js)$/.test(x)))) { try { fs.copyFileSync(path.join(__dirname, f), path.join(dir, f)); } catch (e) { /* facoltativo */ } }
 env.NODE_PATH = path.join(__dirname, 'node_modules');
 fs.writeFileSync(path.join(dir, 'responsabili-password.json'), JSON.stringify({ Matteo: 'segreta12' }));
+// Dati minimi per provare le azioni del portale avanzato (F24, ravvedimento, conferma lettura) tramite il motore headless.
+fs.writeFileSync(path.join(dir, 'dati-studio.json'), JSON.stringify({
+  meta: { pacchettoPortaleMigrato: true, studioNome: 'Studio Test', responsabili: ['Matteo'] },
+  clienti: [{ id: 'cliP', ragioneSociale: 'Cliente Pacchetto Srl', tipo: 'societa_capitali', stato: 'attivo', portaleToken: 'tokP', pacchettoPortale: true, contatti: {}, flags: {}, atecoCodici: [], adempimentiAnnualiApplicabili: [] },
+             { id: 'cliN', ragioneSociale: 'Cliente Base Srl', tipo: 'societa_capitali', stato: 'attivo', portaleToken: 'tokN', pacchettoPortale: false, contatti: {}, flags: {}, atecoCodici: [], adempimentiAnnualiApplicabili: [] }],
+  f24: [{ id: 'f24P', clienteId: 'cliP', tipo: 'Debito', data: '2026-01-16', importo: 300, stato: 'Da pagare', descrizione: 'IVA', righe: [{ id: 'r1', codiceTributo: '6012', descrizione: 'IVA', importo: 300, importoPagato: 0 }] }],
+  comunicazioni: [{ id: 'comP', clienteId: 'cliP', data: '2026-10-01', categoria: 'Bilancio', oggetto: 'Bilancio', corpo: 'x', stato: 'Inviata', visibilePortale: true, richiedeConferma: true, risposte: [] }],
+}));
 // Aggiornamento "scaricato, in attesa di riavvio": all'avvio i file vanno al loro posto e il server riparte con il codice nuovo.
 const crypto = require('crypto');
 const stag = path.join(dir, 'aggiornamento-pronto'); fs.mkdirSync(stag);
@@ -29,6 +37,18 @@ function chiedi(metodo, p, { remoto, cookie, corpo } = {}) {
 let falliti = 0; const verifica = (c, m) => { if (!c) { falliti++; console.log('❌ ' + m); } else console.log('✅ ' + m); };
 (async () => {
   for (let i = 0; i < 400; i++) { try { await chiedi('GET', '/api/presenza'); break; } catch (e) { await new Promise(r => setTimeout(r, 500)); } } // l'avvio di server.js puo richiedere oltre un minuto su macchine lente
+  { // portale avanzato via server (motore headless)
+    const pst = async (p, c) => { const r = await chiedi('POST', p, { corpo: c }); let j = {}; try { j = JSON.parse(r.b); } catch (e) {} return { s: r.s, j }; };
+    verifica((await pst('/api/portale-f24-modalita', { token: 'tokP', f24Id: 'f24P', modalita: 'autonomo' })).j.ok === true, 'portale avanzato: scelta modalità F24');
+    verifica((await pst('/api/portale-f24-modalita', { token: 'tokN', f24Id: 'f24P', modalita: 'autonomo' })).s === 404, 'portale avanzato: senza pacchetto o F24 altrui = 404');
+    verifica((await pst('/api/portale-f24-pagamento', { token: 'tokP', f24Id: 'f24P', pagamenti: [{ rigaId: 'r1', importo: 100 }] })).j.ok === true, 'portale avanzato: segnalazione pagamento');
+    const sim = (await pst('/api/portale-ravvedimento-simula', { token: 'tokP', importo: 1000, dataScadenza: '2026-01-16', dataVersamento: '2026-01-26' })).j;
+    verifica(sim.ok && sim.risultato && sim.risultato.giorniRitardo === 10, 'portale avanzato: simulazione ravvedimento');
+    verifica((await pst('/api/portale-ravvedimento-simula', { token: 'tokN', importo: 1000, dataScadenza: '2026-01-16', dataVersamento: '2026-01-26' })).j.risultato === null, 'portale avanzato: simulazione negata senza pacchetto');
+    verifica((await pst('/api/portale-conferma-lettura', { token: 'tokP', comunicazioneId: 'comP' })).j.ok === true, 'portale avanzato: conferma di lettura');
+    const salvato = JSON.parse(fs.readFileSync(path.join(dir, 'dati-studio.json'), 'utf8'));
+    verifica(salvato.f24[0].importoPagato === 100 && salvato.f24[0].modalitaPagamento === 'autonomo' && salvato.comunicazioni.find(c => c.id === 'comP').confermaLetturaData, 'portale avanzato: le azioni sono salvate nei dati dello studio');
+  }
   verifica(fs.readFileSync(path.join(dir, 'gestionale.htm'), 'utf8').startsWith('<!-- AGGIORNATO-TEST -->') && !fs.existsSync(stag), 'aggiornamento scaricato: applicato all\'avvio e cartella di attesa svuotata');
   { const st = JSON.parse((await chiedi('GET', '/api/aggiornamenti/stato')).b); verifica(st.ok && st.versioneLocale === '99.0.0' && st.scaricata === null, 'dopo il riavvio gira il server.js nuovo (versione 99.0.0), nessun aggiornamento in attesa'); }
   { // pagina divisa in file: la pagina li referenzia, il server li serve, un nome inesistente da 404

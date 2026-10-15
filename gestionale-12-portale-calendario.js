@@ -194,6 +194,8 @@ function costruisciVistaPortaleClienteEsterna(token, password) {
     categoria: categoriaComunicazione(c),
     corpo: c.corpo || null,
     nuova: !c.vistaPortale,
+    richiedeConferma: !!c.richiedeConferma,
+    confermaLetturaData: c.confermaLetturaData || null,
     direzione: c.direzione === 'cliente' ? 'cliente' : 'studio',
     richiestaChiusa: c.direzione === 'cliente' ? !!c.richiestaChiusa : false,
     scadenzaRif: c.scadenzaRif || null,
@@ -390,9 +392,16 @@ function costruisciVistaPortaleClienteEsterna(token, password) {
   // per i pannelli sia per i relativi contatori in "numeri" - stessa cautela già usata altrove in
   // questo file (es. risolviDocumentoPortaleEsterno) di non fidarsi della sola interfaccia.
   const puoVedere = (sezione) => accessoPortalePuoVedere(accesso, sezione);
+  const pacchetto = clienteHaPacchetto(cliente);
+  const f24Cliente = (pacchetto && puoVedere('scadenze')) ? (STATE.f24 || []).filter(f => f.clienteId === cliente.id).slice().sort((a, b) => (b.data || '').localeCompare(a.data || '')).map(f => ({
+    id: f.id, descrizione: f.descrizione || null, tipo: f.tipo, data: f.data, importo: Number(f.importo) || 0, importoPagato: Number(f.importoPagato) || 0,
+    stato: statoF24(f), modalitaPagamento: f.modalitaPagamento || null,
+    righe: righeF24(f).map(r => ({ id: r.id, codiceTributo: r.codiceTributo || '', descrizione: r.descrizione || '', importo: Number(r.importo) || 0, importoPagato: Number(r.importoPagato) || 0 })),
+  })) : [];
   return {
     azienda,
-    accesso: { nome: accesso.nome, ruolo: accesso.ruolo, sezioniConsentite: accesso.ruolo === 'completo' ? SEZIONI_PORTALE_LIMITABILI.map(s => s.id) : (accesso.tabConsentiti || []) },
+    pacchetto,
+    accesso: { nome: accesso.nome, ruolo: accesso.ruolo, sezioniConsentite: (accesso.ruolo === 'completo' ? SEZIONI_PORTALE_LIMITABILI.map(s => s.id) : (accesso.tabConsentiti || [])).filter(s => pacchetto || s !== 'andamento') },
     numeri: {
       scadenzeAperte: puoVedere('scadenze') ? scadenzeClienteTutte.length : 0,
       comunicazioniDaLeggere: puoVedere('comunicazioni') ? comClienteNonLette : 0,
@@ -407,9 +416,11 @@ function costruisciVistaPortaleClienteEsterna(token, password) {
     pagamentiInRitardo: puoVedere('scadenze') ? pagamentiInRitardo : [],
     // Stesso permesso delle scadenze/F24 (vedi SEZIONI_PORTALE_LIMITABILI): sono fatture che
     // riguardano versamenti verso l'Erario, concettualmente la stessa area per un accesso limitato.
-    ritenute: puoVedere('scadenze') ? ritenute : [],
+    ritenute: (pacchetto && puoVedere('scadenze')) ? ritenute : [],
+    f24Tutti: f24Cliente,
+    f24InAttesa: f24Cliente.filter(f => f.stato !== 'Pagato'),
     documenti: puoVedere('documenti') ? documenti : [],
-    andamento: puoVedere('andamento') ? andamento : null,
+    andamento: (pacchetto && puoVedere('andamento')) ? andamento : null,
   };
 }
 
@@ -580,6 +591,97 @@ function segnalaPagamentoRitenutaPortaleEsterno(token, ritenutaId, dataPagamento
   STATE.comunicazioni.push(comunicazione);
   salvaStato();
   return r;
+}
+
+
+/* ============================================================================================
+   PORTALE AVANZATO (pacchetto per cliente): F24, ravvedimento, conferma di lettura.
+   Ricostruito dopo l'incidente: la pagina del portale aveva già i pannelli, mancavano dati e azioni.
+   Tutto passa da trovaAccessoPortale(token): si agisce solo sul cliente di quel token, e solo se ha il pacchetto.
+   ============================================================================================ */
+function portaleConPacchetto(token, sezione) {
+  const t = trovaAccessoPortale(token);
+  if (!t || !clienteHaPacchetto(t.cliente) || !accessoPortalePuoVedere(t.accesso, sezione || 'scadenze')) return null;
+  return t;
+}
+function comunicazioneDalClientePortale(clienteId, categoria, oggetto, corpo, extra) {
+  STATE.comunicazioni.push(Object.assign({
+    id: uid('com'), clienteId, data: oggiISO(), direzione: 'cliente', categoria, oggetto, corpo,
+    stato: 'Inviata', visibilePortale: false, vistaPortale: true, vistaStudio: false, scadenzaRif: null, risposte: [],
+  }, extra || {}));
+}
+/* Interessi legali annui (%): D.M. MEF di ogni dicembre. 2026 = 1,6% (DM 10/12/2025). Da aggiornare ogni anno. */
+const TASSI_LEGALI_ANNUI = { 2017: 0.1, 2018: 0.3, 2019: 0.8, 2020: 0.05, 2021: 0.01, 2022: 1.25, 2023: 5, 2024: 2.5, 2025: 2, 2026: 1.6 };
+function tassoLegaleAnno(anno) { return TASSI_LEGALI_ANNUI[anno] != null ? TASSI_LEGALI_ANNUI[anno] : (anno > 2026 ? TASSI_LEGALI_ANNUI[2026] : 1); }
+/* Ravvedimento di un omesso/tardivo versamento. Sanzione piena 25% (violazioni dal 1/9/2024, D.Lgs. 87/2024; prima 30%),
+   dimezzata se il ritardo non supera 90 giorni. Fasce: entro 14 gg 1/10 di 1/15 della sanzione dimezzata per giorno; 15-30 gg 1/10;
+   31-90 gg 1/9 (della sanzione dimezzata); poi 1/8 (entro 1 anno), 1/7 (entro 2 anni), 1/6 (oltre) della sanzione piena.
+   Interessi al tasso legale di ogni anno solare, giorno per giorno. Indicativo: per il versamento vale il calcolo dello studio. */
+function calcolaRavvedimento(importo, dataScadenza, dataVersamento) {
+  const imp = Number(importo);
+  if (!(imp > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(dataScadenza || '') || !/^\d{4}-\d{2}-\d{2}$/.test(dataVersamento || '')) return null;
+  const g = giorniTra(dataScadenza, dataVersamento);
+  if (!(g > 0)) return null;
+  const nuova = dataScadenza >= '2024-09-01';
+  const pieno = nuova ? 25 : 30, meta = pieno / 2;
+  let pct, fasciaLabel;
+  if (g <= 14) { pct = (meta / 15 / 10) * g; fasciaLabel = 'sprint (entro 14 giorni)'; }
+  else if (g <= 30) { pct = meta / 10; fasciaLabel = 'breve (15-30 giorni)'; }
+  else if (g <= 90) { pct = meta / 9; fasciaLabel = 'intermedio (31-90 giorni)'; }
+  else if (g <= 365) { pct = pieno / 8; fasciaLabel = 'entro 1 anno'; }
+  else if (g <= 730) { pct = pieno / 7; fasciaLabel = 'entro 2 anni'; }
+  else { pct = pieno / 6; fasciaLabel = 'oltre 2 anni'; }
+  let interessi = 0, cur = new Date(dataScadenza + 'T00:00:00'); cur.setDate(cur.getDate() + 1); const fine = new Date(dataVersamento + 'T00:00:00'); fine.setDate(fine.getDate() + 1); // dal giorno dopo la scadenza al giorno del versamento compreso
+  while (cur < fine) {
+    const anno = cur.getFullYear(), finAnno = new Date(anno + 1, 0, 1), tappa = finAnno < fine ? finAnno : fine;
+    const giorni = Math.round((tappa - cur) / 86400000), giorniAnno = (anno % 4 === 0 && (anno % 100 !== 0 || anno % 400 === 0)) ? 366 : 365;
+    interessi += imp * (tassoLegaleAnno(anno) / 100) * giorni / giorniAnno; cur = tappa;
+  }
+  const r2 = (n) => Math.round(n * 100) / 100, sanzione = r2(imp * pct / 100), inter = r2(interessi);
+  return { importo: r2(imp), giorniRitardo: g, fasciaLabel, sanzione, interessi: inter, totale: r2(imp + sanzione + inter) };
+}
+function residuoF24(f) { return Math.max(0, righeF24(f).reduce((s, r) => s + Math.max(0, (Number(r.importo) || 0) - (Number(r.importoPagato) || 0)), 0)); }
+function portaleSimulaRavvedimento(token, p) {
+  const t = portaleConPacchetto(token); if (!t || !p) return null;
+  if (p.f24Id) {
+    const f = (STATE.f24 || []).find(x => x.id === p.f24Id && x.clienteId === t.cliente.id); if (!f) return null;
+    return calcolaRavvedimento(residuoF24(f) || f.importo, f.data, p.dataVersamento);
+  }
+  return calcolaRavvedimento(p.importo, p.dataScadenza, p.dataVersamento);
+}
+function portaleScegliModalitaF24(token, f24Id, modalita) {
+  const t = portaleConPacchetto(token); if (!t || !['autonomo', 'addebito'].includes(modalita)) return null;
+  const f = (STATE.f24 || []).find(x => x.id === f24Id && x.clienteId === t.cliente.id); if (!f) return null;
+  if (statoF24(f) === 'Pagato') return f;
+  if (f.modalitaPagamento === modalita) return f;
+  f.modalitaPagamento = modalita; f.modalitaScelta = oggiISO();
+  comunicazioneDalClientePortale(t.cliente.id, 'Scelta pagamento F24', 'F24 ' + (f.descrizione || f.tipo) + ': ' + (modalita === 'addebito' ? 'addebito richiesto allo studio' : 'pagherà il cliente'),
+    'Il cliente ha scelto per l\'F24 "' + (f.descrizione || f.tipo) + '" del ' + fmtData(f.data) + ' (residuo € ' + fmtNum2(residuoF24(f)) + '): ' + (modalita === 'addebito' ? 'Addebito a carico dello studio.' : 'paga da solo.'), { f24Rif: { id: f.id } });
+  salvaStato();
+  return f;
+}
+function portaleSegnalaPagamentoF24(token, f24Id, pagamenti) {
+  const t = portaleConPacchetto(token); if (!t || !Array.isArray(pagamenti) || !pagamenti.length) return null;
+  const f = (STATE.f24 || []).find(x => x.id === f24Id && x.clienteId === t.cliente.id); if (!f) return null;
+  const righe = assicuraRigheF24(f); const fatti = [];
+  pagamenti.forEach(p => {
+    const r = righe.find(x => x.id === p.rigaId); const v = Number(p.importo);
+    if (!r || !(v > 0)) return;
+    const prima = Number(r.importoPagato) || 0, nuovo = Math.min(Number(r.importo) || 0, Math.round((prima + v) * 100) / 100);
+    if (nuovo - prima > 0.004) { r.importoPagato = nuovo; fatti.push((r.descrizione || r.codiceTributo || 'voce') + ' € ' + fmtNum2(nuovo - prima)); }
+  });
+  if (!fatti.length) return null;
+  ricalcolaTotaliF24(f);
+  comunicazioneDalClientePortale(t.cliente.id, 'Pagamento F24 segnalato', 'Pagamento F24 segnalato: ' + (f.descrizione || f.tipo),
+    'Il cliente segnala di aver pagato per l\'F24 "' + (f.descrizione || f.tipo) + '" del ' + fmtData(f.data) + ': ' + fatti.join('; ') + '. Stato ora: ' + statoF24(f) + '. Verifica sull\'estratto conto.', { f24Rif: { id: f.id } });
+  salvaStato();
+  return f;
+}
+function portaleConfermaLettura(token, comunicazioneId) {
+  const t = trovaAccessoPortale(token); if (!t || !accessoPortalePuoVedere(t.accesso, 'comunicazioni')) return null;
+  const c = (STATE.comunicazioni || []).find(x => x.id === comunicazioneId && x.clienteId === t.cliente.id && x.direzione !== 'cliente'); if (!c || !c.richiedeConferma) return null;
+  if (!c.confermaLetturaData) { c.confermaLetturaData = new Date().toISOString(); c.vistaPortale = true; salvaStato(); }
+  return c;
 }
 
 const PD_ICONE = {
@@ -914,9 +1016,10 @@ function cardAccessoPortaleReale(cliente) {
       <div class="helptext">La password di accesso si gestisce in Impostazioni → Accesso esterno → Area riservata clienti.</div>`
     : `<div class="helptext" style="margin-bottom:12px;">${escapeHtml(cliente.ragioneSociale)} non ha ancora un accesso al portale. Attivandolo genera un link personale (con un token di sicurezza, non indovinabile) da mandargli via email o chat: da lì vede solo i propri dati, mai quelli di altri clienti.</div>
       <button class="btn small" data-action="portale-attiva-accesso" data-id="${cliente.id}">Attiva accesso portale</button>`;
+  const pacchetto = moduloAttivo('servizi') ? `<div style="border-top:1px solid var(--border);margin-top:14px;padding-top:12px;"><label class="checkline"><input type="checkbox" data-action="portale-pacchetto-toggle" data-id="${cliente.id}" ${cliente.pacchettoPortale ? 'checked' : ''}> <b>Portale avanzato</b> per questo cliente</label><div class="helptext">Ritenute, F24 (con ravvedimento), bilanci e KPI/Andamento. Richiede che lo studio li tenga aggiornati: attivalo solo per chi lo vuole.</div></div>` : '';
   return `<div class="card" id="cardAccessoPortaleReale">
     <div class="section-title">Accesso portale reale</div>
-    ${stato}
+    ${stato}${pacchetto}
   </div>`;
 }
 

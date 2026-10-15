@@ -121,7 +121,7 @@ function aggiungiCliente(dati) {
     settore: '', annoIngresso: null, canaleAcquisizione: '', mandatario: '', capitaleSociale: null, numeroSedi: 0,
     preventivoAnnuo: null, regimeFiscale: '',
     contatti: { email: '', emailAmministrazione: '', pec: '', telefono: '', indirizzo: '', cap: '', localita: '', provincia: '' },
-    responsabileStudio: STATE.meta.responsabili[0] || '', stato: 'attivo', addebitoF24: 'NOI',
+    responsabileStudio: STATE.meta.responsabili[0] || '', stato: 'attivo', addebitoF24: 'NOI', pacchettoPortale: false,
     contabilita: 'ESTERNA', periodicitaIva: '', periodicitaIntrastat: 'N.A.', previdenza: 'No previdenza',
     flags: {}, dirittoCameraleScelta: null, versamentoImposteScelta: null, adempimentiAnnualiApplicabili: [], note: '',
   };
@@ -427,8 +427,7 @@ const MODULI = [
   { id: 'fatturazione', label: 'Attività da fatturare', desc: 'Pratiche extra da fatturare e periodicità di fatturazione di ogni cliente.', tabs: ['fatturazione'] },
   { id: 'incassi', label: 'Incassi e solleciti', desc: 'Compensi da incassare, scadenze di pagamento e solleciti ai clienti.', tabs: ['incassi'] },
   { id: 'onboarding', label: 'Onboarding clienti', desc: 'Checklist di attivazione per un nuovo cliente.', tabs: ['onboarding'] },
-  { id: 'bilanci', label: 'Bilanci e KPI', desc: 'Situazioni economico-patrimoniali, indici e grafici.', tabs: ['bilanci'] },
-  { id: 'fiscale', label: 'Ritenute e F24', desc: 'Registro ritenute d\'acconto e registro F24.', tabs: ['ritenute', 'f24'] },
+  { id: 'servizi', label: 'Portale avanzato: ritenute, F24, bilanci e KPI', desc: 'Pacchetto da attivare cliente per cliente (interruttore nella scheda Portale): registro ritenute e F24, bilanci/KPI e, nel portale del cliente, F24, ritenute, ravvedimento e Andamento.', tabs: ['ritenute', 'f24', 'bilanci'] },
   { id: 'rubrica', label: 'Rubrica contatti', desc: 'Elenco unico dei contatti dei clienti.', tabs: ['rubrica'] },
   { id: 'credenziali', label: 'Password dello studio', desc: 'Archivio credenziali (Entratel, Telemaco, home banking...).', tabs: ['credenziali'] },
   { id: 'cruscotto', label: 'Cruscotto titolare', desc: 'Vista d\'insieme dello studio: portafoglio clienti, nuovi e cessati, avanzamento adempimenti.', tabs: ['cruscotto'] },
@@ -439,6 +438,10 @@ const MODULI = [
 function moduloAttivo(id) {
   return !((STATE.meta && STATE.meta.moduliDisattivati) || []).includes(id);
 }
+/* Pacchetto "portale avanzato" (ritenute + F24 + bilanci/KPI + parti avanzate del portale): modulo dello studio + interruttore
+   per cliente (c.pacchettoPortale). Solo i clienti col pacchetto compaiono in Ritenute, F24 e Bilanci e hanno quelle sezioni nel portale. */
+function clienteHaPacchetto(c) { return moduloAttivo('servizi') && !!(c && c.pacchettoPortale); }
+function clientiPacchetto() { return (STATE.clienti || []).filter(clienteHaPacchetto); }
 function tabAttivoPerModuli(tabId) {
   const m = MODULI.find(x => x.tabs.includes(tabId));
   return !m || moduloAttivo(m.id);

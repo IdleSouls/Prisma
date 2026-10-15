@@ -974,7 +974,7 @@ function renderHero() {
 
 function renderTabbar() {
   const badgeTab = { comunicazioni: VISTA.numeri.comunicazioniDaLeggere > 0 };
-  document.getElementById('tabbar').innerHTML = SCHERMATE.map(s => `
+  document.getElementById('tabbar').innerHTML = SCHERMATE.filter(s => s.v !== 'andamento' || VISTA.pacchetto).map(s => `
     <button class="tab ${TAB === s.v ? 'active' : ''}" data-tab="${s.v}">
       ${badgeTab[s.v] ? '<span class="puntino"></span>' : ''}
       ${ICONE[s.v]}
@@ -1333,7 +1333,7 @@ function renderScadenze() {
       <div class="progress"><div style="width:${pctAnn}%;"></div></div>
     </div>` : '';
   // Task #184: simulatore ravvedimento spostato qui da Panoramica.
-  return `<div class="panel">${panelHeader(ICONE.scadenze, 'var(--giallo-bg)', 'var(--giallo)', 'Scadenze e adempimenti', VISTA.scadenze.length)}${items}${annuali}</div>` + panelRavvedimento() + panelF24Storico();
+  return `<div class="panel">${panelHeader(ICONE.scadenze, 'var(--giallo-bg)', 'var(--giallo)', 'Scadenze e adempimenti', VISTA.scadenze.length)}${items}${annuali}</div>` + (VISTA.pacchetto ? panelRavvedimento() + panelF24Storico() : '');
 }
 
 // Storico F24 (pagati e non), richiesto da Matteo dentro il tab Scadenze: a differenza del blocco

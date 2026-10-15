@@ -100,6 +100,12 @@ function onClickDelegatoInterno(e) {
     case 'nav-toggle-gruppo': toggleNavGruppo(el.dataset.gruppo); renderNav(); break;
     case 'import-cli-conferma': confermaWizardImportClienti(); break;
     case 'nuovo-incasso': modalIncasso(null); break;
+    case 'addeb-apri': { const tt = STATE.taskTeam.find(x => x.id === id); if (tt) { if (!tt.addebitoPratica || tt.addebitoPratica.stato !== 'da-confermare') { tt.addebitoPratica = { stato: 'da-confermare', da: oggiISO() }; salvaStato(); } modalAddebitoPratica(id); } break; }
+    case 'addeb-spesa-aggiungi': { if (ADDEBITO_BOZZA) { ADDEBITO_BOZZA.spese.push({ descrizione: '', importo: '', esente: true }); disegnaModalAddebito(); } break; }
+    case 'addeb-spesa-elimina': { if (ADDEBITO_BOZZA) { ADDEBITO_BOZZA.spese.splice(Number(el.dataset.i), 1); if (!ADDEBITO_BOZZA.spese.length) ADDEBITO_BOZZA.spese.push({ descrizione: '', importo: '', esente: true }); disegnaModalAddebito(); } break; }
+    case 'addeb-dopo': { ADDEBITO_BOZZA = null; chiudiModal(); render(); toast('Addebito rimandato: lo ritrovi nel dettaglio della pratica.'); break; }
+    case 'addeb-no': { if (ADDEBITO_BOZZA && confermaAzione('Non addebitare nulla al cliente per questa pratica?')) { const tt = STATE.taskTeam.find(x => x.id === ADDEBITO_BOZZA.taskId); if (tt) { tt.addebitoPratica = { stato: 'escluso', data: oggiISO() }; salvaStato(); } ADDEBITO_BOZZA = null; chiudiModal(); render(); } break; }
+    case 'addeb-conferma': { const r = confermaAddebitoPratica(); if (r) { ADDEBITO_BOZZA = null; chiudiModal(); render(); toast('Aggiunto a «Da fatturare»: ' + fmtEuro(r.totale) + '.'); } break; }
     case 'riconc-conferma': if (RICONC) confermaRiconciliazione(); break;
     case 'modifica-incasso': modalIncasso(id); break;
     case 'incasso-registra-apri': modalRegistraIncasso(id); break;
@@ -355,6 +361,7 @@ function onClickDelegatoInterno(e) {
       const categoria = h('cCategoria').value;
       const stato = h('cStato').value;
       const visibilePortale = h('cVisibilePortale').checked;
+      const richiedeConferma = !!(h('cRichiedeConferma') && h('cRichiedeConferma').checked);
       const oggetto = h('cOggetto').value.trim();
       const corpo = h('cCorpo').value.trim();
       const note = h('cNote').value.trim();
@@ -378,7 +385,7 @@ function onClickDelegatoInterno(e) {
       // (nessuna restrizione, la comunicazione si crea comunque).
       const categoriaDocRichiestaEl = h('cCategoriaDocRichiesta');
       const categoriaDocumentoRichiesta = (categoria === 'Raccolta documentale' && categoriaDocRichiestaEl) ? categoriaDocRichiestaEl.value : null;
-      const datiComuni = { data, categoria, stato, oggetto, corpo, note, visibilePortale, gruppoId, categoriaDocumentoRichiesta, creatoDa: operatoreCorrente() || null };
+      const datiComuni = { data, categoria, stato, oggetto, corpo, note, visibilePortale, richiedeConferma, gruppoId, categoriaDocumentoRichiesta, creatoDa: operatoreCorrente() || null };
       const inputFileCom = h('cFile');
       const fileCom = (inputFileCom && inputFileCom.files && inputFileCom.files[0]) || null;
       if (fileCom) {
@@ -1099,6 +1106,7 @@ function onClickDelegatoInterno(e) {
         // lo storico. procedureId e descrizione invece sono campi "semplici" (task #155),
         // sovrascrivibili come titolo/scadenza/stato.
         aggiornaTaskTeam(id, Object.assign({ titolo, assegnatoA, clienteId, scadenza, stato, procedureId, descrizione, stampaVerbale, stampaSezione }, campiPratica));
+        setTimeout(() => proponiAddebitoPratica(id), 0);
       } else {
         // In creazione l'unica nota possibile è quella "iniziale" nel campo tNuovaNota: diventa la
         // prima voce dello storico, attribuita a chi sta creando il task in questo momento.
@@ -2021,6 +2029,13 @@ function onChangeDelegato(e) {
       campo.dispatchEvent(new Event('change', { bubbles: true }));
       break;
     }
+    case 'portale-pacchetto-toggle': { aggiornaCliente(el.dataset.id, { pacchettoPortale: !!el.checked }); render(); toast(el.checked ? 'Portale avanzato attivato per questo cliente.' : 'Portale avanzato disattivato: i dati restano, ma non compaiono più.'); break; }
+    case 'compenso-pratica-default': { const v = Number(el.value); STATE.meta.compensoPraticaDefault = v > 0 ? v : null; salvaStato(); toast('Compenso predefinito della pratica salvato.'); break; }
+    case 'addeb-attivita': { const b = ADDEBITO_BOZZA; if (!b) break; b.attivitaId = el.value; if (el.value === '__default__') b.compenso = compensoPraticaPredefinito(); else { const a = (STATE.catalogoAttivitaStudio || []).find(x => x.id === el.value); if (a && a.prezzo != null) b.compenso = a.prezzo; } disegnaModalAddebito(); break; }
+    case 'addeb-compenso': { if (ADDEBITO_BOZZA) { ADDEBITO_BOZZA.compenso = el.value; const tot = document.getElementById('addebTotale'); if (tot) tot.textContent = fmtEuro(totaleAddebito()); } break; }
+    case 'addeb-spesa-desc': { if (ADDEBITO_BOZZA) ADDEBITO_BOZZA.spese[Number(el.dataset.i)].descrizione = el.value; break; }
+    case 'addeb-spesa-importo': { if (ADDEBITO_BOZZA) { ADDEBITO_BOZZA.spese[Number(el.dataset.i)].importo = el.value; const tot = document.getElementById('addebTotale'); if (tot) tot.textContent = fmtEuro(totaleAddebito()); } break; }
+    case 'addeb-spesa-esente': { if (ADDEBITO_BOZZA) ADDEBITO_BOZZA.spese[Number(el.dataset.i)].esente = el.checked; break; }
     case 'toggle-modulo': {
       const id = el.dataset.modulo;
       if (!MODULI.some(m => m.id === id)) break;
@@ -2249,7 +2264,7 @@ function onChangeDelegato(e) {
     case 'task-filtro-data-da-picker': TASK_FILTRO.dataDa = el.value || ''; STATI_TASK_TEAM.forEach(s=>resetPagina('taskteam-'+s)); render(); break;
     case 'task-filtro-data-a-picker': TASK_FILTRO.dataA = el.value || ''; STATI_TASK_TEAM.forEach(s=>resetPagina('taskteam-'+s)); render(); break;
     case 'cli-tipo-cambia': { const fs = document.getElementById('fsAssociazione'); if (fs) fs.style.display = el.value === 'associazione' ? '' : 'none'; break; }
-    case 'task-cambia-stato': aggiornaTaskTeam(id, { stato: el.value }); render(); { const tt = STATE.taskTeam.find(x => x.id === id); if (tt && tt.stato === 'Fatto' && tt.stampaVerbale) toast('Verbale da stampare: lo trovi in Libri sociali.'); } break;
+    case 'task-cambia-stato': aggiornaTaskTeam(id, { stato: el.value }); render(); { const tt = STATE.taskTeam.find(x => x.id === id); if (tt && tt.stato === 'Fatto' && tt.stampaVerbale) toast('Verbale da stampare: lo trovi in Libri sociali.'); proponiAddebitoPratica(id); } break;
 
     case 'chat-rif-filtro-tipo': CHAT_RIF_FILTRO_TIPO = el.value; aggiornaRisultatiRiferimentoChat(); break;
     case 'com-filtro-cliente': COM_FILTRO.cliente = el.value; resetPagina('comunicazioni'); render(); break;

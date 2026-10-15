@@ -4647,16 +4647,16 @@ async function main() {
     click(q('[data-action="imp-sezione"][data-sezione="moduli"]'));
     await wait(20);
     assert(qa('[data-action="toggle-modulo"]').length >= 10, '#214: Impostazioni > Moduli deve elencare i moduli');
-    const cbBilanci = q('[data-action="toggle-modulo"][data-modulo="bilanci"]');
+    const cbBilanci = q('[data-action="toggle-modulo"][data-modulo="servizi"]');
     cbBilanci.checked = false;
     cbBilanci.dispatchEvent(new window.Event('change', { bubbles: true }));
     await wait(20);
-    assert(Array.isArray(st.meta.moduliDisattivati) && st.meta.moduliDisattivati.includes('bilanci'), '#214: spegnere un modulo deve salvarlo in meta.moduliDisattivati');
+    assert(Array.isArray(st.meta.moduliDisattivati) && st.meta.moduliDisattivati.includes('servizi'), '#214: spegnere un modulo deve salvarlo in meta.moduliDisattivati');
     assert(!window.operatorePuoVedere('bilanci'), '#214: un modulo spento non deve essere visibile');
     assert(!qa('.navitem').some(el => el.dataset.nav === 'bilanci'), '#214: la voce di menu di un modulo spento non deve comparire');
     assert(window.operatorePuoVedere('clienti') && window.operatorePuoVedere('impostazioni'), '#214: i tab fissi restano sempre visibili');
-    // modulo a due tab: spegnere "fiscale" nasconde ritenute e F24
-    st.meta.moduliDisattivati.push('fiscale');
+    // modulo a più tab: spegnere "servizi" nasconde ritenute, F24 e bilanci
+    if (!st.meta.moduliDisattivati.includes('servizi')) st.meta.moduliDisattivati.push('servizi');
     assert(!window.operatorePuoVedere('ritenute') && !window.operatorePuoVedere('f24'), '#214: un modulo con più tab nasconde tutti i suoi tab');
     window.setView('bilanci');
     assert(window.getVIEW() === 'dashboard', '#214: aprire direttamente un tab di modulo spento deve reindirizzare alla dashboard');
@@ -4696,7 +4696,7 @@ async function main() {
     click(q('[data-action="setup-vai"][data-imp="moduli"]'));
     await wait(20);
     assert(window.getVIEW() === 'impostazioni' && q('[data-action="conferma-moduli"]'), '#215: il passo "moduli" deve portare a Impostazioni > Moduli con il bottone di conferma');
-    assert(qa('[data-action="toggle-modulo"]').length >= 18 && q('[data-modulo="cruscotto"]') && q('[data-modulo="carico"]') && q('[data-modulo="cpb"]'), 'Moduli: devono esserci anche cruscotto, carico/proroghe, cpb');
+    assert(qa('[data-action="toggle-modulo"]').length >= 17 && q('[data-modulo="cruscotto"]') && q('[data-modulo="carico"]') && q('[data-modulo="cpb"]'), 'Moduli: devono esserci anche cruscotto, carico/proroghe, cpb');
     click(q('[data-action="moduli-tutti"][data-val="0"]'));
     assert(qa('[data-action="toggle-modulo"]:checked').length === 0 && !window.operatorePuoVedere('cruscotto'), 'Moduli: "Disattiva tutti" spegne tutto e nasconde il cruscotto');
     click(q('[data-action="moduli-tutti"][data-val="1"]'));
@@ -7787,6 +7787,87 @@ async function main() {
     assert(ab[0].incassoId === inc[0].id && ab[0].livello === 'sicuro' && !ab[1].incassoId, 'F3: abbinamento per importo+origine, nessun abbinamento per importo ignoto, trovato ' + ab[0].livello);
     ST.incassi = ST.incassi.filter(i => i.preventivoId !== 'pvF3'); ST.preventivi = ST.preventivi.filter(x => x.id !== 'pvF3');
     console.log('=== Fase 3: incassi da preventivo e riconciliazione estratto conto OK');
+  }
+
+  // ---------- Pratica completata -> addebito al cliente (sotto conferma) ----------
+  {
+    const ST = window.getSTATE();
+    const cl = ST.clienti.find(c => c.stato === 'attivo') || ST.clienti[0];
+    const prima = (ST.attivitaFatturabili || []).length;
+    ST.meta.compensoPraticaDefault = 80;
+    window.aggiungiTaskTeam({ titolo: 'Variazione sede ADD', assegnatoA: 'Matteo', clienteId: cl.id, scadenza: '2026-12-31', stato: 'Da fare', pratica: true });
+    const tk = ST.taskTeam[ST.taskTeam.length - 1];
+    window.aggiornaTaskTeam(tk.id, { stato: 'Fatto' });
+    assert(tk.addebitoPratica && tk.addebitoPratica.stato === 'da-confermare', 'addebito pratica: a pratica completata la proposta è "da confermare"');
+    assert((ST.attivitaFatturabili || []).length === prima, 'addebito pratica: nulla finisce in Da fatturare senza conferma');
+    window.proponiAddebitoPratica(tk.id); await wait(20);
+    assert(q('#modalRoot').textContent.includes('Pratica completata') && window.getAddebitoBozza().compenso === 80, 'addebito pratica: la finestra propone il compenso predefinito');
+    const b = window.getAddebitoBozza(); b.spese = [{ descrizione: 'Diritti camerali', importo: '30', esente: true }, { descrizione: '', importo: '', esente: true }];
+    const r = window.confermaAddebitoPratica();
+    assert(r && r.totale === 110 && ST.attivitaFatturabili.length === prima + 2, 'addebito pratica: compenso + spesa diventano due voci Da fatturare (110 €)');
+    const voci = ST.attivitaFatturabili.slice(-2);
+    assert(voci[0].taskId === tk.id && voci[0].importo === 80 && voci[1].tipoVoce === 'spesa' && voci[1].esenteIva === true && voci[1].importo === 30, 'addebito pratica: voci collegate al task, spesa esente IVA');
+    assert(tk.addebitoPratica.stato === 'addebitato', 'addebito pratica: stato addebitato');
+    window.aggiornaTaskTeam(tk.id, { stato: 'Da fare' }); window.aggiornaTaskTeam(tk.id, { stato: 'Fatto' });
+    assert(tk.addebitoPratica.stato === 'addebitato', 'addebito pratica: ricompletare non riaddebita');
+    window.aggiungiTaskTeam({ titolo: 'Task normale ADD', assegnatoA: 'Matteo', clienteId: cl.id, scadenza: '2026-12-31', stato: 'Da fare' });
+    const tn = ST.taskTeam[ST.taskTeam.length - 1]; window.aggiornaTaskTeam(tn.id, { stato: 'Fatto' });
+    assert(!tn.addebitoPratica, 'addebito pratica: un task che non è una pratica non propone nulla');
+    window.chiudiModal();
+    ST.taskTeam = ST.taskTeam.filter(x => x.id !== tk.id && x.id !== tn.id); ST.attivitaFatturabili = ST.attivitaFatturabili.slice(0, prima); delete ST.meta.compensoPraticaDefault;
+    console.log('=== Pratica completata: proposta di addebito (compenso + spese anticipate) sotto conferma OK');
+  }
+
+  // ---------- Pacchetto portale avanzato (per cliente): F24, ravvedimento, conferma di lettura ----------
+  {
+    const ST = window.getSTATE();
+    // migrazione: clienti esistenti col pacchetto acceso, moduli vecchi fusi in "servizi"
+    const vecchio = { meta: { moduliDisattivati: ['bilanci', 'fiscale', 'chat'] }, clienti: [{ id: 'x1' }, { id: 'x2', pacchettoPortale: false }] };
+    window.migraPacchettoPortale(vecchio);
+    assert(vecchio.clienti[0].pacchettoPortale === true && vecchio.clienti[1].pacchettoPortale === false, 'pacchetto: i clienti esistenti partono accesi, un valore esplicito resta');
+    assert(vecchio.meta.moduliDisattivati.includes('servizi') && !vecchio.meta.moduliDisattivati.includes('bilanci') && !vecchio.meta.moduliDisattivati.includes('fiscale') && vecchio.meta.moduliDisattivati.includes('chat'), 'pacchetto: bilanci+fiscale spenti diventano servizi spento');
+    const una = { meta: { moduliDisattivati: ['bilanci'] }, clienti: [] }; window.migraPacchettoPortale(una);
+    assert(!una.meta.moduliDisattivati.includes('servizi') && una.meta.moduliDisattivati.length === 0, 'pacchetto: se solo uno dei due era spento il modulo resta acceso');
+    // filtri e vista del portale
+    const cA = window.aggiungiCliente({ ragioneSociale: 'PKG Con Pacchetto Srl', tipo: 'societa_capitali', stato: 'attivo' });
+    const cB = window.aggiungiCliente({ ragioneSociale: 'PKG Senza Pacchetto Srl', tipo: 'societa_capitali', stato: 'attivo' });
+    cA.pacchettoPortale = true; cA.portaleToken = 'tokpkgA'; cB.pacchettoPortale = false; cB.portaleToken = 'tokpkgB';
+    assert(window.clienteHaPacchetto(cA) && !window.clienteHaPacchetto(cB), 'pacchetto: clienteHaPacchetto');
+    const mkF = (cid) => window.aggiungiF24({ clienteId: cid, tipo: 'Debito', data: '2026-01-16', importo: 0, descrizione: 'IVA dicembre',
+      righe: [{ id: 'r1', codiceTributo: '6012', descrizione: 'IVA', importo: 1000, importoPagato: 0 }, { id: 'r2', codiceTributo: '1990', descrizione: 'Altro', importo: 200, importoPagato: 0 }] });
+    const fA = mkF(cA.id), fB = mkF(cB.id);
+    const vA = window.costruisciVistaPortaleClienteEsterna('tokpkgA'), vB = window.costruisciVistaPortaleClienteEsterna('tokpkgB');
+    assert(vA.pacchetto === true && vA.f24Tutti.length === 1 && vA.f24InAttesa.length === 1 && vA.f24InAttesa[0].righe.length === 2, 'pacchetto: il cliente col pacchetto vede i suoi F24');
+    assert(vB.pacchetto === false && vB.f24Tutti.length === 0 && vB.f24InAttesa.length === 0 && vB.ritenute.length === 0 && vB.andamento === null && !vB.accesso.sezioniConsentite.includes('andamento'), 'pacchetto: senza pacchetto niente F24, ritenute, andamento');
+    // azioni del portale
+    assert(window.portaleScegliModalitaF24('tokpkgB', fB.id, 'addebito') === null, 'pacchetto: senza pacchetto le azioni F24 sono negate');
+    assert(window.portaleScegliModalitaF24('tokpkgA', fB.id, 'addebito') === null, 'pacchetto: un F24 di un altro cliente non è raggiungibile');
+    assert(window.portaleScegliModalitaF24('tokpkgA', fA.id, 'autonomo').modalitaPagamento === 'autonomo', 'pacchetto: scelta "pago io"');
+    const nCom = ST.comunicazioni.length;
+    const rP = window.portaleSegnalaPagamentoF24('tokpkgA', fA.id, [{ rigaId: 'r1', importo: 1000 }]);
+    assert(rP && window.statoF24(rP) === 'Pagato parzialmente' && rP.importoPagato === 1000 && ST.comunicazioni.length === nCom + 1, 'pacchetto: pagamento di una riga = pagato parzialmente + avviso allo studio');
+    window.portaleSegnalaPagamentoF24('tokpkgA', fA.id, [{ rigaId: 'r1', importo: 500 }, { rigaId: 'r2', importo: 200 }]);
+    assert(window.statoF24(ST.f24.find(x => x.id === fA.id)) === 'Pagato' && ST.f24.find(x => x.id === fA.id).importoPagato === 1200, 'pacchetto: il pagamento non supera mai l\'importo della riga e chiude l\'F24');
+    assert(window.portaleSegnalaPagamentoF24('tokpkgA', fA.id, [{ rigaId: 'r1', importo: 5 }]) === null, 'pacchetto: nulla da pagare = nessuna segnalazione');
+    // ravvedimento
+    const r10 = window.calcolaRavvedimento(1000, '2026-01-16', '2026-01-26');
+    assert(r10 && r10.giorniRitardo === 10 && Math.abs(r10.sanzione - 8.33) < 0.011 && Math.abs(r10.interessi - 0.44) < 0.011, 'ravvedimento sprint 10 gg: sanzione 0,0833%/giorno + interessi 1,6%, trovato ' + JSON.stringify(r10));
+    const r77 = window.calcolaRavvedimento(1000, '2025-11-30', '2026-02-15');
+    assert(r77.giorniRitardo === 77 && Math.abs(r77.sanzione - 13.89) < 0.011 && Math.abs(r77.interessi - 3.72) < 0.011, 'ravvedimento 77 gg a cavallo d\'anno (2% + 1,6%), trovato ' + JSON.stringify(r77));
+    const r200 = window.calcolaRavvedimento(1000, '2026-01-16', '2026-08-05');
+    assert(Math.abs(r200.sanzione - 31.25) < 0.011 && r200.fasciaLabel === 'entro 1 anno', 'ravvedimento oltre 90 gg entro 1 anno: 1/8 del 25%');
+    const rVecchio = window.calcolaRavvedimento(1000, '2024-06-17', '2024-06-27');
+    assert(Math.abs(rVecchio.sanzione - 10) < 0.011, 'ravvedimento violazione ante 1/9/2024: 0,1% al giorno (30%)');
+    assert(window.calcolaRavvedimento(1000, '2026-01-16', '2026-01-16') === null && window.calcolaRavvedimento(0, '2026-01-16', '2026-02-16') === null, 'ravvedimento: nessun ritardo o importo nullo = nessun calcolo');
+    assert(window.portaleSimulaRavvedimento('tokpkgA', { f24Id: fB.id, dataVersamento: '2026-02-16' }) === null && window.portaleSimulaRavvedimento('tokpkgB', { importo: 100, dataScadenza: '2026-01-16', dataVersamento: '2026-02-16' }) === null, 'ravvedimento: negato senza pacchetto o su F24 altrui');
+    // conferma di lettura
+    window.aggiungiComunicazione({ clienteId: cA.id, data: '2026-10-14', categoria: 'Bilancio', stato: 'Inviata', oggetto: 'Bilancio da confermare', corpo: 'x', visibilePortale: true, richiedeConferma: true });
+    const com = ST.comunicazioni[ST.comunicazioni.length - 1];
+    const vA2 = window.costruisciVistaPortaleClienteEsterna('tokpkgA');
+    assert(vA2.comunicazioni.find(c => c.id === com.id).richiedeConferma === true, 'conferma lettura: la vista espone la richiesta');
+    assert(window.portaleConfermaLettura('tokpkgB', com.id) === null && window.portaleConfermaLettura('tokpkgA', com.id).confermaLetturaData, 'conferma lettura: solo il cliente destinatario conferma');
+    ST.clienti = ST.clienti.filter(c => c.id !== cA.id && c.id !== cB.id); ST.f24 = ST.f24.filter(f => f.clienteId !== cA.id && f.clienteId !== cB.id); ST.comunicazioni = ST.comunicazioni.filter(c => c.clienteId !== cA.id && c.clienteId !== cB.id);
+    console.log('=== Pacchetto portale avanzato: filtri, F24 dal portale, ravvedimento, conferma di lettura OK');
   }
 
   console.log('\n✅ TUTTI I TEST END-TO-END PASSATI (' + errors.length + ' errori console catturati)');

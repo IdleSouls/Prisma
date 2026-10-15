@@ -211,7 +211,7 @@ function modalComunicazione(presetClienteId) {
           <div class="field"><label>Data *</label><input type="date" id="cData" value="${oggiISO()}" required><div class="helptext" style="margin-top:3px;">Data di pubblicazione (di norma oggi) — non la data della scadenza a cui si riferisce, che va scritta nel testo: determina l'ordine in cui la comunicazione compare nell'elenco.</div></div>
           <div class="field"><label>Categoria</label><select id="cCategoria" data-action="c-categoria-change">${CATEGORIE_COMUNICAZIONE.map(t=>`<option>${t}</option>`).join('')}</select></div>
           <div class="field"><label>Stato</label><select id="cStato">${STATI_COMUNICAZIONE.map(s=>`<option ${s==='Inviata'?'selected':''}>${s}</option>`).join('')}</select></div>
-          <div class="field"><label>&nbsp;</label><label class="checkline"><input type="checkbox" id="cVisibilePortale" checked> Visibile nel portale cliente</label></div>
+          <div class="field"><label>&nbsp;</label><label class="checkline"><input type="checkbox" id="cVisibilePortale" checked> Visibile nel portale cliente</label><label class="checkline" style="margin-top:4px;"><input type="checkbox" id="cRichiedeConferma"> Chiedi conferma di lettura</label></div>
           <div class="field full" style="grid-column:1/-1;"><label>Oggetto *</label><input id="cOggetto" required placeholder="es. Promemoria scadenza IVA settembre"></div>
           <div class="field full" style="grid-column:1/-1;"><label>Testo del messaggio</label><textarea id="cCorpo" style="width:100%;min-height:70px;" placeholder="Il testo che vedrà il cliente nel portale — indica quali documenti servono"></textarea></div>
           ${sezioneRaccoltaDoc}

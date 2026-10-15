@@ -460,6 +460,20 @@ function migraModelloPreventivoStudio(stato) {
   stato.meta.modelloPreventivoStudio = true;
   mod.push(Object.assign({}, base, { id: uid('mod'), nome: 'Preventivo (modello studio)', attivo: true, predefinito: true, stile: 'lettera', creatoIl: oggiISO() }));
 }
+/* "bilanci" e "fiscale" sono diventati un unico modulo "servizi" (pacchetto portale avanzato). Si resta attivi se almeno uno dei due lo era.
+   I clienti esistenti partono col pacchetto ACCESO (nessuna perdita di funzioni): lo si spegne a chi non lo vuole. Una volta sola. */
+function migraPacchettoPortale(stato) {
+  const m = stato.meta = stato.meta || {};
+  if (Array.isArray(m.moduliDisattivati) && (m.moduliDisattivati.includes('bilanci') || m.moduliDisattivati.includes('fiscale'))) {
+    const entrambi = m.moduliDisattivati.includes('bilanci') && m.moduliDisattivati.includes('fiscale');
+    m.moduliDisattivati = m.moduliDisattivati.filter(x => x !== 'bilanci' && x !== 'fiscale');
+    if (entrambi && !m.moduliDisattivati.includes('servizi')) m.moduliDisattivati.push('servizi');
+  }
+  if (!m.pacchettoPortaleMigrato) {
+    (stato.clienti || []).forEach(c => { if (c.pacchettoPortale === undefined) c.pacchettoPortale = true; });
+    m.pacchettoPortaleMigrato = true;
+  }
+}
 function migraStatoVersamentoRitardo(stato) {
   const ov = stato.scadenzeOverrides || {};
   Object.keys(ov).forEach(k => { if (ov[k] && ov[k].stato === STATO_NON_PUO_PAGARE_LEGACY) { ov[k].stato = STATO_NON_PUO_PAGARE; ov[k].ritardoVersamento = true; if (!ov[k].dataCompletamento) ov[k].dataCompletamento = oggiISO(); } });
