@@ -1283,6 +1283,7 @@ function modalCredenziale(id) {
 const IMP_SEZIONI = [
   { id: 'studio', label: 'Studio' },
   { id: 'catalogo', label: 'Scadenzario e catalogo', master: true },
+  { id: 'responsabili', label: 'Responsabili', master: true },
   { id: 'proroghe', label: 'Proroghe', tab: 'proroghe' }, // spostata qui dal menu (richiesta Matteo): serve di rado
   { id: 'dati', label: 'Dati e backup', master: true },
   { id: 'team', label: 'Squadra e accessi', master: true },
@@ -1693,6 +1694,35 @@ function renderImpostazioniSviluppatore() {
   </div>`;
 }
 
+/* -------------------- IMPOSTAZIONI: Responsabili (chi risponde di cosa) -------------------- */
+function renderImpostazioniResponsabili() {
+  const resp = STATE.meta.responsabili || [];
+  const attivi = STATE.clienti.filter(c => clienteAttivo(c));
+  const perResp = resp.map(r => ({ nome: r, n: attivi.filter(c => c.responsabileStudio === r).length }));
+  const senza = attivi.filter(c => !c.responsabileStudio || !resp.includes(c.responsabileStudio)).length;
+  const righe = catalogoAnnualeTutti().filter(t => t.attivo !== false).map(t => `<tr>
+      <td>${escapeHtml(t.nome)}</td>
+      <td><select data-action="cat-ann-resp" data-tipo="${t.chiave}" style="min-width:230px;">
+        <option value="">— come il responsabile della ditta —</option>
+        ${resp.map(r => `<option value="${escapeHtml(r)}" ${t.responsabileDefault === r ? 'selected' : ''}>${escapeHtml(r)}</option>`).join('')}
+      </select></td></tr>`).join('');
+  return `<div class="card">
+    <div class="section-title">Responsabili: chi risponde di cosa</div>
+    <div class="helptext" style="margin-bottom:10px;line-height:1.6;">
+      In Prisma la responsabilità scende a cascata su tre livelli, e ognuno può essere cambiato a mano:<br>
+      <b>1. Ditta</b> — chi risponde del cliente (scheda cliente › Responsabile studio).<br>
+      <b>2. Adempimento</b> — chi lo porta avanti: se non lo scegli sul singolo adempimento vale il <i>responsabile predefinito del tipo</i> qui sotto; se anche quello è vuoto, vale il responsabile della ditta.<br>
+      <b>3. Fasi (sotto-adempimenti)</b> — seguono il responsabile dell'adempimento, a meno che tu non ne scelga uno diverso per la singola fase.<br>
+      Così, con un commercialista responsabile degli adempimenti, le fasi sono sue; se invece le fasi le esegue un dipendente basta scegliere il suo nome sulla fase (o impostarlo come responsabile del tipo).
+      Cambiare il responsabile di un adempimento sposta in automatico anche le sue fasi che non hai assegnato a mano. Chi è responsabile di una fase la vede in «Il mio lavoro» quando tocca a lui.
+    </div>
+    <div style="margin-bottom:14px;">${perResp.map(x => `<span class="badge info" style="margin-right:6px;">${escapeHtml(x.nome)}: ${x.n} ditte</span>`).join('')}${senza ? `<span class="badge" style="background:var(--giallo);">${senza} senza responsabile valido</span>` : ''}</div>
+    <div style="font-size:11px;font-weight:700;color:var(--text-mut);text-transform:uppercase;margin-bottom:6px;">Responsabile predefinito per tipo di adempimento annuale</div>
+    <table class="compact"><thead><tr><th>Adempimento</th><th>Responsabile predefinito</th></tr></thead><tbody>${righe}</tbody></table>
+    <div class="helptext" style="margin-top:8px;">Vale per tutte le ditte che hanno quell'adempimento, tranne dove hai scelto un responsabile sul singolo adempimento.</div>
+  </div>`;
+}
+
 function renderImpostazioni() {
   if (!impSezioniVisibili().some(s => s.id === IMP_SEZIONE)) IMP_SEZIONE = 'studio';
   let contenuto;
@@ -1701,6 +1731,7 @@ function renderImpostazioni() {
     case 'team': contenuto = renderImpostazioniTeam(); break;
     case 'dati': contenuto = renderImpostazioniDati(); break;
     case 'catalogo': contenuto = renderImpostazioniCatalogo(); break;
+    case 'responsabili': contenuto = renderImpostazioniResponsabili(); break;
     case 'proroghe': contenuto = renderProroghe(); break;
     case 'ia': contenuto = renderImpostazioniIA(); break;
     case 'assistenza': contenuto = renderImpostazioniAssistenza(); break;

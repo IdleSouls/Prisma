@@ -2436,6 +2436,7 @@ function onChangeDelegato(e) {
     case 'cat-per-con-importo': aggiornaTipoPeriodico(el.dataset.tipo, { conImporto: el.checked }); break;
     case 'cat-per-toggle-attivo': aggiornaTipoPeriodico(el.dataset.tipo, { attivo: el.checked }); render(); break;
     case 'cat-per-mese': aggiornaOccorrenzaPeriodica(el.dataset.tipo, Number(el.dataset.idx), { m: Number(el.value) }); break;
+    case 'cat-ann-resp': aggiornaTipoAnnuale(el.dataset.tipo, { responsabileDefault: el.value || '' }); render(); break;
     case 'cat-ann-toggle-attivo': aggiornaTipoAnnuale(el.dataset.tipo, { attivo: el.checked }); render(); break;
   }
 }

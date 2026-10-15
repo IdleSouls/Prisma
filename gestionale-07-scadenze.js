@@ -298,19 +298,25 @@ let ANN_EXPANDED = new Set();
 
 function renderAnnuali() {
   const { annuali } = derivati();
-  let lista = annuali;
-  if (ANN_FILTRO.tipo !== 'Tutti') lista = lista.filter(a => a.tipoChiave === ANN_FILTRO.tipo);
-  if (ANN_FILTRO.resp !== 'Tutti') lista = lista.filter(a => a.responsabile === ANN_FILTRO.resp);
+  /* I totali sopra rispecchiano i filtri Tipo / Responsabile / Cliente (non Stato: altrimenti completati e da completare non si confronterebbero). */
+  let base = annuali;
+  if (ANN_FILTRO.tipo !== 'Tutti') base = base.filter(a => a.tipoChiave === ANN_FILTRO.tipo);
+  if (ANN_FILTRO.resp !== 'Tutti') base = base.filter(a => a.responsabile === ANN_FILTRO.resp);
+  if (ANN_FILTRO.q) base = base.filter(a => nomeCliente(a.clienteId).toLowerCase().includes(ANN_FILTRO.q.toLowerCase()));
+  let lista = base;
   if (ANN_FILTRO.stato === 'Completati') lista = lista.filter(a => a.completato);
   if (ANN_FILTRO.stato === 'Da completare') lista = lista.filter(a => !a.completato);
-  if (ANN_FILTRO.q) lista = lista.filter(a => nomeCliente(a.clienteId).toLowerCase().includes(ANN_FILTRO.q.toLowerCase()));
   lista = lista.slice().sort((a,b) => nomeCliente(a.clienteId).localeCompare(nomeCliente(b.clienteId)) || a.tipoNome.localeCompare(b.tipoNome));
 
-  const totale = annuali.length, completatiN = annuali.filter(a=>a.completato).length;
-  const kpi = `<div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);">
-    <div class="kpi completati"><div class="n">${totale}</div><div class="l">TOTALE ADEMPIMENTI</div></div>
+  const totale = base.length, completatiN = base.filter(a=>a.completato).length;
+  const tasso = totale ? Math.round((completatiN / totale) * 100) : 0;
+  const avanzMedio = totale ? Math.round(base.reduce((x, a) => x + (a.percentuale || 0), 0) / totale) : 0;
+  const filtrato = base.length !== annuali.length;
+  const kpi = `<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);">
+    <div class="kpi completati"><div class="n">${totale}</div><div class="l">TOTALE ADEMPIMENTI${filtrato ? ' (FILTRATI)' : ''}</div></div>
     <div class="kpi futuri"><div class="n">${completatiN}</div><div class="l">COMPLETATI</div></div>
     <div class="kpi inscadenza"><div class="n">${totale-completatiN}</div><div class="l">DA COMPLETARE</div></div>
+    <div class="kpi"><div class="n">${tasso}%</div><div class="l">TASSO DI COMPLETAMENTO</div><div class="helptext" style="margin-top:2px;" title="Media dell'avanzamento delle fasi di tutti gli adempimenti">avanzamento medio fasi ${avanzMedio}%</div></div>
   </div>`;
 
   const toolbar = `<div class="toolbar">
@@ -362,7 +368,7 @@ function renderAnnuali() {
     return `<div class="card" style="padding:14px 16px;">
       <div style="display:flex;align-items:center;gap:12px;cursor:pointer;" data-action="ann-toggle-expand" data-id="${a.id}">
         <div style="flex:1;">
-          <div style="font-weight:700;font-size:13.5px;">${escapeHtml(a.tipoNome)} <span style="font-weight:400;color:var(--text-mut);">— ${escapeHtml(nomeCliente(a.clienteId))}</span></div>
+          <div style="font-weight:700;font-size:13.5px;">${escapeHtml(a.tipoNome)} <span style="font-weight:700;color:var(--text);">— ${escapeHtml(nomeCliente(a.clienteId))}</span></div>
           <div class="helptext">${escapeHtml(a.responsabile||'—')} ${a.scadenza?(' · scad. '+fmtData(a.scadenza)):''}${a.faseCorrente ? ' · fase attuale: ' + escapeHtml(a.faseCorrente.nome) + (a.faseCorrente.responsabile ? ' (' + escapeHtml(a.faseCorrente.responsabile) + ')' : '') : ''}${a.nota ? ' · 📝 ha note' : ''}</div>
         </div>
         ${a.tipoChiave === '770' ? (() => { const q770 = quadratura770(a.clienteId, a.anno - 1); return q770 ? `<div title="Quadratura ritenute operate nel ${a.anno - 1}">${semaforo770Html(q770)}</div>` : ''; })() : ''}

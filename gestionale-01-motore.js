@@ -955,11 +955,15 @@ function generaAdempimentiAnnuali(clienti, anno, vecchie) {
       if (salvato && salvato.ceduto) continue; // passato al nuovo commercialista: non più in carico allo studio
       const sottoSalvati = (salvato && salvato.sotto) || {};
       const altFasi = contabilitaDaTerzi(cliente) ? (configContabTerzi().sotto[def.chiave] || []) : [];
+      /* Responsabili a cascata: la ditta ha il suo responsabile (cliente.responsabileStudio); l'adempimento ha quello
+         scelto sul singolo adempimento oppure quello predefinito del TIPO (Impostazioni > Responsabili), altrimenti
+         quello della ditta; le fasi seguono l'adempimento, salvo che la singola fase abbia un responsabile suo. */
+      const respAdemp = (salvato && salvato.responsabile) || def.responsabileDefault || cliente.responsabileStudio || '';
       const sotto = (altFasi.length ? altFasi : def.sotto).map(nomeSotto => ({
         nome: nomeSotto,
         completato: !!(sottoSalvati[nomeSotto] && sottoSalvati[nomeSotto].completato),
         data: (sottoSalvati[nomeSotto] && sottoSalvati[nomeSotto].data) || null,
-        responsabile: (sottoSalvati[nomeSotto] && sottoSalvati[nomeSotto].responsabile) || cliente.responsabileStudio || '',
+        responsabile: (sottoSalvati[nomeSotto] && sottoSalvati[nomeSotto].responsabile) || respAdemp,
         completatoDa: (sottoSalvati[nomeSotto] && sottoSalvati[nomeSotto].completato && sottoSalvati[nomeSotto].completatoDa) || null,
       }));
       /* SAL a fasi sequenziali: una fase è "pronta" quando tutte le precedenti sono completate, "in attesa"
@@ -978,7 +982,7 @@ function generaAdempimentiAnnuali(clienti, anno, vecchie) {
       const scadenzaDefault = scadenzaOrig ? applicaProroga(scadenzaOrig, cliente.id, def.nome) : scadenzaOrig;
       out.push({
         id: k, anno, clienteId: cliente.id, tipoChiave: def.chiave, tipoNome: def.nome, tipo: def.tipo || TIPO_ADEMPIMENTO_DEFAULT,
-        responsabile: (salvato && salvato.responsabile) || cliente.responsabileStudio || '',
+        responsabile: respAdemp,
         scadenza: (salvato && salvato.scadenza) || scadenzaDefault,
         nota: (salvato && salvato.nota) || '',
         sotto,

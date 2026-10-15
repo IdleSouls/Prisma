@@ -5936,6 +5936,48 @@ async function main() {
       console.log('=== modificaAdempimentoAnnuale(nonDovuto) OK' + (a770 ? '' : ' (nessun 770 nei dati demo: solo il caso di errore)'));
     }
 
+    // Responsabili a cascata: ditta -> adempimento (predefinito del tipo) -> fasi
+    {
+      const ann0 = window.derivati().annuali.find(x => x.sotto.length >= 2);
+      assert(ann0, 'responsabili: serve un adempimento annuale con fasi nei dati demo');
+      const SEL = (v) => { const sel = q(`[data-action="cat-ann-resp"][data-tipo="${ann0.tipoChiave}"]`); sel.value = v; fire(sel, 'change'); };
+      window.setView('impostazioni'); window.render(); await wait(20);
+      click(q('[data-action="imp-sezione"][data-sezione="responsabili"]')); await wait(20);
+      assert(q('[data-action="cat-ann-resp"]'), 'responsabili: la tabella dei predefiniti per tipo deve comparire');
+      const cli = window.clienteById(ann0.clienteId); const respDitta = cli.responsabileStudio;
+      const altro = window.getSTATE().meta.responsabili.find(r => r !== respDitta);
+      const ovPrima = window.getSTATE().annualiOverrides[ann0.id]; delete window.getSTATE().annualiOverrides[ann0.id];
+      SEL(altro); await wait(20);
+      let a = window.derivati().annuali.find(x => x.id === ann0.id);
+      assert(a.responsabile === altro && a.sotto.every(f => f.responsabile === altro), `responsabili: con predefinito di tipo, adempimento e fasi seguono quello del tipo (non la ditta)`);
+      window.aggiornaAnnualeMeta(ann0.id, { responsabile: respDitta });
+      a = window.derivati().annuali.find(x => x.id === ann0.id);
+      assert(a.responsabile === respDitta && a.sotto.every(f => f.responsabile === respDitta), 'responsabili: scegliendo il responsabile sull\'adempimento, anche le fasi non assegnate a mano lo seguono');
+      const nomeF = a.sotto[0].nome; window.getSTATE().annualiOverrides[ann0.id].sotto = { [nomeF]: { responsabile: altro } };
+      a = window.derivati().annuali.find(x => x.id === ann0.id);
+      assert(a.sotto[0].responsabile === altro && a.sotto[1].responsabile === respDitta, 'responsabili: una fase assegnata a mano resta di chi è stata assegnata');
+      delete window.getSTATE().annualiOverrides[ann0.id]; SEL(''); await wait(20);
+      if (ovPrima) window.getSTATE().annualiOverrides[ann0.id] = ovPrima;
+      a = window.derivati().annuali.find(x => x.id === ann0.id);
+      assert(a.responsabile === respDitta, 'responsabili: senza predefinito si torna al responsabile della ditta');
+      window.setView('dashboard');
+      console.log('=== Responsabili a cascata (ditta > adempimento > fasi) + tab Impostazioni > Responsabili OK');
+    }
+
+    // Adempimenti annuali: i totali seguono i filtri + tasso di completamento
+    {
+      window.setView('annuali'); window.render(); await wait(20);
+      const tutti = window.derivati().annuali; const tipoF = tutti[0].tipoChiave;
+      const selT = q('[data-action="ann-filtro-tipo"]'); selT.value = tipoF; fire(selT, 'change'); await wait(20);
+      const attesi = tutti.filter(x => x.tipoChiave === tipoF); const compl = attesi.filter(x => x.completato).length;
+      const ns = qa('.kpi .n').map(x => x.textContent);
+      assert(ns[0] === String(attesi.length) && ns[1] === String(compl) && ns[2] === String(attesi.length - compl), 'adempimenti annuali: i totali devono rispecchiare il filtro per tipo, trovati ' + ns.join('/'));
+      assert(ns[3] === Math.round(compl / attesi.length * 100) + '%', 'adempimenti annuali: tasso di completamento errato: ' + ns[3]);
+      selT.value = 'Tutti'; fire(selT, 'change'); await wait(20);
+      window.setView('dashboard');
+      console.log('=== Adempimenti annuali: totali filtrati + tasso di completamento OK');
+    }
+
     // avviso di riavvio server: il titolo della pagina segnala "Riavvio server" (l'app Windows lo usa per far lampeggiare l'icona)
     {
       const titoloPrima = window.document.title;
