@@ -24,7 +24,7 @@ async function main() {
   await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
 
   const tools = await client.listTools();
-  assert(tools.tools.length === 64, `attesi 64 tool esposti (21 lettura + 43 scrittura), trovati ${tools.tools.length}`);
+  assert(tools.tools.length === 67, `attesi 67 tool esposti, trovati ${tools.tools.length}`);
   console.log('=== listTools() OK:', tools.tools.map(t => t.name).join(', '));
 
   // stato_generale: coerente col file grezzo
@@ -39,7 +39,7 @@ async function main() {
   const r2 = await client.callTool({ name: 'elenco_clienti', arguments: { query: 'rossi' } });
   const clientiRossi = JSON.parse(r2.content[0].text);
   assert(clientiRossi.length >= 1 && clientiRossi.every(c => c.ragioneSociale.toLowerCase().includes('rossi')), 'elenco_clienti: filtro testo non funziona correttamente');
-  const r2b = await client.callTool({ name: 'elenco_clienti', arguments: { soloAttivi: false } });
+  const r2b = await client.callTool({ name: 'elenco_clienti', arguments: { soloAttivi: false, confermaGrande: true } });
   const tuttiClienti = JSON.parse(r2b.content[0].text);
   assert(tuttiClienti.length === vistaGrezza.clienti.length, 'elenco_clienti: con soloAttivi=false deve restituire tutti i clienti, inclusi i cessati');
   console.log('=== tool elenco_clienti (filtro testo + soloAttivi) OK, trovati per "rossi":', clientiRossi.map(c => c.ragioneSociale).join(', '));

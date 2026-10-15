@@ -1484,6 +1484,58 @@ const AZIONI_MCP = {
   modificaF24: (p) => { if (!STATE.f24.find(f => f.id === p.id)) throw new Error('F24 non trovato: ' + p.id); aggiornaF24(p.id, p.patch || {}); return { aggiornato: true }; },
   eliminaF24: (p) => { if (!STATE.f24.find(f => f.id === p.id)) throw new Error('F24 non trovato: ' + p.id); eliminaF24(p.id); return { eliminato: true }; },
 
+  /* Fasi (sotto-fasi) degli adempimenti: annuale = catalogo STATE.catalogoAnnuale[].sotto (o, con destinazione "terzi",
+     le fasi per i clienti con contabilità di terzi); periodico = catalogo STATE.catalogoPeriodico[].fasi.
+     La fase è riconosciuta dal NOME: in "rinomina" si migra anche l'avanzamento già registrato, così non si perde nulla. */
+  fasiAdempimenti: (p) => {
+    const tipo = p.tipo === 'periodico' ? 'periodico' : 'annuale';
+    const terzi = tipo === 'annuale' && p.destinazione === 'terzi';
+    if (!p.chiave) {
+      const out = {
+        annuali: catalogoAnnualeTutti().map(t => ({ chiave: t.chiave, nome: t.nome, attivo: t.attivo !== false, fasi: (t.sotto || []).slice(), fasiContabilitaDiTerzi: ((configContabTerzi().sotto || {})[t.chiave] || null) })),
+        periodici: (STATE.catalogoPeriodico || []).map(t => ({ chiave: t.id, nome: t.nome, attivo: t.attivo !== false, fasi: (t.fasi || []).slice() })),
+      };
+      return out;
+    }
+    const voce = tipo === 'periodico' ? trovaTipoPeriodico(p.chiave) : trovaTipoAnnuale(p.chiave);
+    if (!voce) throw new Error('Adempimento ' + tipo + ' non trovato: ' + p.chiave + ' (senza "chiave" elenco tutti)');
+    const leggi = () => terzi ? ((configContabTerzi().sotto || {})[p.chiave] || (voce.sotto || []).slice()) : (tipo === 'periodico' ? (voce.fasi || []) : (voce.sotto || []));
+    let fasi = leggi().slice();
+    const nome = (x) => String(x == null ? '' : x).trim();
+    const idxDi = (n) => { const i = fasi.indexOf(nome(n)); if (i < 0) throw new Error('Fase non trovata: "' + n + '". Fasi attuali: ' + fasi.join(' | ')); return i; };
+    const op = p.operazione || 'elenca';
+    if (op === 'imposta') {
+      if (!Array.isArray(p.fasi) || !p.fasi.length) throw new Error('"fasi" deve essere una lista non vuota');
+      fasi = p.fasi.map(nome).filter(Boolean);
+    } else if (op === 'aggiungi') {
+      if (!nome(p.fase)) throw new Error('Indica "fase"');
+      if (fasi.includes(nome(p.fase))) throw new Error('Fase già presente: ' + nome(p.fase));
+      const pos = p.posizione == null ? fasi.length : Math.max(0, Math.min(fasi.length, Number(p.posizione) - 1));
+      fasi.splice(pos, 0, nome(p.fase));
+    } else if (op === 'rimuovi') {
+      if (fasi.length <= 1) throw new Error('Deve restare almeno una fase');
+      fasi.splice(idxDi(p.fase), 1);
+    } else if (op === 'rinomina') {
+      const i = idxDi(p.fase); const nuovo = nome(p.nuovoNome);
+      if (!nuovo) throw new Error('Indica "nuovoNome"');
+      if (fasi.includes(nuovo)) throw new Error('Esiste già una fase "' + nuovo + '"');
+      const vecchio = fasi[i]; fasi[i] = nuovo;
+      if (tipo === 'annuale') {
+        Object.keys(STATE.annualiOverrides || {}).forEach(k => { const o = STATE.annualiOverrides[k]; if (o && o.sotto && o.sotto[vecchio]) { o.sotto[nuovo] = o.sotto[vecchio]; delete o.sotto[vecchio]; } });
+      } else {
+        Object.keys(STATE.scadenzeOverrides || {}).forEach(k => { const o = STATE.scadenzeOverrides[k]; if (o && o.fase === vecchio) o.fase = nuovo; });
+      }
+    } else if (op === 'sposta') {
+      const i = idxDi(p.fase); const [x] = fasi.splice(i, 1);
+      fasi.splice(Math.max(0, Math.min(fasi.length, Number(p.posizione) - 1)), 0, x);
+    } else if (op !== 'elenca') throw new Error('Operazione sconosciuta: ' + op);
+    if (op !== 'elenca') {
+      if (terzi) { const cfg = configContabTerzi(); cfg.sotto[p.chiave] = fasi; salvaConfigContabTerzi(cfg); }
+      else if (tipo === 'periodico') { voce.fasi = fasi; salvaStato(); }
+      else { voce.sotto = fasi; salvaStato(); }
+    }
+    return { tipo, chiave: p.chiave, nome: voce.nome, destinazione: terzi ? 'contabilità di terzi' : 'standard', fasi };
+  },
   modificaScadenza: (p) => { aggiornaScadenza(p.id, p.patch || {}); return { aggiornata: true }; },
   aggiornaSottoAdempimento: (p) => { aggiornaSottoAdempimento(p.annualeId, p.nomeSotto, p.patch || {}); return { aggiornato: true }; },
   modificaAdempimentoAnnuale: (p) => { const pt = p.patch || {}; const ok = {}; ['nota', 'scadenza', 'responsabile'].forEach(k => { if (pt[k] !== undefined) ok[k] = pt[k]; }); aggiornaAnnualeMeta(p.annualeId, ok); return { aggiornato: true }; },

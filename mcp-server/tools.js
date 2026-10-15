@@ -177,7 +177,7 @@ export function creaServer(filePath, baseUrl) {
       return testoJson(elenco.map(c => ({
         id: c.id, ragioneSociale: c.ragioneSociale, tipo: c.tipo, atecoCodici: c.atecoCodici,
         stato: c.stato, regimeFiscale: c.regimeFiscale, periodicitaIva: c.periodicitaIva, responsabileStudio: c.responsabileStudio,
-        pmiInnovativa: c.pmiInnovativa, startupInnovativa: c.startupInnovativa, organoControllo: c.organoControllo,
+        pmiInnovativa: c.pmiInnovativa, startupInnovativa: c.startupInnovativa, organoControllo: c.organoControllo, haDipendenti: c.haDipendenti,
         datiMancanti: c.datiMancanti,
       })));
     }
@@ -363,6 +363,7 @@ export function creaServer(filePath, baseUrl) {
         iscrittoRegistroImprese: z.enum(['SI', 'NO']).optional().describe('Iscritto al Registro Imprese? Determina il diritto camerale delle ditte individuali (le società sono sempre iscritte).'),
         pmiInnovativa: z.enum(['SI', 'NO']).optional().describe('Ha il requisito di PMI innovativa? Solo se noto.'),
         startupInnovativa: z.enum(['SI', 'NO']).optional().describe('Ha il requisito di start-up innovativa? Solo se noto.'),
+        haDipendenti: z.enum(['SI', 'NO']).optional().describe('Il cliente ha dipendenti? Solo se noto.'),
         organoControllo: z.enum(['Nessuno', 'Sindaco unico', 'Collegio sindacale', 'Revisore legale', 'Società di revisione']).optional().describe('Organo di controllo (richiesto nel 770). Solo se noto.'),
         stato: z.string().optional().describe('"attivo" (default) o "cessato".'),
         note: z.string().optional(),
@@ -403,7 +404,7 @@ export function creaServer(filePath, baseUrl) {
         assegnatoA: z.string().min(1).describe('Nome del responsabile - vedi task_aperti per i nomi già in uso.'),
         clienteId: z.string().optional(),
         scadenza: z.string().optional().describe('Data ISO (YYYY-MM-DD), opzionale.'),
-        stato: z.string().optional().describe('Es. "Da fare" (default tipico), "In corso", "Fatto".'),
+        stato: z.string().optional().describe('Es. "Da fare" (default tipico), "In corso", "In attesa", "Bloccata", "Fatto". Per In attesa/Bloccata indica il motivo nelle note.'),
         descrizione: z.string().optional().describe('Descrizione generica del task (compare nell\'elenco dei task).'),
         note: z.string().optional().describe('Prima nota operativa (storico di lavoro, con autore e data).'),
       },
@@ -632,10 +633,29 @@ export function creaServer(filePath, baseUrl) {
   );
 
   server.registerTool(
+    'fasi_adempimenti',
+    {
+      title: 'Fasi (sotto-fasi) degli adempimenti',
+      description: 'Legge e modifica le fasi/sotto-fasi del CATALOGO degli adempimenti (le stesse di Impostazioni > Catalogo): per gli adempimenti ANNUALI i sotto-passaggi (es. "Raccolta dati", "Invio telematico"), per le scadenze PERIODICHE le fasi di avanzamento (es. "Calcolata", "F24 inviato al cliente"). Senza "chiave" elenca tutti i cataloghi con le loro fasi (chiavi incluse). Con "chiave" e operazione: elenca | imposta (sostituisce tutta la lista, con "fasi") | aggiungi ("fase", opz. "posizione" da 1) | rimuovi ("fase") | rinomina ("fase" + "nuovoNome": i passaggi già spuntati/avanzati si conservano col nuovo nome) | sposta ("fase" + "posizione" da 1). Per i clienti con contabilità di terzi, adempimenti annuali, usa destinazione:"terzi". Cambia le fasi per tutti i clienti dall\'anno in poi: per spuntare una fase di un singolo cliente usa aggiorna_sotto_adempimento. Rimuovere o rinominare con "imposta" fa perdere i dati di avanzamento delle fasi non più presenti: chiedi conferma a Matteo prima. Richiede il gestionale aperto via server.js.',
+      inputSchema: {
+        tipo: z.enum(['annuale', 'periodico']).optional().describe('Default "annuale".'),
+        chiave: z.string().optional().describe('Chiave dell\'adempimento (annuale: es. BILANCIO, REDDITI_ORDINARI; periodico: id es. ivaMensile). Ometti per elencare tutti.'),
+        operazione: z.enum(['elenca', 'imposta', 'aggiungi', 'rimuovi', 'rinomina', 'sposta']).optional().describe('Default "elenca".'),
+        fase: z.string().optional(),
+        nuovoNome: z.string().optional(),
+        posizione: z.number().int().min(1).optional().describe('Posizione (1 = prima fase).'),
+        fasi: z.array(z.string()).optional().describe('Solo con operazione "imposta": nuova lista completa, nell\'ordine desiderato.'),
+        destinazione: z.enum(['standard', 'terzi']).optional().describe('Solo annuali: "terzi" modifica le fasi usate per i clienti con contabilità di terzi.'),
+      },
+    },
+    async (campi) => testoEsitoScrittura(await inviaComando(url, 'fasiAdempimenti', pulisciUndefined(campi)))
+  );
+
+  server.registerTool(
     'modifica_adempimento_annuale',
     {
       title: 'Modifica adempimento annuale',
-      description: 'Aggiorna le note, la scadenza o il responsabile di un adempimento annuale (non le sue fasi: per quelle usa aggiorna_sotto_adempimento). Usa prima adempimenti_annuali per l\'id. Richiede il gestionale aperto via server.js.',
+      description: 'Aggiorna le note, la scadenza o il responsabile di un adempimento annuale (non le sue fasi: per spuntarle usa aggiorna_sotto_adempimento, per cambiare l\'elenco delle fasi nel catalogo usa fasi_adempimenti). Usa prima adempimenti_annuali per l\'id. Richiede il gestionale aperto via server.js.',
       inputSchema: { annualeId: z.string(), patch: z.object({ nota: z.string().optional(), scadenza: z.string().optional().describe('YYYY-MM-DD'), responsabile: z.string().optional() }) },
     },
     async ({ annualeId, patch }) => testoEsitoScrittura(await inviaComando(url, 'modificaAdempimentoAnnuale', { annualeId, patch: pulisciUndefined(patch) }))
@@ -889,7 +909,7 @@ export function creaServer(filePath, baseUrl) {
   );
   server.registerTool(
     'modifica_libro_sociale',
-    { title: 'Modifica libro sociale', description: 'Aggiorna solo i campi indicati (detentore, ultima stampa, ultima pagina, note...).', inputSchema: { id: z.string(), patch: z.record(z.unknown()).describe(DESCR_PATCH_GENERICO) } },
+    { title: 'Modifica libro sociale', description: 'Aggiorna solo i campi indicati (detentore, ultima stampa, ultima pagina, note, statoFisico: "da_fare" = da stampare e vidimare in CCIAA | "vidimati" = fatti e vidimati ma ancora vuoti | "in_uso"...). Ogni società di capitali/cooperativa ha già i suoi libri: non serve crearli.', inputSchema: { id: z.string(), patch: z.record(z.unknown()).describe(DESCR_PATCH_GENERICO) } },
     async ({ id, patch }) => testoEsitoScrittura(await inviaComando(url, 'modificaLibroSociale', { id, patch }))
   );
   server.registerTool(

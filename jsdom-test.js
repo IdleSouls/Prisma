@@ -5892,6 +5892,34 @@ async function main() {
     assert(!window.clienteById(clienteCreato.id), 'eseguiComandoMCP eliminaCliente: il cliente non è stato rimosso da STATE');
     console.log('=== eseguiComandoMCP(eliminaCliente) OK');
 
+    // fasiAdempimenti: aggiungi / rinomina (migra l'avanzamento) / sposta / rimuovi / imposta, annuali e periodici
+    {
+      const chiamaFasi = async (parametri) => { richiesteFetch.length = 0; await window.eseguiComandoMCP({ id: 'cmdfasi', azione: 'fasiAdempimenti', parametri }); return JSON.parse(richiesteFetch[0].opts.body); };
+      const el = await chiamaFasi({});
+      assert(el.ok && el.risultato.annuali.length > 5 && el.risultato.periodici.length > 3, 'fasiAdempimenti: elenco di tutti i cataloghi');
+      const ch = 'REDDITI_ORDINARI'; const prima = window.catalogoAnnualeTutti().find(t => t.chiave === ch).sotto.slice();
+      let r = await chiamaFasi({ tipo: 'annuale', chiave: ch, operazione: 'aggiungi', fase: 'Fase di prova', posizione: 2 });
+      assert(r.ok && r.risultato.fasi[1] === 'Fase di prova' && r.risultato.fasi.length === prima.length + 1, 'fasiAdempimenti: aggiungi in posizione');
+      const idAnn = 'prova|ann'; window.getSTATE().annualiOverrides[idAnn] = { sotto: { 'Fase di prova': { completato: true } } };
+      r = await chiamaFasi({ tipo: 'annuale', chiave: ch, operazione: 'rinomina', fase: 'Fase di prova', nuovoNome: 'Fase rinominata' });
+      assert(r.ok && r.risultato.fasi[1] === 'Fase rinominata', 'fasiAdempimenti: rinomina');
+      assert(window.getSTATE().annualiOverrides[idAnn].sotto['Fase rinominata'].completato && !window.getSTATE().annualiOverrides[idAnn].sotto['Fase di prova'], 'fasiAdempimenti: la rinomina deve migrare l\'avanzamento già registrato');
+      delete window.getSTATE().annualiOverrides[idAnn];
+      r = await chiamaFasi({ tipo: 'annuale', chiave: ch, operazione: 'sposta', fase: 'Fase rinominata', posizione: 1 });
+      assert(r.ok && r.risultato.fasi[0] === 'Fase rinominata', 'fasiAdempimenti: sposta');
+      r = await chiamaFasi({ tipo: 'annuale', chiave: ch, operazione: 'rimuovi', fase: 'Fase rinominata' });
+      assert(r.ok && JSON.stringify(r.risultato.fasi) === JSON.stringify(prima), 'fasiAdempimenti: rimuovi riporta alla lista iniziale');
+      r = await chiamaFasi({ tipo: 'annuale', chiave: ch, operazione: 'rimuovi', fase: 'inesistente' });
+      assert(r.ok === false && /non trovata/.test(r.errore), 'fasiAdempimenti: fase inesistente -> errore leggibile');
+      const per = el.risultato.periodici[0]; const fasiPer = per.fasi.slice();
+      r = await chiamaFasi({ tipo: 'periodico', chiave: per.chiave, operazione: 'imposta', fasi: ['Uno', 'Due'] });
+      assert(r.ok && JSON.stringify(r.risultato.fasi) === '["Uno","Due"]', 'fasiAdempimenti: imposta su periodico');
+      await chiamaFasi({ tipo: 'periodico', chiave: per.chiave, operazione: 'imposta', fasi: fasiPer });
+      r = await chiamaFasi({ tipo: 'annuale', chiave: ch, destinazione: 'terzi', operazione: 'elenca' });
+      assert(r.ok && r.risultato.destinazione === 'contabilità di terzi', 'fasiAdempimenti: destinazione terzi');
+      console.log('=== eseguiComandoMCP(fasiAdempimenti) OK: elenca/aggiungi/rinomina(migra)/sposta/rimuovi/imposta');
+    }
+
     // Errori (azione sconosciuta, id inesistente): non devono mai far saltare il dispatcher, solo
     // tornare un esito ok:false con un messaggio leggibile.
     richiesteFetch.length = 0;
