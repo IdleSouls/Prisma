@@ -1538,7 +1538,19 @@ const AZIONI_MCP = {
   },
   modificaScadenza: (p) => { aggiornaScadenza(p.id, p.patch || {}); return { aggiornata: true }; },
   aggiornaSottoAdempimento: (p) => { aggiornaSottoAdempimento(p.annualeId, p.nomeSotto, p.patch || {}); return { aggiornato: true }; },
-  modificaAdempimentoAnnuale: (p) => { const pt = p.patch || {}; const ok = {}; ['nota', 'scadenza', 'responsabile'].forEach(k => { if (pt[k] !== undefined) ok[k] = pt[k]; }); aggiornaAnnualeMeta(p.annualeId, ok); return { aggiornato: true }; },
+  modificaAdempimentoAnnuale: (p) => {
+    const pt = p.patch || {}; const ok = {};
+    ['nota', 'scadenza', 'responsabile'].forEach(k => { if (pt[k] !== undefined) ok[k] = pt[k]; });
+    /* "Nessuna ritenuta operata": come la casella nella scheda (solo 770 e CU). Registra chi e quando. */
+    if (pt.nonDovuto !== undefined) {
+      const a = derivati().annuali.find(x => x.id === p.annualeId);
+      if (!a) throw new Error('Adempimento annuale non trovato: ' + p.annualeId);
+      if (!ADEMPIMENTI_NON_DOVUTO_POSSIBILE.includes(a.tipoChiave)) throw new Error('"nonDovuto" è possibile solo per ' + ADEMPIMENTI_NON_DOVUTO_POSSIBILE.join(' e ') + ' (questo è ' + a.tipoNome + ')');
+      if (pt.nonDovuto) Object.assign(ok, { nonDovuto: true, nonDovutoDa: operatoreCorrente() || null, nonDovutoData: oggiISO() });
+      else Object.assign(ok, { nonDovuto: false, nonDovutoDa: null, nonDovutoData: null });
+    }
+    aggiornaAnnualeMeta(p.annualeId, ok); return { aggiornato: true };
+  },
 
   // Preventivi/mandati (task #143): "attivitaIds" (facoltativo) sono id del catalogo attività dello
   // studio - qui si trasformano nello snapshot {id,nome,prezzo,richiedeMandato} come farebbe il

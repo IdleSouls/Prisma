@@ -655,8 +655,8 @@ export function creaServer(filePath, baseUrl) {
     'modifica_adempimento_annuale',
     {
       title: 'Modifica adempimento annuale',
-      description: 'Aggiorna le note, la scadenza o il responsabile di un adempimento annuale (non le sue fasi: per spuntarle usa aggiorna_sotto_adempimento, per cambiare l\'elenco delle fasi nel catalogo usa fasi_adempimenti). Usa prima adempimenti_annuali per l\'id. Richiede il gestionale aperto via server.js.',
-      inputSchema: { annualeId: z.string(), patch: z.object({ nota: z.string().optional(), scadenza: z.string().optional().describe('YYYY-MM-DD'), responsabile: z.string().optional() }) },
+      description: 'Aggiorna le note, la scadenza o il responsabile di un adempimento annuale, oppure lo segna "non dovuto" (nonDovuto, per 770/CU senza ritenute operate) (non le sue fasi: per spuntarle usa aggiorna_sotto_adempimento, per cambiare l\'elenco delle fasi nel catalogo usa fasi_adempimenti). Usa prima adempimenti_annuali per l\'id. Richiede il gestionale aperto via server.js.',
+      inputSchema: { annualeId: z.string(), patch: z.object({ nota: z.string().optional(), scadenza: z.string().optional().describe('YYYY-MM-DD'), responsabile: z.string().optional(), nonDovuto: z.boolean().optional().describe('SOLO per 770 e CU: true = "Nessuna ritenuta operata nell\'anno" (l\'adempimento risulta non dovuto e completato, come la casella nella scheda cliente; registra chi e quando), false = lo toglie. Prima verifica con elenco_ritenute che davvero non ci siano ritenute.') }) },
     },
     async ({ annualeId, patch }) => testoEsitoScrittura(await inviaComando(url, 'modificaAdempimentoAnnuale', { annualeId, patch: pulisciUndefined(patch) }))
   );

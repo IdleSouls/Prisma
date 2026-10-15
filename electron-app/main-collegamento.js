@@ -22,7 +22,7 @@
 // <<< L'UNICA RIGA DA CAMBIARE SE L'INDIRIZZO DELLO STUDIO CAMBIA >>>
 const URL_STUDIO = 'http://192.168.178.112:8420/';
 
-const { app, BrowserWindow, Tray, Menu, nativeImage, dialog } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, dialog, clipboard } = require('electron');
 const path = require('path');
 
 const ICONA = path.join(__dirname, 'icona.ico');
@@ -48,6 +48,27 @@ function creaFinestra() {
     webPreferences: { contextIsolation: true, sandbox: true }
   });
   finestraPrincipale.once('ready-to-show', () => finestraPrincipale.show());
+  // Menu del tasto destro (Electron non ne ha uno suo): taglia / copia / incolla / seleziona tutto.
+  finestraPrincipale.webContents.on('context-menu', (ev, params) => {
+    const f = params.editFlags || {};
+    const voci = [];
+    if (params.isEditable) voci.push({ label: 'Annulla', role: 'undo', enabled: !!f.canUndo }, { label: 'Ripeti', role: 'redo', enabled: !!f.canRedo }, { type: 'separator' }, { label: 'Taglia', role: 'cut', enabled: !!f.canCut });
+    if (params.isEditable || params.selectionText) voci.push({ label: 'Copia', role: 'copy', enabled: !!f.canCopy });
+    if (params.isEditable) voci.push({ label: 'Incolla', role: 'paste', enabled: !!f.canPaste });
+    if (params.linkURL) voci.push({ type: 'separator' }, { label: 'Copia indirizzo del link', click: () => clipboard.writeText(params.linkURL) });
+    voci.push({ type: 'separator' }, { label: 'Seleziona tutto', role: 'selectAll' });
+    Menu.buildFromTemplate(voci).popup({ window: finestraPrincipale });
+  });
+  // Avviso di riavvio del server (la pagina cambia il titolo in "Riavvio server in arrivo"): l'icona lampeggia nella
+  // barra delle applicazioni, anche se la finestra e' nascosta nell'icona di sistema. Si ferma da sola quando la finestra riceve il focus.
+  finestraPrincipale.webContents.on('page-title-updated', (ev, titolo) => {
+    if (/Riavvio server/i.test(titolo || '')) {
+      if (!finestraPrincipale.isVisible()) finestraPrincipale.showInactive();
+      if (!finestraPrincipale.isFocused()) finestraPrincipale.flashFrame(true);
+    } else {
+      finestraPrincipale.flashFrame(false);
+    }
+  });
   finestraPrincipale.loadURL(URL_APP);
 
   finestraPrincipale.on('close', (evento) => {

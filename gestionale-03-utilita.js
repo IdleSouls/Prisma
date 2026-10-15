@@ -197,7 +197,18 @@ function rimuoviOverlayBloccoRiavvio() {
   const overlay = document.getElementById('overlayBloccoRiavvio');
   if (overlay) overlay.remove();
 }
+/* L'app Windows (Electron) non ha un canale dedicato col sito: sta in ascolto del TITOLO della pagina e, se contiene
+   "Riavvio server", fa lampeggiare l'icona nella barra delle applicazioni (vedi electron-app/main*.js). Nel browser
+   normale il titolo mostra comunque l'avviso nella scheda. */
+let TITOLO_PAGINA_BASE = null;
+function impostaTitoloRiavvio(attivo) {
+  try {
+    if (TITOLO_PAGINA_BASE === null) TITOLO_PAGINA_BASE = (document.title || 'Prisma').replace(/^⚠ Riavvio server in arrivo — /, '');
+    document.title = attivo ? '⚠ Riavvio server in arrivo — ' + TITOLO_PAGINA_BASE : TITOLO_PAGINA_BASE;
+  } catch (e) { /* il titolo non è essenziale */ }
+}
 function mostraAvvisoRiavvioServer(secondi) {
+  impostaTitoloRiavvio(true);
   RIAVVIO_CONFERME_RICEVUTE = [];
   if (RIAVVIO_TIMER_CLIENT) { clearInterval(RIAVVIO_TIMER_CLIENT); RIAVVIO_TIMER_CLIENT = null; }
   let box = document.getElementById('avvisoRiavvioServer');
@@ -249,6 +260,7 @@ function avviaFaseFinaleRiavvio() {
 // vecchia versione qui è un vero blocco, non solo un avviso: il banner sparisce e non c'è nessun
 // riavvio in corso finché qualcuno non lo richiede di nuovo da Impostazioni.
 function gestisciRiavvioAnnullato(daOperatore) {
+  impostaTitoloRiavvio(false);
   if (RIAVVIO_TIMER_CLIENT) { clearInterval(RIAVVIO_TIMER_CLIENT); RIAVVIO_TIMER_CLIENT = null; }
   const box = document.getElementById('avvisoRiavvioServer');
   if (box) box.remove();
@@ -265,6 +277,7 @@ function aggiornaConfermeRiavvioServer(conferme) {
   aggiornaTestoConfermeRiavvio();
 }
 function confermaVistaRiavvioServer() {
+  impostaTitoloRiavvio(false);
   const nome = operatoreCorrente() || 'un operatore';
   const btn = document.querySelector('#avvisoRiavvioServer [data-action="conferma-riavvio-server"]');
   if (btn) { btn.disabled = true; btn.textContent = '✓ Confermato'; }

@@ -1276,6 +1276,8 @@ window.labelTipoCliente = labelTipoCliente;
 window.TIPI_CLIENTE = TIPI_CLIENTE;
 window.render = render;
 window.setView = setView;
+window.mostraAvvisoRiavvioServer = mostraAvvisoRiavvioServer;
+window.gestisciRiavvioAnnullato = gestisciRiavvioAnnullato;
 window.cliCsvVistaCorrente = cliCsvVistaCorrente;
 window.setSchedaClienteTest = function (id) { SCHEDA_CLIENTE = id; };
 window.getVIEW = () => VIEW;

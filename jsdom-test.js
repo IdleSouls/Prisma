@@ -5920,6 +5920,32 @@ async function main() {
       console.log('=== eseguiComandoMCP(fasiAdempimenti) OK: elenca/aggiungi/rinomina(migra)/sposta/rimuovi/imposta');
     }
 
+    // modificaAdempimentoAnnuale con nonDovuto (770/CU senza ritenute)
+    {
+      const ann = window.derivati().annuali;
+      const a770 = ann.find(x => x.tipoChiave === '770'); const altro = ann.find(x => !['770', 'CU'].includes(x.tipoChiave));
+      const cmd = async (annualeId, patch) => { richiesteFetch.length = 0; await window.eseguiComandoMCP({ id: 'cmdnd', azione: 'modificaAdempimentoAnnuale', parametri: { annualeId, patch } }); return JSON.parse(richiesteFetch[0].opts.body); };
+      if (a770) {
+        let r = await cmd(a770.id, { nonDovuto: true });
+        assert(r.ok, 'nonDovuto true: ' + r.errore);
+        assert(window.derivati().annuali.find(x => x.id === a770.id).nonDovuto === true, 'nonDovuto: l\'adempimento deve risultare non dovuto');
+        r = await cmd(a770.id, { nonDovuto: false });
+        assert(r.ok && !window.derivati().annuali.find(x => x.id === a770.id).nonDovuto, 'nonDovuto false: deve essere tolto');
+      }
+      if (altro) { const r = await cmd(altro.id, { nonDovuto: true }); assert(r.ok === false && /solo per/.test(r.errore), 'nonDovuto su adempimento diverso da 770/CU: errore leggibile'); }
+      console.log('=== modificaAdempimentoAnnuale(nonDovuto) OK' + (a770 ? '' : ' (nessun 770 nei dati demo: solo il caso di errore)'));
+    }
+
+    // avviso di riavvio server: il titolo della pagina segnala "Riavvio server" (l'app Windows lo usa per far lampeggiare l'icona)
+    {
+      const titoloPrima = window.document.title;
+      window.mostraAvvisoRiavvioServer(60);
+      assert(/Riavvio server in arrivo/.test(window.document.title), 'avviso riavvio: il titolo deve segnalare il riavvio');
+      window.gestisciRiavvioAnnullato('Test');
+      assert(window.document.title === titoloPrima, 'avviso riavvio annullato: il titolo deve tornare normale');
+      console.log('=== Avviso riavvio server: titolo pagina (lampeggio app Windows) OK');
+    }
+
     // Errori (azione sconosciuta, id inesistente): non devono mai far saltare il dispatcher, solo
     // tornare un esito ok:false con un messaggio leggibile.
     richiesteFetch.length = 0;
