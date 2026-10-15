@@ -905,8 +905,9 @@ const REGIMI_FORFETTARI = ['Forfettario', 'Forfettario L.398/91'];
 const TIPI_SOCIETA = ['societa_capitali', 'societa_persone', 'cooperativa', 'impresa_sociale'];
 const TIPI_BILANCIO = ['societa_capitali', 'cooperativa', 'impresa_sociale'];
 function eSostitutoImposta(c) {
-  // 770 e CU: tutte le società e gli ordinari/semplificati; esclusi persone fisiche, forfettari, enti/associazioni
-  if (c.tipo === 'persona_fisica' || c.tipo === 'associazione') return false;
+  // 770 e CU: tutte le società, le associazioni (se operano ritenute: altrimenti si segna "non dovuto") e gli ordinari/semplificati; escluse persone fisiche e forfettari
+  if (c.tipo === 'persona_fisica') return false;
+  if (c.tipo === 'associazione') return true;
   if (REGIMI_FORFETTARI.includes(c.regimeFiscale)) return false;
   return TIPI_SOCIETA.includes(c.tipo) || c.regimeFiscale === 'Semplificato' || c.regimeFiscale === 'Ordinario';
 }
