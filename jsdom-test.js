@@ -503,6 +503,11 @@ async function main() {
   assert(qa('select.statoSel.stato-versamento-in-ritardo').length >= 1, 'select senza la classe colore del nuovo stato');
   assert(window.STATI_SCADENZA_CHIUSI && window.STATI_SCADENZA_CHIUSI.includes('Versamento in ritardo'), 'il nuovo stato deve contare la scadenza come completata');
   {
+    const scNP = window.derivati().tutteScadenze.find(x => x.id === idNP);
+    assert(scNP.fase == null && scNP.stato === 'Versamento in ritardo', `"Versamento in ritardo" non deve diventare l'ultima fase (fase: ${scNP.fase})`);
+    assert(qa('[data-action="scad-cambia-stato"]').find(x => x.dataset.id === idNP).value === 'Versamento in ritardo', 'il menu deve mostrare "Versamento in ritardo", non l\'ultima fase');
+  }
+  {
     const ST = window.getSTATE();
     const ov = ST.scadenzeOverrides[idNP];
     assert(ov.ritardoVersamento === true && ov.dataCompletamento, 'alert ritardoVersamento / data completamento mancanti');

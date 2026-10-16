@@ -75,7 +75,10 @@ function applicaFasiScadenza(item, salvato, info) {
   let fase = salvato && salvato.fase;
   if (!fase || !item.fasi.includes(fase)) {
     fase = null;
-    if (STATI_SCADENZA_DEFINITIVI.includes(item.stato)) fase = item.fasi[item.fasi.length - 1];
+    /* 'Versamento in ritardo' è uno stato a sé (ha il suo alert e il suo F24): NON va tradotto nell'ultima fase, altrimenti
+       l'etichetta resterebbe "Addebitato dallo studio" invece di mostrare il ritardo. */
+    if (item.stato === STATO_NON_PUO_PAGARE) fase = null;
+    else if (STATI_SCADENZA_DEFINITIVI.includes(item.stato)) fase = item.fasi[item.fasi.length - 1];
     else if (item.stato === 'Calcolato' && item.fasi.length > 1) fase = item.fasi[0];
   }
   item.fase = fase;
