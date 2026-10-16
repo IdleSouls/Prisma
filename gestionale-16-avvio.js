@@ -1387,3 +1387,19 @@ init();
 
 /* Se per qualsiasi motivo la pagina scorre in orizzontale (focus su un campo fuori vista, tabella larga), la si riporta a 0: la sidebar fissa coprirebbe il contenuto. */
 window.addEventListener('scroll', () => { if (window.scrollX) window.scrollTo(0, window.scrollY); }, { passive: true });
+
+/* Tasto destro per copiare: se non c'è già del testo selezionato, il clic destro su un dato (cella di tabella, valore di una scheda, nota)
+   ne seleziona il contenuto, così nel menu compare "Copia" (il menu dell'app Windows mostra "Copia" solo con una selezione). */
+document.addEventListener('contextmenu', (e) => {
+  try {
+    const sel = window.getSelection && window.getSelection();
+    if (!sel) return;
+    if (!sel.isCollapsed && String(sel).trim()) return; // l'utente ha già selezionato qualcosa
+    const t = e.target;
+    if (!t || !t.closest || t.closest('input, textarea, select, button, [contenteditable="true"], #sidebar, #topbar')) return;
+    const el = t.closest('td, .sd-v, .kv .v, .helptext, pre, code, .selezionabile');
+    if (!el || !String(el.textContent || '').trim()) return;
+    const r = document.createRange(); r.selectNodeContents(el);
+    sel.removeAllRanges(); sel.addRange(r);
+  } catch (err) { /* nessuna selezione automatica: il menu si apre comunque */ }
+});

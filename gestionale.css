@@ -742,8 +742,10 @@ html[data-tema="scuro"] .sem770 .esc{background:#ddd;color:#111;}
 .cli-tab-wrap{overflow:auto;max-height:68vh;border:1px solid var(--border);border-radius:8px;background:var(--card,#fff);}
 table.cli-tab{width:max-content;min-width:100%;}
 table.cli-tab th{position:sticky;top:0;z-index:2;white-space:nowrap;}
-table.cli-tab tr.cli-filtri th{top:33px;z-index:2;text-transform:none;padding:4px 6px;}
-table.cli-tab .cli-tab-filtro{width:100%;font-size:12px;padding:3px 5px;box-sizing:border-box;}
+table.cli-tab tr.cli-filtri th{top:33px;z-index:2;text-transform:none;padding:6px 8px;background:var(--card-bg,#fff);}
+/* Caselle dei filtri: stesso formato delle altre caselle di Prisma (.field input/select) */
+table.cli-tab .cli-tab-filtro{width:100%;min-width:90px;font-size:13px;font-family:inherit;padding:7px 9px;border:1px solid var(--border);border-radius:6px;background:#fff;color:var(--text);box-sizing:border-box;font-weight:400;text-transform:none;letter-spacing:normal;}
+html[data-tema="scuro"] table.cli-tab .cli-tab-filtro{background:#0F1627;color:var(--text);border-color:var(--border);}
 table.cli-tab td{white-space:nowrap;padding:7px 10px;border-bottom:1px solid var(--border);}
 table.cli-tab .cli-sticky{position:sticky;left:0;z-index:3;background:inherit;}
 table.cli-tab td.cli-sticky{background:var(--card,#fff);z-index:1;}

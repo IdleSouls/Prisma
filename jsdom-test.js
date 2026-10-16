@@ -5983,6 +5983,17 @@ async function main() {
       console.log('=== Adempimenti annuali: totali filtrati + tasso di completamento OK');
     }
 
+    // tasto destro su una cella: ne seleziona il testo (per "Copia")
+    {
+      window.setView('clienti'); window.render(); await wait(20);
+      const cella = q('tr.cli-tr td:nth-child(3)');
+      window.getSelection().removeAllRanges();
+      cella.dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+      assert(String(window.getSelection()).trim() === cella.textContent.trim() && cella.textContent.trim().length > 0, 'clic destro su una cella: il testo deve risultare selezionato per "Copia"');
+      window.getSelection().removeAllRanges(); window.setView('dashboard');
+      console.log('=== Clic destro su una cella seleziona il testo (Copia) OK');
+    }
+
     // avviso di riavvio server: il titolo della pagina segnala "Riavvio server" (l'app Windows lo usa per far lampeggiare l'icona)
     {
       const titoloPrima = window.document.title;
