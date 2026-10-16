@@ -6411,6 +6411,28 @@ async function main() {
     assert(q('[data-action="pdfd-scarica"]'), 'manca il pulsante "Scarica" dopo una divisione riuscita');
     console.log('=== Strumenti: Dividi PDF - numero pagine letto dal server, intervallo modificabile, divisione via /api/pdf-dividi OK (task #204)');
 
+    // più sezioni diverse in un colpo solo: intervalli scritti a mano, nome per sezione, un PDF per sezione
+    setVal(q('[data-action="pdfd-intervalli"]'), '1-2, 5-9');
+    await wait(20);
+    assert(window.document.body.textContent.includes('Intervalli non validi'), 'Dividi PDF: un intervallo oltre le pagine del file (9 > 6) deve dare errore');
+    setVal(q('[data-action="pdfd-intervalli"]'), '1-2, 4-6');
+    await wait(20);
+    assert(qa('[data-action="pdfd-cambia-da"]').length === 2, 'Dividi PDF: scrivendo "1-2, 4-6" devono comparire due sezioni');
+    setVal(qa('[data-action="pdfd-cambia-nome"]')[1], 'Rossi');
+    await wait(20);
+    richiestePdf.length = 0;
+    click(q('[data-action="pdfd-dividi"]'));
+    await wait(60);
+    const richDiv = richiestePdf.filter(r => r.url === '/api/pdf-dividi').map(r => JSON.parse(r.opts.body));
+    assert(richDiv.length === 2 && richDiv[0].da === 1 && richDiv[0].a === 2 && richDiv[1].da === 4 && richDiv[1].a === 6, 'Dividi PDF: due sezioni devono fare due richieste (1-2 e 4-6)');
+    assert(qa('[data-action="pdfd-scarica"]').length === 2 && q('[data-action="pdfd-scarica-tutti"]'), 'Dividi PDF: due risultati con "Scarica" ciascuno e "Scarica tutti"');
+    assert(window.document.body.textContent.includes('Fattura - Rossi.pdf'), 'Dividi PDF: la sezione con nome deve dare il file col nome scelto');
+    click(q('[data-action="pdfd-rimuovi-sezione"]')); await wait(20);
+    assert(qa('[data-action="pdfd-cambia-da"]').length === 1, 'Dividi PDF: rimuovere una sezione');
+    click(q('[data-action="pdfd-aggiungi-sezione"]')); await wait(20);
+    assert(qa('[data-action="pdfd-cambia-da"]').length === 2, 'Dividi PDF: aggiungere una sezione');
+    console.log('=== Strumenti: Dividi PDF - più sezioni (intervalli, nomi, un PDF per sezione, scarica tutti) OK');
+
     click(q('[data-action="pdfd-reset"]'));
     await wait(20);
 

@@ -1735,8 +1735,11 @@ function onClickDelegatoInterno(e) {
 
     case 'pdfd-dividi': avviaDivisionePdf(); break;
     case 'pdfd-reset': resetPdfDividi(); break;
-    case 'pdfd-scarica': scaricaRisultatoDivisionePdf(); break;
-    case 'pdfd-salva-cartella': salvaDivisionePdfNellaCartella(); break;
+    case 'pdfd-scarica': scaricaRisultatoDivisionePdf(Number(el.dataset.idx) || 0); break;
+    case 'pdfd-scarica-tutti': scaricaTuttiRisultatiDivisionePdf(); break;
+    case 'pdfd-aggiungi-sezione': aggiungiSezionePdfDividi(); break;
+    case 'pdfd-rimuovi-sezione': rimuoviSezionePdfDividi(Number(el.dataset.idx)); break;
+    case 'pdfd-salva-cartella': salvaDivisionePdfNellaCartella(Number(el.dataset.idx) || 0); break;
 
     case 'rubrica-copia': copiaTestoNegliAppunti(el.dataset.testo, 'Contatto copiato negli appunti.'); break;
 
@@ -2427,8 +2430,10 @@ function onChangeDelegato(e) {
     case 'strumenti-scegli-file': selezionaFileConversione(el); break;
     case 'pdfu-scegli-file': selezionaFileUnisciPdf(el); break;
     case 'pdfd-scegli-file': selezionaFileDividiPdf(el); break;
-    case 'pdfd-cambia-da': PDFD_DA = Number(el.value) || 1; break;
-    case 'pdfd-cambia-a': PDFD_A = Number(el.value) || 1; break;
+    case 'pdfd-cambia-da': { const x = PDFD_SEZIONI[Number(el.dataset.idx) || 0]; if (x) x.da = Number(el.value) || 1; break; }
+    case 'pdfd-cambia-a': { const x = PDFD_SEZIONI[Number(el.dataset.idx) || 0]; if (x) x.a = Number(el.value) || 1; break; }
+    case 'pdfd-cambia-nome': { const x = PDFD_SEZIONI[Number(el.dataset.idx) || 0]; if (x) x.nome = el.value; break; }
+    case 'pdfd-intervalli': impostaIntervalliPdfDividi(el.value); break;
     case 'carica-logo-studio': caricaLogoStudio(el); break;
     case 'cambia-posizione-logo': STATE.meta.logoPosizione = el.value; salvaStato(); break;
     case 'meta-pie-pagina': STATE.meta.piePagina = el.value; salvaStato(); break;

@@ -962,14 +962,14 @@ function salvaUnionePdfNellaCartella() {
 }
 
 // --- Dividi PDF ---
+/* Più sezioni in un colpo solo: ogni sezione è un intervallo di pagine (con nome facoltativo) e produce un PDF a parte. */
 let PDFD_FILE = null;      // {nome, base64, dimensione}
 let PDFD_NUMPAGINE = null; // numero di pagine del PDF caricato, chiesto al server appena scelto
-let PDFD_DA = 1;
-let PDFD_A = 1;
-let PDFD_RISULTATO = null;
+let PDFD_SEZIONI = [{ da: 1, a: 1, nome: '' }];
+let PDFD_RISULTATI = [];   // [{nomeFile, base64}]
 let PDFD_ERRORE = null;
 let PDFD_IN_CORSO = false;
-function resetPdfDividi() { PDFD_FILE = null; PDFD_NUMPAGINE = null; PDFD_DA = 1; PDFD_A = 1; PDFD_RISULTATO = null; PDFD_ERRORE = null; PDFD_IN_CORSO = false; render(); }
+function resetPdfDividi() { PDFD_FILE = null; PDFD_NUMPAGINE = null; PDFD_SEZIONI = [{ da: 1, a: 1, nome: '' }]; PDFD_RISULTATI = []; PDFD_ERRORE = null; PDFD_IN_CORSO = false; render(); }
 async function elaboraFileDividiPdf(file) {
   if (!file) return;
   if ((file.name.split('.').pop() || '').toLowerCase() !== 'pdf') {
@@ -977,7 +977,7 @@ async function elaboraFileDividiPdf(file) {
     render();
     return;
   }
-  PDFD_RISULTATO = null; PDFD_ERRORE = null;
+  PDFD_RISULTATI = []; PDFD_ERRORE = null;
   try {
     const base64 = await leggiFilePdfComeBase64(file);
     PDFD_FILE = { nome: file.name, base64, dimensione: file.size };
@@ -988,8 +988,7 @@ async function elaboraFileDividiPdf(file) {
     }).then(r => r.json());
     if (esito && esito.ok) {
       PDFD_NUMPAGINE = esito.numeroPagine;
-      PDFD_DA = 1;
-      PDFD_A = esito.numeroPagine;
+      PDFD_SEZIONI = [{ da: 1, a: esito.numeroPagine, nome: '' }];
     } else {
       PDFD_ERRORE = (esito && esito.errore) || 'Impossibile leggere il numero di pagine del PDF.';
       PDFD_FILE = null;
@@ -1005,32 +1004,78 @@ function selezionaFileDividiPdf(inputEl) {
   const file = inputEl.files && inputEl.files[0];
   elaboraFileDividiPdf(file);
 }
-function avviaDivisionePdf() {
+function aggiungiSezionePdfDividi() {
+  const ultima = PDFD_SEZIONI[PDFD_SEZIONI.length - 1] || { a: 0 };
+  const da = Math.min(Number(ultima.a) + 1 || 1, PDFD_NUMPAGINE || 1);
+  PDFD_SEZIONI.push({ da, a: PDFD_NUMPAGINE || da, nome: '' });
+  render();
+}
+function rimuoviSezionePdfDividi(idx) { if (PDFD_SEZIONI.length > 1) { PDFD_SEZIONI.splice(idx, 1); render(); } }
+/* "1-3, 5, 8-10" -> tre sezioni. Ritorna null se non valido. */
+function interpretaIntervalliPdf(testo, max) {
+  const out = [];
+  for (const parte of String(testo || '').split(/[,;]+/).map(x => x.trim()).filter(Boolean)) {
+    const m = parte.match(/^(\d+)\s*(?:[-–]\s*(\d+))?$/);
+    if (!m) return null;
+    const da = Number(m[1]), a = m[2] ? Number(m[2]) : da;
+    if (da < 1 || a < da || (max && a > max)) return null;
+    out.push({ da, a, nome: '' });
+  }
+  return out.length ? out : null;
+}
+function impostaIntervalliPdfDividi(testo) {
+  if (!String(testo || '').trim()) return;
+  const sez = interpretaIntervalliPdf(testo, PDFD_NUMPAGINE);
+  if (!sez) { PDFD_ERRORE = `Intervalli non validi: scrivi ad esempio "1-3, 5, 8-10" (pagine da 1 a ${PDFD_NUMPAGINE}).`; render(); return; }
+  PDFD_ERRORE = null; PDFD_SEZIONI = sez; render();
+}
+function nomeFileSezionePdf(sez, daServer) {
+  const nome = String(sez.nome || '').trim().replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!nome) return daServer;
+  const base = PDFD_FILE ? PDFD_FILE.nome.replace(/\.pdf$/i, '') : 'documento';
+  return `${base} - ${nome}.pdf`;
+}
+async function avviaDivisionePdf() {
   if (!PDFD_FILE || PDFD_IN_CORSO) return;
-  const da = Number(PDFD_DA), a = Number(PDFD_A);
-  if (!da || !a || da < 1 || a < da) { PDFD_ERRORE = 'Intervallo di pagine non valido: controlla "da" e "a".'; render(); return; }
-  PDFD_IN_CORSO = true; PDFD_ERRORE = null; PDFD_RISULTATO = null; render();
-  fetch('/api/pdf-dividi', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ nomeFile: PDFD_FILE.nome, contenutoBase64: PDFD_FILE.base64, da, a }),
-  })
-    .then(r => r.json())
-    .then(esito => {
-      if (esito && esito.ok) PDFD_RISULTATO = { nomeFile: esito.nomeFile, base64: esito.contenutoBase64 };
-      else PDFD_ERRORE = (esito && esito.errore) || 'Divisione non riuscita.';
-    })
-    .catch(() => { PDFD_ERRORE = 'Impossibile contattare il server locale.'; })
-    .finally(() => { PDFD_IN_CORSO = false; render(); });
+  const sezioni = PDFD_SEZIONI.map(x => ({ da: Number(x.da), a: Number(x.a), nome: x.nome }));
+  const nonValida = sezioni.findIndex(x => !x.da || !x.a || x.da < 1 || x.a < x.da || (PDFD_NUMPAGINE && x.a > PDFD_NUMPAGINE));
+  if (nonValida >= 0) { PDFD_ERRORE = `Sezione ${nonValida + 1}: intervallo di pagine non valido, controlla "da" e "a" (il PDF ha ${PDFD_NUMPAGINE || '?'} pagine).`; render(); return; }
+  PDFD_IN_CORSO = true; PDFD_ERRORE = null; PDFD_RISULTATI = []; render();
+  const risultati = [];
+  try {
+    for (let i = 0; i < sezioni.length; i++) {
+      const sez = sezioni[i];
+      const esito = await fetch('/api/pdf-dividi', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nomeFile: PDFD_FILE.nome, contenutoBase64: PDFD_FILE.base64, da: sez.da, a: sez.a }),
+      }).then(r => r.json());
+      if (!(esito && esito.ok)) throw new Error(`Sezione ${i + 1} (pag. ${sez.da}-${sez.a}): ${(esito && esito.errore) || 'divisione non riuscita'}`);
+      risultati.push({ nomeFile: nomeFileSezionePdf(sez, esito.nomeFile), base64: esito.contenutoBase64, da: sez.da, a: sez.a });
+    }
+    // due sezioni con lo stesso nome: si distinguono col numero d'ordine
+    const visti = {};
+    risultati.forEach(r => { const k = r.nomeFile.toLowerCase(); visti[k] = (visti[k] || 0) + 1; if (visti[k] > 1) r.nomeFile = r.nomeFile.replace(/\.pdf$/i, ` (${visti[k]}).pdf`); });
+    PDFD_RISULTATI = risultati;
+  } catch (err) {
+    PDFD_ERRORE = (err && err.message && !/fetch|JSON|Unexpected/i.test(err.message)) ? err.message : 'Impossibile contattare il server locale.';
+    PDFD_RISULTATI = risultati; // le sezioni già pronte restano scaricabili
+  }
+  PDFD_IN_CORSO = false; render();
 }
-function scaricaRisultatoDivisionePdf() {
-  if (!PDFD_RISULTATO) return;
-  salvaFileScaricabile(PDFD_RISULTATO.nomeFile, blobDaBase64(PDFD_RISULTATO.base64, 'application/pdf'))
-    .then(ok => { if (ok) toast('Estratto PDF scaricato.'); })
-    .catch(err => { console.error('Download estratto PDF non riuscito', err); alert('Impossibile scaricare il file in questo browser.'); });
+function scaricaRisultatoDivisionePdf(idx) {
+  const r = PDFD_RISULTATI[idx || 0];
+  if (!r) return Promise.resolve(false);
+  return salvaFileScaricabile(r.nomeFile, blobDaBase64(r.base64, 'application/pdf'))
+    .then(ok => { if (ok) toast('Estratto PDF scaricato.'); return ok; })
+    .catch(err => { console.error('Download estratto PDF non riuscito', err); alert('Impossibile scaricare il file in questo browser.'); return false; });
 }
-function salvaDivisionePdfNellaCartella() {
-  if (!PDFD_RISULTATO) return;
-  salvaBase64NellaCartellaOriginaria(PDFD_RISULTATO.nomeFile, PDFD_RISULTATO.base64, scaricaRisultatoDivisionePdf, 'Estratto PDF salvato.');
+async function scaricaTuttiRisultatiDivisionePdf() {
+  for (let i = 0; i < PDFD_RISULTATI.length; i++) { const ok = await scaricaRisultatoDivisionePdf(i); if (ok === false) break; }
+}
+function salvaDivisionePdfNellaCartella(idx) {
+  const r = PDFD_RISULTATI[idx || 0];
+  if (!r) return;
+  salvaBase64NellaCartellaOriginaria(r.nomeFile, r.base64, () => scaricaRisultatoDivisionePdf(idx || 0), 'Estratto PDF salvato.');
 }
 
 function renderUnisciDividiPdf() {
@@ -1080,7 +1125,7 @@ function renderUnisciDividiPdf() {
   // --- card Dividi ---
   const cardDividi = `<div class="card" style="max-width:640px;">
     <div class="section-title">Dividi PDF</div>
-    <div class="helptext" style="margin-bottom:12px;">Carica un file .pdf ed estrai un intervallo di pagine in un nuovo documento (es. "da pagina 2 a 5"). Per estrarre più parti, ripeti l'operazione con intervalli diversi.</div>
+    <div class="helptext" style="margin-bottom:12px;">Carica un file .pdf ed estrai un intervallo di pagine in un nuovo documento (es. "da pagina 2 a 5"). Puoi aggiungere più sezioni (o scrivere gli intervalli, es. \"1-3, 5, 8-10\"): ognuna diventa un PDF a parte, con il nome che vuoi.</div>
     <div class="dropzone-file" data-dropzone="dividi-pdf-file">
       <label class="btn" style="margin:0;display:inline-block;">📄 Scegli file PDF...<input type="file" accept=".pdf" style="display:none;" data-action="pdfd-scegli-file"></label>
       <div class="helptext" style="margin-top:8px;">oppure trascina qui il file</div>
@@ -1088,17 +1133,24 @@ function renderUnisciDividiPdf() {
     ${PDFD_FILE ? `<div style="margin-top:12px;padding:10px 12px;background:var(--bg);border-radius:8px;">
       <div style="font-weight:600;font-size:13.5px;">${escapeHtml(PDFD_FILE.nome)}</div>
       <div class="helptext">${(PDFD_FILE.dimensione/1024).toFixed(1)} KB${PDFD_NUMPAGINE ? ' · ' + PDFD_NUMPAGINE + ' pagine' : ''}</div>
-      ${PDFD_NUMPAGINE ? `<div style="display:flex;gap:10px;margin-top:8px;">
-        <div class="field" style="max-width:110px;"><label>Da pagina</label><input type="number" min="1" max="${PDFD_NUMPAGINE}" value="${PDFD_DA}" data-action="pdfd-cambia-da"></div>
-        <div class="field" style="max-width:110px;"><label>A pagina</label><input type="number" min="1" max="${PDFD_NUMPAGINE}" value="${PDFD_A}" data-action="pdfd-cambia-a"></div>
+      ${PDFD_NUMPAGINE ? `<div style="margin-top:10px;">
+        ${PDFD_SEZIONI.map((x, i) => `<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:6px;">
+          <div class="field" style="max-width:100px;"><label>${i === 0 ? 'Da pagina' : '&nbsp;'}</label><input type="number" min="1" max="${PDFD_NUMPAGINE}" value="${x.da}" data-action="pdfd-cambia-da" data-idx="${i}" title="Da pagina"></div>
+          <div class="field" style="max-width:100px;"><label>${i === 0 ? 'A pagina' : '&nbsp;'}</label><input type="number" min="1" max="${PDFD_NUMPAGINE}" value="${x.a}" data-action="pdfd-cambia-a" data-idx="${i}" title="A pagina"></div>
+          <div class="field grow" style="min-width:150px;"><label>${i === 0 ? 'Nome (facoltativo)' : '&nbsp;'}</label><input type="text" value="${escapeHtml(x.nome || '')}" placeholder="es. Fattura Rossi" data-action="pdfd-cambia-nome" data-idx="${i}"></div>
+          ${PDFD_SEZIONI.length > 1 ? `<button class="btn small ghost" data-action="pdfd-rimuovi-sezione" data-idx="${i}" title="Togli questa sezione">✕</button>` : ''}
+        </div>`).join('')}
+        <button class="btn small" data-action="pdfd-aggiungi-sezione">+ Aggiungi sezione</button>
+        <div class="field" style="margin-top:8px;max-width:320px;"><label>Oppure scrivi gli intervalli</label><input type="text" placeholder="es. 1-3, 5, 8-10" data-action="pdfd-intervalli"></div>
       </div>` : ''}
     </div>
-    <button class="btn primary" style="margin-top:10px;" data-action="pdfd-dividi" ${(!PDFD_NUMPAGINE || PDFD_IN_CORSO)?'disabled':''}>${PDFD_IN_CORSO ? 'Divisione in corso…' : 'Estrai pagine'}</button>
+    <button class="btn primary" style="margin-top:10px;" data-action="pdfd-dividi" ${(!PDFD_NUMPAGINE || PDFD_IN_CORSO)?'disabled':''}>${PDFD_IN_CORSO ? 'Divisione in corso…' : (PDFD_SEZIONI.length > 1 ? `Estrai ${PDFD_SEZIONI.length} sezioni` : 'Estrai pagine')}</button>
     <button class="btn ghost" style="margin-top:10px;margin-left:8px;" data-action="pdfd-reset">Annulla</button>` : ''}
     ${PDFD_ERRORE ? `<div class="helptext" style="margin-top:10px;color:var(--rosso);">⚠️ ${escapeHtml(PDFD_ERRORE)}</div>` : ''}
-    ${PDFD_RISULTATO ? `<div style="margin-top:14px;padding:12px;background:var(--verde-bg);border-radius:8px;">
-      <div style="font-weight:600;font-size:13.5px;color:var(--verde);">✅ Estratto creato: ${escapeHtml(PDFD_RISULTATO.nomeFile)}</div>
-      <button class="btn primary small" style="margin-top:8px;" data-action="pdfd-scarica">⬇ Scarica</button>
+    ${PDFD_RISULTATI.length ? `<div style="margin-top:14px;padding:12px;background:var(--verde-bg);border-radius:8px;">
+      <div style="font-weight:600;font-size:13.5px;color:var(--verde);margin-bottom:6px;">✅ ${PDFD_RISULTATI.length === 1 ? 'Estratto creato' : PDFD_RISULTATI.length + ' estratti creati'}</div>
+      ${PDFD_RISULTATI.map((r, i) => `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:4px 0;"><span style="flex:1;min-width:180px;">${escapeHtml(r.nomeFile)}</span><button class="btn primary small" data-action="pdfd-scarica" data-idx="${i}">⬇ Scarica</button></div>`).join('')}
+      ${PDFD_RISULTATI.length > 1 ? `<button class="btn small" style="margin-top:6px;" data-action="pdfd-scarica-tutti">⬇ Scarica tutti</button>` : ''}
     </div>` : ''}
   </div>`;
 

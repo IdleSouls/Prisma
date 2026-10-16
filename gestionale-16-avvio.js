@@ -660,7 +660,7 @@ const GUIDA_TAB = {
   libri: { cosa: 'Libri sociali dei clienti.', funzioni: ['Chi detiene il libro', 'Ultima stampa e ultima pagina'], consiglio: 'Aggiorna la data dopo ogni stampa o vidimazione.' },
   fatturazione: { cosa: 'Attività extra da fatturare e periodicità di fatturazione di ogni cliente.', funzioni: ['Registra le pratiche extra man mano', 'Segnale "da fatturare" alla prossima fattura periodica', 'Segna come fatturate'], consiglio: 'È un promemoria: la fattura la emetti nel tuo software di fatturazione.' },
   procedure: { cosa: 'Istruzioni operative passo per passo per lo staff.', funzioni: ['Procedure con checklist documenti', 'Collegamento a task e appuntamenti'], consiglio: 'Scrivi una procedura per ogni cosa che spieghi più di due volte.' },
-  strumenti: { cosa: 'Convertitore Word/PDF e unisci/dividi PDF.', funzioni: ['Conversione file', 'Unione e divisione PDF'], consiglio: 'La conversione richiede LibreOffice sul PC del server.' },
+  strumenti: { cosa: 'Convertitore Word/PDF e unisci/dividi PDF.', funzioni: ['Conversione file', 'Unione PDF', 'Divisione PDF in più sezioni (un file per ogni intervallo di pagine)'], consiglio: 'La conversione richiede LibreOffice sul PC del server.' },
   credenziali: { cosa: 'Archivio delle credenziali dello studio e dei clienti (Entratel, Telemaco, home banking…).', funzioni: ['Campi personalizzabili per voce', 'Cifrate sul PC dello studio'], consiglio: 'Fai il backup anche del file chiave: senza non si leggono.' },
   impostazioni: { cosa: 'Configurazione dello studio.', funzioni: ['Studio, team e accessi, moduli', 'Responsabili: chi risponde di ditte, adempimenti e fasi', 'Backup e ripristino', 'Catalogo attività e aggiornamenti', 'Gestione studio (solo master): licenza'], consiglio: 'Se qualcosa non compare nel menu, controlla i moduli.' },
   chat: { cosa: 'Messaggi diretti tra i collaboratori.', funzioni: ['Conversazioni per persona', 'Riferimenti a pratiche, task e documenti', 'Indicatore online'], consiglio: 'Per cose da non dimenticare crea un task: la chat scorre.' },
@@ -1107,7 +1107,7 @@ window.resetPortaleBaseTest = () => { PORTALE_BASE_CACHE = null; PORTALE_BASE_TS
 window.resetPdfStatoTest =() => {
   PDF_STATO_CACHE = null;
   PDFU_FILE = []; PDFU_RISULTATO = null; PDFU_ERRORE = null; PDFU_IN_CORSO = false;
-  PDFD_FILE = null; PDFD_NUMPAGINE = null; PDFD_DA = 1; PDFD_A = 1; PDFD_RISULTATO = null; PDFD_ERRORE = null; PDFD_IN_CORSO = false;
+  PDFD_FILE = null; PDFD_NUMPAGINE = null; PDFD_SEZIONI = [{ da: 1, a: 1, nome: '' }]; PDFD_RISULTATI = []; PDFD_ERRORE = null; PDFD_IN_CORSO = false;
 };
 // Stessa ragione: azzera la cache/draft di Accesso esterno (ngrok) così un test può rileggere lo
 // stato (via fetch mockata) con scenari diversi senza riavviare l'intera pagina.
