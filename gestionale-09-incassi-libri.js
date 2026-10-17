@@ -1250,14 +1250,21 @@ function prcAggiornaConteggio() {
   const n = Array.from(c).filter(x => x.checked).length;
   const box = h('prcConteggio'); if (box) box.textContent = `${n} di ${c.length} clienti aderiscono.`;
 }
-const STATI_CPB = ['Da valutare', 'Proposta ricevuta', 'Valutata', 'Aderito', 'Non aderito'];
+const STATI_CPB = ['Da valutare', 'Calcolato', 'Aderito', 'Non aderito'];
+/* Colori come le altre tendine di stato di Prisma (select.statoSel) e come i riquadri KPI. I vecchi stati "Proposta ricevuta"
+   e "Valutata" (tolti) si leggono come "Calcolato". */
+const CPB_CLASSI = { 'Da valutare': { sel: 'stato-da-fare', kpi: 'inscadenza' }, 'Calcolato': { sel: 'stato-calcolato', kpi: 'completati' }, 'Aderito': { sel: 'stato-inviato-telematicamente', kpi: 'futuri' }, 'Non aderito': { sel: 'stato-errore', kpi: 'scaduti' } };
+function statoCpbCliente(id) {
+  const x = ((STATE.cpb || {})[id] || {}).stato || 'Da valutare';
+  return STATI_CPB.includes(x) ? x : ((x === 'Proposta ricevuta' || x === 'Valutata') ? 'Calcolato' : 'Da valutare');
+}
 function renderCpb() {
   const attivi = STATE.clienti.filter(c => clienteAttivo(c)).sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale));
-  const st = (id) => ((STATE.cpb || {})[id] || {}).stato || 'Da valutare';
+  const st = statoCpbCliente;
   const conta = (x) => attivi.filter(c => st(c.id) === x).length;
-  const kpi = `<div class="kpi-grid" style="grid-template-columns:repeat(5,1fr);">${STATI_CPB.map(x => `<div class="kpi completati"><div class="n">${conta(x)}</div><div class="l">${x.toUpperCase()}</div></div>`).join('')}</div>`;
-  const righe = attivi.map(c => `<tr><td>${escapeHtml(c.ragioneSociale)}</td><td><select data-action="cpb-stato" data-id="${c.id}">${STATI_CPB.map(x => `<option ${st(c.id) === x ? 'selected' : ''}>${x}</option>`).join('')}</select></td><td><input data-action="cpb-nota" data-id="${c.id}" value="${escapeHtml(((STATE.cpb || {})[c.id] || {}).nota || '')}" placeholder="note" style="width:100%;"></td></tr>`).join('');
-  return `<div class="helptext" style="margin-bottom:8px;">Tracker interno dell'adesione al concordato preventivo biennale: la valutazione e l'adesione restano decisioni del professionista. <strong>Termine di adesione da verificare ogni anno sul provvedimento ufficiale.</strong></div>` + kpi + `<div class="card"><table class="tbl"><thead><tr><th>Cliente</th><th>Stato</th><th>Note</th></tr></thead><tbody>${righe}</tbody></table></div>`;
+  const kpi = `<div class="kpi-grid" style="grid-template-columns:repeat(${STATI_CPB.length},1fr);">${STATI_CPB.map(x => `<div class="kpi ${CPB_CLASSI[x].kpi}"><div class="n">${conta(x)}</div><div class="l">${x.toUpperCase()}</div></div>`).join('')}</div>`;
+  const righe = attivi.map(c => `<tr><td>${escapeHtml(c.ragioneSociale)}</td><td><select class="statoSel ${CPB_CLASSI[st(c.id)].sel}" data-action="cpb-stato" data-id="${c.id}">${STATI_CPB.map(x => `<option ${st(c.id) === x ? 'selected' : ''}>${x}</option>`).join('')}</select></td><td><div class="field"><input type="text" data-action="cpb-nota" data-id="${c.id}" value="${escapeHtml(((STATE.cpb || {})[c.id] || {}).nota || '')}" placeholder="note"></div></td></tr>`).join('');
+  return `<div class="helptext" style="margin-bottom:8px;">Tracker interno dell'adesione al concordato preventivo biennale: la valutazione e l'adesione restano decisioni del professionista. <strong>Termine di adesione da verificare ogni anno sul provvedimento ufficiale.</strong></div>` + kpi + `<div class="card"><table><thead><tr><th>Cliente</th><th>Stato</th><th>Note</th></tr></thead><tbody>${righe}</tbody></table></div>`;
 }
 
 /* -------------------- REPORT MENSILE AL CLIENTE --------------------

@@ -1153,7 +1153,27 @@ function risultatiRicercaGlobale(query) {
     }
   });
 
-  return out;
+  /* Sezioni (tab) dell'app e sezioni di Impostazioni: si cercano per nome ("concordato", "libri sociali", "responsabili"...)
+     e si aprono dal risultato. Compaiono in testa. Solo quelle che l'operatore può vedere (moduli attivi, permessi). */
+  const ALIAS_SEZIONI = { cpb: 'cpb concordato preventivo biennale', scadenze: 'iva inps intrastat imu lipe', annuali: 'dichiarazioni 770 cu redditi bilancio', ritenute: 'ritenuta acconto', antiriciclaggio: 'aml adeguata verifica',
+    preventivi: 'mandati lettere incarico', deontologia: 'equo compenso fpc', fatturazione: 'fatturare fatture', credenziali: 'password entratel', oggi: 'mio lavoro', schedacliente: 'scheda cliente 360', strumenti: 'pdf word converti unisci dividi' };
+  const sezioni = [];
+  NAV.forEach(g => g.items.forEach(it => {
+    if (!operatorePuoVedere(it.id)) return;
+    const titolo = (PAGE_TITLES[it.id] || [it.label])[0];
+    if ([it.label, titolo, ALIAS_SEZIONI[it.id] || ''].join(' ').toLowerCase().includes(q)) {
+      sezioni.push({ categoria: 'Sezioni', titolo: it.label, sottotitolo: `Menu › ${g.group}`, azione: () => { chiudiModal(); setView(it.id); } });
+    }
+  }));
+  if (operatorePuoVedere('impostazioni') && typeof impSezioniVisibili === 'function') {
+    impSezioniVisibili().forEach(sz => {
+      if (`impostazioni ${sz.label}`.toLowerCase().includes(q) || sz.label.toLowerCase().includes(q)) {
+        sezioni.push({ categoria: 'Sezioni', titolo: `Impostazioni › ${sz.label}`, sottotitolo: 'Impostazioni', azione: () => { IMP_SEZIONE = sz.id; chiudiModal(); setView('impostazioni'); } });
+      }
+    });
+  }
+
+  return sezioni.concat(out);
 }
 
 function modalRicercaGlobale() {

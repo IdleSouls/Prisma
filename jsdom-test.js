@@ -5462,6 +5462,17 @@ async function main() {
     assert(risultatiIva.some(r => r.categoria === 'Scadenze'), 'ricerca "IVA" non trova nessuna scadenza (atteso: scadenze IVA nei dati demo)');
     const risultatiNomeCliente = window.risultatiRicercaGlobale(clienteTest.ragioneSociale);
     assert(!risultatiNomeCliente.some(r => r.categoria === 'Scadenze'), 'cercare il nome di un cliente non deve restituire anche le sue scadenze in categorie separate (rumore)');
+    // sezioni (tab) cercabili per nome, con apertura dal risultato
+    const rCpb = window.risultatiRicercaGlobale('concordato').find(r => r.categoria === 'Sezioni' && /Concordato preventivo/.test(r.titolo));
+    assert(rCpb, 'ricerca "concordato": deve trovare la sezione Concordato preventivo');
+    assert(window.risultatiRicercaGlobale('concordato')[0].categoria === 'Sezioni', 'le sezioni compaiono in testa ai risultati');
+    rCpb.azione(); await wait(20);
+    assert(window.getVIEW() === 'cpb', 'aprire il risultato Sezioni deve portare al tab CPB, vista: ' + window.getVIEW());
+    const rImp = window.risultatiRicercaGlobale('responsabili').find(r => /Impostazioni › Responsabili/.test(r.titolo));
+    assert(rImp, 'ricerca "responsabili": deve trovare la sezione Impostazioni › Responsabili');
+    rImp.azione(); await wait(20);
+    assert(window.getVIEW() === 'impostazioni' && q('[data-action="cat-ann-resp"]'), 'aprire il risultato deve portare a Impostazioni › Responsabili');
+    window.setView('dashboard');
     console.log('=== Ricerca globale (unit): soglia 2 caratteri, categoria Clienti trovata e navigabile, categoria Scadenze filtra solo sul proprio testo OK');
   }
 
@@ -5992,6 +6003,25 @@ async function main() {
       assert(String(window.getSelection()).trim() === cella.textContent.trim() && cella.textContent.trim().length > 0, 'clic destro su una cella: il testo deve risultare selezionato per "Copia"');
       window.getSelection().removeAllRanges(); window.setView('dashboard');
       console.log('=== Clic destro su una cella seleziona il testo (Copia) OK');
+    }
+
+    // Concordato preventivo: stati Da valutare / Calcolato / Aderito / Non aderito, colorati come le altre tendine di stato
+    {
+      window.setView('cpb'); window.render(); await wait(20);
+      const sel = q('select[data-action="cpb-stato"]');
+      assert(sel && sel.classList.contains('statoSel') && sel.classList.contains('stato-da-fare'), 'CPB: la tendina deve avere il formato di Prisma (statoSel) e il colore di "Da valutare"');
+      assert([...sel.options].map(o => o.value).join('|') === 'Da valutare|Calcolato|Aderito|Non aderito', 'CPB: stati attesi Da valutare, Calcolato, Aderito, Non aderito');
+      const idc = sel.dataset.id;
+      for (const [stato, cls, kpi] of [['Calcolato', 'stato-calcolato', 'completati'], ['Aderito', 'stato-inviato-telematicamente', 'futuri'], ['Non aderito', 'stato-errore', 'scaduti']]) {
+        const s1 = q(`select[data-action="cpb-stato"][data-id="${idc}"]`); s1.value = stato; fire(s1, 'change'); await wait(20);
+        assert(q(`select[data-action="cpb-stato"][data-id="${idc}"]`).classList.contains(cls), 'CPB: colore di ' + stato);
+        assert(q('.kpi.' + kpi), 'CPB: riquadro colorato per ' + stato);
+      }
+      window.getSTATE().cpb[idc] = { stato: 'Proposta ricevuta' }; window.render(); await wait(20);
+      assert(q(`select[data-action="cpb-stato"][data-id="${idc}"]`).value === 'Calcolato', 'CPB: il vecchio stato "Proposta ricevuta" si legge come Calcolato');
+      delete window.getSTATE().cpb[idc];
+      window.setView('dashboard');
+      console.log('=== Concordato preventivo: stati e colori OK');
     }
 
     // avviso di riavvio server: il titolo della pagina segnala "Riavvio server" (l'app Windows lo usa per far lampeggiare l'icona)
