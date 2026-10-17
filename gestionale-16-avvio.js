@@ -1279,6 +1279,7 @@ window.setView = setView;
 window.mostraAvvisoRiavvioServer = mostraAvvisoRiavvioServer;
 window.gestisciRiavvioAnnullato = gestisciRiavvioAnnullato;
 window.cliCsvVistaCorrente = cliCsvVistaCorrente;
+window.cpbCsvRiepilogo = cpbCsvRiepilogo;
 window.setSchedaClienteTest = function (id) { SCHEDA_CLIENTE = id; };
 window.getVIEW = () => VIEW;
 window.TIPI_F24 = TIPI_F24;

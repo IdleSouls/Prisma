@@ -161,6 +161,11 @@ function onClickDelegatoInterno(e) {
     case 'cli-esporta-vista': salvaFileScaricabile('clienti-' + oggiISO() + '.csv', new Blob([cliCsvVistaCorrente()], { type: 'text/csv;charset=utf-8' })); break;
     case 'schcli-scegli': SCHEDA_CLIENTE = id; setView('schedacliente'); break;
     case 'schcli-elenco': SCHEDA_CLIENTE = null; SCHEDA_RICERCA = ''; render(); break;
+    case 'cpb-vista': CPB_VISTA = el.dataset.vista; render(); break;
+    case 'cpb-valuta': modalValutazioneCpb(id); break;
+    case 'cpb-val-salva': salvaValutazioneCpb(id); chiudiModal(); render(); toast('Valutazione CPB salvata.'); break;
+    case 'cpb-val-decisione': salvaValutazioneCpb(id, el.dataset.stato); chiudiModal(); render(); toast('Valutazione salvata: ' + el.dataset.stato + '.'); break;
+    case 'cpb-val-esporta': salvaFileScaricabile('cpb-valutazione-' + oggiISO() + '.csv', new Blob([cpbCsvRiepilogo()], { type: 'text/csv;charset=utf-8' })); break;
     case 'apri-cliente': chiudiModal(); SCHEDA_CLIENTE = id; setView('schedacliente'); break;
     case 'modifica-cliente': modalCliente(id); break;
     case 'elimina-cliente':
@@ -2067,6 +2072,8 @@ function onChangeDelegato(e) {
       cfg.periodiciEsclusi = Array.from(set); salvaConfigContabTerzi(cfg); break;
     }
     case 'report-mensile-mese': { const t = h('rmTesto'); if (t) t.value = reportMensileCliente(el.dataset.cliente, el.value || oggiISO().slice(0, 7)); break; }
+    case 'cpb-val-input': ricalcolaModalCpb(); break;
+    case 'cpb-param': { const v = Number(el.value); if (Number.isFinite(v)) { STATE.meta.cpbParametri = Object.assign({}, STATE.meta.cpbParametri || {}, { [el.dataset.k]: v }); salvaStato(); render(); } break; }
     case 'cpb-filtro-tipo': CPB_FILTRO.tipo = el.value; render(); break;
     case 'cpb-filtro-regime': CPB_FILTRO.regime = el.value; render(); break;
     case 'cpb-filtro-stato': CPB_FILTRO.stato = el.value; render(); break;
@@ -2560,6 +2567,7 @@ function onInputDelegato(e) {
     case 'proroga-cerca': { const t = el.value.trim().toLowerCase(); document.querySelectorAll('tr[data-prc-riga]').forEach(r => { r.style.display = (!t || r.dataset.prcRiga.includes(t)) ? '' : 'none'; }); break; }
     case 'proroga-conta': prcAggiornaConteggio(); break;
     case 'ann-filtro-q': ANN_FILTRO.q = el.value; resetPagina('annuali'); render(); restoreFocus('[data-action="ann-filtro-q"]'); break;
+    case 'cpb-val-input': ricalcolaModalCpb(); break;
     case 'ricerca-input': RICERCA_QUERY = el.value; RICERCA_SEL = 0; aggiornaRisultatiRicerca(); break; // niente render(): perderebbe il focus sull'input
     case 'chat-rif-input': CHAT_RIF_QUERY = el.value; aggiornaRisultatiRiferimentoChat(); break; // idem
 

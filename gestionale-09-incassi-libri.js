@@ -1262,12 +1262,18 @@ function statoCpbCliente(id) {
    verificato ogni anno). Qui si esclude in automatico solo ciò che si sa dall'anagrafica: forfettari = non ammessi (nascosti di default);
    enti non commerciali = da verificare (di norma niente ISA, ma dipende dall'attività). Gli altri requisiti (debiti, dichiarazioni omesse...) restano al professionista. */
 let CPB_FILTRO = { tipo: 'Tutti', regime: 'Tutti', stato: 'Tutti', mostraNonAmmessi: false };
+let CPB_VISTA = 'stato'; // 'stato' | 'valutazione'
 function ammissibilitaCpb(c) {
   if (REGIMI_FORFETTARI.includes(c.regimeFiscale)) return { ok: false, nota: 'Forfettario: escluso dal CPB' };
   if (c.regimeFiscale === 'Ente non commerciale') return { ok: true, verifica: true, nota: 'Ente non commerciale: verifica se applica gli ISA' };
   return { ok: true };
 }
 function renderCpb() {
+  const barra = `<div style="display:flex;gap:8px;margin-bottom:12px;"><button class="btn small${CPB_VISTA === 'stato' ? ' primary' : ''}" data-action="cpb-vista" data-vista="stato">Stato adesioni</button><button class="btn small${CPB_VISTA === 'valutazione' ? ' primary' : ''}" data-action="cpb-vista" data-vista="valutazione">Valutazione di convenienza</button></div>`;
+  if (CPB_VISTA === 'valutazione') return barra + renderCpbValutazione();
+  return barra + renderCpbStato();
+}
+function renderCpbStato() {
   const f = CPB_FILTRO;
   const st = statoCpbCliente;
   const tutti = STATE.clienti.filter(c => clienteAttivo(c)).sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale));
@@ -1300,6 +1306,146 @@ function renderCpb() {
   }).join('');
   const corpo = lista.length ? `<div class="card"><table><thead><tr><th>Cliente</th><th>Stato</th><th>Note</th></tr></thead><tbody>${righe}</tbody></table></div>` : `<div class="card"><div class="empty">Nessun cliente corrisponde ai filtri.</div></div>`;
   return `<div class="helptext" style="margin-bottom:8px;">Tracker interno dell'adesione al concordato preventivo biennale 2026-2027: possono aderire solo i contribuenti che applicano gli ISA (i <strong>forfettari sono esclusi</strong>), senza debiti tributari/contributivi definitivi oltre 5.000 € e senza dichiarazioni omesse negli ultimi tre anni. La valutazione e l'adesione restano decisioni del professionista. <strong>Termine di adesione: 31/10/2026, slitta a lunedì 2/11/2026 (da verificare sul provvedimento ufficiale).</strong></div>` + toolbar + kpi + corpo;
+}
+
+
+/* -------------------- CPB: valutazione di convenienza (società per società) --------------------
+   Si inseriscono i dati della proposta dell'Agenzia (reddito e valore della produzione concordati 2026/2027, voto ISA 2025,
+   reddito di riferimento) e la proiezione 2026-2027 dal bilancio provvisorio; Prisma stima le imposte CON e SENZA concordato e
+   dà un'indicazione (conviene / al limite / non conviene). È uno strumento di confronto semplificato: NON modella perdite pregresse,
+   contributi, addizionali, rischio di decadenza o cessazione, e le aliquote vanno verificate sulla circolare 8/E (si modificano nei parametri).
+   La decisione resta del professionista. */
+const CPB_PARAMETRI_DEFAULT = { ires: 24, irpef: 35, irap: 3.9, sostAlta: 10, sostMedia: 12, sostBassa: 15, soglia: 85000, tolleranza: 10 };
+function cpbParametri() { return Object.assign({}, CPB_PARAMETRI_DEFAULT, (STATE.meta && STATE.meta.cpbParametri) || {}); }
+const CPB_CAMPI = [
+  { k: 'redConc26', l: 'Reddito concordato 2026' }, { k: 'redConc27', l: 'Reddito concordato 2027' },
+  { k: 'vpnConc26', l: 'Valore produzione netta concordato 2026 (IRAP)' }, { k: 'vpnConc27', l: 'Valore produzione netta concordato 2027 (IRAP)' },
+  { k: 'redRif', l: 'Reddito di riferimento (dichiarato 2025)' }, { k: 'isa', l: 'Voto ISA 2025' },
+  { k: 'redProj26', l: 'Reddito stimato 2026 (bilancio provvisorio)' }, { k: 'redProj27', l: 'Reddito stimato 2027 (vuoto = come 2026)' },
+  { k: 'vpnProj26', l: 'Valore produzione stimato 2026 (IRAP)' }, { k: 'vpnProj27', l: 'Valore produzione stimato 2027 (vuoto = come 2026)' },
+];
+function cpbNum(v) { if (v === '' || v == null) return null; const n = Number(String(v).replace(',', '.')); return Number.isFinite(n) ? n : null; }
+function cpbAliquotaOrdinaria(c, P) { return (['societa_capitali', 'cooperativa', 'impresa_sociale'].includes(c.tipo) ? P.ires : P.irpef) / 100; }
+function cpbAliquotaSostitutiva(isa, P) { if (isa == null) return P.sostBassa / 100; return (isa >= 8 ? P.sostAlta : (isa >= 6 ? P.sostMedia : P.sostBassa)) / 100; }
+/* dati = { redConc26, ..., optSost }. Ritorna imposte con/senza CPB per il biennio e il verdetto. */
+function calcolaCpb(c, dati, P) {
+  dati = dati || {}; P = P || cpbParametri();
+  const n = (k) => cpbNum(dati[k]);
+  const rc26 = n('redConc26'), rp26 = n('redProj26');
+  if (rc26 == null || rp26 == null) return { completo: false, verdetto: 'Dati incompleti' };
+  const rc27 = n('redConc27') != null ? n('redConc27') : rc26;
+  const rp27 = n('redProj27') != null ? n('redProj27') : rp26;
+  const vc26 = n('vpnConc26') || 0, vc27 = n('vpnConc27') != null ? n('vpnConc27') : vc26;
+  const vp26 = n('vpnProj26') != null ? n('vpnProj26') : 0, vp27 = n('vpnProj27') != null ? n('vpnProj27') : vp26;
+  const rif = n('redRif') != null ? n('redRif') : null, isa = n('isa');
+  const ord = cpbAliquotaOrdinaria(c, P), sost = cpbAliquotaSostitutiva(isa, P), irap = P.irap / 100;
+  const optSost = dati.optSost !== false && dati.optSost !== 'false';
+  const senza = (red, vpn) => Math.max(0, red) * ord + Math.max(0, vpn) * irap;
+  const con = (red, vpn) => {
+    const quota = rif != null ? Math.max(0, red - Math.max(0, rif)) : 0; // parte del reddito concordato oltre il riferimento
+    const agev = (optSost && rif != null) ? Math.min(quota, P.soglia) : 0;
+    return Math.max(0, red - agev) * ord + agev * sost + Math.max(0, vpn) * irap;
+  };
+  const senza26 = senza(rp26, vp26), senza27 = senza(rp27, vp27), con26 = con(rc26, vc26), con27 = con(rc27, vc27);
+  const totSenza = senza26 + senza27, totCon = con26 + con27, delta = totCon - totSenza;
+  let verdetto = 'Conviene';
+  if (delta > 0) verdetto = (totSenza > 0 && delta <= totSenza * (P.tolleranza / 100)) ? 'Al limite' : 'Non conviene';
+  const scostamento = rc26 !== 0 ? (rp26 - rc26) / Math.abs(rc26) : null;
+  return { completo: true, senza26, senza27, con26, con27, totSenza, totCon, delta, verdetto, scostamento, avviso: rp26 < rc26 ? 'La proiezione 2026 è sotto il reddito concordato: con il CPB si pagano imposte su un reddito più alto di quello stimato.' : '' };
+}
+const CPB_VERDETTO_CLASSE = { 'Conviene': 'stato-inviato-telematicamente', 'Al limite': 'stato-da-fare', 'Non conviene': 'stato-errore', 'Dati incompleti': 'stato-non-applicabile' };
+function cpbVerdettoBadge(r) { return `<span class="badge ${CPB_VERDETTO_CLASSE[r.verdetto]}">${r.verdetto}</span>`; }
+
+function renderCpbValutazione() {
+  const f = CPB_FILTRO, P = cpbParametri();
+  let lista = STATE.clienti.filter(c => clienteAttivo(c) && ammissibilitaCpb(c).ok).sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale));
+  if (f.tipo !== 'Tutti') lista = lista.filter(c => c.tipo === f.tipo);
+  if (f.regime !== 'Tutti') lista = lista.filter(c => c.regimeFiscale === f.regime);
+  const righe = lista.map(c => ({ c, r: calcolaCpb(c, ((STATE.cpb || {})[c.id] || {}).dati, P) }));
+  const conta = (v) => righe.filter(x => x.r.verdetto === v).length;
+  const risparmio = righe.filter(x => x.r.completo).reduce((a, x) => a + (-x.r.delta), 0);
+  const kpi = `<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);">
+    <div class="kpi futuri"><div class="n">${conta('Conviene')}</div><div class="l">CONVIENE</div></div>
+    <div class="kpi inscadenza"><div class="n">${conta('Al limite')}</div><div class="l">AL LIMITE</div></div>
+    <div class="kpi scaduti"><div class="n">${conta('Non conviene')}</div><div class="l">NON CONVIENE</div></div>
+    <div class="kpi completati"><div class="n">${conta('Dati incompleti')}</div><div class="l">DATI DA INSERIRE</div></div></div>`;
+  const toolbar = `<div class="toolbar">
+    <div class="field"><label>Tipo di cliente</label><select data-action="cpb-filtro-tipo"><option value="Tutti">Tutti</option>${TIPI_CLIENTE.map(t => `<option value="${t.v}" ${f.tipo === t.v ? 'selected' : ''}>${escapeHtml(t.l)}</option>`).join('')}</select></div>
+    <div class="field"><label>Regime fiscale</label><select data-action="cpb-filtro-regime"><option value="Tutti">Tutti</option>${REGIMI_FISCALI.map(r => `<option ${f.regime === r ? 'selected' : ''}>${escapeHtml(r)}</option>`).join('')}</select></div>
+    <div class="field" style="margin-left:auto;"><label>&nbsp;</label><button class="btn small" data-action="cpb-val-esporta">⬇ Esporta riepilogo (CSV)</button></div>
+  </div>`;
+  const tr = righe.map(({ c, r }) => `<tr data-action="cpb-valuta" data-id="${c.id}" style="cursor:pointer;">
+    <td><strong>${escapeHtml(c.ragioneSociale)}</strong><div class="helptext">${escapeHtml(labelTipoCliente(c.tipo))} · ${escapeHtml(c.regimeFiscale || '—')}</div></td>
+    ${r.completo ? `<td style="text-align:right;">${fmtEuro(cpbNum((((STATE.cpb || {})[c.id] || {}).dati || {}).redConc26))}</td><td style="text-align:right;">${fmtEuro(cpbNum((((STATE.cpb || {})[c.id] || {}).dati || {}).redProj26))}</td><td style="text-align:right;">${r.scostamento == null ? '—' : (r.scostamento * 100).toFixed(0) + '%'}</td><td style="text-align:right;">${fmtEuro(r.totSenza)}</td><td style="text-align:right;">${fmtEuro(r.totCon)}</td><td style="text-align:right;font-weight:700;color:${r.delta <= 0 ? 'var(--verde)' : 'var(--rosso)'};">${r.delta <= 0 ? '−' : '+'}${fmtEuro(Math.abs(r.delta))}</td>` : '<td colspan="6" class="helptext">Dati della proposta e proiezione da inserire</td>'}
+    <td>${cpbVerdettoBadge(r)}</td>
+    <td><span class="badge ${CPB_CLASSI[statoCpbCliente(c.id)].sel.replace('stato-', 'stato-')}">${statoCpbCliente(c.id)}</span></td>
+    <td><button class="btn small" data-action="cpb-valuta" data-id="${c.id}">Apri</button></td></tr>`).join('');
+  const tabella = lista.length ? `<div class="card"><table class="compact"><thead><tr><th>Cliente</th><th style="text-align:right;">Concordato 2026</th><th style="text-align:right;">Stimato 2026</th><th style="text-align:right;">Scostam.</th><th style="text-align:right;">Imposte senza CPB (2026+27)</th><th style="text-align:right;">Imposte con CPB (2026+27)</th><th style="text-align:right;">Differenza</th><th>Indicazione</th><th>Stato</th><th></th></tr></thead><tbody>${tr}</tbody></table></div>` : `<div class="card"><div class="empty">Nessun cliente corrisponde ai filtri.</div></div>`;
+  const param = `<details class="card" style="margin-top:12px;"><summary style="cursor:pointer;font-weight:700;">Parametri di calcolo (da verificare sulla circolare 8/E)</summary>
+    <div class="toolbar" style="margin-top:10px;">
+      ${[['ires', 'IRES %'], ['irpef', 'IRPEF marginale % (società di persone, ditte, professionisti)'], ['irap', 'IRAP %'], ['sostAlta', 'Imposta sostitutiva % ISA ≥ 8'], ['sostMedia', 'Imposta sostitutiva % ISA 6–8'], ['sostBassa', 'Imposta sostitutiva % ISA < 6'], ['soglia', 'Limite quota agevolata (€)'], ['tolleranza', '"Al limite" se il maggior costo è ≤ % delle imposte senza CPB']].map(([k, l]) => `<div class="field"><label>${l}</label><input type="number" step="any" value="${P[k]}" data-action="cpb-param" data-k="${k}"></div>`).join('')}
+    </div>
+    <div class="helptext">Calcolo semplificato: imposte = reddito × aliquota ordinaria + valore della produzione × IRAP; con il CPB si usa il reddito concordato e, se spuntata l'opzione, l'imposta sostitutiva sulla sola parte oltre il reddito di riferimento (fino al limite indicato). Non considera perdite pregresse, contributi, addizionali, decadenza o cessazione. L'indicazione non sostituisce la valutazione del professionista.</div></details>`;
+  return `<div class="helptext" style="margin-bottom:8px;">Confronto società per società tra le imposte stimate <strong>con</strong> e <strong>senza</strong> concordato per il biennio 2026-2027. Clicca una riga per inserire la proposta dell'Agenzia e la proiezione dal bilancio provvisorio. Termine di adesione: 2/11/2026 (da verificare).<br><strong>Documenti per ogni società:</strong> proposta di concordato dell'Agenzia · bilancio 2025 (4 sezioni) · bilancio provvisorio 2026 alla data odierna (4 sezioni) · dichiarazione 2024 e bozza 2025 (utili per reddito di riferimento, voto ISA e storico).</div>` + kpi + toolbar + tabella + param;
+}
+
+function modalValutazioneCpb(id) {
+  const c = clienteById(id); if (!c) return;
+  const d = ((STATE.cpb || {})[id] || {}).dati || {};
+  const campo = (x) => `<div class="field"><label>${escapeHtml(x.l)}</label><input type="number" step="any" id="cpbv_${x.k}" value="${d[x.k] != null && d[x.k] !== '' ? d[x.k] : ''}" data-action="cpb-val-input"></div>`;
+  const html = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop"><div class="modal" style="max-width:760px;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;"><div><h2>Valutazione CPB: ${escapeHtml(c.ragioneSociale)}</h2><div class="helptext">${escapeHtml(labelTipoCliente(c.tipo))} · ${escapeHtml(c.regimeFiscale || '—')}</div></div><button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button></div>
+    <div style="font-size:12px;font-weight:700;color:var(--text-mut);text-transform:uppercase;margin:12px 0 4px;">Proposta dell'Agenzia</div>
+    <div class="form-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">${CPB_CAMPI.slice(0, 6).map(campo).join('')}</div>
+    <div style="font-size:12px;font-weight:700;color:var(--text-mut);text-transform:uppercase;margin:14px 0 4px;">Proiezione dal bilancio provvisorio</div>
+    <div class="form-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">${CPB_CAMPI.slice(6).map(campo).join('')}</div>
+    <label class="checkline" style="margin-top:10px;"><input type="checkbox" id="cpbv_optSost" data-action="cpb-val-input" ${d.optSost === false ? '' : 'checked'}> Opta per l'imposta sostitutiva sulla parte di reddito concordato oltre il riferimento</label>
+    <div id="cpbvRisultato" style="margin-top:12px;"></div>
+    <div class="field" style="margin-top:10px;"><label>Note di valutazione (Federico / Matteo)</label><textarea id="cpbv_nota" rows="3">${escapeHtml(((STATE.cpb || {})[id] || {}).nota || '')}</textarea></div>
+    <div class="modal-actions" style="flex-wrap:wrap;">
+      <button class="btn" data-action="chiudi-modal">Chiudi</button>
+      <button class="btn primary" data-action="cpb-val-salva" data-id="${id}">Salva</button>
+      <button class="btn" data-action="cpb-val-decisione" data-id="${id}" data-stato="Aderito" style="background:var(--verde-bg);color:var(--verde);">Salva e segna "Aderito"</button>
+      <button class="btn" data-action="cpb-val-decisione" data-id="${id}" data-stato="Non aderito" style="background:var(--rosso-bg);color:var(--rosso);">Salva e segna "Non aderito"</button>
+    </div></div></div>`;
+  document.getElementById('modalRoot').innerHTML = html;
+  ricalcolaModalCpb(id);
+}
+function leggiDatiModalCpb() {
+  const d = {};
+  CPB_CAMPI.forEach(x => { const el = document.getElementById('cpbv_' + x.k); d[x.k] = el && el.value !== '' ? Number(el.value) : ''; });
+  const o = document.getElementById('cpbv_optSost'); d.optSost = o ? o.checked : true;
+  return d;
+}
+function ricalcolaModalCpb(id) {
+  const c = clienteById(id || (document.querySelector('[data-action="cpb-val-salva"]') || {}).dataset?.id); const box = document.getElementById('cpbvRisultato');
+  if (!c || !box) return;
+  const r = calcolaCpb(c, leggiDatiModalCpb(), cpbParametri());
+  if (!r.completo) { box.innerHTML = `<div class="helptext" style="padding:10px;background:var(--bg);border-radius:8px;">Inserisci almeno il reddito concordato 2026 e il reddito stimato 2026 per vedere il confronto.</div>`; return; }
+  box.innerHTML = `<div style="padding:12px;background:var(--bg);border-radius:8px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;"><strong>Indicazione:</strong> ${cpbVerdettoBadge(r)}</div>
+    <table class="compact" style="margin-top:8px;"><thead><tr><th></th><th style="text-align:right;">2026</th><th style="text-align:right;">2027</th><th style="text-align:right;">Totale</th></tr></thead><tbody>
+      <tr><td>Imposte stimate senza CPB</td><td style="text-align:right;">${fmtEuro(r.senza26)}</td><td style="text-align:right;">${fmtEuro(r.senza27)}</td><td style="text-align:right;">${fmtEuro(r.totSenza)}</td></tr>
+      <tr><td>Imposte con CPB</td><td style="text-align:right;">${fmtEuro(r.con26)}</td><td style="text-align:right;">${fmtEuro(r.con27)}</td><td style="text-align:right;">${fmtEuro(r.totCon)}</td></tr>
+      <tr><td><strong>Differenza (− = risparmio)</strong></td><td></td><td></td><td style="text-align:right;font-weight:700;color:${r.delta <= 0 ? 'var(--verde)' : 'var(--rosso)'};">${r.delta <= 0 ? '−' : '+'}${fmtEuro(Math.abs(r.delta))}</td></tr></tbody></table>
+    <div class="helptext" style="margin-top:6px;">Scostamento stimato 2026 rispetto al concordato: ${r.scostamento == null ? '—' : (r.scostamento * 100).toFixed(1) + '%'}${r.avviso ? '<br>⚠️ ' + escapeHtml(r.avviso) : ''}</div></div>`;
+}
+function salvaValutazioneCpb(id, nuovoStato) {
+  if (!STATE.cpb) STATE.cpb = {};
+  const cur = STATE.cpb[id] || {};
+  const nota = (document.getElementById('cpbv_nota') || {}).value;
+  STATE.cpb[id] = Object.assign({}, cur, { dati: leggiDatiModalCpb(), nota: nota != null ? nota : cur.nota }, nuovoStato ? { stato: nuovoStato } : {});
+  salvaStato();
+}
+function cpbCsvRiepilogo() {
+  const P = cpbParametri();
+  const esc = (v) => { v = String(v == null ? '' : v); return /[;"\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+  const righe = [['Cliente', 'Tipo', 'Regime', 'Concordato 2026', 'Stimato 2026', 'Scostamento %', 'Imposte senza CPB', 'Imposte con CPB', 'Differenza', 'Indicazione', 'Stato', 'Note'].join(';')];
+  STATE.clienti.filter(c => clienteAttivo(c) && ammissibilitaCpb(c).ok).sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale)).forEach(c => {
+    const e = (STATE.cpb || {})[c.id] || {}, r = calcolaCpb(c, e.dati, P), d = e.dati || {};
+    righe.push([c.ragioneSociale, labelTipoCliente(c.tipo), c.regimeFiscale || '', r.completo ? d.redConc26 : '', r.completo ? d.redProj26 : '', r.completo && r.scostamento != null ? (r.scostamento * 100).toFixed(1) : '', r.completo ? r.totSenza.toFixed(0) : '', r.completo ? r.totCon.toFixed(0) : '', r.completo ? r.delta.toFixed(0) : '', r.verdetto, statoCpbCliente(c.id), e.nota || ''].map(esc).join(';'));
+  });
+  return '\ufeff' + righe.join('\r\n');
 }
 
 /* -------------------- REPORT MENSILE AL CLIENTE --------------------

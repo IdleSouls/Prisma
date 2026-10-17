@@ -6044,6 +6044,34 @@ async function main() {
       console.log('=== Concordato preventivo: stati e colori OK');
     }
 
+    // CPB: valutazione di convenienza (proposta AdE + proiezione -> imposte con/senza CPB)
+    {
+      window.setView('cpb'); window.render(); await wait(20);
+      q('[data-action="cpb-vista"][data-vista="valutazione"]').click(); await wait(20);
+      assert(q('[data-action="cpb-valuta"]'), 'CPB valutazione: deve esserci almeno una società da valutare');
+      assert(/DATI DA INSERIRE/.test(q('.kpi.completati').textContent), 'CPB valutazione: riquadro dati da inserire');
+      const riga = q('tr[data-action="cpb-valuta"]'); const idv = riga.dataset.id; riga.click(); await wait(20);
+      assert(q('#cpbv_redConc26'), 'CPB valutazione: scheda con i campi della proposta');
+      assert(/Inserisci almeno/.test(q('#cpbvRisultato').textContent), 'CPB valutazione: senza dati niente confronto');
+      const setv = (k, v) => { const e = q('#cpbv_' + k); e.value = v; fire(e, 'input'); };
+      // proposta molto alta rispetto alla proiezione => non conviene
+      setv('redConc26', 100000); setv('redRif', 50000); setv('isa', 8); setv('redProj26', 40000);
+      assert(/Non conviene/.test(q('#cpbvRisultato').textContent), 'CPB valutazione: concordato alto sulla proiezione bassa = non conviene');
+      assert(/sotto il reddito concordato/.test(q('#cpbvRisultato').textContent), 'CPB valutazione: avviso proiezione sotto il concordato');
+      // proposta bassa rispetto alla proiezione => conviene
+      setv('redConc26', 40000); setv('redProj26', 100000);
+      assert(/Conviene/.test(q('#cpbvRisultato').textContent), 'CPB valutazione: concordato basso sulla proiezione alta = conviene');
+      q('#cpbv_nota').value = 'Test Federico';
+      q('[data-action="cpb-val-decisione"][data-stato="Aderito"]').click(); await wait(30);
+      const eC = window.getSTATE().cpb[idv];
+      assert(eC && eC.stato === 'Aderito' && eC.dati.redConc26 === 40000 && eC.nota === 'Test Federico', 'CPB valutazione: salvataggio dati, nota e decisione');
+      assert(window.cpbCsvRiepilogo && /Indicazione/.test(window.cpbCsvRiepilogo()), 'CPB valutazione: esportazione CSV');
+      delete window.getSTATE().cpb[idv];
+      q('[data-action="cpb-vista"][data-vista="stato"]').click(); await wait(20);
+      window.setView('dashboard');
+      console.log('=== CPB: valutazione di convenienza OK');
+    }
+
     // avviso di riavvio server: il titolo della pagina segnala "Riavvio server" (l'app Windows lo usa per far lampeggiare l'icona)
     {
       const titoloPrima = window.document.title;
