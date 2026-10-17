@@ -2067,6 +2067,10 @@ function onChangeDelegato(e) {
       cfg.periodiciEsclusi = Array.from(set); salvaConfigContabTerzi(cfg); break;
     }
     case 'report-mensile-mese': { const t = h('rmTesto'); if (t) t.value = reportMensileCliente(el.dataset.cliente, el.value || oggiISO().slice(0, 7)); break; }
+    case 'cpb-filtro-tipo': CPB_FILTRO.tipo = el.value; render(); break;
+    case 'cpb-filtro-regime': CPB_FILTRO.regime = el.value; render(); break;
+    case 'cpb-filtro-stato': CPB_FILTRO.stato = el.value; render(); break;
+    case 'cpb-filtro-non-ammessi': CPB_FILTRO.mostraNonAmmessi = el.checked; render(); break;
     case 'cpb-stato': STATE.cpb[id] = Object.assign({}, STATE.cpb[id] || {}, { stato: el.value }); salvaStato(); render(); break;
     case 'cpb-nota': STATE.cpb[id] = Object.assign({}, STATE.cpb[id] || {}, { nota: el.value }); salvaStato(); break;
     case 'deon-acc-cliente': DEON_CLIENTE = el.value; render(); break;

@@ -6017,6 +6017,26 @@ async function main() {
         assert(q(`select[data-action="cpb-stato"][data-id="${idc}"]`).classList.contains(cls), 'CPB: colore di ' + stato);
         assert(q('.kpi.' + kpi), 'CPB: riquadro colorato per ' + stato);
       }
+      // ammissibilità e filtri: i forfettari sono nascosti di default, si mostrano a richiesta (disabilitati); filtro per tipo di cliente e regime
+      {
+        const S2 = window.getSTATE();
+        const forf = S2.clienti.find(c => ['Forfettario', 'Forfettario L.398/91'].includes(c.regimeFiscale) && window.clienteAttivo(c));
+        if (forf) {
+          assert(!q(`select[data-action="cpb-stato"][data-id="${forf.id}"]`), 'CPB: i forfettari non devono comparire di default');
+          const chk = q('[data-action="cpb-filtro-non-ammessi"]'); chk.checked = true; fire(chk, 'change'); await wait(20);
+          const sf = q(`select[data-action="cpb-stato"][data-id="${forf.id}"]`);
+          assert(sf && sf.disabled, 'CPB: con "Mostra anche i non ammessi" il forfettario compare ma non è modificabile');
+          const chk2 = q('[data-action="cpb-filtro-non-ammessi"]'); chk2.checked = false; fire(chk2, 'change'); await wait(20);
+        }
+        const nTutti = qa('select[data-action="cpb-stato"]').length;
+        const selTipo = q('[data-action="cpb-filtro-tipo"]'); selTipo.value = 'societa_capitali'; fire(selTipo, 'change'); await wait(20);
+        const nSc = qa('select[data-action="cpb-stato"]').length;
+        const attesi = S2.clienti.filter(c => window.clienteAttivo(c) && c.tipo === 'societa_capitali' && !['Forfettario', 'Forfettario L.398/91'].includes(c.regimeFiscale)).length;
+        assert(nSc === attesi && nSc < nTutti, `CPB: filtro tipo società di capitali: attesi ${attesi}, trovati ${nSc}`);
+        const selReg = q('[data-action="cpb-filtro-regime"]'); selReg.value = 'Ordinario'; fire(selReg, 'change'); await wait(20);
+        assert(qa('select[data-action="cpb-stato"]').length <= nSc, 'CPB: il filtro regime restringe ulteriormente');
+        { const a1 = q('[data-action="cpb-filtro-tipo"]'); a1.value = 'Tutti'; fire(a1, 'change'); const a2 = q('[data-action="cpb-filtro-regime"]'); a2.value = 'Tutti'; fire(a2, 'change'); await wait(20); }
+      }
       window.getSTATE().cpb[idc] = { stato: 'Proposta ricevuta' }; window.render(); await wait(20);
       assert(q(`select[data-action="cpb-stato"][data-id="${idc}"]`).value === 'Calcolato', 'CPB: il vecchio stato "Proposta ricevuta" si legge come Calcolato');
       delete window.getSTATE().cpb[idc];

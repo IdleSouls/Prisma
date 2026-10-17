@@ -1258,13 +1258,48 @@ function statoCpbCliente(id) {
   const x = ((STATE.cpb || {})[id] || {}).stato || 'Da valutare';
   return STATI_CPB.includes(x) ? x : ((x === 'Proposta ricevuta' || x === 'Valutata') ? 'Calcolato' : 'Da valutare');
 }
+/* Chi può aderire al CPB (biennio 2026-2027): solo chi applica gli ISA; i forfettari sono esclusi (fonti: Circ. AdE 8/E, D.Lgs. 148/2026 - il termine va
+   verificato ogni anno). Qui si esclude in automatico solo ciò che si sa dall'anagrafica: forfettari = non ammessi (nascosti di default);
+   enti non commerciali = da verificare (di norma niente ISA, ma dipende dall'attività). Gli altri requisiti (debiti, dichiarazioni omesse...) restano al professionista. */
+let CPB_FILTRO = { tipo: 'Tutti', regime: 'Tutti', stato: 'Tutti', mostraNonAmmessi: false };
+function ammissibilitaCpb(c) {
+  if (REGIMI_FORFETTARI.includes(c.regimeFiscale)) return { ok: false, nota: 'Forfettario: escluso dal CPB' };
+  if (c.regimeFiscale === 'Ente non commerciale') return { ok: true, verifica: true, nota: 'Ente non commerciale: verifica se applica gli ISA' };
+  return { ok: true };
+}
 function renderCpb() {
-  const attivi = STATE.clienti.filter(c => clienteAttivo(c)).sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale));
+  const f = CPB_FILTRO;
   const st = statoCpbCliente;
+  const tutti = STATE.clienti.filter(c => clienteAttivo(c)).sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale));
+  const nNonAmmessi = tutti.filter(c => !ammissibilitaCpb(c).ok).length;
+  let attivi = tutti.filter(c => f.mostraNonAmmessi || ammissibilitaCpb(c).ok);
+  if (f.tipo !== 'Tutti') attivi = attivi.filter(c => c.tipo === f.tipo);
+  if (f.regime !== 'Tutti') attivi = attivi.filter(c => c.regimeFiscale === f.regime);
+  // i riquadri contano i clienti secondo tipo/regime scelti (non lo stato: così si confrontano tra loro)
   const conta = (x) => attivi.filter(c => st(c.id) === x).length;
   const kpi = `<div class="kpi-grid" style="grid-template-columns:repeat(${STATI_CPB.length},1fr);">${STATI_CPB.map(x => `<div class="kpi ${CPB_CLASSI[x].kpi}"><div class="n">${conta(x)}</div><div class="l">${x.toUpperCase()}</div></div>`).join('')}</div>`;
-  const righe = attivi.map(c => `<tr><td>${escapeHtml(c.ragioneSociale)}</td><td><select class="statoSel ${CPB_CLASSI[st(c.id)].sel}" data-action="cpb-stato" data-id="${c.id}">${STATI_CPB.map(x => `<option ${st(c.id) === x ? 'selected' : ''}>${x}</option>`).join('')}</select></td><td><div class="field"><input type="text" data-action="cpb-nota" data-id="${c.id}" value="${escapeHtml(((STATE.cpb || {})[c.id] || {}).nota || '')}" placeholder="note"></div></td></tr>`).join('');
-  return `<div class="helptext" style="margin-bottom:8px;">Tracker interno dell'adesione al concordato preventivo biennale: la valutazione e l'adesione restano decisioni del professionista. <strong>Termine di adesione da verificare ogni anno sul provvedimento ufficiale.</strong></div>` + kpi + `<div class="card"><table><thead><tr><th>Cliente</th><th>Stato</th><th>Note</th></tr></thead><tbody>${righe}</tbody></table></div>`;
+  const lista = f.stato === 'Tutti' ? attivi : attivi.filter(c => st(c.id) === f.stato);
+  const toolbar = `<div class="toolbar">
+    <div class="field"><label>Tipo di cliente</label><select data-action="cpb-filtro-tipo">
+      <option value="Tutti">Tutti</option>
+      ${TIPI_CLIENTE.map(t => `<option value="${t.v}" ${f.tipo === t.v ? 'selected' : ''}>${escapeHtml(t.l)}</option>`).join('')}
+    </select></div>
+    <div class="field"><label>Regime fiscale</label><select data-action="cpb-filtro-regime">
+      <option value="Tutti">Tutti</option>
+      ${REGIMI_FISCALI.map(r => `<option ${f.regime === r ? 'selected' : ''}>${escapeHtml(r)}</option>`).join('')}
+    </select></div>
+    <div class="field"><label>Stato</label><select data-action="cpb-filtro-stato">
+      <option>Tutti</option>${STATI_CPB.map(x => `<option ${f.stato === x ? 'selected' : ''}>${x}</option>`).join('')}
+    </select></div>
+    <div class="field" style="min-width:max-content;"><label>&nbsp;</label><label class="checkline" style="white-space:nowrap;"><input type="checkbox" data-action="cpb-filtro-non-ammessi" ${f.mostraNonAmmessi ? 'checked' : ''}> Mostra anche i non ammessi (${nNonAmmessi})</label></div>
+  </div>`;
+  const righe = lista.map(c => {
+    const amm = ammissibilitaCpb(c);
+    const badge = !amm.ok ? ` <span class="badge" style="background:var(--grigio-bg);color:var(--grigio);">Non ammesso</span>` : (amm.verifica ? ` <span class="badge stato-da-fare" title="${escapeHtml(amm.nota)}">Verifica ISA</span>` : '');
+    return `<tr${amm.ok ? '' : ' style="opacity:.55;"'}><td>${escapeHtml(c.ragioneSociale)}${badge}<div class="helptext">${escapeHtml(labelTipoCliente(c.tipo))} · ${escapeHtml(c.regimeFiscale || '—')}${amm.ok ? '' : ' · ' + escapeHtml(amm.nota)}</div></td><td><select class="statoSel ${CPB_CLASSI[st(c.id)].sel}" data-action="cpb-stato" data-id="${c.id}" ${amm.ok ? '' : 'disabled'}>${STATI_CPB.map(x => `<option ${st(c.id) === x ? 'selected' : ''}>${x}</option>`).join('')}</select></td><td><div class="field"><input type="text" data-action="cpb-nota" data-id="${c.id}" value="${escapeHtml(((STATE.cpb || {})[c.id] || {}).nota || '')}" placeholder="note"></div></td></tr>`;
+  }).join('');
+  const corpo = lista.length ? `<div class="card"><table><thead><tr><th>Cliente</th><th>Stato</th><th>Note</th></tr></thead><tbody>${righe}</tbody></table></div>` : `<div class="card"><div class="empty">Nessun cliente corrisponde ai filtri.</div></div>`;
+  return `<div class="helptext" style="margin-bottom:8px;">Tracker interno dell'adesione al concordato preventivo biennale 2026-2027: possono aderire solo i contribuenti che applicano gli ISA (i <strong>forfettari sono esclusi</strong>), senza debiti tributari/contributivi definitivi oltre 5.000 € e senza dichiarazioni omesse negli ultimi tre anni. La valutazione e l'adesione restano decisioni del professionista. <strong>Termine di adesione: 31/10/2026, slitta a lunedì 2/11/2026 (da verificare sul provvedimento ufficiale).</strong></div>` + toolbar + kpi + corpo;
 }
 
 /* -------------------- REPORT MENSILE AL CLIENTE --------------------
