@@ -1361,7 +1361,7 @@ function renderCpb() {
     return `<tr${amm.ok ? '' : ' style="opacity:.55;"'}><td><strong>${escapeHtml(c.ragioneSociale)}</strong>${badge}<div class="helptext">${escapeHtml(labelTipoCliente(c.tipo))} · ${escapeHtml(c.regimeFiscale || '—')}</div></td>
       <td><select class="statoSel ${CPB_CLASSI[st(c.id)].sel}" data-action="cpb-stato" data-id="${c.id}" ${amm.ok ? '' : 'disabled'}>${STATI_CPB.map(x => `<option ${st(c.id) === x ? 'selected' : ''}>${x}</option>`).join('')}</select></td>
       ${cifre}
-      <td><input type="text" value="${escapeHtml(e.nota || '')}" placeholder="Nota…" data-action="cpb-nota" data-id="${c.id}" ${amm.ok ? '' : 'disabled'} style="min-width:140px;"></td>
+      <td style="min-width:280px;"><textarea data-action="cpb-nota" data-id="${c.id}" placeholder="Nota…" ${amm.ok ? '' : 'disabled'} style="width:100%;min-width:260px;min-height:64px;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12.5px;resize:vertical;">${escapeHtml(e.nota || '')}</textarea></td>
       <td>${amm.ok ? `<button class="btn small" data-action="cpb-valuta" data-id="${c.id}">Valuta</button>` : ''}</td></tr>`;
   }).join('');
   const tabella = lista.length ? `<div class="card" style="overflow-x:auto;"><table class="compact"><thead><tr><th>Cliente</th><th>Stato</th><th style="text-align:right;">Concordato 2026</th><th style="text-align:right;">Stimato 2026</th><th style="text-align:right;">Imposte senza CPB (2026+27)</th><th style="text-align:right;">Imposte con CPB (2026+27)</th><th style="text-align:right;">Differenza</th><th>Indicazione</th><th>Nota</th><th></th></tr></thead><tbody>${tr}</tbody></table></div>` : `<div class="card"><div class="empty">Nessun cliente corrisponde ai filtri.</div></div>`;
