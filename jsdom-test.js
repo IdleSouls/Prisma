@@ -6044,6 +6044,21 @@ async function main() {
       console.log('=== Concordato preventivo: stati e colori OK');
     }
 
+    // eseguiComandoMCP(modificaCpb): dati CPB di un cliente da Claude
+    {
+      const cl = window.getSTATE().clienti.find(c => window.clienteAttivo(c));
+      richiesteFetch.length = 0;
+      await window.eseguiComandoMCP({ id: 'cmdcpb1', azione: 'modificaCpb', parametri: { cliente: cl.ragioneSociale, redConc26: 45483, redProj26: 1100, vpnConc26: 67700, stato: 'Calcolato', nota: 'x' } });
+      assert(JSON.parse(richiesteFetch[0].opts.body).ok === true, 'modificaCpb: esito ok');
+      const e = window.getSTATE().cpb[cl.id];
+      assert(e && e.dati.redConc26 === 45483 && e.dati.redProj26 === 1100 && e.stato === 'Calcolato' && e.nota === 'x', 'modificaCpb: dati salvati');
+      richiesteFetch.length = 0;
+      await window.eseguiComandoMCP({ id: 'cmdcpb2', azione: 'modificaCpb', parametri: { cliente: 'nessunoXYZ', redConc26: 1 } });
+      assert(JSON.parse(richiesteFetch[0].opts.body).ok === false, 'modificaCpb: cliente inesistente = errore');
+      delete window.getSTATE().cpb[cl.id];
+      console.log('=== eseguiComandoMCP(modificaCpb) OK');
+    }
+
     // CPB: valutazione di convenienza (proposta AdE + proiezione -> imposte con/senza CPB)
     {
       window.setView('cpb'); window.render(); await wait(20);

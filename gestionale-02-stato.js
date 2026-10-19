@@ -1553,6 +1553,24 @@ const AZIONI_MCP = {
   },
   modificaScadenza: (p) => { aggiornaScadenza(p.id, p.patch || {}); return { aggiornata: true }; },
   aggiornaSottoAdempimento: (p) => { aggiornaSottoAdempimento(p.annualeId, p.nomeSotto, p.patch || {}); return { aggiornato: true }; },
+  /* Concordato preventivo biennale: dati della proposta AdE e della proiezione per la "Valutazione di convenienza" (tab CPB). */
+  modificaCpb: (p) => {
+    const q = String(p.cliente || '').trim().toLowerCase();
+    const cand = STATE.clienti.filter(c => c.id === p.cliente || (c.ragioneSociale || '').toLowerCase() === q);
+    const c = cand[0] || STATE.clienti.filter(x => (x.ragioneSociale || '').toLowerCase().includes(q))[0];
+    if (!q || !c) throw new Error('Cliente non trovato: ' + p.cliente);
+    if (!STATE.cpb) STATE.cpb = {};
+    const cur = STATE.cpb[c.id] || {};
+    const dati = Object.assign({}, cur.dati || {});
+    ['redConc26', 'redConc27', 'vpnConc26', 'vpnConc27', 'redRif', 'isa', 'redProj26', 'redProj27', 'vpnProj26', 'vpnProj27'].forEach(k => { if (p[k] !== undefined) dati[k] = p[k] === null ? '' : Number(p[k]); });
+    if (p.optSost !== undefined) dati.optSost = !!p.optSost;
+    const nuovo = Object.assign({}, cur, { dati });
+    if (p.nota !== undefined) nuovo.nota = p.nota;
+    if (p.stato !== undefined) { if (!STATI_CPB.includes(p.stato)) throw new Error('Stato CPB non valido: ' + p.stato); nuovo.stato = p.stato; }
+    STATE.cpb[c.id] = nuovo; salvaStato(); render();
+    return { aggiornato: true, cliente: c.ragioneSociale };
+  },
+
   modificaAdempimentoAnnuale: (p) => {
     const pt = p.patch || {}; const ok = {};
     ['nota', 'scadenza', 'responsabile'].forEach(k => { if (pt[k] !== undefined) ok[k] = pt[k]; });
