@@ -749,6 +749,8 @@ table.cli-tab .cli-tab-filtro{width:100%;min-width:90px;font-size:13px;font-fami
 html[data-tema="scuro"] table.cli-tab .cli-tab-filtro{background:#0F1627;color:var(--text);border-color:var(--border);}
 table.cli-tab td{white-space:nowrap;padding:7px 10px;border-bottom:1px solid var(--border);}
 table.cli-tab .cli-sticky{position:sticky;left:0;z-index:3;background:inherit;}
+table.cli-tab th.cli-sticky{z-index:5;background:var(--card,#fff);}
+table.cli-tab tr.cli-filtri th.cli-sticky{z-index:5;background:var(--card,#fff);}
 table.cli-tab td.cli-sticky{background:var(--card,#fff);z-index:1;}
 table.cli-tab tbody tr.cli-tr:hover td{background:#F0F4FF;}
 html[data-tema="scuro"] table.cli-tab tbody tr.cli-tr:hover td{background:#1A2540;}

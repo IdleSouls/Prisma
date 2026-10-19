@@ -59,8 +59,8 @@ const CLI_COLONNE = (() => {
   Object.keys(FLAG_LABELS).forEach(k => base.push(col('flag_' + k, FLAG_LABELS[k], c => (c.flags || {})[k] ? 'Sì' : 'No', true, 120)));
   return base;
 })();
-const CLI_COL_DEFAULT = ['ragioneSociale', 'stato', 'tipo', 'partitaIva', 'regimeFiscale', 'periodicitaIva', 'responsabileStudio', 'mandatario', 'organoControllo', 'email', 'pec', 'telefono', 'localita'];
-const CLI_COL_LS = 'prisma_clienti_colonne';
+const CLI_COL_DEFAULT = ['ragioneSociale', 'stato', 'tipo', 'codiceFiscale', 'partitaIva', 'regimeFiscale', 'periodicitaIva', 'responsabileStudio', 'mandatario', 'organoControllo', 'email', 'pec', 'telefono', 'localita'];
+const CLI_COL_LS = 'prisma_clienti_colonne_v2'; // v2: il codice fiscale entra tra le colonne predefinite
 let CLI_TAB = { visibili: null, filtri: {}, sort: { id: 'ragioneSociale', dir: 1 }, sceltaAperta: false };
 function cliColonneVisibili() {
   if (!CLI_TAB.visibili) {
