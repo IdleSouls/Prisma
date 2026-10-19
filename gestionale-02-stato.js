@@ -1253,7 +1253,22 @@ function aggiornaVistaMCPInTempoReale() {
   } catch (err) { /* mai bloccante */ }
 }
 
+/* Schermata nascosta finché non arriva lo stato vero dal server: prima si vedeva per un attimo la dashboard
+   (con dati locali/di default) prima della scelta dell'utente. Si rivela appena la sync iniziale ha deciso se serve
+   il selettore "chi sei"; rete di sicurezza: dopo 6 secondi si rivela comunque. */
+function fineAttesaAvvio() { try { document.documentElement.classList.remove('avvio-in-corso'); } catch (e) { /* ignora */ } }
+try {
+  if (typeof window !== 'undefined' && window.location && /^https?:$/.test(window.location.protocol)) {
+    document.documentElement.classList.add('avvio-in-corso');
+    setTimeout(fineAttesaAvvio, 6000);
+  }
+} catch (e) { /* ambiente senza DOM */ }
 async function inizializzaSyncCondiviso() {
+  try {
+    await inizializzaSyncCondivisoInterno();
+  } finally { fineAttesaAvvio(); }
+}
+async function inizializzaSyncCondivisoInterno() {
   try {
     if (typeof window === 'undefined' || window.location.protocol === 'file:') return; // file locale: nessun backend condiviso possibile né necessario
 
