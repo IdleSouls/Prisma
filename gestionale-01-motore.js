@@ -281,11 +281,14 @@ function livelliMancantiCliente(c) {
     if (!c.startupInnovativa) out.leggeri.push('Start-up innovativa (sì/no)');
     if (!c.organoControllo) out.leggeri.push('Organo di controllo');
   }
+  if (cpbIsaDaVerificare(c) && !c.soggettoIsa) out.leggeri.push('Soggetto a ISA (sì/no): da verificare per il CPB');
   const co = c.contatti || {};
   if (!co.email && !co.pec) out.leggeri.push('Email o PEC');
   if (!(c.atecoCodici || []).length) out.leggeri.push('Codice ATECO');
   return out;
 }
+/* Associazioni/enti/ASD L.398: non tutte soggette agli ISA -> il professionista lo verifica e lo indica in anagrafica (campo soggettoIsa). */
+function cpbIsaDaVerificare(c) { return c.tipo === 'associazione' || c.regimeFiscale === 'Ente non commerciale' || c.regimeFiscale === 'Forfettario L.398/91'; }
 function campiMancantiCliente(c) { const l = livelliMancantiCliente(c); return l.gravi.concat(l.leggeri); }
 function nClientiGravi() { return STATE.clienti.filter(c => livelliMancantiCliente(c).gravi.length > 0).length; }
 function badgeDatiMancanti(c) {

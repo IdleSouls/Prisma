@@ -762,3 +762,7 @@ html,body{overflow-x:clip;}
 /* avvio: nessuna schermata di Prisma visibile finche' non e' deciso se serve la scelta utente */
 html.avvio-in-corso body{visibility:hidden;}
 html.avvio-in-corso body #modalRoot{visibility:visible;}
+
+/* scelta utente obbligatoria: finestra compatta in basso, semitrasparente, cosi' l'immagine Prisma resta visibile */
+.modal-backdrop[data-obbligatorio]{align-items:flex-end;padding-bottom:7vh;background-position:center 30%;}
+.modal-backdrop[data-obbligatorio] .modal{max-width:400px;background:rgba(255,255,255,.9);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.5);}

@@ -1263,15 +1263,33 @@ function statoCpbCliente(id) {
    enti non commerciali = da verificare (di norma niente ISA, ma dipende dall'attività). Gli altri requisiti (debiti, dichiarazioni omesse...) restano al professionista. */
 let CPB_FILTRO = { tipo: 'Tutti', regime: 'Tutti', stato: 'Tutti', mostraNonAmmessi: false };
 let CPB_VISTA = 'stato'; // 'stato' | 'valutazione'
+/* Associazioni ed enti: NON tutte sono soggette agli ISA, quindi niente esclusione automatica ma segnalazione "da verificare" caso per caso
+   (indicazioni da una sintesi IA, da confermare su circolare/istruzioni ISA prima di proporre il CPB):
+   - enti non commerciali e ETS: di norma esclusi dagli ISA per l'attivita' istituzionale; esclusioni specifiche (ETS, OdV/APS) legate a condizioni/autorizzazioni;
+   - ASD in regime L.398/91: esclusione ISA per i proventi commerciali connessi agli scopi istituzionali, ma l'assoggettamento dipende dal plafond dei proventi;
+   - attivita' commerciali ordinarie o separate (bar, ristorazione, altro): possibile ISA per quella gestione. */
+const CPB_NOTA_ASSOCIAZIONI = 'Associazione/ente: non tutte sono soggette agli ISA. Enti non commerciali/ETS: di norma esclusi per l\'attivita\' istituzionale (esclusioni specifiche per ETS, OdV/APS: verificare condizioni). ASD in L.398/91: dipende dal plafond dei proventi commerciali. Attivita\' commerciali ordinarie (bar, ristorazione...): possibile ISA per quella parte. Verifica caso per caso prima di proporre il CPB.';
 function ammissibilitaCpb(c) {
+  if (c.regimeFiscale === 'Forfettario') return { ok: false, nota: 'Forfettario: escluso dal CPB' };
+  if (cpbIsaDaVerificare(c)) {
+    if (c.soggettoIsa === 'SI') return { ok: true };
+    if (c.soggettoIsa === 'NO') return { ok: false, nota: 'Non soggetto a ISA (verificato in anagrafica): escluso dal CPB' };
+    return { ok: false, daVerificare: true, nota: CPB_NOTA_ASSOCIAZIONI };
+  }
   if (REGIMI_FORFETTARI.includes(c.regimeFiscale)) return { ok: false, nota: 'Forfettario: escluso dal CPB' };
-  if (c.regimeFiscale === 'Ente non commerciale') return { ok: true, verifica: true, nota: 'Ente non commerciale: verifica se applica gli ISA' };
   return { ok: true };
+}
+/* Avviso (sopra le due viste CPB): clienti da verificare per gli ISA, con link alla scheda; non entrano nelle liste finché non si indica Sì/No in anagrafica. */
+function avvisoCpbIsa() {
+  const l = STATE.clienti.filter(c => clienteAttivo(c) && ammissibilitaCpb(c).daVerificare);
+  if (!l.length) return '';
+  return `<div class="card" style="border-left:4px solid var(--giallo);padding:10px 14px;margin-bottom:12px;"><strong>⚠ ${l.length} ${l.length === 1 ? 'cliente da verificare' : 'clienti da verificare'} per gli ISA</strong> prima di poterli valutare per il CPB (non tutte le associazioni e gli enti sono soggetti agli ISA): apri la scheda e indica "Soggetto a ISA" sì/no. ${l.map(c => `<a href="#" data-action="apri-cliente" data-id="${c.id}" style="font-weight:700;">${escapeHtml(c.ragioneSociale)}</a>`).join(' · ')}<div class="helptext" style="margin-top:4px;">${escapeHtml(CPB_NOTA_ASSOCIAZIONI)}</div></div>`;
 }
 function renderCpb() {
   const barra = `<div style="display:flex;gap:8px;margin-bottom:12px;"><button class="btn small${CPB_VISTA === 'stato' ? ' primary' : ''}" data-action="cpb-vista" data-vista="stato">Stato adesioni</button><button class="btn small${CPB_VISTA === 'valutazione' ? ' primary' : ''}" data-action="cpb-vista" data-vista="valutazione">Valutazione di convenienza</button></div>`;
-  if (CPB_VISTA === 'valutazione') return barra + renderCpbValutazione();
-  return barra + renderCpbStato();
+  const avviso = avvisoCpbIsa();
+  if (CPB_VISTA === 'valutazione') return barra + avviso + renderCpbValutazione();
+  return barra + avviso + renderCpbStato();
 }
 function renderCpbStato() {
   const f = CPB_FILTRO;

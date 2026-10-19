@@ -364,6 +364,7 @@ export function creaServer(filePath, baseUrl) {
         pmiInnovativa: z.enum(['SI', 'NO']).optional().describe('Ha il requisito di PMI innovativa? Solo se noto.'),
         startupInnovativa: z.enum(['SI', 'NO']).optional().describe('Ha il requisito di start-up innovativa? Solo se noto.'),
         haDipendenti: z.enum(['SI', 'NO']).optional().describe('Il cliente ha dipendenti? Solo se noto.'),
+        soggettoIsa: z.enum(['SI', 'NO']).optional().describe('Soggetto agli ISA (per il concordato preventivo)? Da verificare per associazioni/enti/ASD L.398; solo se verificato.'),
         organoControllo: z.enum(['Nessuno', 'Sindaco unico', 'Collegio sindacale', 'Revisore legale', 'Società di revisione']).optional().describe('Organo di controllo (richiesto nel 770). Solo se noto.'),
         stato: z.string().optional().describe('"attivo" (default) o "cessato".'),
         note: z.string().optional(),

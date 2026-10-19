@@ -6020,7 +6020,7 @@ async function main() {
       // ammissibilità e filtri: i forfettari sono nascosti di default, si mostrano a richiesta (disabilitati); filtro per tipo di cliente e regime
       {
         const S2 = window.getSTATE();
-        const forf = S2.clienti.find(c => ['Forfettario', 'Forfettario L.398/91'].includes(c.regimeFiscale) && window.clienteAttivo(c));
+        const forf = S2.clienti.find(c => c.regimeFiscale === 'Forfettario' && window.clienteAttivo(c));
         if (forf) {
           assert(!q(`select[data-action="cpb-stato"][data-id="${forf.id}"]`), 'CPB: i forfettari non devono comparire di default');
           const chk = q('[data-action="cpb-filtro-non-ammessi"]'); chk.checked = true; fire(chk, 'change'); await wait(20);
@@ -6031,7 +6031,7 @@ async function main() {
         const nTutti = qa('select[data-action="cpb-stato"]').length;
         const selTipo = q('[data-action="cpb-filtro-tipo"]'); selTipo.value = 'societa_capitali'; fire(selTipo, 'change'); await wait(20);
         const nSc = qa('select[data-action="cpb-stato"]').length;
-        const attesi = S2.clienti.filter(c => window.clienteAttivo(c) && c.tipo === 'societa_capitali' && !['Forfettario', 'Forfettario L.398/91'].includes(c.regimeFiscale)).length;
+        const attesi = S2.clienti.filter(c => window.clienteAttivo(c) && c.tipo === 'societa_capitali' && c.regimeFiscale !== 'Forfettario').length;
         assert(nSc === attesi && nSc < nTutti, `CPB: filtro tipo società di capitali: attesi ${attesi}, trovati ${nSc}`);
         const selReg = q('[data-action="cpb-filtro-regime"]'); selReg.value = 'Ordinario'; fire(selReg, 'change'); await wait(20);
         assert(qa('select[data-action="cpb-stato"]').length <= nSc, 'CPB: il filtro regime restringe ulteriormente');
@@ -6057,6 +6057,27 @@ async function main() {
       assert(JSON.parse(richiesteFetch[0].opts.body).ok === false, 'modificaCpb: cliente inesistente = errore');
       delete window.getSTATE().cpb[cl.id];
       console.log('=== eseguiComandoMCP(modificaCpb) OK');
+    }
+
+    // CPB: associazioni/enti da verificare per gli ISA (campo in anagrafica, alert, fuori dalle liste finche' non verificati)
+    {
+      const S3 = window.getSTATE();
+      const ass = S3.clienti.find(c => c.tipo === 'associazione' && window.clienteAttivo(c));
+      if (ass) {
+        const salvato = ass.soggettoIsa;
+        ass.soggettoIsa = '';
+        window.setView('cpb'); window.render(); await wait(20);
+        assert(!q(`select[data-action="cpb-stato"][data-id="${ass.id}"]`), 'CPB: associazione con ISA da verificare fuori dalla lista');
+        assert(/da verificare per gli ISA/.test(q('#content, body').textContent) && q(`[data-action="apri-cliente"][data-id="${ass.id}"]`), 'CPB: avviso con link alla scheda');
+        assert(window.campiMancantiCliente(ass).some(x => /ISA/.test(x)), 'anagrafica: ISA da verificare tra i dati da completare');
+        ass.soggettoIsa = 'SI'; window.render(); await wait(20);
+        assert(q(`select[data-action="cpb-stato"][data-id="${ass.id}"]`), 'CPB: associazione soggetta a ISA entra in lista');
+        assert(!window.campiMancantiCliente(ass).some(x => /ISA/.test(x)), 'anagrafica: ISA verificato non segnalato');
+        ass.soggettoIsa = 'NO'; window.render(); await wait(20);
+        assert(!q(`select[data-action="cpb-stato"][data-id="${ass.id}"]`), 'CPB: associazione non soggetta a ISA fuori dalla lista');
+        ass.soggettoIsa = salvato; window.setView('dashboard');
+      }
+      console.log('=== CPB: associazioni da verificare per gli ISA OK');
     }
 
     // CPB: valutazione di convenienza (proposta AdE + proiezione -> imposte con/senza CPB)

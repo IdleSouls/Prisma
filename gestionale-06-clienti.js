@@ -606,7 +606,7 @@ function modalCliente(clienteId) {
     periodicitaIva: 'Mensile', periodicitaIntrastat: 'N.A.', previdenza: 'No previdenza',
     flags: {}, dirittoCameraleScelta: null, versamentoImposteScelta: SCELTE_VERSAMENTO_IMPOSTE[1], adempimentiAnnualiApplicabili: [], note: '',
     settore: '', annoIngresso: new Date().getFullYear(), canaleAcquisizione: '', mandatario: '', preventivoAnnuo: '',
-    pmiInnovativa: '', startupInnovativa: '', organoControllo: '', iscrittoRegistroImprese: '', haDipendenti: '', dataCostituzione: '',
+    pmiInnovativa: '', startupInnovativa: '', organoControllo: '', iscrittoRegistroImprese: '', haDipendenti: '', soggettoIsa: '', dataCostituzione: '',
   };
   const contatti = c.contatti || {};
   const vuoto = (v) => `<option value="" ${!v?'selected':''}>— da indicare —</option>`;
@@ -674,6 +674,7 @@ function modalCliente(clienteId) {
             <div class="field"><label>Addebito F24</label><select id="fAddebito">${vuoto(c.addebitoF24)}${SCELTE_ADDEBITO_F24.map(o=>`<option value="${o.v}" ${c.addebitoF24===o.v?'selected':''}>${o.l}</option>`).join('')}</select></div>
             <div class="field"><label>Tenuta contabilità</label><select id="fContabilita">${vuoto(c.contabilita)}${SCELTE_CONTABILITA.map(o=>`<option value="${o.v}" ${c.contabilita===o.v?'selected':''}>${o.l}</option>`).join('')}</select></div>
             <div class="field"><label>Ha dipendenti</label><select id="fHaDipendenti">${vuoto(c.haDipendenti)}<option value="SI" ${c.haDipendenti==='SI'?'selected':''}>Sì, ha dipendenti</option><option value="NO" ${c.haDipendenti==='NO'?'selected':''}>No, nessun dipendente</option></select></div>
+            <div class="field"><label>Soggetto a ISA (per il concordato)</label><select id="fSoggettoIsa">${vuoto(c.soggettoIsa)}<option value="SI" ${c.soggettoIsa==='SI'?'selected':''}>Sì, applica gli ISA</option><option value="NO" ${c.soggettoIsa==='NO'?'selected':''}>No, escluso dagli ISA</option></select><div class="helptext">Da verificare per associazioni ed enti (non tutti sono soggetti agli ISA).</div></div>
           </div>
         </fieldset>
 
@@ -807,6 +808,7 @@ function leggiFormCliente(id, editing) {
     pmiInnovativa: document.getElementById('fPmiInnovativa').value,
     startupInnovativa: document.getElementById('fStartupInnovativa').value,
     haDipendenti: (document.getElementById('fHaDipendenti') || {}).value || '',
+    soggettoIsa: (document.getElementById('fSoggettoIsa') || {}).value || '',
     dataCostituzione: (document.getElementById('fDataCostituzione') || {}).value || '',
     organoControllo: document.getElementById('fOrganoControllo').value,
     iscrittoRegistroImprese: document.getElementById('fIscrittoRI').value,
