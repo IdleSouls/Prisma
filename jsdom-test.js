@@ -6065,6 +6065,7 @@ async function main() {
       q('[data-action="cpb-vista"][data-vista="valutazione"]').click(); await wait(20);
       assert(q('[data-action="cpb-valuta"]'), 'CPB valutazione: deve esserci almeno una società da valutare');
       assert(/DATI DA INSERIRE/.test(q('.kpi.completati').textContent), 'CPB valutazione: riquadro dati da inserire');
+      assert(q('select[data-action="cpb-stato"]') && q('select[data-action="cpb-stato"]').classList.contains('statoSel'), 'CPB valutazione: stato modificabile con la stessa tendina di "Stato adesioni"');
       const riga = q('tr[data-action="cpb-valuta"]'); const idv = riga.dataset.id; riga.click(); await wait(20);
       assert(q('#cpbv_redConc26'), 'CPB valutazione: scheda con i campi della proposta');
       assert(/Inserisci almeno/.test(q('#cpbvRisultato').textContent), 'CPB valutazione: senza dati niente confronto');
