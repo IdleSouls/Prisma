@@ -6010,7 +6010,7 @@ async function main() {
       window.setView('cpb'); window.render(); await wait(20);
       const sel = q('select[data-action="cpb-stato"]');
       assert(sel && sel.classList.contains('statoSel') && sel.classList.contains('stato-da-fare'), 'CPB: la tendina deve avere il formato di Prisma (statoSel) e il colore di "Da valutare"');
-      assert([...sel.options].map(o => o.value).join('|') === 'Dati ISA mancanti|Da valutare|Calcolato|Aderito|Non aderito', 'CPB: stati attesi');
+      assert([...sel.options].map(o => o.value).join('|') === 'Dati ISA mancanti|Da valutare|Calcolato|Aderito|Non aderito|Non applicabile', 'CPB: stati attesi');
       const idc = sel.dataset.id;
       for (const [stato, cls, kpi] of [['Calcolato', 'stato-calcolato', 'completati'], ['Aderito', 'stato-inviato-telematicamente', 'futuri'], ['Non aderito', 'stato-errore', 'scaduti']]) {
         const s1 = q(`select[data-action="cpb-stato"][data-id="${idc}"]`); s1.value = stato; fire(s1, 'change'); await wait(20);

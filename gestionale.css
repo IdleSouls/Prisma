@@ -149,6 +149,7 @@ input,select,textarea{font-family:inherit;font-size:14px;}
 .kpi.scaduti{background:var(--rosso-bg);color:var(--rosso);}
 .kpi.inscadenza{background:var(--giallo-bg);color:var(--giallo);}
 .kpi.futuri{background:var(--verde-bg);color:var(--verde);}
+.kpi.kpi-grigio{background:var(--grigio-bg);color:var(--grigio);}
 .kpi.completati{background:var(--blu-light);color:var(--blu-scuro);}
 .kpi-riga-allerta{background:var(--rosso-bg)!important;color:var(--rosso)!important;}
 .indice-card{background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:12px 14px;}

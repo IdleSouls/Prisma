@@ -656,7 +656,7 @@ export function creaServer(filePath, baseUrl) {
     'modifica_cpb',
     {
       title: 'Dati concordato preventivo (CPB)',
-      description: 'Inserisce/aggiorna per un cliente i dati del concordato preventivo biennale 2026-2027 usati dalla "Valutazione di convenienza" del tab CPB di Prisma: proposta dell\'Agenzia (reddito e valore della produzione IRAP concordati 2026/2027, reddito di riferimento, voto ISA 2025), proiezione dal bilancio provvisorio (reddito e valore della produzione stimati 2026/2027, vuoto 2027 = come 2026), nota di valutazione e stato (Dati ISA mancanti | Da valutare | Calcolato | Aderito | Non aderito). Passa solo i campi da cambiare (null svuota un campo). Importi in euro. Richiede il gestionale aperto via server.js.',
+      description: 'Inserisce/aggiorna per un cliente i dati del concordato preventivo biennale 2026-2027 usati dalla "Valutazione di convenienza" del tab CPB di Prisma: proposta dell\'Agenzia (reddito e valore della produzione IRAP concordati 2026/2027, reddito di riferimento, voto ISA 2025), proiezione dal bilancio provvisorio (reddito e valore della produzione stimati 2026/2027, vuoto 2027 = come 2026), nota di valutazione e stato (Dati ISA mancanti | Da valutare | Calcolato | Aderito | Non aderito | Non applicabile). Passa solo i campi da cambiare (null svuota un campo). Importi in euro. Richiede il gestionale aperto via server.js.',
       inputSchema: {
         cliente: z.string().describe('Ragione sociale (anche parziale) o id del cliente.'),
         redConc26: z.number().nullable().optional(), redConc27: z.number().nullable().optional(),
@@ -667,7 +667,7 @@ export function creaServer(filePath, baseUrl) {
         vpnProj26: z.number().nullable().optional(), vpnProj27: z.number().nullable().optional(),
         optSost: z.boolean().optional().describe('Opzione per l\'imposta sostitutiva (default sì).'),
         nota: z.string().optional(),
-        stato: z.enum(['Dati ISA mancanti', 'Da valutare', 'Calcolato', 'Aderito', 'Non aderito']).optional().describe('"Dati ISA mancanti" = mancano da importare gli ISA precompilati.'),
+        stato: z.enum(['Dati ISA mancanti', 'Da valutare', 'Calcolato', 'Aderito', 'Non aderito', 'Non applicabile']).optional().describe('"Dati ISA mancanti" = mancano da importare gli ISA precompilati.'),
       },
     },
     async (campi) => testoEsitoScrittura(await inviaComando(url, 'modificaCpb', pulisciUndefined(campi)))

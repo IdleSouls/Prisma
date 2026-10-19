@@ -1250,10 +1250,10 @@ function prcAggiornaConteggio() {
   const n = Array.from(c).filter(x => x.checked).length;
   const box = h('prcConteggio'); if (box) box.textContent = `${n} di ${c.length} clienti aderiscono.`;
 }
-const STATI_CPB = ['Dati ISA mancanti', 'Da valutare', 'Calcolato', 'Aderito', 'Non aderito'];
+const STATI_CPB = ['Dati ISA mancanti', 'Da valutare', 'Calcolato', 'Aderito', 'Non aderito', 'Non applicabile'];
 /* Colori come le altre tendine di stato di Prisma (select.statoSel) e come i riquadri KPI. I vecchi stati "Proposta ricevuta"
    e "Valutata" (tolti) si leggono come "Calcolato". */
-const CPB_CLASSI = { 'Dati ISA mancanti': { sel: 'stato-dati-isa', kpi: 'inscadenza' }, 'Da valutare': { sel: 'stato-da-fare', kpi: 'inscadenza' }, 'Calcolato': { sel: 'stato-calcolato', kpi: 'completati' }, 'Aderito': { sel: 'stato-inviato-telematicamente', kpi: 'futuri' }, 'Non aderito': { sel: 'stato-errore', kpi: 'scaduti' } };
+const CPB_CLASSI = { 'Dati ISA mancanti': { sel: 'stato-dati-isa', kpi: 'inscadenza' }, 'Da valutare': { sel: 'stato-da-fare', kpi: 'inscadenza' }, 'Calcolato': { sel: 'stato-calcolato', kpi: 'completati' }, 'Aderito': { sel: 'stato-inviato-telematicamente', kpi: 'futuri' }, 'Non aderito': { sel: 'stato-errore', kpi: 'scaduti' }, 'Non applicabile': { sel: 'stato-non-applicabile', kpi: 'kpi-grigio' } };
 function statoCpbCliente(id) {
   const x = ((STATE.cpb || {})[id] || {}).stato || 'Da valutare';
   return STATI_CPB.includes(x) ? x : ((x === 'Proposta ricevuta' || x === 'Valutata') ? 'Calcolato' : 'Da valutare');
