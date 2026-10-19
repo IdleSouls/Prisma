@@ -159,15 +159,22 @@ function attendiServerPronto(callback, tentativiRimasti) {
 
 // Menu del tasto destro (Electron non ne ha uno suo): taglia / copia / incolla / seleziona tutto.
 function menuContestuale(finestra) {
-  finestra.webContents.on('context-menu', (ev, params) => {
+  finestra.webContents.on('context-menu', async (ev, params) => {
     const f = params.editFlags || {};
     const voci = [];
+    // Clic destro su un dato (cella, valore di una scheda) senza testo selezionato: si copia il testo del dato sotto il cursore.
+    let testoDato = '';
+    if (!params.isEditable && !params.selectionText) {
+      try { testoDato = await finestra.webContents.executeJavaScript("(function(x,y){try{var e=document.elementFromPoint(x,y);if(!e||!e.closest)return '';if(e.closest('input,textarea,select,button,[contenteditable=\"true\"],#sidebar,#topbar'))return '';var c=e.closest('td,.sd-v,.kv .v,.helptext,pre,code,.selezionabile');return c?String(c.innerText||c.textContent||'').trim():'';}catch(err){return '';}})(%X%,%Y%)".replace('%X%', params.x).replace('%Y%', params.y)); } catch (err) { testoDato = ''; }
+    }
+
     if (params.isEditable) {
       voci.push({ label: 'Annulla', role: 'undo', enabled: !!f.canUndo }, { label: 'Ripeti', role: 'redo', enabled: !!f.canRedo }, { type: 'separator' },
         { label: 'Taglia', role: 'cut', enabled: !!f.canCut });
     }
     if (params.isEditable || params.selectionText) voci.push({ label: 'Copia', role: 'copy', enabled: !!f.canCopy });
     if (params.isEditable) voci.push({ label: 'Incolla', role: 'paste', enabled: !!f.canPaste });
+    if (testoDato) voci.push({ label: 'Copia', click: () => clipboard.writeText(testoDato) });
     if (params.linkURL) voci.push({ type: 'separator' }, { label: 'Copia indirizzo del link', click: () => clipboard.writeText(params.linkURL) });
     if (params.isEditable || params.selectionText) voci.push({ type: 'separator' });
     voci.push({ label: 'Seleziona tutto', role: 'selectAll' });
