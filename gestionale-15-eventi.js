@@ -161,7 +161,6 @@ function onClickDelegatoInterno(e) {
     case 'cli-esporta-vista': salvaFileScaricabile('clienti-' + oggiISO() + '.csv', new Blob([cliCsvVistaCorrente()], { type: 'text/csv;charset=utf-8' })); break;
     case 'schcli-scegli': SCHEDA_CLIENTE = id; setView('schedacliente'); break;
     case 'schcli-elenco': SCHEDA_CLIENTE = null; SCHEDA_RICERCA = ''; render(); break;
-    case 'cpb-vista': CPB_VISTA = el.dataset.vista; render(); break;
     case 'cpb-valuta': modalValutazioneCpb(id); break;
     case 'cpb-val-salva': salvaValutazioneCpb(id); chiudiModal(); render(); toast('Valutazione CPB salvata.'); break;
     case 'cpb-val-decisione': salvaValutazioneCpb(id, el.dataset.stato); chiudiModal(); render(); toast('Valutazione salvata: ' + el.dataset.stato + '.'); break;

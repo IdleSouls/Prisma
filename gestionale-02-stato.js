@@ -1117,7 +1117,7 @@ function modalSelettoreOperatore() {
     <div class="modal" style="max-width:380px;">
       <h2>Chi sta usando questo PC?</h2>
       <div class="modal-sub">Serve solo per sapere chi ha risposto a un cliente o creato una comunicazione — non è un vero login: chiunque sulla rete dello studio ha comunque accesso completo, come oggi. I referenti con 🔒 hanno una password personale (vedi Impostazioni).</div>
-      <div style="display:flex;flex-direction:column;gap:8px;margin:14px 0;">
+      <div class="op-lista" style="display:flex;flex-direction:column;gap:8px;margin:14px 0;">
         ${STATE.meta.responsabili.map(r => `<button class="btn" data-action="operatore-scegli" data-nome="${escapeHtml(r)}" style="text-align:left;display:flex;align-items:center;gap:8px;">
           <span class="chat-pallino ${operatoreOnline(r)?'online':'offline'}" style="position:static;flex:none;" title="${operatoreOnline(r)?'Online adesso':'Offline'}"></span>
           ${escapeHtml(r)}${(esisteMaster() && ruoloOperatore(r) === 'master') ? ' <span class="tag-maestro">Maestro</span>' : ''}${responsabileHaPassword(r) ? ' 🔒' : ''}

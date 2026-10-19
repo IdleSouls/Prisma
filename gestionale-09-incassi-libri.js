@@ -1250,10 +1250,10 @@ function prcAggiornaConteggio() {
   const n = Array.from(c).filter(x => x.checked).length;
   const box = h('prcConteggio'); if (box) box.textContent = `${n} di ${c.length} clienti aderiscono.`;
 }
-const STATI_CPB = ['Da valutare', 'Calcolato', 'Aderito', 'Non aderito'];
+const STATI_CPB = ['Dati ISA mancanti', 'Da valutare', 'Calcolato', 'Aderito', 'Non aderito'];
 /* Colori come le altre tendine di stato di Prisma (select.statoSel) e come i riquadri KPI. I vecchi stati "Proposta ricevuta"
    e "Valutata" (tolti) si leggono come "Calcolato". */
-const CPB_CLASSI = { 'Da valutare': { sel: 'stato-da-fare', kpi: 'inscadenza' }, 'Calcolato': { sel: 'stato-calcolato', kpi: 'completati' }, 'Aderito': { sel: 'stato-inviato-telematicamente', kpi: 'futuri' }, 'Non aderito': { sel: 'stato-errore', kpi: 'scaduti' } };
+const CPB_CLASSI = { 'Dati ISA mancanti': { sel: 'stato-dati-isa', kpi: 'inscadenza' }, 'Da valutare': { sel: 'stato-da-fare', kpi: 'inscadenza' }, 'Calcolato': { sel: 'stato-calcolato', kpi: 'completati' }, 'Aderito': { sel: 'stato-inviato-telematicamente', kpi: 'futuri' }, 'Non aderito': { sel: 'stato-errore', kpi: 'scaduti' } };
 function statoCpbCliente(id) {
   const x = ((STATE.cpb || {})[id] || {}).stato || 'Da valutare';
   return STATI_CPB.includes(x) ? x : ((x === 'Proposta ricevuta' || x === 'Valutata') ? 'Calcolato' : 'Da valutare');
@@ -1262,7 +1262,6 @@ function statoCpbCliente(id) {
    verificato ogni anno). Qui si esclude in automatico solo ciò che si sa dall'anagrafica: forfettari = non ammessi (nascosti di default);
    enti non commerciali = da verificare (di norma niente ISA, ma dipende dall'attività). Gli altri requisiti (debiti, dichiarazioni omesse...) restano al professionista. */
 let CPB_FILTRO = { tipo: 'Tutti', regime: 'Tutti', stato: 'Tutti', mostraNonAmmessi: false };
-let CPB_VISTA = 'stato'; // 'stato' | 'valutazione'
 /* Associazioni ed enti: NON tutte sono soggette agli ISA, quindi niente esclusione automatica ma segnalazione "da verificare" caso per caso
    (indicazioni da una sintesi IA, da confermare su circolare/istruzioni ISA prima di proporre il CPB):
    - enti non commerciali e ETS: di norma esclusi dagli ISA per l'attivita' istituzionale; esclusioni specifiche (ETS, OdV/APS) legate a condizioni/autorizzazioni;
@@ -1285,48 +1284,6 @@ function avvisoCpbIsa() {
   if (!l.length) return '';
   return `<div class="card" style="border-left:4px solid var(--giallo);padding:10px 14px;margin-bottom:12px;"><strong>⚠ ${l.length} ${l.length === 1 ? 'cliente da verificare' : 'clienti da verificare'} per gli ISA</strong> prima di poterli valutare per il CPB (non tutte le associazioni e gli enti sono soggetti agli ISA): apri la scheda e indica "Soggetto a ISA" sì/no. ${l.map(c => `<a href="#" data-action="apri-cliente" data-id="${c.id}" style="font-weight:700;">${escapeHtml(c.ragioneSociale)}</a>`).join(' · ')}<div class="helptext" style="margin-top:4px;">${escapeHtml(CPB_NOTA_ASSOCIAZIONI)}</div></div>`;
 }
-function renderCpb() {
-  const barra = `<div style="display:flex;gap:8px;margin-bottom:12px;"><button class="btn small${CPB_VISTA === 'stato' ? ' primary' : ''}" data-action="cpb-vista" data-vista="stato">Stato adesioni</button><button class="btn small${CPB_VISTA === 'valutazione' ? ' primary' : ''}" data-action="cpb-vista" data-vista="valutazione">Valutazione di convenienza</button></div>`;
-  const avviso = avvisoCpbIsa();
-  if (CPB_VISTA === 'valutazione') return barra + avviso + renderCpbValutazione();
-  return barra + avviso + renderCpbStato();
-}
-function renderCpbStato() {
-  const f = CPB_FILTRO;
-  const st = statoCpbCliente;
-  const tutti = STATE.clienti.filter(c => clienteAttivo(c)).sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale));
-  const nNonAmmessi = tutti.filter(c => !ammissibilitaCpb(c).ok).length;
-  let attivi = tutti.filter(c => f.mostraNonAmmessi || ammissibilitaCpb(c).ok);
-  if (f.tipo !== 'Tutti') attivi = attivi.filter(c => c.tipo === f.tipo);
-  if (f.regime !== 'Tutti') attivi = attivi.filter(c => c.regimeFiscale === f.regime);
-  // i riquadri contano i clienti secondo tipo/regime scelti (non lo stato: così si confrontano tra loro)
-  const conta = (x) => attivi.filter(c => st(c.id) === x).length;
-  const kpi = `<div class="kpi-grid" style="grid-template-columns:repeat(${STATI_CPB.length},1fr);">${STATI_CPB.map(x => `<div class="kpi ${CPB_CLASSI[x].kpi}"><div class="n">${conta(x)}</div><div class="l">${x.toUpperCase()}</div></div>`).join('')}</div>`;
-  const lista = f.stato === 'Tutti' ? attivi : attivi.filter(c => st(c.id) === f.stato);
-  const toolbar = `<div class="toolbar">
-    <div class="field"><label>Tipo di cliente</label><select data-action="cpb-filtro-tipo">
-      <option value="Tutti">Tutti</option>
-      ${TIPI_CLIENTE.map(t => `<option value="${t.v}" ${f.tipo === t.v ? 'selected' : ''}>${escapeHtml(t.l)}</option>`).join('')}
-    </select></div>
-    <div class="field"><label>Regime fiscale</label><select data-action="cpb-filtro-regime">
-      <option value="Tutti">Tutti</option>
-      ${REGIMI_FISCALI.map(r => `<option ${f.regime === r ? 'selected' : ''}>${escapeHtml(r)}</option>`).join('')}
-    </select></div>
-    <div class="field"><label>Stato</label><select data-action="cpb-filtro-stato">
-      <option>Tutti</option>${STATI_CPB.map(x => `<option ${f.stato === x ? 'selected' : ''}>${x}</option>`).join('')}
-    </select></div>
-    <div class="field" style="min-width:max-content;"><label>&nbsp;</label><label class="checkline" style="white-space:nowrap;"><input type="checkbox" data-action="cpb-filtro-non-ammessi" ${f.mostraNonAmmessi ? 'checked' : ''}> Mostra anche i non ammessi (${nNonAmmessi})</label></div>
-  </div>`;
-  const righe = lista.map(c => {
-    const amm = ammissibilitaCpb(c);
-    const badge = !amm.ok ? ` <span class="badge" style="background:var(--grigio-bg);color:var(--grigio);">Non ammesso</span>` : (amm.verifica ? ` <span class="badge stato-da-fare" title="${escapeHtml(amm.nota)}">Verifica ISA</span>` : '');
-    return `<tr${amm.ok ? '' : ' style="opacity:.55;"'}><td>${escapeHtml(c.ragioneSociale)}${badge}<div class="helptext">${escapeHtml(labelTipoCliente(c.tipo))} · ${escapeHtml(c.regimeFiscale || '—')}${amm.ok ? '' : ' · ' + escapeHtml(amm.nota)}</div></td><td><select class="statoSel ${CPB_CLASSI[st(c.id)].sel}" data-action="cpb-stato" data-id="${c.id}" ${amm.ok ? '' : 'disabled'}>${STATI_CPB.map(x => `<option ${st(c.id) === x ? 'selected' : ''}>${x}</option>`).join('')}</select></td><td><div class="field"><input type="text" data-action="cpb-nota" data-id="${c.id}" value="${escapeHtml(((STATE.cpb || {})[c.id] || {}).nota || '')}" placeholder="note"></div></td></tr>`;
-  }).join('');
-  const corpo = lista.length ? `<div class="card"><table><thead><tr><th>Cliente</th><th>Stato</th><th>Note</th></tr></thead><tbody>${righe}</tbody></table></div>` : `<div class="card"><div class="empty">Nessun cliente corrisponde ai filtri.</div></div>`;
-  return `<div class="helptext" style="margin-bottom:8px;">Tracker interno dell'adesione al concordato preventivo biennale 2026-2027: possono aderire solo i contribuenti che applicano gli ISA (i <strong>forfettari sono esclusi</strong>), senza debiti tributari/contributivi definitivi oltre 5.000 € e senza dichiarazioni omesse negli ultimi tre anni. La valutazione e l'adesione restano decisioni del professionista. <strong>Termine di adesione: 31/10/2026, slitta a lunedì 2/11/2026 (da verificare sul provvedimento ufficiale).</strong></div>` + toolbar + kpi + corpo;
-}
-
-
 /* -------------------- CPB: valutazione di convenienza (società per società) --------------------
    Si inseriscono i dati della proposta dell'Agenzia (reddito e valore della produzione concordati 2026/2027, voto ISA 2025,
    reddito di riferimento) e la proiezione 2026-2027 dal bilancio provvisorio; Prisma stima le imposte CON e SENZA concordato e
@@ -1367,46 +1324,58 @@ function calcolaCpb(c, dati, P) {
   const senza26 = senza(rp26, vp26), senza27 = senza(rp27, vp27), con26 = con(rc26, vc26), con27 = con(rc27, vc27);
   const totSenza = senza26 + senza27, totCon = con26 + con27, delta = totCon - totSenza;
   let verdetto = 'Conviene';
-  if (delta > 0) verdetto = (totSenza > 0 && delta <= totSenza * (P.tolleranza / 100)) ? 'Al limite' : 'Non conviene';
+  const tol = totSenza * (P.tolleranza / 100);
+  if (delta > 0) verdetto = (totSenza > 0 && delta <= tol) ? 'Al limite' : 'Non conviene';
+  else if (-delta <= tol) verdetto = 'Al limite'; // risparmio marginale
   const scostamento = rc26 !== 0 ? (rp26 - rc26) / Math.abs(rc26) : null;
   return { completo: true, senza26, senza27, con26, con27, totSenza, totCon, delta, verdetto, scostamento, avviso: rp26 < rc26 ? 'La proiezione 2026 è sotto il reddito concordato: con il CPB si pagano imposte su un reddito più alto di quello stimato.' : '' };
 }
 const CPB_VERDETTO_CLASSE = { 'Conviene': 'stato-inviato-telematicamente', 'Al limite': 'stato-da-fare', 'Non conviene': 'stato-errore', 'Dati incompleti': 'stato-non-applicabile' };
 function cpbVerdettoBadge(r) { return `<span class="badge ${CPB_VERDETTO_CLASSE[r.verdetto]}">${r.verdetto}</span>`; }
 
-function renderCpbValutazione() {
-  const f = CPB_FILTRO, P = cpbParametri();
-  let lista = STATE.clienti.filter(c => clienteAttivo(c) && ammissibilitaCpb(c).ok).sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale));
-  if (f.tipo !== 'Tutti') lista = lista.filter(c => c.tipo === f.tipo);
-  if (f.regime !== 'Tutti') lista = lista.filter(c => c.regimeFiscale === f.regime);
-  const righe = lista.map(c => ({ c, r: calcolaCpb(c, ((STATE.cpb || {})[c.id] || {}).dati, P) }));
-  const conta = (v) => righe.filter(x => x.r.verdetto === v).length;
-  const risparmio = righe.filter(x => x.r.completo).reduce((a, x) => a + (-x.r.delta), 0);
-  const kpi = `<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);">
-    <div class="kpi futuri"><div class="n">${conta('Conviene')}</div><div class="l">CONVIENE</div></div>
-    <div class="kpi inscadenza"><div class="n">${conta('Al limite')}</div><div class="l">AL LIMITE</div></div>
-    <div class="kpi scaduti"><div class="n">${conta('Non conviene')}</div><div class="l">NON CONVIENE</div></div>
-    <div class="kpi completati"><div class="n">${conta('Dati incompleti')}</div><div class="l">DATI DA INSERIRE</div></div></div>`;
+function renderCpb() {
+  const f = CPB_FILTRO, P = cpbParametri(), st = statoCpbCliente;
+  const tutti = STATE.clienti.filter(c => clienteAttivo(c)).sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale));
+  const nNonAmmessi = tutti.filter(c => !ammissibilitaCpb(c).ok && !ammissibilitaCpb(c).daVerificare).length;
+  let attivi = tutti.filter(c => ammissibilitaCpb(c).ok || (f.mostraNonAmmessi && !ammissibilitaCpb(c).daVerificare));
+  if (f.tipo !== 'Tutti') attivi = attivi.filter(c => c.tipo === f.tipo);
+  if (f.regime !== 'Tutti') attivi = attivi.filter(c => c.regimeFiscale === f.regime);
+  const conta = (x) => attivi.filter(c => st(c.id) === x).length;
+  const kpi = `<div class="kpi-grid" style="grid-template-columns:repeat(${STATI_CPB.length},1fr);">${STATI_CPB.map(x => `<div class="kpi ${CPB_CLASSI[x].kpi}"><div class="n">${conta(x)}</div><div class="l">${x.toUpperCase()}</div></div>`).join('')}</div>`;
+  const lista = f.stato === 'Tutti' ? attivi : attivi.filter(c => st(c.id) === f.stato);
   const toolbar = `<div class="toolbar">
     <div class="field"><label>Tipo di cliente</label><select data-action="cpb-filtro-tipo"><option value="Tutti">Tutti</option>${TIPI_CLIENTE.map(t => `<option value="${t.v}" ${f.tipo === t.v ? 'selected' : ''}>${escapeHtml(t.l)}</option>`).join('')}</select></div>
     <div class="field"><label>Regime fiscale</label><select data-action="cpb-filtro-regime"><option value="Tutti">Tutti</option>${REGIMI_FISCALI.map(r => `<option ${f.regime === r ? 'selected' : ''}>${escapeHtml(r)}</option>`).join('')}</select></div>
+    <div class="field"><label>Stato</label><select data-action="cpb-filtro-stato"><option>Tutti</option>${STATI_CPB.map(x => `<option ${f.stato === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
+    <div class="field" style="min-width:max-content;"><label>&nbsp;</label><label class="checkline" style="white-space:nowrap;"><input type="checkbox" data-action="cpb-filtro-non-ammessi" ${f.mostraNonAmmessi ? 'checked' : ''}> Mostra anche i non ammessi (${nNonAmmessi})</label></div>
     <div class="field" style="margin-left:auto;"><label>&nbsp;</label><button class="btn small" data-action="cpb-val-esporta">⬇ Esporta riepilogo (CSV)</button></div>
   </div>`;
-  const tr = righe.map(({ c, r }) => `<tr data-action="cpb-valuta" data-id="${c.id}" style="cursor:pointer;">
-    <td><strong>${escapeHtml(c.ragioneSociale)}</strong><div class="helptext">${escapeHtml(labelTipoCliente(c.tipo))} · ${escapeHtml(c.regimeFiscale || '—')}</div></td>
-    ${r.completo ? `<td style="text-align:right;">${fmtEuro(cpbNum((((STATE.cpb || {})[c.id] || {}).dati || {}).redConc26))}</td><td style="text-align:right;">${fmtEuro(cpbNum((((STATE.cpb || {})[c.id] || {}).dati || {}).redProj26))}</td><td style="text-align:right;">${r.scostamento == null ? '—' : (r.scostamento * 100).toFixed(0) + '%'}</td><td style="text-align:right;">${fmtEuro(r.totSenza)}</td><td style="text-align:right;">${fmtEuro(r.totCon)}</td><td style="text-align:right;font-weight:700;color:${r.delta <= 0 ? 'var(--verde)' : 'var(--rosso)'};">${r.delta <= 0 ? '−' : '+'}${fmtEuro(Math.abs(r.delta))}</td>` : '<td colspan="6" class="helptext">Dati della proposta e proiezione da inserire</td>'}
-    <td>${cpbVerdettoBadge(r)}</td>
-    <td><select class="statoSel ${CPB_CLASSI[statoCpbCliente(c.id)].sel}" data-action="cpb-stato" data-id="${c.id}">${STATI_CPB.map(x => `<option ${statoCpbCliente(c.id) === x ? 'selected' : ''}>${x}</option>`).join('')}</select></td>
-    <td><button class="btn small" data-action="cpb-valuta" data-id="${c.id}">Apri</button></td></tr>`).join('');
-  const tabella = lista.length ? `<div class="card"><table class="compact"><thead><tr><th>Cliente</th><th style="text-align:right;">Concordato 2026</th><th style="text-align:right;">Stimato 2026</th><th style="text-align:right;">Scostam.</th><th style="text-align:right;">Imposte senza CPB (2026+27)</th><th style="text-align:right;">Imposte con CPB (2026+27)</th><th style="text-align:right;">Differenza</th><th>Indicazione</th><th>Stato</th><th></th></tr></thead><tbody>${tr}</tbody></table></div>` : `<div class="card"><div class="empty">Nessun cliente corrisponde ai filtri.</div></div>`;
-  const param = `<details class="card" style="margin-top:12px;"><summary style="cursor:pointer;font-weight:700;">Parametri di calcolo (da verificare sulla circolare 8/E)</summary>
-    <div class="toolbar" style="margin-top:10px;">
-      ${[['ires', 'IRES %'], ['irpef', 'IRPEF marginale % (società di persone, ditte, professionisti)'], ['irap', 'IRAP %'], ['sostAlta', 'Imposta sostitutiva % ISA ≥ 8'], ['sostMedia', 'Imposta sostitutiva % ISA 6–8'], ['sostBassa', 'Imposta sostitutiva % ISA < 6'], ['soglia', 'Limite quota agevolata (€)'], ['tolleranza', '"Al limite" se il maggior costo è ≤ % delle imposte senza CPB']].map(([k, l]) => `<div class="field"><label>${l}</label><input type="number" step="any" value="${P[k]}" data-action="cpb-param" data-k="${k}"></div>`).join('')}
-    </div>
-    <div class="helptext">Calcolo semplificato: imposte = reddito × aliquota ordinaria + valore della produzione × IRAP; con il CPB si usa il reddito concordato e, se spuntata l'opzione, l'imposta sostitutiva sulla sola parte oltre il reddito di riferimento (fino al limite indicato). Non considera perdite pregresse, contributi, addizionali, decadenza o cessazione. L'indicazione non sostituisce la valutazione del professionista.</div></details>`;
-  return `<div class="helptext" style="margin-bottom:8px;">Confronto società per società tra le imposte stimate <strong>con</strong> e <strong>senza</strong> concordato per il biennio 2026-2027. Clicca una riga per inserire la proposta dell'Agenzia e la proiezione dal bilancio provvisorio. Termine di adesione: 2/11/2026 (da verificare).<br><strong>Documenti per ogni società:</strong> proposta di concordato dell'Agenzia · bilancio 2025 (4 sezioni) · bilancio provvisorio 2026 alla data odierna (4 sezioni) · dichiarazione 2024 e bozza 2025 (utili per reddito di riferimento, voto ISA e storico).</div>` + kpi + toolbar + tabella + param;
+  const num = (v) => { const n = cpbNum(v); return n == null ? '' : fmtEuro(n); };
+  const tr = lista.map(c => {
+    const amm = ammissibilitaCpb(c), e = (STATE.cpb || {})[c.id] || {}, d = e.dati || {};
+    const r = amm.ok ? calcolaCpb(c, d, P) : { completo: false, verdetto: 'Non ammesso' };
+    const badge = !amm.ok ? ` <span class="badge" style="background:var(--grigio-bg);color:var(--grigio);">Non ammesso</span>` : '';
+    const cifre = r.completo
+      ? `<td style="text-align:right;">${num(d.redConc26)}</td><td style="text-align:right;">${num(d.redProj26)}</td><td style="text-align:right;">${fmtEuro(r.totSenza)}</td><td style="text-align:right;">${fmtEuro(r.totCon)}</td><td style="text-align:right;font-weight:700;color:${r.delta <= 0 ? 'var(--verde)' : 'var(--rosso)'};">${r.delta <= 0 ? '−' : '+'}${fmtEuro(Math.abs(r.delta))}</td><td>${cpbVerdettoBadge(r)}</td>`
+      : `<td colspan="6" class="helptext">${amm.ok ? 'Dati della proposta e proiezione da inserire' : escapeHtml(amm.nota || '')}</td>`;
+    return `<tr${amm.ok ? '' : ' style="opacity:.55;"'}><td><strong>${escapeHtml(c.ragioneSociale)}</strong>${badge}<div class="helptext">${escapeHtml(labelTipoCliente(c.tipo))} · ${escapeHtml(c.regimeFiscale || '—')}</div></td>
+      <td><select class="statoSel ${CPB_CLASSI[st(c.id)].sel}" data-action="cpb-stato" data-id="${c.id}" ${amm.ok ? '' : 'disabled'}>${STATI_CPB.map(x => `<option ${st(c.id) === x ? 'selected' : ''}>${x}</option>`).join('')}</select></td>
+      ${cifre}
+      <td><input type="text" value="${escapeHtml(e.nota || '')}" placeholder="Nota…" data-action="cpb-nota" data-id="${c.id}" ${amm.ok ? '' : 'disabled'} style="min-width:140px;"></td>
+      <td>${amm.ok ? `<button class="btn small" data-action="cpb-valuta" data-id="${c.id}">Valuta</button>` : ''}</td></tr>`;
+  }).join('');
+  const tabella = lista.length ? `<div class="card" style="overflow-x:auto;"><table class="compact"><thead><tr><th>Cliente</th><th>Stato</th><th style="text-align:right;">Concordato 2026</th><th style="text-align:right;">Stimato 2026</th><th style="text-align:right;">Imposte senza CPB (2026+27)</th><th style="text-align:right;">Imposte con CPB (2026+27)</th><th style="text-align:right;">Differenza</th><th>Indicazione</th><th>Nota</th><th></th></tr></thead><tbody>${tr}</tbody></table></div>` : `<div class="card"><div class="empty">Nessun cliente corrisponde ai filtri.</div></div>`;
+  return avvisoCpbIsa() + `<div class="helptext" style="margin-bottom:8px;">Concordato preventivo biennale 2026-2027: possono aderire solo i contribuenti che applicano gli ISA (i <strong>forfettari sono esclusi</strong>), senza debiti tributari/contributivi definitivi oltre 5.000 € e senza dichiarazioni omesse negli ultimi tre anni. Per ogni società: stato dell'adesione e confronto tra le imposte stimate <strong>con</strong> e <strong>senza</strong> concordato (clicca "Valuta" per inserire la proposta dell'Agenzia e la proiezione dal bilancio provvisorio). Termine di adesione: 2/11/2026 (da verificare).<br><strong>Documenti per ogni società:</strong> proposta di concordato · bilancio 2025 (4 sezioni) · bilancio provvisorio 2026 alla data odierna (4 sezioni) · dichiarazione 2024 e bozza 2025 · <strong>dati ISA precompilati</strong> (stato "Dati ISA mancanti" finché non importati). La decisione resta al professionista.</div>` + kpi + toolbar + tabella + cpbParametriHtml();
 }
 
+function cpbParametriHtml() {
+  const P = cpbParametri();
+  return `<details class="card" style="margin-top:12px;"><summary style="cursor:pointer;font-weight:700;">Parametri di calcolo (da verificare sulla circolare 8/E)</summary>
+    <div class="toolbar" style="margin-top:10px;">
+      ${[['ires', 'IRES %'], ['irpef', 'IRPEF marginale % (società di persone, ditte, professionisti)'], ['irap', 'IRAP %'], ['sostAlta', 'Imposta sostitutiva % ISA ≥ 8'], ['sostMedia', 'Imposta sostitutiva % ISA 6–8'], ['sostBassa', 'Imposta sostitutiva % ISA < 6'], ['soglia', 'Limite quota agevolata (€)'], ['tolleranza', '"Al limite" se la differenza (in più o in meno) è ≤ % delle imposte senza CPB']].map(([k, l]) => `<div class="field"><label>${l}</label><input type="number" step="any" value="${P[k]}" data-action="cpb-param" data-k="${k}"></div>`).join('')}
+    </div>
+    <div class="helptext">Calcolo semplificato: imposte = reddito × aliquota ordinaria + valore della produzione × IRAP; con il CPB si usa il reddito concordato e, se spuntata l'opzione, l'imposta sostitutiva sulla sola parte oltre il reddito di riferimento (fino al limite indicato). Non considera perdite pregresse, contributi, addizionali, decadenza o cessazione. L'indicazione non sostituisce la valutazione del professionista.</div></details>`;
+}
 function modalValutazioneCpb(id) {
   const c = clienteById(id); if (!c) return;
   const d = ((STATE.cpb || {})[id] || {}).dati || {};

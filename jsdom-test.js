@@ -6010,7 +6010,7 @@ async function main() {
       window.setView('cpb'); window.render(); await wait(20);
       const sel = q('select[data-action="cpb-stato"]');
       assert(sel && sel.classList.contains('statoSel') && sel.classList.contains('stato-da-fare'), 'CPB: la tendina deve avere il formato di Prisma (statoSel) e il colore di "Da valutare"');
-      assert([...sel.options].map(o => o.value).join('|') === 'Da valutare|Calcolato|Aderito|Non aderito', 'CPB: stati attesi Da valutare, Calcolato, Aderito, Non aderito');
+      assert([...sel.options].map(o => o.value).join('|') === 'Dati ISA mancanti|Da valutare|Calcolato|Aderito|Non aderito', 'CPB: stati attesi');
       const idc = sel.dataset.id;
       for (const [stato, cls, kpi] of [['Calcolato', 'stato-calcolato', 'completati'], ['Aderito', 'stato-inviato-telematicamente', 'futuri'], ['Non aderito', 'stato-errore', 'scaduti']]) {
         const s1 = q(`select[data-action="cpb-stato"][data-id="${idc}"]`); s1.value = stato; fire(s1, 'change'); await wait(20);
@@ -6083,11 +6083,10 @@ async function main() {
     // CPB: valutazione di convenienza (proposta AdE + proiezione -> imposte con/senza CPB)
     {
       window.setView('cpb'); window.render(); await wait(20);
-      q('[data-action="cpb-vista"][data-vista="valutazione"]').click(); await wait(20);
       assert(q('[data-action="cpb-valuta"]'), 'CPB valutazione: deve esserci almeno una società da valutare');
-      assert(/DATI DA INSERIRE/.test(q('.kpi.completati').textContent), 'CPB valutazione: riquadro dati da inserire');
+      assert(/DATI ISA MANCANTI/.test(q('.kpi-grid').textContent), 'CPB: riquadro dati ISA mancanti');
       assert(q('select[data-action="cpb-stato"]') && q('select[data-action="cpb-stato"]').classList.contains('statoSel'), 'CPB valutazione: stato modificabile con la stessa tendina di "Stato adesioni"');
-      const riga = q('tr[data-action="cpb-valuta"]'); const idv = riga.dataset.id; riga.click(); await wait(20);
+      const riga = q('button[data-action="cpb-valuta"]'); const idv = riga.dataset.id; riga.click(); await wait(20);
       assert(q('#cpbv_redConc26'), 'CPB valutazione: scheda con i campi della proposta');
       assert(/Inserisci almeno/.test(q('#cpbvRisultato').textContent), 'CPB valutazione: senza dati niente confronto');
       const setv = (k, v) => { const e = q('#cpbv_' + k); e.value = v; fire(e, 'input'); };
@@ -6104,7 +6103,6 @@ async function main() {
       assert(eC && eC.stato === 'Aderito' && eC.dati.redConc26 === 40000 && eC.nota === 'Test Federico', 'CPB valutazione: salvataggio dati, nota e decisione');
       assert(window.cpbCsvRiepilogo && /Indicazione/.test(window.cpbCsvRiepilogo()), 'CPB valutazione: esportazione CSV');
       delete window.getSTATE().cpb[idv];
-      q('[data-action="cpb-vista"][data-vista="stato"]').click(); await wait(20);
       window.setView('dashboard');
       console.log('=== CPB: valutazione di convenienza OK');
     }
