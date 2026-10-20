@@ -6139,6 +6139,12 @@ async function main() {
       const eC = window.getSTATE().cpb[idv];
       assert(eC && eC.stato === 'Aderito' && eC.dati.redConc26 === 40000 && eC.nota === 'Test Federico', 'CPB valutazione: salvataggio dati, nota e decisione');
       assert(window.cpbCsvRiepilogo && /Indicazione/.test(window.cpbCsvRiepilogo()), 'CPB valutazione: esportazione CSV');
+      // nota in finestra a parte
+      q(`[data-action="cpb-nota-apri"][data-id="${idv}"]`).click(); await wait(20);
+      assert(q('#cpbNotaTesto'), 'CPB: la nota si apre in una finestra con casella grande');
+      q('#cpbNotaTesto').value = 'Prima riga\nSeconda riga lunga'; q(`[data-action="cpb-nota-salva"][data-id="${idv}"]`).click(); await wait(20);
+      assert(window.getSTATE().cpb[idv].nota === 'Prima riga\nSeconda riga lunga', 'CPB: nota salvata dalla finestra');
+      assert(/Prima riga/.test(q(`[data-action="cpb-nota-apri"][data-id="${idv}"]`).textContent) && !/Seconda/.test(q(`[data-action="cpb-nota-apri"][data-id="${idv}"]`).textContent), 'CPB: in tabella solo l\'anteprima della prima riga');
       delete window.getSTATE().cpb[idv];
       window.setView('dashboard');
       console.log('=== CPB: valutazione di convenienza OK');

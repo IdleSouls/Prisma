@@ -1361,7 +1361,7 @@ function renderCpb() {
     return `<tr${amm.ok ? '' : ' style="opacity:.55;"'}><td><strong>${escapeHtml(c.ragioneSociale)}</strong>${badge}<div class="helptext">${escapeHtml(labelTipoCliente(c.tipo))} · ${escapeHtml(c.regimeFiscale || '—')}</div></td>
       <td><select class="statoSel ${CPB_CLASSI[st(c.id)].sel}" data-action="cpb-stato" data-id="${c.id}" ${amm.ok ? '' : 'disabled'}>${STATI_CPB.map(x => `<option ${st(c.id) === x ? 'selected' : ''}>${x}</option>`).join('')}</select></td>
       ${cifre}
-      <td style="min-width:280px;"><textarea data-action="cpb-nota" data-id="${c.id}" placeholder="Nota…" ${amm.ok ? '' : 'disabled'} style="width:100%;min-width:260px;min-height:64px;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12.5px;resize:vertical;">${escapeHtml(e.nota || '')}</textarea></td>
+      <td style="max-width:220px;"><div data-action="cpb-nota-apri" data-id="${c.id}" title="${escapeHtml(e.nota || 'Aggiungi una nota')}" style="cursor:pointer;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px;${e.nota ? '' : 'color:var(--text-mut);'}">${e.nota ? '📝 ' + escapeHtml(String(e.nota).split('\n')[0]) : '+ Nota'}</div></td>
       <td>${amm.ok ? `<button class="btn small" data-action="cpb-valuta" data-id="${c.id}">Valuta</button>` : ''}</td></tr>`;
   }).join('');
   const tabella = lista.length ? `<div class="card" style="overflow-x:auto;"><table class="compact"><thead><tr><th>Cliente</th><th>Stato</th><th style="text-align:right;">Concordato 2026</th><th style="text-align:right;">Stimato 2026</th><th style="text-align:right;">Imposte senza CPB (2026+27)</th><th style="text-align:right;">Imposte con CPB (2026+27)</th><th style="text-align:right;">Differenza</th><th>Indicazione</th><th>Nota</th><th></th></tr></thead><tbody>${tr}</tbody></table></div>` : `<div class="card"><div class="empty">Nessun cliente corrisponde ai filtri.</div></div>`;
@@ -1376,6 +1376,16 @@ function cpbParametriHtml() {
     </div>
     <div class="helptext">Calcolo semplificato: imposte = reddito × aliquota ordinaria + valore della produzione × IRAP; con il CPB si usa il reddito concordato e, se spuntata l'opzione, l'imposta sostitutiva sulla sola parte oltre il reddito di riferimento (fino al limite indicato). Non considera perdite pregresse, contributi, addizionali, decadenza o cessazione. L'indicazione non sostituisce la valutazione del professionista.</div></details>`;
 }
+/* Nota CPB: finestra a parte con casella grande (in tabella resta solo un'anteprima di una riga). */
+function modalNotaCpb(id) {
+  const c = clienteById(id); if (!c) return;
+  const e = (STATE.cpb || {})[id] || {};
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop"><div class="modal" style="max-width:680px;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;"><div><h2>Note CPB</h2><div class="modal-sub">${escapeHtml(c.ragioneSociale)}</div></div><button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button></div>
+    <div class="field" style="margin-top:10px;"><textarea id="cpbNotaTesto" rows="14" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:10px 12px;font-family:inherit;font-size:13.5px;line-height:1.5;resize:vertical;">${escapeHtml(e.nota || '')}</textarea></div>
+    <div class="modal-actions"><button class="btn" data-action="chiudi-modal">Annulla</button><button class="btn primary" data-action="cpb-nota-salva" data-id="${id}">Salva</button></div></div></div>`;
+  const t = document.getElementById('cpbNotaTesto'); if (t) t.focus();
+}
 function modalValutazioneCpb(id) {
   const c = clienteById(id); if (!c) return;
   const d = ((STATE.cpb || {})[id] || {}).dati || {};
@@ -1388,7 +1398,7 @@ function modalValutazioneCpb(id) {
     <div class="form-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">${CPB_CAMPI.slice(6).map(campo).join('')}</div>
     <label class="checkline" style="margin-top:10px;"><input type="checkbox" id="cpbv_optSost" data-action="cpb-val-input" ${d.optSost === false ? '' : 'checked'}> Opta per l'imposta sostitutiva sulla parte di reddito concordato oltre il riferimento</label>
     <div id="cpbvRisultato" style="margin-top:12px;"></div>
-    <div class="field" style="margin-top:10px;"><label>Note di valutazione (Federico / Matteo)</label><textarea id="cpbv_nota" rows="3">${escapeHtml(((STATE.cpb || {})[id] || {}).nota || '')}</textarea></div>
+    <div class="field" style="margin-top:10px;"><label>Note di valutazione (Federico / Matteo)</label><textarea id="cpbv_nota" rows="8" style="width:100%;font-size:13px;line-height:1.5;">${escapeHtml(((STATE.cpb || {})[id] || {}).nota || '')}</textarea></div>
     <div class="modal-actions" style="flex-wrap:wrap;">
       <button class="btn" data-action="chiudi-modal">Chiudi</button>
       <button class="btn primary" data-action="cpb-val-salva" data-id="${id}">Salva</button>
