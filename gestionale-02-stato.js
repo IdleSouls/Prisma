@@ -1017,6 +1017,7 @@ function tentaSceltaOperatore(nome) {
     .catch(() => { impostaOperatore(nome); chiudiModal(); }); // server irraggiungibile: non blocchiamo la scelta locale
 }
 function impostaOperatore(nome) {
+  fineAttesaAvvio(); // scelta fatta: l'app puo' comparire
   OPERATORE = (nome && STATE.meta.responsabili.includes(nome)) ? nome : null;
   try {
     if (typeof localStorage === 'undefined') { /* niente da fare, es. ambiente di test senza DOM */ }
@@ -1254,20 +1255,15 @@ function aggiornaVistaMCPInTempoReale() {
   } catch (err) { /* mai bloccante */ }
 }
 
-/* Schermata nascosta finché non arriva lo stato vero dal server: prima si vedeva per un attimo la dashboard
-   (con dati locali/di default) prima della scelta dell'utente. Si rivela appena la sync iniziale ha deciso se serve
-   il selettore "chi sei"; rete di sicurezza: dopo 6 secondi si rivela comunque. */
-function fineAttesaAvvio() { try { document.documentElement.classList.remove('avvio-in-corso'); } catch (e) { /* ignora */ } }
-try {
-  if (typeof window !== 'undefined' && window.location && /^https?:$/.test(window.location.protocol)) {
-    document.documentElement.classList.add('avvio-in-corso');
-    setTimeout(fineAttesaAvvio, 6000);
-  }
-} catch (e) { /* ambiente senza DOM */ }
+/* Avvio: finche' html non ha la classe "app-pronta" (vedi gestionale.htm + gestionale.css) si vede solo lo sfondo con l'immagine Prisma, mai
+   la schermata dell'app. La classe arriva quando la sincronizzazione iniziale ha deciso se serve la scelta utente (e questa e' stata fatta
+   o non serve); rete di sicurezza: dopo 8 secondi arriva comunque. */
+function fineAttesaAvvio() { try { document.documentElement.classList.add('app-pronta'); } catch (e) { /* ignora */ } }
+function fineAttesaAvvioSeNonServeScelta() { try { if (!operatoreObbligatorio()) fineAttesaAvvio(); } catch (e) { fineAttesaAvvio(); } }
 async function inizializzaSyncCondiviso() {
   try {
     await inizializzaSyncCondivisoInterno();
-  } finally { fineAttesaAvvio(); }
+  } finally { fineAttesaAvvioSeNonServeScelta(); }
 }
 async function inizializzaSyncCondivisoInterno() {
   try {

@@ -764,8 +764,6 @@ html,body{overflow-x:clip;}
 #main{min-width:0;max-width:calc(100vw - var(--sidebar-w));}
 
 /* avvio: nessuna schermata di Prisma visibile finche' non e' deciso se serve la scelta utente */
-html.avvio-in-corso body{visibility:hidden;}
-html.avvio-in-corso body #modalRoot{visibility:visible;}
 
 /* scelta utente obbligatoria: immagine Prisma a tutto schermo, selettore in basso come pannello di vetro scuro con i nomi in fila */
 .modal-backdrop[data-obbligatorio]{align-items:flex-end;justify-content:center;padding:0 20px 8vh;background:linear-gradient(rgba(6,12,28,.15),rgba(6,12,28,.15)),var(--hero) center 25%/cover no-repeat #0b1426;}
@@ -776,5 +774,6 @@ html.avvio-in-corso body #modalRoot{visibility:visible;}
 .modal-backdrop[data-obbligatorio] .op-lista .btn{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.28);border-radius:999px;padding:9px 18px;text-align:center !important;}
 .modal-backdrop[data-obbligatorio] .op-lista .btn:hover{background:rgba(255,255,255,.26);}
 .modal-backdrop[data-obbligatorio] .modal .helptext{color:rgba(255,255,255,.65);}
-/* avvio: copertina con l'immagine Prisma dal primo istante (nessuna schermata dell'app visibile finche' non e' deciso se serve la scelta utente) */
-html.avvio-in-corso::before{content:"";position:fixed;inset:0;z-index:2147483646;background:var(--hero) center 25%/cover no-repeat #0b1426;}
+/* avvio: finche' l'app non e' pronta (html senza .app-pronta) si vede solo lo sfondo con l'immagine Prisma; sidebar e pagina sono nascoste */
+html:not(.app-pronta) body{background:var(--hero) center 25%/cover no-repeat #0b1426 !important;}
+html:not(.app-pronta) #sidebar, html:not(.app-pronta) #main{display:none !important;}

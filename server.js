@@ -1558,7 +1558,7 @@ function serviGestionale(res) {
       res.end('Non trovo gestionale.htm nella cartella: ' + FILE_PAGINA + '\nMetti server.js nella stessa cartella del file gestionale.htm e riavvia.');
       return;
     }
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
     res.end(contenuto);
   });
 }
