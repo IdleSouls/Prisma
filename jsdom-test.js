@@ -5726,8 +5726,10 @@ async function main() {
       assert(/da completare/i.test(window.document.getElementById('content').innerHTML), 'la lista clienti deve mostrare l\'avviso "da completare"');
       // compilando i campi l'alert sparisce
       const cc = window.getSTATE().clienti.find(c => c.id === importatoConDefault.id);
-      Object.assign(cc, { regimeFiscale: 'Ordinario', periodicitaIva: 'Trimestrale', responsabileStudio: window.getSTATE().meta.responsabili[0], contabilita: 'ESTERNA', addebitoF24: 'NOI', previdenza: 'No previdenza', pmiInnovativa: 'NO', startupInnovativa: 'NO', organoControllo: 'Nessuno', codiceFiscale: '99999999992', atecoCodici: ['62.01.00'] });
+      Object.assign(cc, { regimeFiscale: 'Ordinario', periodicitaIva: 'Trimestrale', responsabileStudio: window.getSTATE().meta.responsabili[0], contabilita: 'ESTERNA', addebitoF24: 'NOI', previdenza: 'No previdenza', pmiInnovativa: 'NO', startupInnovativa: 'NO', organoControllo: 'Nessuno', organoAmministrativo: 'Amministratore unico', codiceFiscale: '99999999992', atecoCodici: ['62.01.00'] });
+      window.getSTATE().cariche.push({ id: 'kt1', clienteId: cc.id, socioId: 'x', categoria: 'amministratore', ruolo: 'Amministratore unico' }, { id: 'kt2', clienteId: cc.id, socioId: 'x', categoria: 'socio', ruolo: 'Socio', quota: 100 });
       assert(window.campiMancantiCliente(cc).length === 0, 'compilati tutti i campi, l\'alert deve sparire: ' + JSON.stringify(window.campiMancantiCliente(cc)));
+      window.getSTATE().cariche = window.getSTATE().cariche.filter(k => k.id !== 'kt1' && k.id !== 'kt2');
       // due livelli: grave (rosso) vs leggero (giallo)
       {
         const lv = window.livelliMancantiCliente({ stato: 'attivo', tipo: 'societa_capitali', ragioneSociale: 'X', partitaIva: '1', regimeFiscale: 'Ordinario', periodicitaIva: 'Mensile', responsabileStudio: 'Matteo', contabilita: 'ESTERNA', addebitoF24: 'NOI', contatti: { email: 'a@b.it' }, atecoCodici: ['1'] });
@@ -6057,6 +6059,41 @@ async function main() {
       assert(JSON.parse(richiesteFetch[0].opts.body).ok === false, 'modificaCpb: cliente inesistente = errore');
       delete window.getSTATE().cpb[cl.id];
       console.log('=== eseguiComandoMCP(modificaCpb) OK');
+    }
+
+    // Organi sociali in anagrafica: amministratori, controllo, soci con quote, quadro RO calcolato
+    {
+      const cl = window.getSTATE().clienti.find(c => c.tipo === 'societa_capitali' && window.clienteAttivo(c));
+      const ids0 = (window.getSTATE().cariche || []).length;
+      const salvaOrg = { amm: cl.organoAmministrativo, ctrl: cl.organoControllo };
+      const cmd = async (n, p) => { richiesteFetch.length = 0; await window.eseguiComandoMCP({ id: 'cmdorg' + n, azione: 'creaCarica', parametri: p }); return JSON.parse(richiesteFetch[0].opts.body); };
+      cl.organoAmministrativo = ''; cl.organoControllo = '';
+      assert(window.quadroRoCliente(cl).si === null, 'RO: senza dati = da verificare');
+      assert(window.campiMancantiCliente(cl).some(x => /Amministratori in anagrafica/.test(x)) && window.campiMancantiCliente(cl).some(x => /Soci con quote/.test(x)), 'RO: dati mancanti segnalati');
+      cl.organoAmministrativo = 'Amministratore unico'; cl.organoControllo = 'Nessuno';
+      let r = await cmd(1, { clienteId: cl.id, categoria: 'amministratore', nome: 'Mario Rossi', codiceFiscale: 'rssmra80a01h501u', ruolo: 'Amministratore unico' });
+      assert(r.ok === true, 'creaCarica amministratore: ' + JSON.stringify(r));
+      assert(window.quadroRoCliente(cl).si === false, 'RO: amministratore unico senza controllo = non serve');
+      const persona = window.getSTATE().soci.find(x => x.nome === 'Mario Rossi');
+      assert(persona && persona.codiceFiscale === 'RSSMRA80A01H501U' && persona.clienteIds.includes(cl.id), 'persona creata e collegata al cliente');
+      r = await cmd(2, { clienteId: cl.id, categoria: 'socio', socioId: persona.id, ruolo: 'Socio', quota: 60 });
+      r = await cmd(3, { clienteId: cl.id, categoria: 'socio', nome: 'Luisa Bianchi', quota: 40 });
+      assert(window.quotaTotaleSoci(cl.id) === 100 && !window.campiMancantiCliente(cl).some(x => /Soci con quote/.test(x)), 'quote soci = 100%');
+      cl.organoControllo = 'Sindaco unico';
+      assert(window.quadroRoCliente(cl).si === true, 'RO: con organo di controllo serve');
+      cl.organoControllo = 'Nessuno'; cl.organoAmministrativo = 'CdA';
+      assert(window.quadroRoCliente(cl).si === true, 'RO: CdA serve');
+      window.setSchedaClienteTest ? window.setSchedaClienteTest(cl.id) : null;
+      window.setView('schedacliente'); window.render(); await wait(20);
+      assert(/Organi sociali e soci/.test(q('#content').textContent) && /Mario Rossi/.test(q('#content').textContent) && /Totale quote: 100%/.test(q('#content').textContent), 'scheda cliente: sezione organi sociali');
+      richiesteFetch.length = 0;
+      const kid = window.getSTATE().cariche.find(k => k.socioId === persona.id && k.categoria === 'amministratore').id;
+      await window.eseguiComandoMCP({ id: 'cmdorg9', azione: 'eliminaCarica', parametri: { id: kid } });
+      assert(!window.getSTATE().cariche.some(k => k.id === kid), 'eliminaCarica');
+      // pulizia
+      window.getSTATE().cariche = window.getSTATE().cariche.slice(0, ids0); window.getSTATE().soci = window.getSTATE().soci.filter(x => !['Mario Rossi', 'Luisa Bianchi'].includes(x.nome));
+      cl.organoAmministrativo = salvaOrg.amm; cl.organoControllo = salvaOrg.ctrl; window.setView('dashboard');
+      console.log('=== Organi sociali in anagrafica e quadro RO OK');
     }
 
     // CPB: associazioni/enti da verificare per gli ISA (campo in anagrafica, alert, fuori dalle liste finche' non verificati)

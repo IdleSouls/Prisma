@@ -255,6 +255,33 @@ function salvaConfigContabTerzi(cfg) { STATE.meta.contabTerzi = cfg; salvaStato(
 /* PMI / start-up innovative e organo di controllo (servono per il 770 e per gli adempimenti societari).
    '' = non ancora indicato -> il cliente resta "da completare". */
 const OPZIONI_ORGANO_CONTROLLO = ['Nessuno','Sindaco unico','Collegio sindacale','Revisore legale','Società di revisione'];
+/* Organi sociali in anagrafica: amministratori (o CdA), organo di controllo/revisore e soci con le quote. Sono "cariche" (STATE.cariche) che collegano
+   una persona (STATE.soci) a un cliente: la stessa persona si inserisce una volta sola e si riusa. Servono, tra l'altro, a capire se il quadro RO
+   dei Redditi SC/ENC va compilato. */
+const TIPI_CON_ORGANI_SOCIALI = ['societa_capitali','societa_persone','cooperativa','impresa_sociale','associazione','altra_forma'];
+const TIPI_QUADRO_RO = ['societa_capitali','cooperativa','impresa_sociale','associazione']; // SC ed ENC
+const TIPI_CON_QUOTE_SOCI = ['societa_capitali','societa_persone','cooperativa','impresa_sociale'];
+const OPZIONI_ORGANO_AMMINISTRATIVO = ['Amministratore unico','CdA','Amministratori congiunti','Amministratori disgiunti'];
+const CATEGORIE_CARICA = {
+  amministratore: { titolo: 'Amministratori', ruoli: ['Amministratore unico','Presidente CdA','Vice presidente CdA','Consigliere','Amministratore delegato','Amministratore'] },
+  controllo: { titolo: 'Organo di controllo / revisore', ruoli: ['Sindaco unico','Presidente collegio sindacale','Sindaco effettivo','Sindaco supplente','Revisore legale','Società di revisione'] },
+  socio: { titolo: 'Soci e quote', ruoli: ['Socio'] },
+};
+function cariche_(clienteId, categoria) { return ((typeof STATE !== 'undefined' && STATE.cariche) || []).filter(k => k.clienteId === clienteId && (!categoria || k.categoria === categoria)); }
+function caricaInCorso(k) { return !k.scadenza || k.scadenza >= oggiISO(); }
+function quotaTotaleSoci(clienteId) { return Math.round(cariche_(clienteId, 'socio').filter(caricaInCorso).reduce((t, k) => t + (Number(k.quota) || 0), 0) * 100) / 100; }
+/* Quadro RO (Redditi SC/ENC): da compilare se c'è CdA/più amministratori, un organo di controllo o un rappresentante diverso dal firmatario.
+   Ritorna { si: true|false|null, motivi }: null = dati insufficienti per deciderlo. */
+function quadroRoCliente(c) {
+  if (!TIPI_QUADRO_RO.includes(c.tipo)) return { si: false, motivi: [], nonApplicabile: true };
+  const amm = cariche_(c.id, 'amministratore').filter(caricaInCorso), ctrl = cariche_(c.id, 'controllo').filter(caricaInCorso);
+  const motivi = [];
+  if (['CdA', 'Amministratori congiunti', 'Amministratori disgiunti'].includes(c.organoAmministrativo) || amm.length > 1) motivi.push('CdA o più amministratori');
+  if ((c.organoControllo && c.organoControllo !== 'Nessuno') || ctrl.length) motivi.push('organo di controllo / revisore');
+  if (motivi.length) return { si: true, motivi };
+  if (c.organoAmministrativo === 'Amministratore unico' && c.organoControllo === 'Nessuno') return { si: false, motivi: [] };
+  return { si: null, motivi: [] };
+}
 const TIPI_CON_ORGANO_CONTROLLO = ['societa_capitali','cooperativa','impresa_sociale'];
 /* DUE LIVELLI di "anagrafica da completare" per i clienti ATTIVI:
    - GRAVE (rosso): senza questi dati lo studio lavora male - le scadenze non si generano o non hanno
@@ -282,6 +309,12 @@ function livelliMancantiCliente(c) {
     if (!c.organoControllo) out.leggeri.push('Organo di controllo');
   }
   if (cpbIsaDaVerificare(c) && !c.soggettoIsa) out.leggeri.push('Soggetto a ISA (sì/no): da verificare per il CPB');
+  if (TIPI_QUADRO_RO.includes(c.tipo) && c.id) {
+    if (!c.organoAmministrativo) out.leggeri.push('Organo amministrativo (tipo)');
+    if (!cariche_(c.id, 'amministratore').length) out.leggeri.push('Amministratori in anagrafica');
+    if (TIPI_CON_QUOTE_SOCI.includes(c.tipo) && Math.abs(quotaTotaleSoci(c.id) - 100) > 0.01) out.leggeri.push('Soci con quote (somma 100%)');
+    if (c.organoControllo && c.organoControllo !== 'Nessuno' && !cariche_(c.id, 'controllo').length) out.leggeri.push('Componenti organo di controllo');
+  }
   const co = c.contatti || {};
   if (!co.email && !co.pec) out.leggeri.push('Email o PEC');
   if (!(c.atecoCodici || []).length) out.leggeri.push('Codice ATECO');

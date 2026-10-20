@@ -373,6 +373,7 @@ function statoIniziale() {
     regoleImportiStatutari: clonaRegoleImportiStatutariDefault(),
     f24: [],
     soci: [],
+    cariche: [], /* organi sociali: amministratori, organo di controllo, soci con quote (collegano una persona di 'soci' a un cliente) */
     credenziali: [],
     catalogoAttivitaStudio: catalogoAttivitaStudioDefault(),
     moduliPreventivo: moduliPreventivoDefault(),
@@ -1492,6 +1493,17 @@ const AZIONI_MCP = {
   eliminaComunicazione: (p) => { if (!STATE.comunicazioni.find(c => c.id === p.id)) throw new Error('Comunicazione non trovata: ' + p.id); eliminaComunicazione(p.id); return { eliminata: true }; },
 
   creaSocio: (p) => { aggiungiSocio(p); return { creato: true }; },
+  creaCarica: (p) => {
+    if (!clienteById(p.clienteId)) throw new Error('Cliente non trovato: ' + p.clienteId);
+    if (!CATEGORIE_CARICA[p.categoria]) throw new Error('Categoria non valida: ' + p.categoria);
+    let socioId = p.socioId;
+    if (socioId) { if (!STATE.soci.find(x => x.id === socioId)) throw new Error('Persona non trovata: ' + socioId); }
+    else { if (!p.nome) throw new Error('Serve "socioId" di una persona esistente oppure "nome" per crearla.'); socioId = aggiungiSocio({ nome: p.nome, ruolo: '', codiceFiscale: String(p.codiceFiscale || '').toUpperCase(), clienteIds: [p.clienteId] }).id; }
+    const k = aggiungiCarica({ clienteId: p.clienteId, socioId, categoria: p.categoria, ruolo: p.ruolo || CATEGORIE_CARICA[p.categoria].ruoli[0], quota: p.quota != null ? Number(p.quota) : null, decorrenza: p.decorrenza || '', scadenza: p.scadenza || '', note: p.note || '' });
+    return { creato: true, id: k.id, socioId };
+  },
+  modificaCarica: (p) => { if (!STATE.cariche.find(x => x.id === p.id)) throw new Error('Carica non trovata: ' + p.id); aggiornaCarica(p.id, p.patch || {}); return { aggiornato: true }; },
+  eliminaCarica: (p) => { if (!STATE.cariche.find(x => x.id === p.id)) throw new Error('Carica non trovata: ' + p.id); eliminaCarica(p.id); return { eliminato: true }; },
   modificaSocio: (p) => { if (!STATE.soci.find(s => s.id === p.id)) throw new Error('Socio non trovato: ' + p.id); aggiornaSocio(p.id, p.patch || {}); return { aggiornato: true }; },
   eliminaSocio: (p) => { if (!STATE.soci.find(s => s.id === p.id)) throw new Error('Socio non trovato: ' + p.id); eliminaSocio(p.id); return { eliminato: true }; },
 

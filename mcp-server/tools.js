@@ -365,6 +365,7 @@ export function creaServer(filePath, baseUrl) {
         startupInnovativa: z.enum(['SI', 'NO']).optional().describe('Ha il requisito di start-up innovativa? Solo se noto.'),
         haDipendenti: z.enum(['SI', 'NO']).optional().describe('Il cliente ha dipendenti? Solo se noto.'),
         soggettoIsa: z.enum(['SI', 'NO']).optional().describe('Soggetto agli ISA (per il concordato preventivo)? Da verificare per associazioni/enti/ASD L.398; solo se verificato.'),
+        organoAmministrativo: z.enum(['Amministratore unico', 'CdA', 'Amministratori congiunti', 'Amministratori disgiunti']).optional().describe('Tipo di organo amministrativo (serve per il quadro RO). Solo se noto.'),
         organoControllo: z.enum(['Nessuno', 'Sindaco unico', 'Collegio sindacale', 'Revisore legale', 'Società di revisione']).optional().describe('Organo di controllo (richiesto nel 770). Solo se noto.'),
         stato: z.string().optional().describe('"attivo" (default) o "cessato".'),
         note: z.string().optional(),
@@ -491,6 +492,40 @@ export function creaServer(filePath, baseUrl) {
       inputSchema: { id: z.string(), conferma: z.literal(true).describe(descrConferma('quale comunicazione, oggetto e cliente inclusi')) },
     },
     async ({ id }) => testoEsitoScrittura(await inviaComando(url, 'eliminaComunicazione', { id }))
+  );
+
+  // ---------- ORGANI SOCIALI (amministratori, organo di controllo, soci con quote) ----------
+  server.registerTool(
+    'crea_carica',
+    {
+      title: 'Aggiungi amministratore / organo di controllo / socio a un cliente',
+      description: 'Inserisce in anagrafica di un cliente un amministratore (o membro del CdA), un componente dell\'organo di controllo/revisore oppure un socio con quota. La persona può essere già presente (socioId, vedi elenco soci) oppure creata al volo con "nome" (+ codiceFiscale). Serve anche per capire se va compilato il quadro RO dei Redditi SC/ENC. Non inventare dati: se non sai ruolo, quote o date lasciali vuoti. Richiede il gestionale aperto via server.js.',
+      inputSchema: {
+        clienteId: z.string(),
+        categoria: z.enum(['amministratore', 'controllo', 'socio']),
+        socioId: z.string().optional().describe('Id di una persona esistente.'),
+        nome: z.string().optional().describe('Nome e cognome, se la persona non esiste ancora.'),
+        codiceFiscale: z.string().optional(),
+        ruolo: z.string().optional().describe('amministratore: Amministratore unico | Presidente CdA | Vice presidente CdA | Consigliere | Amministratore delegato | Amministratore; controllo: Sindaco unico | Presidente collegio sindacale | Sindaco effettivo | Sindaco supplente | Revisore legale | Società di revisione; socio: Socio.'),
+        quota: z.number().min(0).max(100).optional().describe('Solo soci: quota in %.'),
+        decorrenza: z.string().optional().describe('YYYY-MM-DD'),
+        scadenza: z.string().optional().describe('YYYY-MM-DD'),
+        note: z.string().optional(),
+      },
+    },
+    async (campi) => testoEsitoScrittura(await inviaComando(url, 'creaCarica', pulisciUndefined(campi)))
+  );
+  server.registerTool(
+    'modifica_carica',
+    { title: 'Modifica carica', description: 'Aggiorna solo i campi indicati di una carica (ruolo, quota, decorrenza, scadenza, note). Richiede il gestionale aperto via server.js.',
+      inputSchema: { id: z.string(), patch: z.object({ ruolo: z.string().optional(), quota: z.number().nullable().optional(), decorrenza: z.string().optional(), scadenza: z.string().optional(), note: z.string().optional() }) } },
+    async ({ id, patch }) => testoEsitoScrittura(await inviaComando(url, 'modificaCarica', { id, patch: pulisciUndefined(patch) }))
+  );
+  server.registerTool(
+    'elimina_carica',
+    { title: 'Elimina carica', description: 'Toglie una carica dall\'anagrafica del cliente (la persona resta tra i soci/referenti). Richiede il gestionale aperto via server.js.',
+      inputSchema: { id: z.string(), conferma: z.literal(true).describe(descrConferma('quale carica e di quale cliente')) } },
+    async ({ id }) => testoEsitoScrittura(await inviaComando(url, 'eliminaCarica', { id }))
   );
 
   // ---------- SOCI/REFERENTI ----------

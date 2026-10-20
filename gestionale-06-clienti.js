@@ -28,6 +28,8 @@ const CLI_COLONNE = (() => {
     col('addebitoF24', 'Addebito F24', c => c.addebitoF24 || '', true, 100),
     col('previdenza', 'Previdenza', c => c.previdenza || '', true, 130),
     col('organoControllo', 'Organo di controllo', c => c.organoControllo || '', true, 150),
+    col('organoAmministrativo', 'Organo amministrativo', c => c.organoAmministrativo || '', true, 150),
+    col('quadroRO', 'Quadro RO', c => { const r = quadroRoCliente(c); return r.nonApplicabile ? '' : (r.si === true ? 'Sì' : (r.si === false ? 'No' : 'Da verificare')); }, true, 110),
     col('pmiInnovativa', 'PMI innovativa', c => sn(c.pmiInnovativa), true, 90),
     col('startupInnovativa', 'Start-up innovativa', c => sn(c.startupInnovativa), true, 100),
     col('haDipendenti', 'Ha dipendenti', c => sn(c.haDipendenti), true, 90),
@@ -451,6 +453,29 @@ function renderSchedaCliente() {
     </div>
   </div>`;
 
+
+  /* Organi sociali: amministratori/CdA, organo di controllo/revisore, soci con quote. */
+  const sezOrgani = (() => {
+    if (!TIPI_CON_ORGANI_SOCIALI.includes(cliente.tipo)) return '';
+    const persona = (k) => (STATE.soci || []).find(x => x.id === k.socioId) || { nome: '(persona eliminata)' };
+    const blocco = (cat) => {
+      if (cat === 'socio' && !TIPI_CON_QUOTE_SOCI.includes(cliente.tipo)) return '';
+      const lista = cariche_(cliente.id, cat).sort((a, b) => (b.quota || 0) - (a.quota || 0));
+      const righe = lista.map(k => `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);cursor:pointer;${caricaInCorso(k) ? '' : 'opacity:.55;'}" data-action="modifica-carica" data-id="${k.id}">
+        <div style="flex:1;"><div style="font-weight:600;font-size:13px;">${escapeHtml(persona(k).nome)}${persona(k).codiceFiscale ? ' <span class="helptext">' + escapeHtml(persona(k).codiceFiscale) + '</span>' : ''}</div>
+        <div class="helptext">${escapeHtml(k.ruolo || '')}${cat === 'socio' && k.quota != null && k.quota !== '' ? ' · ' + k.quota + '%' : ''}${k.decorrenza ? ' · dal ' + fmtData(k.decorrenza) : ''}${k.scadenza ? ' · fino al ' + fmtData(k.scadenza) + (caricaInCorso(k) ? '' : ' (scaduta)') : ''}${k.note ? ' · ' + escapeHtml(k.note) : ''}</div></div></div>`).join('');
+      const tot = cat === 'socio' && lista.length ? (() => { const t = quotaTotaleSoci(cliente.id); return `<div class="helptext" style="margin-top:4px;font-weight:700;color:${Math.abs(t - 100) <= 0.01 ? 'var(--verde)' : 'var(--rosso)'};">Totale quote: ${t}%${Math.abs(t - 100) <= 0.01 ? '' : ' (dovrebbe essere 100%)'}</div>`; })() : '';
+      return `<div style="margin-top:10px;"><div style="font-size:12px;font-weight:700;color:var(--text-mut);text-transform:uppercase;">${CATEGORIE_CARICA[cat].titolo}</div>
+        ${righe || '<div class="empty" style="padding:6px 0;">Nessuno inserito.</div>'}${tot}
+        <div style="margin-top:6px;"><button class="btn small" data-action="nuova-carica" data-cliente="${cliente.id}" data-categoria="${cat}">+ Aggiungi</button></div></div>`;
+    };
+    const ro = quadroRoCliente(cliente);
+    const badgeRo = ro.nonApplicabile ? '' : (ro.si === true ? `<span class="badge stato-errore" title="${escapeHtml(ro.motivi.join(', '))}">Quadro RO: da compilare</span>` : (ro.si === false ? '<span class="badge stato-inviato-telematicamente">Quadro RO: non serve</span>' : '<span class="badge stato-da-fare" title="Indica organo amministrativo e organo di controllo per deciderlo">Quadro RO: da verificare</span>'));
+    return `<div class="card"><div class="section-title">Organi sociali e soci ${badgeRo}</div>
+      <div class="helptext">Tipo di organo amministrativo: <strong>${escapeHtml(cliente.organoAmministrativo || 'non indicato')}</strong> · organo di controllo: <strong>${escapeHtml(cliente.organoControllo || 'non indicato')}</strong> (si cambiano con "Modifica" del cliente).${ro.si === true ? ' Quadro RO da compilare: ' + escapeHtml(ro.motivi.join(', ')) + '.' : ''}</div>
+      ${blocco('amministratore')}${blocco('controllo')}${blocco('socio')}</div>`;
+  })();
+
   const sociCliente = sociDiCliente(cliente.id);
   const sezSoci = `<div class="card">
     <div class="section-title">Soci e referenti <span class="cnt">${sociCliente.length} collegati</span></div>
@@ -471,7 +496,7 @@ function renderSchedaCliente() {
     <div style="margin-top:10px;"><button class="btn small" data-action="nav" data-nav="f24">Apri F24 →</button></div>
   </div>`;
 
-  return toolbar + header + sezScadenze + sezAnnuali + sezTask + sezCom + sezContab + sezBilanci + sezDoc + sezSoci + sezF24;
+  return toolbar + header + sezScadenze + sezAnnuali + sezTask + sezCom + sezContab + sezBilanci + sezDoc + sezOrgani + sezSoci + sezF24;
 }
 
 /* Adempimenti "applicabili" in anagrafica cliente: uniscono in un'unica lista, raggruppata
@@ -569,7 +594,7 @@ const CAMPI_FORM_MANCANTI = {
   'Regime fiscale': ['fRegime'], 'Periodicità IVA': ['fPeriodIva'], 'Responsabile studio': ['fResponsabile'],
   'Tenuta contabilità': ['fContabilita'], 'Addebito F24': ['fAddebito'], 'Previdenza': ['fPrevidenza'],
   'Codice fiscale / P.IVA': ['fCodiceFiscale', 'fPartitaIva'], 'PMI innovativa (sì/no)': ['fPmiInnovativa'],
-  'Start-up innovativa (sì/no)': ['fStartupInnovativa'], 'Organo di controllo': ['fOrganoControllo'],
+  'Start-up innovativa (sì/no)': ['fStartupInnovativa'], 'Organo di controllo': ['fOrganoControllo'], 'Organo amministrativo (tipo)': ['fOrganoAmministrativo'],
   'Email o PEC': ['fEmail', 'fPec'], 'Codice ATECO': ['fAteco'], 'Iscrizione Registro Imprese': ['fIscrittoRI'],
 };
 function htmlBannerMancantiCliente(l) {
@@ -606,7 +631,7 @@ function modalCliente(clienteId) {
     periodicitaIva: 'Mensile', periodicitaIntrastat: 'N.A.', previdenza: 'No previdenza',
     flags: {}, dirittoCameraleScelta: null, versamentoImposteScelta: SCELTE_VERSAMENTO_IMPOSTE[1], adempimentiAnnualiApplicabili: [], note: '',
     settore: '', annoIngresso: new Date().getFullYear(), canaleAcquisizione: '', mandatario: '', preventivoAnnuo: '',
-    pmiInnovativa: '', startupInnovativa: '', organoControllo: '', iscrittoRegistroImprese: '', haDipendenti: '', soggettoIsa: '', dataCostituzione: '',
+    pmiInnovativa: '', startupInnovativa: '', organoControllo: '', organoAmministrativo: '', iscrittoRegistroImprese: '', haDipendenti: '', soggettoIsa: '', dataCostituzione: '',
   };
   const contatti = c.contatti || {};
   const vuoto = (v) => `<option value="" ${!v?'selected':''}>— da indicare —</option>`;
@@ -703,12 +728,13 @@ function modalCliente(clienteId) {
         </fieldset>
 
         <fieldset>
-          <legend>Organo di controllo</legend>
+          <legend>Organi sociali (amministratori, controllo)</legend>
           <div class="grid3">
             <div class="field"><label>Data di costituzione</label><input type="date" id="fDataCostituzione" value="${escapeHtml(c.dataCostituzione || '')}"></div>
+            <div class="field"><label>Organo amministrativo</label><select id="fOrganoAmministrativo">${vuoto(c.organoAmministrativo)}${OPZIONI_ORGANO_AMMINISTRATIVO.map(o=>`<option ${c.organoAmministrativo===o?'selected':''}>${o}</option>`).join('')}</select></div>
             <div class="field"><label>Organo di controllo</label><select id="fOrganoControllo">${vuoto(c.organoControllo)}${OPZIONI_ORGANO_CONTROLLO.map(o=>`<option ${c.organoControllo===o?'selected':''}>${o}</option>`).join('')}</select></div>
           </div>
-          <div class="helptext">Vale per qualunque società, anche se non è PMI o start-up innovativa: serve ad esempio per il quadro del 770. Finché non è indicato il cliente resta "da completare".</div>
+          <div class="helptext">Vale per qualunque società, anche se non è PMI o start-up innovativa: serve ad esempio per il quadro del 770. Finché non è indicato il cliente resta "da completare". Amministratori, sindaci/revisori e soci con quote si inseriscono nella scheda cliente (sezione "Organi sociali e soci"); servono anche a capire se va compilato il quadro RO dei Redditi SC/ENC.</div>
         </fieldset>
 
         <fieldset>
@@ -811,6 +837,7 @@ function leggiFormCliente(id, editing) {
     soggettoIsa: (document.getElementById('fSoggettoIsa') || {}).value || '',
     dataCostituzione: (document.getElementById('fDataCostituzione') || {}).value || '',
     organoControllo: document.getElementById('fOrganoControllo').value,
+    organoAmministrativo: (document.getElementById('fOrganoAmministrativo') || {}).value || '',
     iscrittoRegistroImprese: document.getElementById('fIscrittoRI').value,
     associazione: document.getElementById('fTipo').value === 'associazione' && document.getElementById('fAssRunts')
       ? { qualifica: document.getElementById('fAssQualifica').value.trim(), personalita: document.getElementById('fAssPersonalita').value, runts: document.getElementById('fAssRunts').value, sezioneRunts: document.getElementById('fAssSezione').value.trim(), repertorioRunts: document.getElementById('fAssRepertorio').value.trim(), delegaRunts: document.getElementById('fAssDelega').value, rasd: document.getElementById('fAssRasd').value, daFare: document.getElementById('fAssDaFare').value.trim() }

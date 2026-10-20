@@ -91,9 +91,23 @@ function eliminaAttivitaCatalogo(id) {
    a uno o più clienti — una persona può comparire su più aziende (es. socio di due SRL diverse).
    Solo anagrafica/contatti: non pilota flag fiscali né scadenze, che restano sul cliente. */
 function aggiungiSocio(s) {
-  STATE.soci.push(Object.assign({ id: uid('socio'), creatoIl: oggiISO() }, s));
+  const nuovo = Object.assign({ id: uid('socio'), creatoIl: oggiISO() }, s);
+  STATE.soci.push(nuovo);
   salvaStato();
+  return nuovo;
 }
+/* Cariche (organi sociali): amministratori, organo di controllo, soci con quota. Una per persona e ruolo su un cliente. */
+function aggiungiCarica(k) {
+  if (!STATE.cariche) STATE.cariche = [];
+  const nuova = Object.assign({ id: uid('carica'), creatoIl: oggiISO() }, k);
+  STATE.cariche.push(nuova);
+  const p = STATE.soci.find(x => x.id === nuova.socioId);
+  if (p && !(p.clienteIds || []).includes(nuova.clienteId)) p.clienteIds = (p.clienteIds || []).concat(nuova.clienteId);
+  salvaStato();
+  return nuova;
+}
+function aggiornaCarica(id, patch) { const k = (STATE.cariche || []).find(x => x.id === id); if (!k) return; Object.assign(k, patch); salvaStato(); }
+function eliminaCarica(id) { STATE.cariche = (STATE.cariche || []).filter(x => x.id !== id); salvaStato(); }
 function aggiornaSocio(id, patch) {
   const s = STATE.soci.find(x => x.id === id);
   if (!s) return;
@@ -102,6 +116,7 @@ function aggiornaSocio(id, patch) {
 }
 function eliminaSocio(id) {
   STATE.soci = STATE.soci.filter(x => x.id !== id);
+  STATE.cariche = (STATE.cariche || []).filter(k => k.socioId !== id);
   salvaStato();
 }
 function sociDiCliente(clienteId) {

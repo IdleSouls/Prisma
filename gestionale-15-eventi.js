@@ -1024,6 +1024,25 @@ function onClickDelegatoInterno(e) {
     case 'preventivo-esporta': esportaPreventivoFile(id); break;
     case 'vai-modelli': setView('modelli'); break;
 
+    case 'nuova-carica': modalCarica(el.dataset.cliente, el.dataset.categoria, null); break;
+    case 'modifica-carica': { const k = (STATE.cariche || []).find(x => x.id === id); if (k) modalCarica(k.clienteId, k.categoria, id); break; }
+    case 'elimina-carica':
+      if (confermaAzione('Eliminare questa carica dall\'anagrafica del cliente? (la persona resta in "Soci e referenti")')) { eliminaCarica(id); chiudiModal(); render(); toast('Carica eliminata.'); }
+      break;
+    case 'salva-carica': {
+      const cid = el.dataset.cliente, cat = el.dataset.categoria;
+      let socioId = h('kPersona').value;
+      if (socioId === '__nuova') {
+        const nome = h('kNome').value.trim();
+        if (!nome) { toast('Scrivi il nome della persona (o sceglila dall\'elenco).'); return; }
+        socioId = aggiungiSocio({ nome, ruolo: '', codiceFiscale: h('kCf').value.trim().toUpperCase(), clienteIds: [cid] }).id;
+      }
+      const q = h('kQuota') ? h('kQuota').value : '';
+      const dati = { clienteId: cid, socioId, categoria: cat, ruolo: h('kRuolo').value, quota: cat === 'socio' && q !== '' ? Number(q) : null, decorrenza: h('kDecorrenza').value, scadenza: h('kScadenza').value, note: h('kNote').value.trim() };
+      if (id) aggiornaCarica(id, dati); else aggiungiCarica(dati);
+      chiudiModal(); render(); toast('Carica salvata.');
+      break;
+    }
     case 'nuovo-socio': modalSocio(null); break;
     case 'modifica-socio': modalSocio(id); break;
     case 'elimina-socio':
@@ -2072,6 +2091,7 @@ function onChangeDelegato(e) {
     }
     case 'report-mensile-mese': { const t = h('rmTesto'); if (t) t.value = reportMensileCliente(el.dataset.cliente, el.value || oggiISO().slice(0, 7)); break; }
     case 'cpb-val-input': ricalcolaModalCpb(); break;
+    case 'carica-persona-cambia': aggiornaCampiNuovaPersona(); break;
     case 'cpb-param': { const v = Number(el.value); if (Number.isFinite(v)) { STATE.meta.cpbParametri = Object.assign({}, STATE.meta.cpbParametri || {}, { [el.dataset.k]: v }); salvaStato(); render(); } break; }
     case 'cpb-filtro-tipo': CPB_FILTRO.tipo = el.value; render(); break;
     case 'cpb-filtro-regime': CPB_FILTRO.regime = el.value; render(); break;

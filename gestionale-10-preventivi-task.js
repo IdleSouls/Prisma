@@ -1059,6 +1059,34 @@ function renderSoci() {
   </div>` + controlliPaginazione(pag);
 }
 
+/* Carica (amministratore / organo di controllo / socio con quota) di un cliente: persona esistente o nuova. */
+function modalCarica(clienteId, categoria, id) {
+  const c = clienteById(clienteId); if (!c) return;
+  const k = id ? (STATE.cariche || []).find(x => x.id === id) : null;
+  if (id && !k) return;
+  const cat = k ? k.categoria : categoria;
+  const persone = (STATE.soci || []).slice().sort((a, b) => a.nome.localeCompare(b.nome));
+  const html = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop"><div class="modal" style="max-width:520px;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;"><div><h2>${k ? 'Modifica' : 'Aggiungi'}: ${escapeHtml(CATEGORIE_CARICA[cat].titolo)}</h2><div class="modal-sub">${escapeHtml(c.ragioneSociale)}</div></div><button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button></div>
+    <form id="formCarica" onsubmit="return false;"><div class="grid2">
+      <div class="field" style="grid-column:1/-1;"><label>Persona</label><select id="kPersona" data-action="carica-persona-cambia"><option value="__nuova">➕ Nuova persona…</option>${persone.map(p => `<option value="${p.id}" ${k && k.socioId === p.id ? 'selected' : ''}>${escapeHtml(p.nome)}${p.codiceFiscale ? ' · ' + escapeHtml(p.codiceFiscale) : ''}</option>`).join('')}</select></div>
+      <div class="field kNuova"><label>Nome e cognome *</label><input id="kNome" placeholder="es. Mario Rossi"></div>
+      <div class="field kNuova"><label>Codice fiscale</label><input id="kCf" style="text-transform:uppercase;"></div>
+      <div class="field"><label>Ruolo</label><select id="kRuolo">${CATEGORIE_CARICA[cat].ruoli.map(r => `<option ${k && k.ruolo === r ? 'selected' : ''}>${r}</option>`).join('')}</select></div>
+      ${cat === 'socio' ? `<div class="field"><label>Quota %</label><input type="number" step="any" min="0" max="100" id="kQuota" value="${k && k.quota != null ? k.quota : ''}"></div>` : '<div></div>'}
+      <div class="field"><label>In carica dal</label><input type="date" id="kDecorrenza" value="${escapeHtml((k && k.decorrenza) || '')}"></div>
+      <div class="field"><label>Scadenza carica / mandato</label><input type="date" id="kScadenza" value="${escapeHtml((k && k.scadenza) || '')}"></div>
+      <div class="field" style="grid-column:1/-1;"><label>Note</label><input id="kNote" value="${escapeHtml((k && k.note) || '')}"></div>
+    </div></form>
+    <div class="modal-actions">${k ? `<button class="btn" style="color:var(--rosso);margin-right:auto;" data-action="elimina-carica" data-id="${k.id}">Elimina</button>` : ''}<button class="btn" data-action="chiudi-modal">Annulla</button>
+      <button class="btn primary" data-action="salva-carica" data-id="${k ? k.id : ''}" data-cliente="${clienteId}" data-categoria="${cat}">Salva</button></div></div></div>`;
+  document.getElementById('modalRoot').innerHTML = html;
+  aggiornaCampiNuovaPersona();
+}
+function aggiornaCampiNuovaPersona() {
+  const sel = document.getElementById('kPersona'); if (!sel) return;
+  document.querySelectorAll('.kNuova').forEach(e => { e.style.display = sel.value === '__nuova' ? '' : 'none'; });
+}
 function modalSocio(id) {
   if (STATE.clienti.length === 0) { toast('Aggiungi prima almeno un cliente.'); return; }
   const editing = id ? (STATE.soci || []).find(s => s.id === id) : null;
