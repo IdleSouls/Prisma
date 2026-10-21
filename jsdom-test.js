@@ -6123,6 +6123,7 @@ async function main() {
       assert(q('[data-action="cpb-valuta"]'), 'CPB valutazione: deve esserci almeno una società da valutare');
       assert(/DATI ISA MANCANTI/.test(q('.kpi-grid').textContent), 'CPB: riquadro dati ISA mancanti');
       assert(q('select[data-action="cpb-stato"]') && q('select[data-action="cpb-stato"]').classList.contains('statoSel'), 'CPB valutazione: stato modificabile con la stessa tendina di "Stato adesioni"');
+      { const lnk = q('a[data-action="apri-cliente"]'); assert(lnk, 'CPB: il nome cliente e\' un link all\'anagrafica'); const idl = lnk.dataset.id; lnk.click(); await wait(20); assert(window.getSTATE && /Organi sociali|Scadenze|Anagrafica/.test(q('#content').textContent) && q('#pageTitle'), 'CPB: il click sul nome apre la scheda cliente'); window.setView('cpb'); window.render(); await wait(20); }
       const riga = q('button[data-action="cpb-valuta"]'); const idv = riga.dataset.id; riga.click(); await wait(20);
       assert(q('#cpbv_redConc26'), 'CPB valutazione: scheda con i campi della proposta');
       assert(/Inserisci almeno/.test(q('#cpbvRisultato').textContent), 'CPB valutazione: senza dati niente confronto');
