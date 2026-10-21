@@ -369,7 +369,7 @@ function renderAnnuali() {
       <div style="display:flex;align-items:center;gap:12px;cursor:pointer;" data-action="ann-toggle-expand" data-id="${a.id}">
         <div style="flex:1;">
           <div style="font-weight:700;font-size:13.5px;">${escapeHtml(a.tipoNome)} <span style="font-weight:700;color:var(--text);">— ${escapeHtml(nomeCliente(a.clienteId))}</span></div>
-          <div class="helptext">${escapeHtml(a.responsabile||'—')} ${a.scadenza?(' · scad. '+fmtData(a.scadenza)):''}${a.faseCorrente ? ' · fase attuale: ' + escapeHtml(a.faseCorrente.nome) + (a.faseCorrente.responsabile ? ' (' + escapeHtml(a.faseCorrente.responsabile) + ')' : '') : ''}${a.nota ? ' · 📝 ha note' : ''}</div>
+          <div class="helptext">${escapeHtml(a.responsabile||'—')} ${a.scadenza?(' · scad. '+fmtData(a.scadenza)):''}${a.faseCorrente ? ' · fase attuale: ' + escapeHtml(a.faseCorrente.nome) + (a.faseCorrente.responsabile ? ' (' + escapeHtml(a.faseCorrente.responsabile) + ')' : '') : ''}${a.nota ? ' · 📝 ha note' : ''}${a.tipoChiave === '770' && a.tipiRitenute.length ? ' · ritenute: ' + escapeHtml(a.tipiRitenute.map(k => TIPI_RITENUTE_770.find(x => x.chiave === k).nome).join(', ')) : ''}</div>
         </div>
         ${a.tipoChiave === '770' ? (() => { const q770 = quadratura770(a.clienteId, a.anno - 1); return q770 ? `<div title="Quadratura ritenute operate nel ${a.anno - 1}">${semaforo770Html(q770)}</div>` : ''; })() : ''}
         <div style="width:140px;"><div class="progress"><div style="width:${a.percentuale}%"></div></div></div>
@@ -393,6 +393,7 @@ function renderAnnuali() {
             + (a.nonDovuto && (a.nonDovutoDa || a.nonDovutoData) ? `<div class="helptext" style="margin:-6px 0 10px;">Segnato${a.nonDovutoDa ? ' da <b>' + escapeHtml(a.nonDovutoDa) + '</b>' : ''}${a.nonDovutoData ? ' il ' + fmtData(a.nonDovutoData) : ''}.</div>` : '')
             + (conflitto ? `<div style="margin:0 0 10px;padding:8px 10px;border-left:4px solid var(--rosso);background:var(--rosso-bg);border-radius:6px;font-size:12.5px;">⚠ In Prisma risultano ritenute per ${q.dovuto.toLocaleString('it-IT', { minimumFractionDigits: 2 })} € nel ${a.anno - 1}: controlla prima di considerare l'adempimento non dovuto.</div>` : '');
         })() : ''}
+        ${a.tipoChiave === '770' && !a.nonDovuto ? `<div style="margin:0 0 10px;"><div style="font-size:11.5px;font-weight:700;color:var(--text-mut);text-transform:uppercase;margin-bottom:4px;">Tipi di ritenute indicate nel 770</div>${TIPI_RITENUTE_770.map(t => `<label class="checkline" style="display:inline-block;margin:0 14px 2px 0;"><input type="checkbox" data-action="ann-tipo-ritenuta" data-id="${a.id}" data-tipo="${t.chiave}" ${a.tipiRitenute.includes(t.chiave) ? 'checked' : ''}> ${escapeHtml(t.nome)}</label>`).join('')}</div>` : ''}
         <div style="${a.nonDovuto ? 'opacity:.45;pointer-events:none;' : ''}">
         <div style="font-size:11.5px;font-weight:700;color:var(--text-mut);text-transform:uppercase;margin-bottom:4px;">Sotto-adempimenti (${a.sotto.filter(s=>s.completato).length}/${a.sotto.length})</div>
         ${sottoHtml}

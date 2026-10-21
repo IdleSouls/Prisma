@@ -1431,8 +1431,17 @@ function salvaValutazioneCpb(id, nuovoStato) {
   if (!STATE.cpb) STATE.cpb = {};
   const cur = STATE.cpb[id] || {};
   const nota = (document.getElementById('cpbv_nota') || {}).value;
-  STATE.cpb[id] = Object.assign({}, cur, { dati: leggiDatiModalCpb(), nota: nota != null ? nota : cur.nota }, nuovoStato ? { stato: nuovoStato } : {});
+  const dati = leggiDatiModalCpb();
+  STATE.cpb[id] = Object.assign({}, cur, { dati, nota: nota != null ? nota : cur.nota }, nuovoStato ? { stato: nuovoStato } : {});
+  if (!nuovoStato) { const s = statoAutoCalcolato(id, dati); if (s) STATE.cpb[id].stato = s; }
   salvaStato();
+}
+/* Con i dati completi (proposta AdE + proiezione) lo stato passa da solo a "Calcolato", ma solo se era ancora
+   "Dati ISA mancanti" o "Da valutare": Aderito / Non aderito / Non applicabile restano come decisi a mano. */
+function statoAutoCalcolato(id, dati) {
+  const c = clienteById(id);
+  if (!c || !['Dati ISA mancanti', 'Da valutare'].includes(statoCpbCliente(id))) return null;
+  return calcolaCpb(c, dati, cpbParametri()).completo ? 'Calcolato' : null;
 }
 function cpbCsvRiepilogo() {
   const P = cpbParametri();

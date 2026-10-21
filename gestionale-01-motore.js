@@ -971,6 +971,15 @@ const REGOLE_ANNUALI_AUTO = {
 };
 /* Adempimenti che possono risultare "non dovuti" in un dato anno: senza ritenute operate non c'è 770 né CU. */
 const ADEMPIMENTI_NON_DOVUTO_POSSIBILE = ['770', 'CU'];
+
+/* Tipi di ritenute/redditi indicati nel 770 (spunta libera, per ricordare cosa c'è dentro la dichiarazione). */
+const TIPI_RITENUTE_770 = [
+  { chiave: 'autonomo', nome: 'Lavoro autonomo' },
+  { chiave: 'dividendi', nome: 'Dividendi / utili' },
+  { chiave: 'dipendente', nome: 'Lavoro dipendente e assimilati' },
+  { chiave: 'provvigioni', nome: 'Provvigioni / agenti' },
+  { chiave: 'altro', nome: 'Altre ritenute' },
+];
 function annualeAutomatico(c, chiave) {
   const r = REGOLE_ANNUALI_AUTO[chiave];
   return !!(r && c && r(c));
@@ -1030,6 +1039,7 @@ function generaAdempimentiAnnuali(clienti, anno, vecchie) {
         percentuale: nonDovuto ? 100 : (sotto.length ? Math.round((nCompletati / sotto.length) * 100) : 0),
         completato: nonDovuto || (sotto.length > 0 && nCompletati === sotto.length),
         nonDovuto, nonDovutoDa: nonDovuto ? (salvato.nonDovutoDa || null) : null, nonDovutoData: nonDovuto ? (salvato.nonDovutoData || null) : null,
+        tipiRitenute: (salvato && Array.isArray(salvato.tipiRitenute)) ? salvato.tipiRitenute.filter(t => TIPI_RITENUTE_770.some(x => x.chiave === t)) : [],
       });
     }
   }

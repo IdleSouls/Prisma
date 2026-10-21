@@ -2274,6 +2274,12 @@ function onChangeDelegato(e) {
       else aggiornaAnnualeMeta(id, { nonDovuto: false, nonDovutoDa: null, nonDovutoData: null });
       render(); break;
     }
+    case 'ann-tipo-ritenuta': {
+      const att = (STATE.annualiOverrides[id] && STATE.annualiOverrides[id].tipiRitenute) || [];
+      const tipo = el.dataset.tipo;
+      aggiornaAnnualeMeta(id, { tipiRitenute: el.checked ? Array.from(new Set(att.concat(tipo))) : att.filter(t => t !== tipo) });
+      render(); break;
+    }
     case 'ann-scadenza': aggiornaAnnualeMeta(id, { scadenza: el.value || null }); render(); break;
     case 'ann-resp': aggiornaAnnualeMeta(id, { responsabile: el.value }); render(); break;
     case 'ann-toggle-sotto': case 'ann-data-sotto': case 'ann-resp-sotto': {

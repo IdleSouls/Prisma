@@ -1584,6 +1584,7 @@ const AZIONI_MCP = {
     const nuovo = Object.assign({}, cur, { dati });
     if (p.nota !== undefined) nuovo.nota = p.nota;
     if (p.stato !== undefined) { if (!STATI_CPB.includes(p.stato)) throw new Error('Stato CPB non valido: ' + p.stato); nuovo.stato = p.stato; }
+    if (p.stato === undefined) { const s = statoAutoCalcolato(c.id, dati); if (s) nuovo.stato = s; }
     STATE.cpb[c.id] = nuovo; salvaStato(); render();
     return { aggiornato: true, cliente: c.ragioneSociale };
   },
@@ -1591,6 +1592,7 @@ const AZIONI_MCP = {
   modificaAdempimentoAnnuale: (p) => {
     const pt = p.patch || {}; const ok = {};
     ['nota', 'scadenza', 'responsabile'].forEach(k => { if (pt[k] !== undefined) ok[k] = pt[k]; });
+    if (Array.isArray(pt.tipiRitenute)) ok.tipiRitenute = pt.tipiRitenute.filter(t => TIPI_RITENUTE_770.some(x => x.chiave === t));
     /* "Nessuna ritenuta operata": come la casella nella scheda (solo 770 e CU). Registra chi e quando. */
     if (pt.nonDovuto !== undefined) {
       const a = derivati().annuali.find(x => x.id === p.annualeId);
