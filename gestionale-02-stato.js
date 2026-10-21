@@ -955,7 +955,7 @@ function avviaHeartbeatOperatore() {
     const nome = operatoreCorrente();
     if (!nome) return;
     const token = tokenSessioneOperatoreCorrente();
-    fetch('/api/presenza', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operatore: nome, deviceId: DEVICE_ID, token: token || undefined }) })
+    return fetch('/api/presenza', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operatore: nome, deviceId: DEVICE_ID, token: token || undefined }) })
       .then(r => r.json()).then(d => {
         if (!d || !d.ok) return;
         PRESENZA_ONLINE = d.online || {};
@@ -969,7 +969,7 @@ function avviaHeartbeatOperatore() {
         if (d.occupato) mostraAvvisoOperatoreOccupatoAltrove(nome);
       }).catch(() => {});
   };
-  invia();
+  PRIMO_HEARTBEAT = invia(); // la schermata resta coperta finche' il server non conferma la sessione (vedi fineAttesaAvvioSeNonServeScelta)
   setInterval(invia, 8000); // Matteo: "il semaforo è molto lento" - ridotto da 15s (vedi anche
   // PRESENZA_TTL_MS in server.js, ridotto in proporzione per mantenere lo stesso margine)
 }
@@ -1017,7 +1017,7 @@ function tentaSceltaOperatore(nome) {
     .catch(() => { impostaOperatore(nome); chiudiModal(); }); // server irraggiungibile: non blocchiamo la scelta locale
 }
 function impostaOperatore(nome) {
-  fineAttesaAvvio(); // scelta fatta: l'app puo' comparire
+  if (nome) fineAttesaAvvio(); // scelta fatta: l'app puo' comparire
   OPERATORE = (nome && STATE.meta.responsabili.includes(nome)) ? nome : null;
   try {
     if (typeof localStorage === 'undefined') { /* niente da fare, es. ambiente di test senza DOM */ }
@@ -1259,7 +1259,16 @@ function aggiornaVistaMCPInTempoReale() {
    la schermata dell'app. La classe arriva quando la sincronizzazione iniziale ha deciso se serve la scelta utente (e questa e' stata fatta
    o non serve); rete di sicurezza: dopo 8 secondi arriva comunque. */
 function fineAttesaAvvio() { try { document.documentElement.classList.add('app-pronta'); } catch (e) { /* ignora */ } }
-function fineAttesaAvvioSeNonServeScelta() { try { if (!operatoreObbligatorio()) fineAttesaAvvio(); } catch (e) { fineAttesaAvvio(); } }
+let PRIMO_HEARTBEAT = null;
+/* Se c'e' gia' un utente scelto su questo PC, il server puo' ancora dire "sessione scaduta" al primo controllo (heartbeat): in quel caso
+   si torna alla scelta utente. Per non far intravedere l'app prima di quel momento si aspetta la risposta (massimo 2,5 secondi). */
+async function fineAttesaAvvioSeNonServeScelta() {
+  try {
+    if (operatoreObbligatorio()) return;
+    if (PRIMO_HEARTBEAT) await Promise.race([PRIMO_HEARTBEAT.catch(() => {}), new Promise(r => setTimeout(r, 2500))]);
+    if (!operatoreObbligatorio()) fineAttesaAvvio();
+  } catch (e) { fineAttesaAvvio(); }
+}
 async function inizializzaSyncCondiviso() {
   try {
     await inizializzaSyncCondivisoInterno();
