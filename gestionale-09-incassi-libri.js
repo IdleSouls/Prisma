@@ -1167,23 +1167,111 @@ function modalRiservatezza() {
 
 /* -------------------- CARICO DI LAVORO, PROROGHE, CPB -------------------- */
 const MESI_BREVI = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'];
-/* Carico = scadenze periodiche non chiuse + adempimenti annuali non completati, per responsabile e mese di scadenza. */
-function datiCarico() {
-  const { tutteScadenze, annuali } = derivati();
-  const resp = Array.from(new Set((STATE.meta.responsabili || []).concat(['—'])));
-  const m = {}; resp.forEach(r => { m[r] = { aperte: Array(12).fill(0), chiuse: Array(12).fill(0) }; });
-  const add = (r, iso, chiusa) => { if (!iso) return; const mi = Number(iso.slice(5, 7)) - 1; const k = m[r || '—'] ? (r || '—') : '—'; (chiusa ? m[k].chiuse : m[k].aperte)[mi]++; };
-  tutteScadenze.forEach(sc => add(sc.responsabile, sc.data, STATI_SCADENZA_CHIUSI.includes(sc.stato)));
-  annuali.forEach(a => add(a.responsabile, a.scadenza, a.completato));
-  return { resp: resp.filter(r => m[r].aperte.some(x => x) || m[r].chiuse.some(x => x)), m };
+/* Carico di lavoro = scadenze periodiche + adempimenti annuali + task del team ancora aperti, per persona e mese di scadenza.
+   Si può leggere come numero di voci o come ORE STIMATE (peso per tipo, modificabile) confrontate con la capacità mensile di
+   ciascuno. Click su una cella o su una persona: elenco delle voci che la compongono. */
+let CARICO_FILTRO = { anno: null, tipo: 'Tutti', unita: 'ore', persona: 'Tutti' };
+const CARICO_CAPACITA_DEFAULT = 120;
+const CARICO_ORE_DEFAULT = [
+  [/^task team$/i, 1], [/bilancio/i, 8], [/redditi|unico|730/i, 3], [/770/, 2], [/\bcu\b|certificazione unica/i, 1.5],
+  [/dichiarazione iva|iva annuale/i, 2], [/imu|tari/i, 0.5], [/lipe/i, 0.5], [/f24|iva|inps|acconto|saldo/i, 0.3],
+];
+function oreStimateTipo(nome) {
+  const o = (STATE.meta.caricoOre || {})[nome];
+  if (o != null && o !== '' && Number.isFinite(Number(o))) return Number(o);
+  const r = CARICO_ORE_DEFAULT.find(x => x[0].test(nome || ''));
+  return r ? r[1] : 0.5;
 }
+function capacitaMese(persona) { const c = (STATE.meta.caricoCapacita || {})[persona]; return c != null && Number(c) > 0 ? Number(c) : CARICO_CAPACITA_DEFAULT; }
+function vociCarico() {
+  const { tutteScadenze, annuali } = derivati();
+  const v = [];
+  tutteScadenze.forEach(sc => { if (sc.data) v.push({ fonte: 'Scadenza periodica', tipo: sc.tipo, resp: sc.responsabile || '—', data: sc.data, chiusa: STATI_SCADENZA_CHIUSI.includes(sc.stato), clienteId: sc.clienteId, stato: sc.stato, ore: oreStimateTipo(sc.tipo) }); });
+  annuali.forEach(a => { if (a.scadenza) v.push({ fonte: 'Adempimento annuale', tipo: a.tipoNome, resp: a.responsabile || '—', data: a.scadenza, chiusa: !!a.completato, clienteId: a.clienteId, stato: (a.percentuale || 0) + '%', ore: oreStimateTipo(a.tipoNome) * (1 - (a.percentuale || 0) / 100) }); });
+  (STATE.taskTeam || []).forEach(t => { if (t.scadenza) v.push({ fonte: 'Task team', tipo: t.titolo || 'Task', resp: t.assegnatoA || '—', data: t.scadenza, chiusa: t.stato === 'Fatto', clienteId: t.clienteId || null, stato: t.stato, ore: oreStimateTipo('Task team') }); });
+  return v;
+}
+function datiCarico() {
+  const f = CARICO_FILTRO, oggi = oggiISO();
+  let voci = vociCarico();
+  const anni = Array.from(new Set(voci.map(x => x.data.slice(0, 4)))).sort();
+  const anno = String(f.anno || (anni.includes(String(STATE.annoCorrente)) ? STATE.annoCorrente : (anni[anni.length - 1] || STATE.annoCorrente)));
+  voci = voci.filter(x => x.data.slice(0, 4) === anno && (f.tipo === 'Tutti' || x.fonte === f.tipo));
+  const resp = Array.from(new Set((STATE.meta.responsabili || []).concat(voci.map(x => x.resp)).concat(['—'])));
+  const m = {};
+  resp.forEach(r => { m[r] = { aperte: Array(12).fill(0), chiuse: Array(12).fill(0), ore: Array(12).fill(0), scadute: 0, voci: [] }; });
+  voci.forEach(x => {
+    const mi = Number(x.data.slice(5, 7)) - 1, o = m[x.resp];
+    o.voci.push(Object.assign({ mese: mi }, x));
+    if (x.chiusa) o.chiuse[mi]++; else { o.aperte[mi]++; o.ore[mi] += x.ore; if (x.data < oggi) o.scadute++; }
+  });
+  return { anno, anni, tutteLePersone: resp.filter(r => m[r].voci.length), resp: resp.filter(r => m[r].voci.length && (f.persona === 'Tutti' || f.persona === r)), m };
+}
+function fmtOre(n) { return (Math.round(n * 10) / 10).toLocaleString('it-IT') + ' h'; }
 function renderCarico() {
-  const d = datiCarico();
+  const d = datiCarico(), f = CARICO_FILTRO, ore = f.unita === 'ore', oggiM = (String(new Date().getFullYear()) === d.anno) ? new Date().getMonth() : -1;
+  const val = (r, i) => ore ? d.m[r].ore[i] : d.m[r].aperte[i];
   const max = Math.max(1, ...d.resp.flatMap(r => d.m[r].aperte));
-  const oggiM = new Date().getMonth();
-  const righe = d.resp.map(r => `<tr><td style="white-space:nowrap;font-weight:600;">${escapeHtml(r)}</td>${d.m[r].aperte.map((n, i) => `<td style="text-align:center;background:rgba(220,80,60,${n ? (0.1 + 0.6 * n / max).toFixed(2) : 0});${i === oggiM ? 'outline:2px solid var(--blu-mid);' : ''}" title="${n} aperte, ${d.m[r].chiuse[i]} chiuse">${n || ''}</td>`).join('')}<td style="text-align:center;font-weight:700;">${d.m[r].aperte.reduce((a, b) => a + b, 0)}</td></tr>`).join('');
-  return `<div class="helptext" style="margin-bottom:8px;">Scadenze periodiche e adempimenti annuali ancora aperti, per responsabile e mese di scadenza (anno ${STATE.annoCorrente}). Calcolato dai dati già presenti: nessun timesheet. Più è scuro, più lavoro si concentra: serve a bilanciare i picchi (marzo-giugno) prima che arrivino.</div>
-    <div class="card" style="overflow:auto;"><table class="tbl"><thead><tr><th>Persona</th>${MESI_BREVI.map(x => `<th style="text-align:center;">${x}</th>`).join('')}<th>Tot.</th></tr></thead><tbody>${righe || '<tr><td colspan="14" class="helptext">Nessuna scadenza.</td></tr>'}</tbody></table></div>`;
+  const colore = (r, i) => {
+    const n = d.m[r].aperte[i]; if (!n) return '';
+    if (!ore) return `rgba(220,80,60,${(0.1 + 0.6 * n / max).toFixed(2)})`;
+    const rap = d.m[r].ore[i] / capacitaMese(r);
+    return rap >= 1 ? `rgba(220,60,50,${Math.min(0.75, 0.35 + (rap - 1) * 0.5).toFixed(2)})` : rap >= 0.7 ? 'rgba(235,170,40,.45)' : 'rgba(60,160,90,.28)';
+  };
+  const righe = d.resp.map(r => {
+    const senza = r === '—', tot = d.m[r].aperte.reduce((a, b) => a + b, 0), totOre = d.m[r].ore.reduce((a, b) => a + b, 0);
+    const celle = d.m[r].aperte.map((n, i) => `<td data-action="carico-dettaglio" data-resp="${escapeHtml(r)}" data-mese="${i}" style="text-align:center;cursor:${n || d.m[r].chiuse[i] ? 'pointer' : 'default'};background:${colore(r, i) || 'transparent'};${i === oggiM ? 'outline:2px solid var(--blu-mid);' : ''}" title="${n} aperte (${fmtOre(d.m[r].ore[i])}), ${d.m[r].chiuse[i]} chiuse${ore ? ' · capacità ' + capacitaMese(r) + ' h/mese' : ''}">${n ? (ore ? Math.round(val(r, i) * 10) / 10 : n) : ''}</td>`).join('');
+    return `<tr><td data-action="carico-dettaglio" data-resp="${escapeHtml(r)}" data-mese="tutti" style="white-space:nowrap;font-weight:600;cursor:pointer;${senza ? 'color:var(--rosso);' : ''}" title="Vedi tutte le voci">${senza ? '⚠ Senza responsabile' : escapeHtml(r)}</td>${celle}<td data-action="carico-dettaglio" data-resp="${escapeHtml(r)}" data-mese="scadute" style="text-align:center;cursor:${d.m[r].scadute ? 'pointer' : 'default'};${d.m[r].scadute ? 'color:var(--rosso);font-weight:700;' : ''}">${d.m[r].scadute || ''}</td><td style="text-align:center;font-weight:700;white-space:nowrap;">${tot}${ore ? ' <span class="helptext">· ' + fmtOre(totOre) + '</span>' : ''}</td></tr>`;
+  }).join('');
+  const totMese = Array(12).fill(0).map((_, i) => d.resp.reduce((s, r) => s + val(r, i), 0));
+  const totRiga = `<tr style="font-weight:700;border-top:2px solid var(--border);"><td>Totale</td>${totMese.map(n => `<td style="text-align:center;">${n ? (ore ? Math.round(n * 10) / 10 : n) : ''}</td>`).join('')}<td style="text-align:center;color:var(--rosso);">${d.resp.reduce((s, r) => s + d.m[r].scadute, 0) || ''}</td><td style="text-align:center;">${d.resp.reduce((s, r) => s + d.m[r].aperte.reduce((a, b) => a + b, 0), 0)}</td></tr>`;
+  const sel = (k, opts, cur) => `<select data-action="carico-filtro" data-k="${k}">${opts.map(o => `<option value="${escapeHtml(o[0])}" ${String(cur) === String(o[0]) ? 'selected' : ''}>${escapeHtml(o[1])}</option>`).join('')}</select>`;
+  const toolbar = `<div class="toolbar" style="margin-bottom:10px;">
+    <div class="field"><label>Anno</label>${sel('anno', (d.anni.length ? d.anni : [d.anno]).map(a => [a, a]), d.anno)}</div>
+    <div class="field"><label>Cosa</label>${sel('tipo', [['Tutti', 'Tutto'], ['Scadenza periodica', 'Scadenze periodiche'], ['Adempimento annuale', 'Adempimenti annuali'], ['Task team', 'Task del team']], f.tipo)}</div>
+    <div class="field"><label>Persona</label>${sel('persona', [['Tutti', 'Tutti']].concat(d.tutteLePersone.map(p => [p, p === '—' ? 'Senza responsabile' : p])), f.persona)}</div>
+    <div class="field"><label>Misura</label>${sel('unita', [['ore', 'Ore stimate'], ['n', 'Numero di voci']], f.unita)}</div>
+    <div class="field"><label>&nbsp;</label><button class="btn" data-action="carico-ore-apri">Ore e capacità…</button></div></div>`;
+  const legenda = ore
+    ? `<span class="helptext">Colore = ore stimate del mese rispetto alla capacità della persona: <span style="background:rgba(60,160,90,.28);padding:0 8px;">sotto il 70%</span> <span style="background:rgba(235,170,40,.45);padding:0 8px;">70–100%</span> <span style="background:rgba(220,60,50,.5);padding:0 8px;">oltre la capacità</span></span>`
+    : `<span class="helptext">Più è scuro, più voci si concentrano nel mese.</span>`;
+  return `<div class="helptext" style="margin-bottom:8px;">Voci ancora aperte (scadenze periodiche, adempimenti annuali, task del team con scadenza) per persona e mese di scadenza. Clicca su una cella, un nome o le scadute per vedere cosa c'è dentro. Le ore sono stime per tipo (modificabili da "Ore e capacità"), non un timesheet. ${legenda}</div>
+    ${toolbar}
+    <div class="card" style="overflow:auto;"><table class="tbl"><thead><tr><th>Persona</th>${MESI_BREVI.map(x => `<th style="text-align:center;">${x}</th>`).join('')}<th style="text-align:center;color:var(--rosso);" title="Voci aperte con scadenza già passata">Scadute</th><th>Tot. aperte</th></tr></thead><tbody>${righe ? righe + totRiga : '<tr><td colspan="15" class="helptext">Nessuna voce con questi filtri.</td></tr>'}</tbody></table></div>`;
+}
+/* Elenco delle voci dietro una cella (mese 0-11), una persona ('tutti') o le scadute ('scadute'). */
+function modalCaricoDettaglio(resp, mese) {
+  const d = datiCarico(), oggi = oggiISO(), o = d.m[resp];
+  if (!o) return;
+  let v = o.voci.slice();
+  if (mese === 'scadute') v = v.filter(x => !x.chiusa && x.data < oggi);
+  else if (mese !== 'tutti') v = v.filter(x => x.mese === Number(mese));
+  v.sort((a, b) => Number(a.chiusa) - Number(b.chiusa) || a.data.localeCompare(b.data));
+  const aperte = v.filter(x => !x.chiusa), oreTot = aperte.reduce((s, x) => s + x.ore, 0);
+  const titolo = (resp === '—' ? 'Senza responsabile' : resp) + ' — ' + (mese === 'tutti' ? 'anno ' + d.anno : mese === 'scadute' ? 'scadute' : MESI_BREVI[Number(mese)] + ' ' + d.anno);
+  const righe = v.map(x => `<tr style="${x.chiusa ? 'opacity:.5;' : ''}"><td style="white-space:nowrap;${!x.chiusa && x.data < oggi ? 'color:var(--rosso);font-weight:700;' : ''}">${fmtData(x.data)}</td><td>${x.clienteId ? `<a href="#" data-action="apri-cliente" data-id="${x.clienteId}" style="color:var(--blu-mid);text-decoration:none;font-weight:600;">${escapeHtml(nomeCliente(x.clienteId))}</a>` : '—'}</td><td>${escapeHtml(x.tipo)}<div class="helptext">${escapeHtml(x.fonte)}</div></td><td>${escapeHtml(String(x.stato || ''))}</td><td style="text-align:right;white-space:nowrap;">${x.chiusa ? '—' : fmtOre(x.ore)}</td></tr>`).join('');
+  h('modalRoot').innerHTML = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop"><div class="modal" style="max-width:780px;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;"><div><h2>${escapeHtml(titolo)}</h2><div class="modal-sub">${aperte.length} voci aperte · ${fmtOre(oreTot)} stimate${v.length > aperte.length ? ' · ' + (v.length - aperte.length) + ' già chiuse (in grigio)' : ''}</div></div><button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button></div>
+    <div style="max-height:56vh;overflow:auto;margin-top:10px;border:1px solid var(--border);border-radius:8px;"><table class="compact"><thead><tr><th>Scadenza</th><th>Cliente</th><th>Cosa</th><th>Stato</th><th style="text-align:right;">Ore</th></tr></thead><tbody>${righe || '<tr><td colspan="5" class="helptext">Nessuna voce.</td></tr>'}</tbody></table></div>
+    <div class="modal-actions"><button class="btn" data-action="chiudi-modal">Chiudi</button></div></div></div>`;
+}
+/* Ore stimate per tipo di lavoro e capacità mensile (ore) di ciascuno. */
+function modalCaricoOre() {
+  const tipi = Array.from(new Set(vociCarico().filter(x => x.fonte !== 'Task team').map(x => x.tipo).concat(['Task team']))).sort((a, b) => a.localeCompare(b));
+  const persone = (STATE.meta.responsabili || []);
+  h('modalRoot').innerHTML = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop"><div class="modal" style="max-width:620px;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;"><div><h2>Ore stimate e capacità</h2><div class="modal-sub">Ore medie per ogni singola voce (per cliente) e ore disponibili al mese per persona. Servono solo a pesare il carico: puoi cambiarle quando vuoi.</div></div><button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button></div>
+    <div class="section-title" style="margin-top:12px;">Capacità mensile (ore)</div>
+    <div class="toolbar">${persone.map(p => `<div class="field"><label>${escapeHtml(p)}</label><input type="number" min="0" step="1" style="width:90px;" data-co-pers="${escapeHtml(p)}" value="${capacitaMese(p)}"></div>`).join('') || '<span class="helptext">Nessun responsabile configurato.</span>'}</div>
+    <div class="section-title" style="margin-top:12px;">Ore per voce</div>
+    <div style="max-height:36vh;overflow:auto;border:1px solid var(--border);border-radius:8px;"><table class="compact"><tbody>${tipi.map(t => `<tr><td>${escapeHtml(t)}</td><td style="width:110px;"><input type="number" min="0" step="0.25" style="width:90px;" data-co-tipo="${escapeHtml(t)}" value="${oreStimateTipo(t)}"></td></tr>`).join('')}</tbody></table></div>
+    <div class="modal-actions"><button class="btn" data-action="chiudi-modal">Annulla</button><button class="btn primary" data-action="carico-ore-salva">Salva</button></div></div></div>`;
+}
+function salvaCaricoOre() {
+  const ore = {}, cap = {};
+  document.querySelectorAll('input[data-co-tipo]').forEach(i => { const v = Number(i.value); if (i.value !== '' && Number.isFinite(v) && v >= 0) ore[i.dataset.coTipo] = v; });
+  document.querySelectorAll('input[data-co-pers]').forEach(i => { const v = Number(i.value); if (Number.isFinite(v) && v > 0) cap[i.dataset.coPers] = v; });
+  STATE.meta.caricoOre = ore; STATE.meta.caricoCapacita = cap; salvaStato();
 }
 function opzioniProroga() {
   const { periodiche, annuali } = derivati();

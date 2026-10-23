@@ -2224,6 +2224,18 @@ async function main() {
     {
       const dc = window.datiCarico();
       assert(dc.resp.length > 0 && dc.resp.every(r => dc.m[r].aperte.length === 12), 'carico di lavoro vuoto o malformato');
+      assert(dc.m[dc.resp[0]].ore.length === 12 && Array.isArray(dc.m[dc.resp[0]].voci), 'carico: ore/voci mancanti');
+      {
+        click(q('[data-nav="carico"]')); await wait(20);
+        const cella = q('#content td[data-action="carico-dettaglio"][data-mese="tutti"]');
+        assert(cella, 'carico: nessuna riga persona cliccabile');
+        click(cella); await wait(20);
+        assert(q('#modalRoot .modal') && /voci aperte/.test(q('#modalRoot').textContent), 'carico: dettaglio non si apre');
+        click(q('#modalRoot [data-action="chiudi-modal"]')); await wait(20);
+        click(q('#content [data-action="carico-ore-apri"]')); await wait(20);
+        assert(q('#modalRoot input[data-co-tipo]') && q('#modalRoot input[data-co-pers]'), 'carico: modale ore/capacità vuoto');
+        click(q('#modalRoot [data-action="chiudi-modal"]')); await wait(20);
+      }
       const opz = window.opzioniProroga();
       assert(opz.length > 0, 'nessuna scadenza prorogabile');
       const o = opz[0];
@@ -2355,10 +2367,10 @@ async function main() {
     assert(window.statoIncasso(inc) === 'Scaduto', 'un incasso con scadenza passata deve risultare Scaduto');
     assert(window.incassiDaSollecitare().some(i => i.id === inc.id), 'l\'incasso scaduto mai sollecitato deve comparire tra quelli da sollecitare');
     assert(q('[data-action="sollecita-tutti-incassi"]'), 'manca il banner "Sollecita tutti"');
-    const nComPrima = st().comunicazioni.length;
+    const nComPrima = st().comunicazioni.length, nDaSoll = window.incassiDaSollecitare().length;
     click(q('[data-action="sollecita-tutti-incassi"]'));
     await wait(20);
-    assert(st().comunicazioni.length === nComPrima + 1, 'il sollecito non ha creato la comunicazione nel portale');
+    assert(st().comunicazioni.length === nComPrima + nDaSoll, 'il sollecito non ha creato la comunicazione nel portale');
     const comSoll = st().comunicazioni[st().comunicazioni.length - 1];
     assert(comSoll.visibilePortale === true && comSoll.clienteId === cid && comSoll.corpo.includes('500'), 'comunicazione di sollecito non corretta');
     assert(st().incassi.find(i => i.id === inc.id).solleciti.length === 1, 'il sollecito non è registrato sull\'incasso');

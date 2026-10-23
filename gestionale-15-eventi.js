@@ -163,6 +163,9 @@ function onClickDelegatoInterno(e) {
     case 'schcli-elenco': SCHEDA_CLIENTE = null; SCHEDA_RICERCA = ''; render(); break;
     case 'cpb-valuta': modalValutazioneCpb(id); break;
     case 'cpb-nota-apri': modalNotaCpb(id); break;
+    case 'carico-dettaglio': modalCaricoDettaglio(el.dataset.resp, el.dataset.mese); break;
+    case 'carico-ore-apri': modalCaricoOre(); break;
+    case 'carico-ore-salva': salvaCaricoOre(); chiudiModal(); render(); toast('Ore e capacità salvate.'); break;
     case 'cpb-nota-salva': { if (!STATE.cpb) STATE.cpb = {}; STATE.cpb[id] = Object.assign({}, STATE.cpb[id] || {}, { nota: h('cpbNotaTesto').value }); salvaStato(); chiudiModal(); render(); toast('Nota salvata.'); break; }
     case 'cpb-val-salva': salvaValutazioneCpb(id); chiudiModal(); render(); toast('Valutazione CPB salvata.'); break;
     case 'cpb-val-decisione': salvaValutazioneCpb(id, el.dataset.stato); chiudiModal(); render(); toast('Valutazione salvata: ' + el.dataset.stato + '.'); break;
@@ -2094,6 +2097,7 @@ function onChangeDelegato(e) {
     case 'report-mensile-mese': { const t = h('rmTesto'); if (t) t.value = reportMensileCliente(el.dataset.cliente, el.value || oggiISO().slice(0, 7)); break; }
     case 'cpb-val-input': ricalcolaModalCpb(); break;
     case 'carica-persona-cambia': aggiornaCampiNuovaPersona(); break;
+    case 'carico-filtro': CARICO_FILTRO[el.dataset.k] = el.value; render(); break;
     case 'cpb-param': { const v = Number(el.value); if (Number.isFinite(v)) { STATE.meta.cpbParametri = Object.assign({}, STATE.meta.cpbParametri || {}, { [el.dataset.k]: v }); salvaStato(); render(); } break; }
     case 'cpb-filtro-tipo': CPB_FILTRO.tipo = el.value; render(); break;
     case 'cpb-filtro-regime': CPB_FILTRO.regime = el.value; render(); break;
