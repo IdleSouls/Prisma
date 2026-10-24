@@ -1589,6 +1589,16 @@ const AZIONI_MCP = {
     return { aggiornato: true, cliente: c.ragioneSociale };
   },
 
+  /* Registra in Documenti un file GIÀ copiato nella cartella del cliente (dal tool MCP salva_documento_cliente). */
+  registraDocumentoArchivio: (p) => {
+    const c = clienteById(p.clienteId);
+    if (!c) throw new Error('Cliente non trovato: ' + p.clienteId);
+    if (!p.filePercorso) throw new Error('Manca il percorso del file.');
+    const doc = aggiungiDocumento({ clienteId: c.id, categoria: p.categoria || 'Altro', nome: p.nome || p.fileNome || 'Documento', dataCaricamento: oggiISO(), dataScadenza: null,
+      filePercorso: p.filePercorso, fileNome: p.fileNome || null, fileDimensione: p.fileDimensione || null, nota: p.nota || '', tipoDocumento: p.tipoDocumento || 'definitivo', caricatoDaIA: true });
+    render();
+    return { registrato: true, id: doc.id, cliente: c.ragioneSociale };
+  },
   modificaAdempimentoAnnuale: (p) => {
     const pt = p.patch || {}; const ok = {};
     ['nota', 'scadenza', 'responsabile'].forEach(k => { if (pt[k] !== undefined) ok[k] = pt[k]; });

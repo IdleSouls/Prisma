@@ -10,6 +10,7 @@
  * sono: riesporta da "Impostazioni -> Vista per MCP locale" nell'app ogni volta che serve.
  */
 import { readFileSync, existsSync, statSync } from 'node:fs';
+import { basename, extname } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
@@ -808,6 +809,69 @@ export function creaServer(filePath, baseUrl) {
     async ({ id }) => testoEsitoScrittura(await inviaComando(url, 'eliminaProcedura', { id }))
   );
 
+  /* ARCHIVIAZIONE DOCUMENTI DA PARTE DELL'IA. La regola "salvo in automatico / chiedo prima" è scritta nella descrizione (la applica
+     l'IA) ed è imposta anche dal codice: se il documento non è definitivo e manca confermatoDaUtente:true, il file NON viene salvato. */
+  const AREA_DOC = { 'Anagrafica': 'Documenti', 'Visura camerale': 'Documenti', 'Atto costitutivo/Statuto': 'Documenti', 'Contratto': 'Documenti', 'Corrispondenza Enti': 'Documenti', 'Polizza assicurativa': 'Documenti', 'Altro': 'Documenti',
+    'Bilancio': '_Contabilita', 'Registro contabile': '_Contabilita', 'Busta paga': '_Contabilita', 'Dichiarazione fiscale': '_Fiscale', 'F24': '_Fiscale', 'Certificazione': '_Fiscale', 'Verbale / decisione societaria': 'Libri e registri' };
+  const ESTENSIONI_OK = ['.pdf', '.xlsx', '.xls', '.csv', '.docx', '.doc', '.txt', '.xml', '.p7m', '.jpg', '.jpeg', '.png', '.zip'];
+  server.registerTool(
+    'salva_documento_cliente',
+    {
+      title: 'Archivia un documento nella cartella del cliente',
+      description:
+        'Copia un file (dalla sua posizione sul PC) nella cartella del cliente in Prisma e lo registra in Documenti. Struttura: _Fiscale/anno, _Contabilita/anno, Documenti/anno, Libri e registri/anno (+ sottocartella opzionale, es. "CPB").\n' +
+        'QUANDO USARLO (decidi tu, senza che Matteo lo chieda): ogni volta che Matteo ti dà un documento di un cliente per un lavoro su Prisma (calcolo CPB, domanda su un rigo di dichiarazione, bilancio, ecc.) e quel documento è la base di un dato/risposta, cioè potrebbe servire in futuro per capire da dove viene un numero.\n' +
+        'COSA FARE: 1) cerca con elenco_documenti se per quel cliente c\'è già un documento dello stesso tipo e anno; 2) chiama questo tool: confronta il contenuto con quello già in cartella (SHA-256) e, se identico, NON salva e te lo dice; se non c\'è o è diverso lo salva e ti elenca i file già presenti nella stessa cartella, così puoi dire a Matteo se c\'è una versione diversa.\n' +
+        'DOCUMENTI SICURI (tipoDocumento:"definitivo"): dichiarazioni presentate, situazioni contabili/bilanci approvati o definitivi, proposta di concordato dell\'Agenzia delle Entrate, F24, certificazioni, visure, atti: salvali in AUTOMATICO.\n' +
+        'DOCUMENTI NON DEFINITIVI (tipoDocumento:"bozza" | "previsionale" | "altro"): bozze di bilancio o di dichiarazione, previsionali, stime: CHIEDI PRIMA a Matteo in chat ("Salvo anche la bozza di bilancio 2025 nella cartella di X?") e solo dopo il sì chiama il tool con confermatoDaUtente:true. Senza conferma il tool non salva.\n' +
+        'NON SALVARE: screenshot, esportazioni temporanee, file di prova, duplicati, documenti non riferiti a un cliente. Alla fine dì a Matteo in una riga cosa hai salvato, cosa era già presente e cosa hai scartato.',
+      inputSchema: {
+        cliente: z.string().describe('Nome o id del cliente (come in Prisma).'),
+        percorsoFile: z.string().describe('Percorso completo del file sul PC (Windows), per esempio quello della cartella uploads della conversazione.'),
+        categoria: z.enum(Object.keys(AREA_DOC)).describe('Categoria Documenti di Prisma: decide la cartella (es. "Dichiarazione fiscale" → _Fiscale, "Bilancio" → _Contabilita).'),
+        anno: z.number().int().min(2000).max(2100).describe('Anno di riferimento del documento (non quello di oggi): es. dichiarazione 2024 → 2024; situazione al 31/12/2025 → 2025.'),
+        sottocartella: z.string().optional().describe('Sottocartella opzionale dentro l\'anno, es. "CPB", "Redditi".'),
+        tipoDocumento: z.enum(['definitivo', 'bozza', 'previsionale', 'altro']).optional().describe('Default "definitivo". Per tutto ciò che non è definitivo serve prima il sì di Matteo.'),
+        confermatoDaUtente: z.boolean().optional().describe('true SOLO se Matteo ha detto sì in chat a salvare questo specifico documento non definitivo. Mai di tua iniziativa.'),
+        nota: z.string().optional().describe('Una riga su cosa è e perché lo salvi (es. "Proposta CPB 2026-2027 usata per la valutazione di convenienza").'),
+      },
+    },
+    async ({ cliente, percorsoFile, categoria, anno, sottocartella, tipoDocumento, confermatoDaUtente, nota }) => {
+      const { vista } = caricaVista(filePath);
+      const c = trovaCliente(vista, cliente);
+      if (!c) return testoJson({ salvato: false, errore: 'Cliente non trovato: ' + cliente });
+      const tipo = tipoDocumento || 'definitivo';
+      if (tipo !== 'definitivo' && confermatoDaUtente !== true) {
+        return testoJson({ salvato: false, motivo: `Documento "${tipo}": prima chiedi a Matteo in chat se salvarlo nella cartella di ${c.ragioneSociale}. Solo dopo il suo sì richiama il tool con confermatoDaUtente:true.` });
+      }
+      const ext = extname(percorsoFile).toLowerCase();
+      if (!ESTENSIONI_OK.includes(ext)) return testoJson({ salvato: false, errore: `Tipo di file non ammesso (${ext || 'senza estensione'}). Ammessi: ${ESTENSIONI_OK.join(', ')}.` });
+      if (!existsSync(percorsoFile)) return testoJson({ salvato: false, errore: 'File non trovato: ' + percorsoFile });
+      if (statSync(percorsoFile).size > 25 * 1024 * 1024) return testoJson({ salvato: false, errore: 'File oltre 25 MB: caricalo a mano da Prisma.' });
+      const base = basename(percorsoFile);
+      const prefissi = { bozza: 'BOZZA - ', previsionale: 'PREVISIONALE - ' };
+      const nomeFile = prefissi[tipo] && !new RegExp(tipo, 'i').test(base) ? prefissi[tipo] + base : base;
+      const sotto = [AREA_DOC[categoria], String(anno), (sottocartella || '').trim()].filter(Boolean).join('/');
+      const contenutoBase64 = readFileSync(percorsoFile).toString('base64');
+      const post = async (rotta, corpo) => {
+        let r; try { r = await fetch(url + rotta, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo) }); } catch (e) { return { ok: false, errore: 'Impossibile raggiungere server.js su ' + url + ' (è acceso?).' }; }
+        return await r.json().catch(() => ({ ok: false, errore: 'Risposta non valida da server.js.' }));
+      };
+      const dati = { clienteId: c.id, clienteNome: c.ragioneSociale, sottocartella: sotto, nomeFile, contenutoBase64 };
+      const conf = await post('/api/documenti/confronta', dati);
+      if (!conf.ok) return testoJson({ salvato: false, errore: conf.errore });
+      if (conf.identici.length) return testoJson({ salvato: false, motivo: 'Un file IDENTICO è già nella cartella del cliente: non lo salvo di nuovo.', giaPresente: conf.identici });
+      const up = await post('/api/documenti/carica', dati);
+      if (!up.ok) return testoJson({ salvato: false, errore: up.errore });
+      const reg = await inviaComando(url, 'registraDocumentoArchivio', { clienteId: c.id, categoria, nome: nomeFile, filePercorso: up.percorso, fileNome: up.nomeFile, fileDimensione: up.dimensione, nota: nota || '', tipoDocumento: tipo });
+      return testoJson({
+        salvato: true, cliente: c.ragioneSociale, percorso: up.percorso,
+        registratoInDocumenti: !!(reg && reg.ok), avviso: reg && reg.ok ? undefined : 'File salvato in cartella ma NON registrato in Documenti (' + ((reg && reg.errore) || 'gestionale non aperto') + '): ricontrolla.',
+        giaPresentiNellaStessaCartella: conf.nellaDestinazione.length ? conf.nellaDestinazione : undefined,
+        nota: conf.nellaDestinazione.length ? 'Nella stessa cartella c\'erano già altri file: se sono dello stesso documento (es. un\'altra versione), segnalalo a Matteo.' : undefined,
+      });
+    }
+  );
   server.registerTool(
     'elenco_documenti',
     {

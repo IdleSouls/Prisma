@@ -2429,6 +2429,44 @@ function gestisciRichiesta(req, res) {
     return;
   }
 
+  // Confronto PRIMA di salvare (usato dall'IA via MCP): dice se un file identico (stesso contenuto, SHA-256) è già in QUALSIASI punto
+  // della cartella del cliente, e quali file ci sono già nella sottocartella di destinazione (per accorgersi di versioni diverse).
+  if (url === '/api/documenti/confronta' && req.method === 'POST') {
+    leggiCorpoRichiesta(req, (corpo) => {
+      try {
+        const dati = JSON.parse(corpo);
+        if (!dati.clienteId || !dati.contenutoBase64) throw new Error('Dati mancanti (clienteId o contenuto file)');
+        const buffer = Buffer.from(dati.contenutoBase64, 'base64');
+        const hash = crypto.createHash('sha256').update(buffer).digest('hex');
+        const base = cartellaBaseCliente(dati.clienteId, dati.clienteNome);
+        const identici = [], nellaDestinazione = [];
+        const segmenti = segmentiCartellaSicuri(dati.sottocartella);
+        const dest = segmenti.length ? path.join(base, ...segmenti) : null;
+        const visita = (dir, prof) => {
+          let voci = [];
+          try { voci = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return; }
+          for (const v of voci) {
+            const p = path.join(dir, v.name);
+            if (v.isDirectory()) { if (prof < 6) visita(p, prof + 1); continue; }
+            let st; try { st = fs.statSync(p); } catch (e) { continue; }
+            const rel = path.relative(CARTELLA_DOCUMENTI, p);
+            if (st.size === buffer.length) {
+              try { if (crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex') === hash) identici.push(rel); } catch (e) { /* illeggibile: ignora */ }
+            }
+            if (dest && path.dirname(p) === dest) nellaDestinazione.push({ percorso: rel, dimensione: st.size, modificato: st.mtime.toISOString().slice(0, 10) });
+          }
+        };
+        if (fs.existsSync(base)) visita(base, 0);
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: true, hash, identici, nellaDestinazione }));
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, errore: err.message }));
+      }
+    });
+    return;
+  }
+
   // Crea (se non esiste) una sottocartella nella cartella documenti di un cliente - usata dalle "pratiche" dei task:
   // la cartella "aaaa.gg.mm - nome pratica" esiste subito, anche prima di allegare il primo file.
   // Crea le aree standard (+ anno corrente) nella cartella di tutti i clienti indicati: [{ id, nome }].
