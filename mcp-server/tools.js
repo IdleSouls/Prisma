@@ -104,7 +104,16 @@ const descrConferma = (cosa) => `Deve essere esattamente true. Prima di chiamare
 const SOGLIA_TOKEN_PREDEFINITA = 6000;
 export function creaServer(filePath, baseUrl) {
   const url = baseUrl || 'http://localhost:8420';
-  const server = new McpServer({ name: 'gestionale-studio', version: '1.0.0' });
+  /* Le istruzioni del server finiscono nel contesto di OGNI chat che ha Prisma collegato: è l'unico modo per far scattare l'archiviazione
+     anche quando Matteo non la nomina (la descrizione di un singolo tool viene letta solo da chi decide già di usarlo). */
+  const server = new McpServer({ name: 'gestionale-studio', version: '1.0.0' }, { instructions:
+    'REGOLA DI ARCHIVIAZIONE DOCUMENTI (vale sempre, anche se Matteo non la nomina): ogni volta che Matteo ti dà uno o più file di un cliente dello studio ' +
+    '(dichiarazioni, bilanci, situazioni contabili, proposta CPB, F24, visure, bozze, previsionali...) per fare un lavoro su Prisma o rispondere a una domanda su quel cliente, ' +
+    'alla fine del lavoro occupati dell\'archiviazione con il tool salva_documento_cliente, senza aspettare che te lo chieda. Prima controlla con elenco_documenti cosa c\'è già per quel cliente e anno. ' +
+    '- Documenti definitivi (dichiarazione presentata, situazione/bilancio definitivo, proposta CPB dell\'Agenzia, F24, certificazioni, visure): salvali subito, in automatico. ' +
+    '- Bozze, previsionali, stime, file non definitivi: CHIEDI a Matteo in chat prima di salvarli (una domanda sola, con l\'elenco dei file), poi salva solo quelli confermati. ' +
+    '- Non salvare screenshot, file temporanei, duplicati o file non riferiti a un cliente. ' +
+    'Chiudi sempre con una riga: salvati / già presenti / non salvati e perché. Se il tool non è disponibile o fallisce, dillo a Matteo invece di ignorare la cosa.' });
 
   /* FRENO ANTI-SPRECO DI TOKEN: ogni tool di LETTURA il cui risultato supera la soglia non lo restituisce, ma risponde con un
      avviso (quanto è grande, come restringerlo) e chiede di avere dall'utente una conferma esplicita; solo richiamando il tool con
