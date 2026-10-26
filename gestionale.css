@@ -775,5 +775,8 @@ html,body{overflow-x:clip;}
 .modal-backdrop[data-obbligatorio] .op-lista .btn:hover{background:rgba(255,255,255,.26);}
 .modal-backdrop[data-obbligatorio] .modal .helptext{color:rgba(255,255,255,.65);}
 /* avvio: finche' l'app non e' pronta (html senza .app-pronta) si vede solo lo sfondo con l'immagine Prisma; sidebar e pagina sono nascoste */
-html:not(.app-pronta) body{background:var(--hero) center 25%/cover no-repeat #0b1426 !important;}
+/* Con sidebar e pagina nascoste il contenuto è alto zero: lo sfondo "cover" si adattava a quella scatola e riempiva solo metà finestra
+   (il resto restava scuro). Si forza l'altezza dello schermo intero e lo sfondo fisso sulla finestra. */
+html:not(.app-pronta){min-height:100vh;background:#0b1426;}
+html:not(.app-pronta) body{min-height:100vh;background:var(--hero) center 25%/cover no-repeat fixed #0b1426 !important;}
 html:not(.app-pronta) #sidebar, html:not(.app-pronta) #main{display:none !important;}

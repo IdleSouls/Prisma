@@ -84,6 +84,7 @@ function creaFinestra() {
     title: 'Prisma',
     icon: ICONA,
     autoHideMenuBar: true,
+    backgroundColor: '#0b1426',
     show: false,
     webPreferences: { contextIsolation: true, sandbox: true }
   });

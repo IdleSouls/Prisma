@@ -219,6 +219,7 @@ function creaFinestra() {
     title: 'Prisma',
     icon: ICONA,
     autoHideMenuBar: true, // niente barra dei menu (File/Modifica/...) in stile browser
+    backgroundColor: '#0b1426', // stesso blu dello sfondo di avvio: niente lampo bianco/nero mentre la pagina carica
     show: false,
     webPreferences: { contextIsolation: true, sandbox: true }
   });
