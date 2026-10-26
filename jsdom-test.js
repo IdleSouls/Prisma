@@ -2220,6 +2220,28 @@ async function main() {
       assert(window.risultatiRicercaGlobale('zzq').some(r => r.categoria === 'Libri sociali'), 'ricerca globale non trova i libri sociali');
       st().libriSociali = st().libriSociali.filter(x => x.id !== lb.id);
     }
+    // Imposte calcolate con storico
+    {
+      const cl = window.getSTATE().clienti.find(c => c.stato !== 'cessato' && c.stato !== 'potenziale');
+      const a = Number(window.getSTATE().annoCorrente) - 1;
+      let e1 = window.salvaImposte(cl.id, a, { iresIrpef: '1.000,50', irap: 200, acconti: 800 }, { tipo: 'Bilancio', nota: 'prima stima' });
+      assert(e1.cambiato && e1.record.storico.length === 1 && e1.record.valori.iresIrpef === 1000.5, 'imposte: primo salvataggio');
+      assert(Math.abs(window.totaleImposte(e1.record.valori) - 1200.5) < 0.001 && Math.abs(window.saldoImposte(e1.record.valori) - 400.5) < 0.001, 'imposte: totale e saldo');
+      let e2 = window.salvaImposte(cl.id, a, { iresIrpef: 1000.5, irap: 200, acconti: 800 }, {});
+      assert(!e2.cambiato && e2.record.storico.length === 1, 'imposte: nessuna modifica = nessuna riga di storico');
+      let e3 = window.salvaImposte(cl.id, a, { iresIrpef: 1100, irap: 200, acconti: 800 }, { tipo: 'Dichiarazione', causa: 'Errore o rettifica nostra' });
+      assert(e3.cambiato && e3.record.storico.length === 2 && e3.variazioni.some(v => v.campo.startsWith('IRES') && v.da === 1000.5 && v.a === 1100), 'imposte: variazione nello storico');
+      assert(e3.record.storico[1].data && e3.record.storico[1].ora && e3.record.storico[1].causa === 'Errore o rettifica nostra', 'imposte: data, ora e causa nello storico');
+      assert(Math.abs(window.differenzaRispettoBilancio(e3.record).delta - 99.5) < 0.001, 'imposte: differenza rispetto al bilancio');
+      click(q('[data-nav="imposte"]')); await wait(30);
+      assert(/Imposte calcolate/.test(q('#content').textContent) && q('[data-action="imposte-storico"]'), 'imposte: tab non mostra la tabella');
+      click(q('[data-action="imposte-storico"]')); await wait(20);
+      assert(/Storico imposte/.test(q('#modalRoot').textContent), 'imposte: storico non si apre');
+      click(q('#modalRoot [data-action="chiudi-modal"]')); await wait(20);
+      window.getSTATE().imposte = window.getSTATE().imposte.filter(r => r.clienteId !== cl.id);
+      window.salvaStato(); window.render(); await wait(20);
+      console.log('=== Imposte calcolate: salvataggio, totale/saldo, storico, MCP OK');
+    }
     // Carico di lavoro, proroghe, CPB
     {
       const dc = window.datiCarico();
@@ -6070,6 +6092,21 @@ async function main() {
       await window.eseguiComandoMCP({ id: 'cmdcpb2', azione: 'modificaCpb', parametri: { cliente: 'nessunoXYZ', redConc26: 1 } });
       assert(JSON.parse(richiesteFetch[0].opts.body).ok === false, 'modificaCpb: cliente inesistente = errore');
       delete window.getSTATE().cpb[cl.id];
+      {
+        // imposte calcolate via MCP: Bilancio poi Dichiarazione con confronto
+        const cli = window.getSTATE().clienti.find(c => window.clienteAttivo(c)); const aa = Number(window.getSTATE().annoCorrente) - 1;
+        window.getSTATE().imposte = (window.getSTATE().imposte || []).filter(r => r.clienteId !== cli.id);
+        richiesteFetch.length = 0;
+        await window.eseguiComandoMCP({ id: 'cmdimp1', azione: 'registraImposte', parametri: { cliente: cli.ragioneSociale, anno: aa, valori: { iresIrpef: 5000, irap: 1000 }, tipo: 'Bilancio' } });
+        assert(JSON.parse(richiesteFetch[0].opts.body).ok === true, 'registraImposte: esito ok');
+        richiesteFetch.length = 0;
+        await window.eseguiComandoMCP({ id: 'cmdimp2', azione: 'registraImposte', parametri: { cliente: cli.ragioneSociale, anno: aa, valori: { irap: 1100.5 }, tipo: 'Dichiarazione', causa: 'Modifica del cliente o altre variazioni' } });
+        const risp = JSON.parse(richiesteFetch[0].opts.body);
+        assert(risp.ok === true && /diverso/.test(risp.risultato.rispettoAlBilancio), 'registraImposte: confronto con il bilancio');
+        const rec = window.recordImposte(cli.id, aa);
+        assert(rec.tipo === 'Dichiarazione' && rec.valori.iresIrpef === 5000 && rec.storico.length === 2, 'registraImposte: merge dei valori e storico');
+        window.getSTATE().imposte = window.getSTATE().imposte.filter(r => r.clienteId !== cli.id);
+      }
       console.log('=== eseguiComandoMCP(modificaCpb) OK');
     }
 

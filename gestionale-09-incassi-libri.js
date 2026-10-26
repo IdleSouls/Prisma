@@ -1634,6 +1634,153 @@ async function cpbXlsxBlob() {
   return new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
 }
 
+/* -------------------- IMPOSTE CALCOLATE (per cliente e anno d'imposta, con storico) --------------------
+   Gli importi calcolati nei mesi tra bilancio e dichiarazione cambiano: ogni salvataggio che modifica qualcosa aggiunge una riga allo
+   storico (data, ora, chi, cosa è cambiato da → a, nota). STATE.imposte = [{ id, clienteId, anno, tipo, valori, nota, aggiornatoIl,
+   aggiornatoDa, storico:[{ id, data, ora, operatore, tipo, valori, variazioni:[{campo,da,a}], nota }] }]. */
+const IMPOSTE_CAMPI = [
+  { k: 'imponibile', l: 'Reddito imponibile' },
+  { k: 'iresIrpef', l: 'IRES / IRPEF dovuta' },
+  { k: 'vpn', l: 'Valore produzione netta (IRAP)' },
+  { k: 'irap', l: 'IRAP dovuta' },
+  { k: 'addizionali', l: 'Addizionali regionale e comunale' },
+  { k: 'altre', l: 'Altre imposte / imposta sostitutiva' },
+  { k: 'acconti', l: 'Acconti versati' },
+  { k: 'accontoSucc', l: 'Acconti anno successivo' },
+];
+/* Fase in cui le imposte sono state calcolate: prima in sede di BILANCIO (contabilità chiusa e scritture di fine anno), poi in sede di
+   DICHIARAZIONE, dove si controlla se il totale è rimasto uguale. Se cambia, si indica la causa. */
+const IMPOSTE_TIPI = ['Bilancio', 'Dichiarazione'];
+const IMPOSTE_CAUSE = ['Errore o rettifica nostra', 'Modifica del cliente o altre variazioni', 'Altro motivo'];
+let IMPOSTE_FILTRO = { anno: null, tipo: 'Tutti', dati: 'Tutti', q: '' };
+function imposteAnno() { return Number(IMPOSTE_FILTRO.anno) || (Number(STATE.annoCorrente) - 1); }
+function recordImposte(clienteId, anno) { return (STATE.imposte || []).find(r => r.clienteId === clienteId && Number(r.anno) === Number(anno)) || null; }
+function impNum(v) { if (v === '' || v == null) return null; if (typeof v === 'number') return Number.isFinite(v) ? v : null; let s = String(v).trim().replace(/[€\s]/g, ''); if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.'); const n = Number(s); return Number.isFinite(n) ? n : null; }
+/* Totale imposte dell'anno (IRES/IRPEF + IRAP + addizionali + altre) e saldo (totale − acconti versati; positivo = da versare). */
+function totaleImposte(v) { v = v || {}; return ['iresIrpef', 'irap', 'addizionali', 'altre'].reduce((s, k) => s + (impNum(v[k]) || 0), 0); }
+function saldoImposte(v) { return totaleImposte(v) - (impNum((v || {}).acconti) || 0); }
+function pulisciValoriImposte(v) { const out = {}; IMPOSTE_CAMPI.forEach(c => { const n = impNum((v || {})[c.k]); if (n != null) out[c.k] = n; }); return out; }
+/* Salva le imposte di un cliente/anno. Aggiunge una riga allo storico solo se qualcosa è cambiato (valori, tipo) o se c'è una nota nuova. */
+function salvaImposte(clienteId, anno, valoriNuovi, opz) {
+  opz = opz || {};
+  if (!Array.isArray(STATE.imposte)) STATE.imposte = [];
+  anno = Number(anno);
+  const nuovi = pulisciValoriImposte(valoriNuovi);
+  let r = recordImposte(clienteId, anno);
+  const nuovo = !r;
+  if (!r) { r = { id: uid('imp'), clienteId, anno, tipo: 'Bilancio', valori: {}, nota: '', aggiornatoIl: null, aggiornatoDa: null, storico: [] }; STATE.imposte.push(r); }
+  const tipoNuovo = IMPOSTE_TIPI.includes(opz.tipo) ? opz.tipo : r.tipo;
+  const variazioni = [];
+  IMPOSTE_CAMPI.forEach(c => {
+    const da = r.valori[c.k] != null ? r.valori[c.k] : null, a = nuovi[c.k] != null ? nuovi[c.k] : null;
+    if (da !== a) variazioni.push({ campo: c.l, da, a });
+  });
+  if (!nuovo && tipoNuovo !== r.tipo) variazioni.push({ campo: 'Fase del calcolo', da: r.tipo, a: tipoNuovo });
+  const nota = (opz.nota || '').trim();
+  if (!nuovo && !variazioni.length && !nota) return { cambiato: false, variazioni: [], record: r };
+  const ora = new Date();
+  r.valori = nuovi; r.tipo = tipoNuovo; if (opz.nota !== undefined) r.nota = nota || r.nota;
+  r.aggiornatoIl = oggiISO(); r.aggiornatoDa = operatoreCorrente() || null;
+  r.storico.push({ id: uid('imps'), data: oggiISO(), ora: ora.toTimeString().slice(0, 5), operatore: operatoreCorrente() || null, tipo: tipoNuovo, valori: Object.assign({}, nuovi), variazioni, nota, nuovo, causa: IMPOSTE_CAUSE.includes(opz.causa) ? opz.causa : null });
+  salvaStato();
+  return { cambiato: true, variazioni, record: r };
+}
+/* Imposte calcolate in sede di bilancio (ultima registrazione della fase "Bilancio") e differenza di totale rispetto ad esse. */
+function impostePerBilancio(r) { const e = r ? r.storico.slice().reverse().find(x => x.tipo === 'Bilancio') : null; return e ? e.valori : null; }
+function differenzaRispettoBilancio(r) {
+  if (!r || r.tipo !== 'Dichiarazione') return null;
+  const b = impostePerBilancio(r); if (!b) return null;
+  return { bilancio: totaleImposte(b), attuale: totaleImposte(r.valori), delta: totaleImposte(r.valori) - totaleImposte(b) };
+}
+const fmtImp = (n) => n == null ? '—' : fmtEuro(n);
+function imposteLista() {
+  const f = IMPOSTE_FILTRO, anno = imposteAnno(), q = (f.q || '').trim().toLowerCase();
+  return STATE.clienti.filter(c => clienteAttivo(c)).sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale)).filter(c => {
+    if (f.tipo !== 'Tutti' && c.tipo !== f.tipo) return false;
+    if (q && !(c.ragioneSociale || '').toLowerCase().includes(q)) return false;
+    const r = recordImposte(c.id, anno);
+    if (f.dati === 'Con imposte' && !r) return false;
+    if (f.dati === 'Senza imposte' && r) return false;
+    return true;
+  });
+}
+function renderImposte() {
+  const f = IMPOSTE_FILTRO, anno = imposteAnno();
+  const lista = imposteLista();
+  const tutti = STATE.clienti.filter(c => clienteAttivo(c));
+  const conDati = tutti.filter(c => recordImposte(c.id, anno)).length;
+  const anni = []; for (let a = Number(STATE.annoCorrente); a >= Number(STATE.annoCorrente) - 4; a--) anni.push(a);
+  const toolbar = `<div class="toolbar">
+    <div class="field"><label>Anno d'imposta</label><select data-action="imposte-filtro" data-k="anno">${anni.map(a => `<option ${a === anno ? 'selected' : ''}>${a}</option>`).join('')}</select></div>
+    <div class="field"><label>Tipo di cliente</label><select data-action="imposte-filtro" data-k="tipo"><option value="Tutti">Tutti</option>${TIPI_CLIENTE.map(t => `<option value="${t.v}" ${f.tipo === t.v ? 'selected' : ''}>${escapeHtml(t.l)}</option>`).join('')}</select></div>
+    <div class="field"><label>Mostra</label><select data-action="imposte-filtro" data-k="dati">${['Tutti', 'Con imposte', 'Senza imposte'].map(x => `<option ${f.dati === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
+    <div class="field grow"><label>Cerca cliente</label><input type="text" value="${escapeHtml(f.q)}" data-action="imposte-cerca" placeholder="Nome cliente..."></div>
+  </div>`;
+  const tr = lista.map(c => {
+    const r = recordImposte(c.id, anno), v = r ? r.valori : null;
+    const nStorico = r ? r.storico.length : 0;
+    const nome = `<a href="#" data-action="apri-cliente" data-id="${c.id}" title="Apri l'anagrafica" style="font-weight:700;color:var(--blu-mid);text-decoration:none;">${escapeHtml(c.ragioneSociale)}</a><div class="helptext">${escapeHtml(labelTipoCliente(c.tipo))} · ${escapeHtml(c.regimeFiscale || '—')}</div>`;
+    if (!r) return `<tr><td>${nome}</td><td colspan="10" class="helptext">Nessuna imposta inserita per il ${anno}.</td><td><button class="btn small" data-action="imposte-modifica" data-id="${c.id}">+ Inserisci</button></td></tr>`;
+    const saldo = saldoImposte(v);
+    const ultimaVar = r.storico.length ? r.storico[r.storico.length - 1] : null;
+    return `<tr><td>${nome}</td>
+      <td><span class="badge ${r.tipo === 'Dichiarazione' ? 'stato-inviato-telematicamente' : 'stato-calcolato'}">${r.tipo}</span></td>
+      <td style="text-align:right;">${fmtImp(v.imponibile)}</td><td style="text-align:right;">${fmtImp(v.iresIrpef)}</td><td style="text-align:right;">${fmtImp(v.irap)}</td>
+      <td style="text-align:right;">${fmtImp((v.addizionali != null || v.altre != null) ? (v.addizionali || 0) + (v.altre || 0) : null)}</td>
+      <td style="text-align:right;font-weight:700;">${fmtEuro(totaleImposte(v))}</td><td style="text-align:right;">${fmtImp(v.acconti)}</td>
+      <td style="text-align:right;font-weight:700;color:${saldo > 0 ? 'var(--rosso)' : 'var(--verde)'};" title="${saldo > 0 ? 'Da versare' : 'A credito'}">${saldo > 0 ? '' : '−'}${fmtEuro(Math.abs(saldo))}</td>
+      <td style="white-space:nowrap;">${(() => { const d = differenzaRispettoBilancio(r); return d ? (Math.abs(d.delta) < 0.5 ? '<span class="badge stato-inviato-telematicamente" title="Uguali al calcolo del bilancio">= bilancio</span>' : `<span class="badge stato-errore" title="Totale al bilancio ${fmtEuro(d.bilancio)}">${d.delta > 0 ? '+' : '−'}${fmtEuro(Math.abs(d.delta))}</span>`) : '<span class="helptext">—</span>'; })()}</td>
+      <td class="helptext" style="white-space:nowrap;">${fmtData(r.aggiornatoIl)}${r.aggiornatoDa ? '<br>' + escapeHtml(r.aggiornatoDa) : ''}${ultimaVar && ultimaVar.variazioni.length && nStorico > 1 ? '<br><span style="color:var(--blu-mid);">modificato</span>' : ''}</td>
+      <td style="white-space:nowrap;"><button class="btn small" data-action="imposte-modifica" data-id="${c.id}">Modifica</button> <button class="btn small" data-action="imposte-storico" data-id="${c.id}" title="Tutte le modifiche">Storico (${nStorico})</button></td></tr>`;
+  }).join('');
+  return `<div class="helptext" style="margin-bottom:8px;">Imposte calcolate per cliente e anno d'imposta. Ogni modifica resta nello <b>storico</b> con data, ora e chi l'ha fatta, così si vede come sono cambiate tra bilancio e dichiarazione. Totale = IRES/IRPEF + IRAP + addizionali + altre; saldo = totale − acconti versati (in rosso se da versare). Flusso: si inseriscono le imposte calcolate in sede di <b>bilancio</b>; poi, preparando la dichiarazione, si aggiornano nella fase <b>dichiarazione</b> e la colonna "Rispetto al bilancio" dice se il totale è cambiato.</div>
+    <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);"><div class="kpi completati"><div class="n">${conDati}</div><div class="l">CON IMPOSTE INSERITE</div></div><div class="kpi inscadenza"><div class="n">${tutti.length - conDati}</div><div class="l">SENZA IMPOSTE</div></div><div class="kpi futuri"><div class="n">${fmtEuro((STATE.imposte || []).filter(r => Number(r.anno) === anno).reduce((s, r) => s + Math.max(0, saldoImposte(r.valori)), 0))}</div><div class="l">SALDI DA VERSARE (${anno})</div></div></div>
+    ${toolbar}
+    <div class="card" style="padding:0;overflow-x:auto;"><table class="tbl cli-tab"><thead><tr><th>Cliente</th><th>Stato</th><th style="text-align:right;">Imponibile</th><th style="text-align:right;">IRES/IRPEF</th><th style="text-align:right;">IRAP</th><th style="text-align:right;">Addiz. e altre</th><th style="text-align:right;">Totale imposte</th><th style="text-align:right;">Acconti</th><th style="text-align:right;">Saldo</th><th>Rispetto al bilancio</th><th>Aggiornato</th><th></th></tr></thead><tbody>${tr || '<tr><td colspan="12" class="helptext">Nessun cliente con questi filtri.</td></tr>'}</tbody></table></div>`;
+}
+/* Finestra di inserimento/modifica; il riepilogo (totale e saldo) si aggiorna mentre si scrive. */
+let modImposteClienteId = null;
+function modalImposte(clienteId) {
+  const c = clienteById(clienteId); if (!c) return;
+  modImposteClienteId = clienteId;
+  const anno = imposteAnno(), r = recordImposte(clienteId, anno), v = r ? r.valori : {};
+  const campi = IMPOSTE_CAMPI.map(x => `<div class="field"><label>${escapeHtml(x.l)}</label><input type="text" inputmode="decimal" id="imp_${x.k}" data-action="imposte-input" value="${v[x.k] != null ? String(v[x.k]).replace('.', ',') : ''}" placeholder="€"></div>`).join('');
+  h('modalRoot').innerHTML = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop"><div class="modal" style="max-width:640px;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;"><div><h2>Imposte ${anno} — ${escapeHtml(c.ragioneSociale)}</h2><div class="modal-sub">Ogni salvataggio con modifiche viene registrato nello storico. Lascia vuoto ciò che non c'è.</div></div><button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button></div>
+    <div class="field" style="margin-top:10px;"><label>Fase del calcolo</label><select id="imp_tipo" data-action="imposte-input">${IMPOSTE_TIPI.map(t => `<option ${(r ? r.tipo : 'Bilancio') === t ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 14px;margin-top:6px;">${campi}</div>
+    <div id="impRiepilogo" class="card" style="margin:10px 0;padding:10px 14px;"></div>
+    <div class="field"><label>Causa della variazione (se i totali sono cambiati)</label><select id="imp_causa"><option value="">—</option>${IMPOSTE_CAUSE.map(x => `<option>${x}</option>`).join('')}</select></div>
+    <div class="field"><label>Nota sulla modifica (facoltativa)</label><input type="text" id="imp_nota" placeholder="es. aggiornato dopo scritture di rettifica"></div>
+    <div class="modal-actions"><button class="btn" data-action="chiudi-modal">Annulla</button><button class="btn primary" data-action="imposte-salva" data-id="${clienteId}">Salva</button></div></div></div>`;
+  aggiornaRiepilogoImposte();
+}
+function leggiValoriModalImposte() { const v = {}; IMPOSTE_CAMPI.forEach(c => { const e = document.getElementById('imp_' + c.k); if (e) v[c.k] = e.value; }); return v; }
+function aggiornaRiepilogoImposte() {
+  const box = document.getElementById('impRiepilogo'); if (!box) return;
+  const v = leggiValoriModalImposte(), t = totaleImposte(v), s = saldoImposte(v);
+  const rec = recordImposte(modImposteClienteId, imposteAnno()), b = impostePerBilancio(rec), fase = (document.getElementById('imp_tipo') || {}).value;
+  const conf = (b && fase === 'Dichiarazione') ? (Math.abs(t - totaleImposte(b)) < 0.5 ? `<div style="margin-top:6px;color:var(--verde);font-weight:700;">Uguale al calcolo del bilancio (${fmtEuro(totaleImposte(b))}).</div>` : `<div style="margin-top:6px;color:var(--rosso);font-weight:700;">Diverso dal bilancio (${fmtEuro(totaleImposte(b))}): ${t - totaleImposte(b) > 0 ? '+' : '−'}${fmtEuro(Math.abs(t - totaleImposte(b)))}. Indica la causa qui sotto.</div>`) : '';
+  box.innerHTML = `<b>Totale imposte:</b> ${fmtEuro(t)} &nbsp;·&nbsp; <b>Saldo:</b> <span style="color:${s > 0 ? 'var(--rosso)' : 'var(--verde)'};font-weight:700;">${s > 0 ? 'da versare ' : 'a credito '}${fmtEuro(Math.abs(s))}</span>${conf}`;
+}
+function modalStoricoImposte(clienteId) {
+  const c = clienteById(clienteId); if (!c) return;
+  const anno = imposteAnno(), r = recordImposte(clienteId, anno);
+  const righe = (r ? r.storico.slice().reverse() : []).map(s => {
+    const var_ = s.nuovo ? `<div class="helptext">Primo inserimento — totale ${fmtEuro(totaleImposte(s.valori))}</div>` : '';
+    const dettaglio = s.variazioni.map(x => {
+      const d = (x.da == null || x.a == null || typeof x.a !== 'number') ? '' : ` (${x.a - x.da >= 0 ? '+' : '−'}${fmtEuro(Math.abs(x.a - x.da))})`;
+      const f = (z) => z == null ? '—' : (typeof z === 'number' ? fmtEuro(z) : escapeHtml(String(z)));
+      return `<div style="font-size:12.5px;">${escapeHtml(x.campo)}: ${f(x.da)} → <b>${f(x.a)}</b>${d}</div>`;
+    }).join('');
+    return `<tr><td style="white-space:nowrap;vertical-align:top;">${fmtData(s.data)}<div class="helptext">${escapeHtml(s.ora || '')}</div></td><td style="vertical-align:top;">${escapeHtml(s.operatore || '—')}</td><td style="vertical-align:top;"><span class="badge info">${escapeHtml(s.tipo)}</span></td><td>${var_}${dettaglio || (s.nuovo ? '' : '<span class="helptext">solo nota</span>')}${s.causa ? `<div class="helptext">Causa: <b>${escapeHtml(s.causa)}</b></div>` : ''}${s.nota ? `<div class="helptext">📝 ${escapeHtml(s.nota)}</div>` : ''}</td></tr>`;
+  }).join('');
+  h('modalRoot').innerHTML = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop"><div class="modal" style="max-width:760px;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;"><div><h2>Storico imposte ${anno} — ${escapeHtml(c.ragioneSociale)}</h2><div class="modal-sub">Dal più recente al più vecchio. ${r ? r.storico.length + ' registrazioni.' : ''}</div></div><button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button></div>
+    <div style="max-height:56vh;overflow:auto;margin-top:10px;border:1px solid var(--border);border-radius:8px;"><table class="compact"><thead><tr><th>Quando</th><th>Chi</th><th>Fase</th><th>Cosa è cambiato</th></tr></thead><tbody>${righe || '<tr><td colspan="4" class="helptext">Nessuna registrazione.</td></tr>'}</tbody></table></div>
+    <div class="modal-actions"><button class="btn" data-action="chiudi-modal">Chiudi</button></div></div></div>`;
+}
+
 /* -------------------- REPORT MENSILE AL CLIENTE --------------------
    "Cosa abbiamo fatto e cosa scade": generato dai dati già presenti (nessun inserimento), mostrato in anteprima
    modificabile e salvato come BOZZA di comunicazione nel portale — non parte mai da solo. */

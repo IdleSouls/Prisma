@@ -184,6 +184,7 @@ function eliminaCliente(id) {
   STATE.libriSociali = (STATE.libriSociali || []).filter(l => l.clienteId !== id);
   if (STATE.accettazioni) delete STATE.accettazioni[id];
   if (STATE.cpb) delete STATE.cpb[id];
+  if (STATE.imposte) STATE.imposte = STATE.imposte.filter(r => r.clienteId !== id);
 
   // Entità tenute in oggetti indicizzati per clienteId: basta togliere la chiave.
   delete STATE.onboarding[id];
@@ -333,6 +334,7 @@ const NAV = [
     { id: 'ritenute', label: 'Ritenute d\'acconto', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="2.3"/><circle cx="17" cy="17" r="2.3"/><line x1="18" y1="6" x2="6" y2="18"/></svg>' },
     { id: 'f24', label: 'F24', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5h8l5 5v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-18a1 1 0 0 1 1-1z"/><path d="M14 2.5v5h5"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>' },
     { id: 'cpb', label: 'Concordato preventivo', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>' },
+    { id: 'imposte', label: 'Imposte calcolate', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="12" y2="12"/><line x1="8" y1="16" x2="12" y2="16"/><line x1="15" y1="12" x2="16" y2="12"/><line x1="15" y1="16" x2="16" y2="16"/></svg>' },
   ]},
   { group: 'Relazione cliente', items: [
     { id: 'onboarding', label: 'Onboarding', ic:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7"/><path d="M9 7h8v8"/></svg>' },
@@ -392,6 +394,7 @@ const PAGE_TITLES = {
   carico: ['Carico di lavoro', 'Scadenze e adempimenti aperti per persona e per mese'],
   proroghe: ['Proroghe', 'Sposta in blocco una scadenza per tutti i clienti interessati (decreti di proroga)'],
   cpb: ['Concordato preventivo biennale', 'Stato di adesione per cliente'],
+  imposte: ['Imposte calcolate', 'Imposte per cliente e anno, con storico di tutte le modifiche'],
   deontologia: ['Deontologia', 'Accettazione incarico, equo compenso, uso dell\'IA, formazione continua e riservatezza'],
   libri: ['Libri sociali', 'Quali libri ha ogni società, chi li detiene e quando sono stati stampati l\'ultima volta'],
   fatturazione: ['Da fatturare', 'Attività extra prestate ai clienti, da includere nella prossima fattura periodica'],
@@ -448,6 +451,7 @@ const MODULI = [
   { id: 'cruscotto', label: 'Cruscotto titolare', desc: 'Vista d\'insieme dello studio: portafoglio clienti, nuovi e cessati, avanzamento adempimenti.', tabs: ['cruscotto'] },
   { id: 'carico', label: 'Carico di lavoro e proroghe', desc: 'Carico per responsabile e registro delle proroghe concesse.', tabs: ['carico', 'proroghe'] },
   { id: 'cpb', label: 'Concordato preventivo biennale', desc: 'Tracker delle proposte CPB e delle adesioni dei clienti.', tabs: ['cpb'] },
+  { id: 'imposte', label: 'Imposte calcolate', desc: 'Imposte calcolate per cliente e anno, con storico delle modifiche.', tabs: ['imposte'] },
   { id: 'strumenti', label: 'Strumenti file', desc: 'Convertitore Word/PDF, unisci e dividi PDF.', tabs: ['strumenti'] },
 ];
 function moduloAttivo(id) {
@@ -762,6 +766,7 @@ function render() {
     case 'carico': content.innerHTML = renderCarico(); break;
     case 'proroghe': content.innerHTML = renderProroghe(); break;
     case 'cpb': content.innerHTML = renderCpb(); break;
+    case 'imposte': content.innerHTML = renderImposte(); break;
     case 'strumenti': content.innerHTML = renderStrumenti(); break;
     case 'credenziali': content.innerHTML = renderCredenziali(); break;
     case 'portale': content.innerHTML = renderPortaleCliente(); break;

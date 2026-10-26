@@ -698,6 +698,47 @@ export function creaServer(filePath, baseUrl) {
   );
 
   server.registerTool(
+    'registra_imposte',
+    {
+      title: 'Imposte calcolate di un cliente',
+      description: 'Inserisce/aggiorna le imposte calcolate di un cliente per un anno d\'imposta (tab "Imposte calcolate" di Prisma). Ogni modifica reale viene registrata nello storico con data, ora, operatore e cosa è cambiato (da → a). Passa solo i valori da cambiare (null svuota un campo). Importi in euro. Totale = IRES/IRPEF + IRAP + addizionali + altre; saldo = totale − acconti. Flusso dello studio: a bilancio fatto si registrano le imposte con tipo "Bilancio"; poi, preparando la dichiarazione, si registrano di nuovo con tipo "Dichiarazione" e la risposta dice se il totale è uguale a quello del bilancio (se diverso, chiedi a Matteo la causa e passala in "causa"). Usalo quando Matteo ti dà o ti fa calcolare le imposte di un cliente. Richiede il gestionale aperto via server.js.',
+      inputSchema: {
+        cliente: z.string().describe('Ragione sociale (anche parziale) o id del cliente.'),
+        anno: z.number().int().describe('Anno d\'imposta (es. 2025 per la dichiarazione presentata nel 2026).'),
+        valori: z.object({
+          imponibile: z.number().nullable().optional().describe('Reddito imponibile.'),
+          iresIrpef: z.number().nullable().optional().describe('IRES o IRPEF dovuta.'),
+          vpn: z.number().nullable().optional().describe('Valore della produzione netta (IRAP).'),
+          irap: z.number().nullable().optional().describe('IRAP dovuta.'),
+          addizionali: z.number().nullable().optional().describe('Addizionali regionale e comunale.'),
+          altre: z.number().nullable().optional().describe('Altre imposte / imposta sostitutiva.'),
+          acconti: z.number().nullable().optional().describe('Acconti già versati.'),
+          accontoSucc: z.number().nullable().optional().describe('Acconti dell\'anno successivo.'),
+        }).describe('Solo i campi da inserire o cambiare.'),
+        tipo: z.enum(['Bilancio', 'Dichiarazione']).optional().describe('Fase del calcolo: "Bilancio" = imposte calcolate a contabilità chiusa con le scritture di fine anno (primo inserimento); "Dichiarazione" = imposte ricalcolate in sede di predisposizione della dichiarazione, che Prisma confronta con quelle del bilancio. Default: la fase già presente, altrimenti Bilancio.'),
+        causa: z.enum(['Errore o rettifica nostra', 'Modifica del cliente o altre variazioni', 'Altro motivo']).optional().describe('Solo se in fase Dichiarazione il totale è diverso da quello del bilancio: perché è cambiato.'),
+        nota: z.string().optional().describe('Nota sulla modifica (finisce nello storico).'),
+      },
+    },
+    async (campi) => testoEsitoScrittura(await inviaComando(url, 'registraImposte', pulisciUndefined(campi)))
+  );
+  server.registerTool(
+    'elenco_imposte',
+    {
+      title: 'Imposte calcolate (con storico)',
+      description: 'Imposte calcolate per cliente e anno d\'imposta, con totale, saldo e storico delle modifiche (data, operatore, cosa è cambiato). Filtri facoltativi: cliente e anno.',
+      inputSchema: { cliente: z.string().optional().describe('Nome o id del cliente.'), anno: z.number().int().optional() },
+    },
+    async ({ cliente, anno }) => {
+      const { vista } = caricaVista(filePath);
+      let r = vista.imposte || [];
+      if (cliente) { const c = trovaCliente(vista, cliente); if (!c) return testoJson({ errore: 'Cliente non trovato: ' + cliente }); r = r.filter(x => x.clienteId === c.id); }
+      if (anno) r = r.filter(x => Number(x.anno) === anno);
+      return testoJson(r);
+    }
+  );
+
+  server.registerTool(
     'modifica_cpb',
     {
       title: 'Dati concordato preventivo (CPB)',

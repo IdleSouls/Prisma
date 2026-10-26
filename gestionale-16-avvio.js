@@ -108,6 +108,7 @@ function esportaVistaMCP() {
     moduli: MODULI.map(m => ({ id: m.id, nome: m.label, attivo: moduloAttivo(m.id) })),
     team: { responsabili: STATE.meta.responsabili || [], consulenti: STATE.meta.consulenti || [], ruoli: STATE.meta.ruoli || {} },
     cruscotto: datiCruscotto(),
+    imposte: (STATE.imposte || []).map(r => ({ id: r.id, clienteId: r.clienteId, cliente: nomeCliente(r.clienteId), anno: r.anno, stato: r.tipo, valori: r.valori, totaleImposte: totaleImposte(r.valori), saldo: saldoImposte(r.valori), aggiornatoIl: r.aggiornatoIl, aggiornatoDa: r.aggiornatoDa, nota: r.nota, storico: r.storico })),
     libriSociali: (STATE.libriSociali || []).map(l => ({ id: l.id, clienteId: l.clienteId, cliente: nomeCliente(l.clienteId), tipo: l.tipo, statoFisico: statoFisicoLibro(l), detenutoDa: l.detenutoDa, detentoreNote: l.detentoreNote, ultimaStampa: l.ultimaStampa, ultimaPagina: l.ultimaPagina, vidimazione: l.vidimazione, note: l.note })),
     attivitaFatturabili: (STATE.attivitaFatturabili || []).map(a => ({ id: a.id, clienteId: a.clienteId, cliente: nomeCliente(a.clienteId), data: a.data, descrizione: a.descrizione, importo: a.importo, stato: a.stato, fatturaNumero: a.fatturaNumero, fatturaData: a.fatturaData })),
     incassi: (STATE.incassi || []).map(i => ({ id: i.id, clienteId: i.clienteId, cliente: nomeCliente(i.clienteId), descrizione: i.descrizione, numero: i.numero, importo: i.importo, incassato: i.importoIncassato || 0, residuo: residuoIncasso(i), dataEmissione: i.dataEmissione, dataScadenza: i.dataScadenza, stato: statoIncasso(i), solleciti: (i.solleciti || []).length })),
@@ -655,6 +656,7 @@ const GUIDA_TAB = {
   incassi: { cosa: 'Compensi da incassare, scadenze di pagamento e solleciti.', funzioni: ['Elenco per cliente e stato', 'Solleciti dal portale', 'Registrazione dell\'incasso'], consiglio: 'È un promemoria per lo studio, non un programma di fatturazione.' },
   carico: { cosa: 'Scadenze e adempimenti aperti per persona e per mese.', funzioni: ['Chi è sovraccarico e chi ha spazio', 'Filtro per mese'], consiglio: 'Usalo prima di assegnare una nuova pratica.' },
   proroghe: { cosa: 'Sposta in blocco una scadenza per tutti i clienti interessati (decreti di proroga).', funzioni: ['Scegli scadenza, nuova data e clienti', 'Registro delle proroghe applicate'], consiglio: 'Controlla l\'anteprima dei clienti coinvolti prima di confermare.' },
+  imposte: { cosa: 'Imposte calcolate per cliente e anno d\'imposta, con lo storico di ogni modifica.', funzioni: ['IRES/IRPEF, IRAP, addizionali, acconti e saldo', 'Storico con data, ora e operatore'], consiglio: 'Aggiorna gli importi ogni volta che cambiano: lo storico ti dice cosa è cambiato e quando.' },
   cpb: { cosa: 'Concordato preventivo biennale: stato di adesione per cliente.', funzioni: ['Stato per cliente e note'], consiglio: 'Le regole fiscali cambiano: verifica sempre le soglie sulle fonti ufficiali.' },
   deontologia: { cosa: 'Obblighi deontologici dello studio.', funzioni: ['Check-list di accettazione incarico', 'Registro dell\'uso dell\'IA', 'Formazione continua (FPC)', 'Impegni di riservatezza e privacy'], consiglio: 'Compila la check-list all\'accettazione dell\'incarico, non dopo.' },
   libri: { cosa: 'Libri sociali dei clienti.', funzioni: ['Chi detiene il libro', 'Ultima stampa e ultima pagina'], consiglio: 'Aggiorna la data dopo ogni stampa o vidimazione.' },
@@ -1279,7 +1281,7 @@ window.setView = setView;
 window.mostraAvvisoRiavvioServer = mostraAvvisoRiavvioServer;
 window.gestisciRiavvioAnnullato = gestisciRiavvioAnnullato;
 window.cliCsvVistaCorrente = cliCsvVistaCorrente;
-window.cpbCsvRiepilogo = cpbCsvRiepilogo; window.cpbXlsxBlob = cpbXlsxBlob; window.cpbRigheRiepilogo = cpbRigheRiepilogo; window.cpbElencoFiltrato = cpbElencoFiltrato;
+window.cpbCsvRiepilogo = cpbCsvRiepilogo; window.salvaImposte = salvaImposte; window.differenzaRispettoBilancio = differenzaRispettoBilancio; window.recordImposte = recordImposte; window.totaleImposte = totaleImposte; window.saldoImposte = saldoImposte; window.cpbXlsxBlob = cpbXlsxBlob; window.cpbRigheRiepilogo = cpbRigheRiepilogo; window.cpbElencoFiltrato = cpbElencoFiltrato;
 window.quadroRoCliente = quadroRoCliente; window.quotaTotaleSoci = quotaTotaleSoci;
 window.setSchedaClienteTest = function (id) { SCHEDA_CLIENTE = id; };
 window.getVIEW = () => VIEW;

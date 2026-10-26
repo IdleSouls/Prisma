@@ -394,6 +394,8 @@ function statoIniziale() {
     /* Proroghe massive di scadenze (decreti), tracker concordato preventivo biennale per cliente. */
     proroghe: [],
     cpb: {},
+    /* Imposte calcolate per cliente/anno con storico delle modifiche (tab Imposte calcolate). */
+    imposte: [],
     fpc: [],
     impegniRiservatezza: [],
     /* Procedure interne dello studio (task #146): raccolta di SOP/indicazioni operative per lo staff
@@ -1589,6 +1591,19 @@ const AZIONI_MCP = {
     return { aggiornato: true, cliente: c.ragioneSociale };
   },
 
+  /* Imposte calcolate (tab "Imposte calcolate"): inserisce/aggiorna e registra la modifica nello storico. */
+  registraImposte: (p) => {
+    const q = String(p.cliente || '').trim().toLowerCase();
+    const c = STATE.clienti.find(x => x.id === p.cliente || (x.ragioneSociale || '').toLowerCase() === q) || STATE.clienti.find(x => q && (x.ragioneSociale || '').toLowerCase().includes(q));
+    if (!c) throw new Error('Cliente non trovato: ' + p.cliente);
+    const anno = Number(p.anno); if (!Number.isInteger(anno)) throw new Error('Anno non valido.');
+    const att = recordImposte(c.id, anno), partenza = Object.assign({}, att ? att.valori : {}, p.valori || {});
+    IMPOSTE_CAMPI.forEach(f => { if (p.valori && p.valori[f.k] === null) delete partenza[f.k]; });
+    const esito = salvaImposte(c.id, anno, partenza, { tipo: p.tipo, causa: p.causa, nota: p.nota });
+    render();
+    const dr = differenzaRispettoBilancio(esito.record);
+    return { cliente: c.ragioneSociale, anno, fase: esito.record.tipo, cambiato: esito.cambiato, variazioni: esito.variazioni, rispettoAlBilancio: dr ? (Math.abs(dr.delta) < 0.5 ? 'uguale' : 'diverso di ' + dr.delta.toFixed(2) + ' € (totale bilancio ' + dr.bilancio.toFixed(2) + ')') : undefined, totaleImposte: totaleImposte(esito.record.valori), saldo: saldoImposte(esito.record.valori) };
+  },
   /* Registra in Documenti un file GIÀ copiato nella cartella del cliente (dal tool MCP salva_documento_cliente). */
   registraDocumentoArchivio: (p) => {
     const c = clienteById(p.clienteId);

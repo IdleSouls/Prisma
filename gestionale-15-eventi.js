@@ -163,6 +163,14 @@ function onClickDelegatoInterno(e) {
     case 'schcli-elenco': SCHEDA_CLIENTE = null; SCHEDA_RICERCA = ''; render(); break;
     case 'cpb-valuta': modalValutazioneCpb(id); break;
     case 'cpb-nota-apri': modalNotaCpb(id); break;
+    case 'imposte-modifica': modalImposte(id); break;
+    case 'imposte-storico': modalStoricoImposte(id); break;
+    case 'imposte-salva': {
+      const esito = salvaImposte(id, imposteAnno(), leggiValoriModalImposte(), { tipo: (document.getElementById('imp_tipo') || {}).value, causa: (document.getElementById('imp_causa') || {}).value, nota: (document.getElementById('imp_nota') || {}).value });
+      chiudiModal(); render();
+      toast(esito.cambiato ? 'Imposte salvate (' + esito.variazioni.length + ' modifiche nello storico).' : 'Nessuna modifica rispetto a prima.');
+      break;
+    }
     case 'carico-dettaglio': modalCaricoDettaglio(el.dataset.resp, el.dataset.mese); break;
     case 'carico-ore-apri': modalCaricoOre(); break;
     case 'carico-ore-salva': salvaCaricoOre(); chiudiModal(); render(); toast('Ore e capacità salvate.'); break;
@@ -2097,6 +2105,7 @@ function onChangeDelegato(e) {
     case 'report-mensile-mese': { const t = h('rmTesto'); if (t) t.value = reportMensileCliente(el.dataset.cliente, el.value || oggiISO().slice(0, 7)); break; }
     case 'cpb-val-input': ricalcolaModalCpb(); break;
     case 'carica-persona-cambia': aggiornaCampiNuovaPersona(); break;
+    case 'imposte-filtro': IMPOSTE_FILTRO[el.dataset.k] = el.value; render(); break;
     case 'carico-filtro': CARICO_FILTRO[el.dataset.k] = el.value; render(); break;
     case 'cpb-param': { const v = Number(el.value); if (Number.isFinite(v)) { STATE.meta.cpbParametri = Object.assign({}, STATE.meta.cpbParametri || {}, { [el.dataset.k]: v }); salvaStato(); render(); } break; }
     case 'cpb-filtro-tipo': CPB_FILTRO.tipo = el.value; render(); break;
@@ -2505,6 +2514,8 @@ function onInputDelegato(e) {
     case 'import-cli-filtro': filtraAnteprimaImportClienti(); break;
     case 'cli-col-filtro': CLI_TAB.filtri[el.dataset.col] = el.value; resetPagina('clienti'); render(); restoreFocus('[data-action="cli-col-filtro"][data-col="' + el.dataset.col + '"]'); break;
     case 'schcli-ricerca': SCHEDA_RICERCA = el.value; render(); restoreFocus('[data-action="schcli-ricerca"]'); break;
+    case 'imposte-cerca': IMPOSTE_FILTRO.q = el.value; render(); restoreFocus('[data-action="imposte-cerca"]'); break;
+    case 'imposte-input': aggiornaRiepilogoImposte(); break;
     case 'cli-filtro-q': CLI_FILTRO.q = el.value; resetPagina('clienti'); render(); restoreFocus('[data-action="cli-filtro-q"]'); break;
     case 'rubrica-filtro-q': RUBRICA_FILTRO.q = el.value; resetPagina('rubrica'); render(); restoreFocus('[data-action="rubrica-filtro-q"]'); break;
     case 'cred-filtro-q': CRED_FILTRO.q = el.value; resetPagina('credenziali'); render(); restoreFocus('[data-action="cred-filtro-q"]'); break;
