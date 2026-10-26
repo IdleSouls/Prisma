@@ -6152,6 +6152,20 @@ async function main() {
       const eC = window.getSTATE().cpb[idv];
       assert(eC && eC.stato === 'Aderito' && eC.dati.redConc26 === 40000 && eC.nota === 'Test Federico', 'CPB valutazione: salvataggio dati, nota e decisione');
       assert(window.cpbCsvRiepilogo && /Indicazione/.test(window.cpbCsvRiepilogo()), 'CPB valutazione: esportazione CSV');
+      {
+        // l'esportazione segue i filtri: con un tipo di cliente scelto escono solo quei clienti
+        const tutteRighe = window.cpbRigheRiepilogo();
+        assert(tutteRighe.length > 0 && tutteRighe.every(r => 'senza' in r && 'verdetto' in r), 'CPB export: righe malformate');
+        const tipoScelto = window.getSTATE().clienti.find(c => c.id === idv).tipo;
+        const sel = q('select[data-action="cpb-filtro-tipo"]');
+        if (sel) {
+          setVal(sel, tipoScelto); await wait(30);
+          const filtrate = window.cpbRigheRiepilogo();
+          const nTipo = window.cpbElencoFiltrato().lista.length;
+          assert(filtrate.length === nTipo && window.cpbElencoFiltrato().lista.every(c => c.tipo === tipoScelto), 'CPB export: non rispetta il filtro tipo');
+          setVal(q('select[data-action="cpb-filtro-tipo"]'), 'Tutti'); await wait(30);
+        }
+      }
       // nota in finestra a parte
       q(`[data-action="cpb-nota-apri"][data-id="${idv}"]`).click(); await wait(20);
       assert(q('#cpbNotaTesto'), 'CPB: la nota si apre in una finestra con casella grande');

@@ -1279,7 +1279,7 @@ window.setView = setView;
 window.mostraAvvisoRiavvioServer = mostraAvvisoRiavvioServer;
 window.gestisciRiavvioAnnullato = gestisciRiavvioAnnullato;
 window.cliCsvVistaCorrente = cliCsvVistaCorrente;
-window.cpbCsvRiepilogo = cpbCsvRiepilogo;
+window.cpbCsvRiepilogo = cpbCsvRiepilogo; window.cpbXlsxBlob = cpbXlsxBlob; window.cpbRigheRiepilogo = cpbRigheRiepilogo; window.cpbElencoFiltrato = cpbElencoFiltrato;
 window.quadroRoCliente = quadroRoCliente; window.quotaTotaleSoci = quotaTotaleSoci;
 window.setSchedaClienteTest = function (id) { SCHEDA_CLIENTE = id; };
 window.getVIEW = () => VIEW;

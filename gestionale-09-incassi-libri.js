@@ -1423,20 +1423,16 @@ function cpbVerdettoBadge(r) { return `<span class="badge ${CPB_VERDETTO_CLASSE[
 
 function renderCpb() {
   const f = CPB_FILTRO, P = cpbParametri(), st = statoCpbCliente;
-  const tutti = STATE.clienti.filter(c => clienteAttivo(c)).sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale));
+  const { tutti, attivi, lista } = cpbElencoFiltrato();
   const nNonAmmessi = tutti.filter(c => !ammissibilitaCpb(c).ok && !ammissibilitaCpb(c).daVerificare).length;
-  let attivi = tutti.filter(c => ammissibilitaCpb(c).ok || (f.mostraNonAmmessi && !ammissibilitaCpb(c).daVerificare));
-  if (f.tipo !== 'Tutti') attivi = attivi.filter(c => c.tipo === f.tipo);
-  if (f.regime !== 'Tutti') attivi = attivi.filter(c => c.regimeFiscale === f.regime);
   const conta = (x) => attivi.filter(c => st(c.id) === x).length;
   const kpi = `<div class="kpi-grid" style="grid-template-columns:repeat(${STATI_CPB.length},1fr);">${STATI_CPB.map(x => `<div class="kpi ${CPB_CLASSI[x].kpi}"><div class="n">${conta(x)}</div><div class="l">${x.toUpperCase()}</div></div>`).join('')}</div>`;
-  const lista = f.stato === 'Tutti' ? attivi : attivi.filter(c => st(c.id) === f.stato);
   const toolbar = `<div class="toolbar">
     <div class="field"><label>Tipo di cliente</label><select data-action="cpb-filtro-tipo"><option value="Tutti">Tutti</option>${TIPI_CLIENTE.map(t => `<option value="${t.v}" ${f.tipo === t.v ? 'selected' : ''}>${escapeHtml(t.l)}</option>`).join('')}</select></div>
     <div class="field"><label>Regime fiscale</label><select data-action="cpb-filtro-regime"><option value="Tutti">Tutti</option>${REGIMI_FISCALI.map(r => `<option ${f.regime === r ? 'selected' : ''}>${escapeHtml(r)}</option>`).join('')}</select></div>
     <div class="field"><label>Stato</label><select data-action="cpb-filtro-stato"><option>Tutti</option>${STATI_CPB.map(x => `<option ${f.stato === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
     <div class="field" style="min-width:max-content;"><label>&nbsp;</label><label class="checkline" style="white-space:nowrap;"><input type="checkbox" data-action="cpb-filtro-non-ammessi" ${f.mostraNonAmmessi ? 'checked' : ''}> Mostra anche i non ammessi (${nNonAmmessi})</label></div>
-    <div class="field" style="margin-left:auto;"><label>&nbsp;</label><button class="btn small" data-action="cpb-val-esporta">⬇ Esporta riepilogo (CSV)</button></div>
+    <div class="field" style="margin-left:auto;"><label>&nbsp;</label><button class="btn small" data-action="cpb-val-esporta">⬇ Esporta riepilogo (Excel)</button></div>
   </div>`;
   const num = (v) => { const n = cpbNum(v); return n == null ? '' : fmtEuro(n); };
   const tr = lista.map(c => {
@@ -1531,15 +1527,111 @@ function statoAutoCalcolato(id, dati) {
   if (!c || !['Dati ISA mancanti', 'Da valutare'].includes(statoCpbCliente(id))) return null;
   return calcolaCpb(c, dati, cpbParametri()).completo ? 'Calcolato' : null;
 }
-function cpbCsvRiepilogo() {
+/* Clienti del tab CPB come li vede l'utente: stessi filtri della tabella (tipo, regime, stato, "mostra non ammessi").
+   attivi = dopo tipo/regime (servono ai contatori); lista = dopo anche il filtro di stato. */
+function cpbElencoFiltrato() {
+  const f = CPB_FILTRO;
+  const tutti = STATE.clienti.filter(c => clienteAttivo(c)).sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale));
+  let attivi = tutti.filter(c => ammissibilitaCpb(c).ok || (f.mostraNonAmmessi && !ammissibilitaCpb(c).daVerificare));
+  if (f.tipo !== 'Tutti') attivi = attivi.filter(c => c.tipo === f.tipo);
+  if (f.regime !== 'Tutti') attivi = attivi.filter(c => c.regimeFiscale === f.regime);
+  const lista = f.stato === 'Tutti' ? attivi : attivi.filter(c => statoCpbCliente(c.id) === f.stato);
+  return { tutti, attivi, lista };
+}
+/* Descrizione leggibile dei filtri attivi (per l'intestazione del file). */
+function cpbDescrizioneFiltri() {
+  const f = CPB_FILTRO, p = [];
+  if (f.tipo !== 'Tutti') p.push('Tipo: ' + ((TIPI_CLIENTE.find(t => t.v === f.tipo) || {}).l || f.tipo));
+  if (f.regime !== 'Tutti') p.push('Regime: ' + f.regime);
+  if (f.stato !== 'Tutti') p.push('Stato: ' + f.stato);
+  if (f.mostraNonAmmessi) p.push('inclusi i non ammessi');
+  return p.length ? p.join(' · ') : 'Nessun filtro (tutti i clienti ammessi)';
+}
+/* Righe del riepilogo (una per cliente della lista filtrata), con i numeri come numeri. */
+function cpbRigheRiepilogo() {
   const P = cpbParametri();
+  return cpbElencoFiltrato().lista.map(c => {
+    const e = (STATE.cpb || {})[c.id] || {}, d = e.dati || {}, amm = ammissibilitaCpb(c);
+    const r = amm.ok ? calcolaCpb(c, d, P) : { completo: false, verdetto: 'Non ammesso' };
+    return {
+      cliente: c.ragioneSociale, tipo: labelTipoCliente(c.tipo), regime: c.regimeFiscale || '', stato: statoCpbCliente(c.id),
+      isa: cpbNum(d.isa), rif: cpbNum(d.redRif), conc: r.completo ? cpbNum(d.redConc26) : null, stim: r.completo ? cpbNum(d.redProj26) : null,
+      scost: r.completo && r.scostamento != null ? r.scostamento : null,
+      senza: r.completo ? r.totSenza : null, con: r.completo ? r.totCon : null, delta: r.completo ? r.delta : null,
+      verdetto: r.verdetto, nota: e.nota || '',
+    };
+  });
+}
+function cpbCsvRiepilogo() {
   const esc = (v) => { v = String(v == null ? '' : v); return /[;"\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
   const righe = [['Cliente', 'Tipo', 'Regime', 'Concordato 2026', 'Stimato 2026', 'Scostamento %', 'Imposte senza CPB', 'Imposte con CPB', 'Differenza', 'Indicazione', 'Stato', 'Note'].join(';')];
-  STATE.clienti.filter(c => clienteAttivo(c) && ammissibilitaCpb(c).ok).sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale)).forEach(c => {
-    const e = (STATE.cpb || {})[c.id] || {}, r = calcolaCpb(c, e.dati, P), d = e.dati || {};
-    righe.push([c.ragioneSociale, labelTipoCliente(c.tipo), c.regimeFiscale || '', r.completo ? d.redConc26 : '', r.completo ? d.redProj26 : '', r.completo && r.scostamento != null ? (r.scostamento * 100).toFixed(1) : '', r.completo ? r.totSenza.toFixed(0) : '', r.completo ? r.totCon.toFixed(0) : '', r.completo ? r.delta.toFixed(0) : '', r.verdetto, statoCpbCliente(c.id), e.nota || ''].map(esc).join(';'));
+  cpbRigheRiepilogo().forEach(x => righe.push([x.cliente, x.tipo, x.regime, x.conc, x.stim, x.scost != null ? (x.scost * 100).toFixed(1) : '', x.senza != null ? x.senza.toFixed(0) : '', x.con != null ? x.con.toFixed(0) : '', x.delta != null ? x.delta.toFixed(0) : '', x.verdetto, x.stato, x.nota].map(esc).join(';')));
+  return '﻿' + righe.join('\r\n');
+}
+/* Carica ExcelJS (stili, colori, riquadri bloccati) solo quando serve; senza rete si ripiega su SheetJS (senza colori). */
+function caricaExcelJs() {
+  if (typeof ExcelJS !== 'undefined') return Promise.resolve(true);
+  return new Promise((ok) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
+    s.onload = () => ok(typeof ExcelJS !== 'undefined'); s.onerror = () => ok(false);
+    document.head.appendChild(s);
   });
-  return '\ufeff' + righe.join('\r\n');
+}
+const CPB_COLORI_VERDETTO = { 'Conviene': ['FFD9F2E3', 'FF1B6B3A'], 'Al limite': ['FFFFF1CC', 'FF8A6100'], 'Non conviene': ['FFFBD9D6', 'FF9C1C12'], 'Dati incompleti': ['FFEDEFF2', 'FF5A6270'], 'Non ammesso': ['FFEDEFF2', 'FF5A6270'] };
+const CPB_COLORI_STATO = { 'Dati ISA mancanti': ['FFFDE9D5', 'FF9A4A00'], 'Da valutare': ['FFFFF1CC', 'FF8A6100'], 'Calcolato': ['FFDDE8FB', 'FF1F4FA3'], 'Aderito': ['FFD9F2E3', 'FF1B6B3A'], 'Non aderito': ['FFFBD9D6', 'FF9C1C12'], 'Non applicabile': ['FFEDEFF2', 'FF5A6270'] };
+/* File Excel del riepilogo CPB: solo i clienti attualmente filtrati. Ritorna un Blob .xlsx. */
+async function cpbXlsxBlob() {
+  const righe = cpbRigheRiepilogo(), P = cpbParametri();
+  const intest = ['Cliente', 'Tipo', 'Regime', 'Stato', 'ISA 2025', 'Reddito di riferimento', 'Concordato 2026', 'Stimato 2026', 'Scostamento', 'Imposte senza CPB', 'Imposte con CPB', 'Differenza', 'Indicazione', 'Note'];
+  const largh = [34, 26, 18, 18, 9, 16, 16, 16, 12, 16, 16, 16, 16, 60];
+  const eur = '#,##0 "€";[Red]-#,##0 "€"';
+  const ExcelOk = await caricaExcelJs();
+  if (!ExcelOk) {
+    const aoa = [intest].concat(righe.map(x => [x.cliente, x.tipo, x.regime, x.stato, x.isa, x.rif, x.conc, x.stim, x.scost, x.senza, x.con, x.delta, x.verdetto, x.nota]));
+    const ws = XLSX.utils.aoa_to_sheet(aoa); ws['!cols'] = largh.map(w => ({ wch: w })); ws['!autofilter'] = { ref: 'A1:N' + aoa.length };
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Riepilogo CPB');
+    return new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  }
+  const wb = new ExcelJS.Workbook(); wb.creator = 'Prisma'; wb.created = new Date();
+  const ws = wb.addWorksheet('Riepilogo CPB', { views: [{ state: 'frozen', ySplit: 4, xSplit: 1, showGridLines: false }], pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 } });
+  ws.columns = largh.map(w => ({ width: w }));
+  const BLU = 'FF1F3A5F', GRIGIO = 'FFF5F7FA', BORDO = { style: 'thin', color: { argb: 'FFD5DAE1' } };
+  const fill = (argb) => ({ type: 'pattern', pattern: 'solid', fgColor: { argb } });
+  ws.mergeCells('A1:N1'); const t = ws.getCell('A1'); t.value = 'Concordato preventivo biennale 2026-2027 — riepilogo di convenienza'; t.font = { size: 16, bold: true, color: { argb: 'FFFFFFFF' } }; t.fill = fill(BLU); t.alignment = { vertical: 'middle', indent: 1 }; ws.getRow(1).height = 30;
+  ws.mergeCells('A2:N2'); const s = ws.getCell('A2'); s.value = `${cpbDescrizioneFiltri()}   |   ${righe.length} clienti   |   Generato il ${fmtData(oggiISO())}`; s.font = { italic: true, color: { argb: 'FF5A6270' } }; s.alignment = { indent: 1 };
+  ws.getRow(4).values = intest; ws.getRow(4).height = 32;
+  ws.getRow(4).eachCell(c => { c.font = { bold: true, color: { argb: 'FFFFFFFF' } }; c.fill = fill(BLU); c.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }; c.border = { bottom: BORDO }; });
+  righe.forEach((x, i) => {
+    const row = ws.addRow([x.cliente, x.tipo, x.regime, x.stato, x.isa, x.rif, x.conc, x.stim, x.scost, x.senza, x.con, x.delta, x.verdetto, x.nota]);
+    row.height = x.nota ? Math.min(90, 18 * Math.max(1, Math.ceil(String(x.nota).length / 70))) : 20;
+    row.eachCell({ includeEmpty: true }, (c, n) => {
+      c.border = { bottom: BORDO }; c.alignment = { vertical: 'middle', wrapText: n === 14 || n === 2, horizontal: n >= 5 && n <= 12 ? 'right' : (n === 4 || n === 13 ? 'center' : 'left') };
+      if (i % 2) c.fill = fill(GRIGIO);
+    });
+    row.getCell(1).font = { bold: true };
+    [6, 7, 8, 10, 11, 12].forEach(n => { row.getCell(n).numFmt = eur; });
+    row.getCell(9).numFmt = '+0.0%;-0.0%;0.0%';
+    const cs = CPB_COLORI_STATO[x.stato], cv = CPB_COLORI_VERDETTO[x.verdetto];
+    if (cs) { row.getCell(4).fill = fill(cs[0]); row.getCell(4).font = { bold: true, color: { argb: cs[1] } }; }
+    if (cv) { row.getCell(13).fill = fill(cv[0]); row.getCell(13).font = { bold: true, color: { argb: cv[1] } }; }
+    if (x.delta != null) row.getCell(12).font = { bold: true, color: { argb: x.delta <= 0 ? 'FF1B6B3A' : 'FF9C1C12' } };
+  });
+  const ultima = 4 + righe.length;
+  if (righe.length) {
+    ws.autoFilter = { from: 'A4', to: 'N' + ultima };
+    const tot = ws.addRow(['Totale (clienti con dati completi)', '', '', '', '', '', '', '', '', { formula: `SUM(J5:J${ultima})` }, { formula: `SUM(K5:K${ultima})` }, { formula: `SUM(L5:L${ultima})` }, '', '']);
+    tot.eachCell({ includeEmpty: true }, (c, n) => { c.font = { bold: true }; c.fill = fill('FFE6ECF5'); c.border = { top: { style: 'medium', color: { argb: BLU } } }; if (n >= 10 && n <= 12) c.numFmt = eur; });
+    tot.height = 22;
+  }
+  const w2 = wb.addWorksheet('Parametri', { views: [{ showGridLines: false }] });
+  w2.columns = [{ width: 46 }, { width: 14 }, { width: 70 }];
+  w2.getCell('A1').value = 'Parametri di calcolo usati'; w2.getCell('A1').font = { size: 14, bold: true };
+  [['IRES (società di capitali, cooperative)', P.ires / 100, '0.0%'], ['IRPEF (aliquota ipotizzata, persone e società di persone)', P.irpef / 100, '0.0%'], ['IRAP', P.irap / 100, '0.0%'], ['Imposta sostitutiva — ISA ≥ 8', P.sostAlta / 100, '0.0%'], ['Imposta sostitutiva — ISA 6–8', P.sostMedia / 100, '0.0%'], ['Imposta sostitutiva — ISA < 6', P.sostBassa / 100, '0.0%'], ['Limite imposta sostitutiva', P.soglia, eur], ['Tolleranza "Al limite"', P.tolleranza / 100, '0%']].forEach((r, i) => { const rr = w2.getRow(3 + i); rr.getCell(1).value = r[0]; rr.getCell(2).value = r[1]; rr.getCell(2).numFmt = r[2]; });
+  w2.mergeCells('A13:C16'); const n = w2.getCell('A13'); n.alignment = { wrapText: true, vertical: 'top' }; n.font = { italic: true, color: { argb: 'FF5A6270' } };
+  n.value = 'Calcolo semplificato: imposte = reddito × aliquota ordinaria + valore della produzione × IRAP; con il CPB si usa il reddito concordato e, se si opta, l\'imposta sostitutiva sulla sola parte oltre il reddito di riferimento (fino al limite). Non considera perdite pregresse, contributi, addizionali, decadenza o cessazione. Parametri da verificare sulla circolare 8/E. L\'indicazione non sostituisce la valutazione del professionista.';
+  const buf = await wb.xlsx.writeBuffer();
+  return new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
 }
 
 /* -------------------- REPORT MENSILE AL CLIENTE --------------------

@@ -169,7 +169,7 @@ function onClickDelegatoInterno(e) {
     case 'cpb-nota-salva': { if (!STATE.cpb) STATE.cpb = {}; STATE.cpb[id] = Object.assign({}, STATE.cpb[id] || {}, { nota: h('cpbNotaTesto').value }); salvaStato(); chiudiModal(); render(); toast('Nota salvata.'); break; }
     case 'cpb-val-salva': salvaValutazioneCpb(id); chiudiModal(); render(); toast('Valutazione CPB salvata.'); break;
     case 'cpb-val-decisione': salvaValutazioneCpb(id, el.dataset.stato); chiudiModal(); render(); toast('Valutazione salvata: ' + el.dataset.stato + '.'); break;
-    case 'cpb-val-esporta': salvaFileScaricabile('cpb-valutazione-' + oggiISO() + '.csv', new Blob([cpbCsvRiepilogo()], { type: 'text/csv;charset=utf-8' })); break;
+    case 'cpb-val-esporta': cpbXlsxBlob().then(b => salvaFileScaricabile('cpb-riepilogo-' + oggiISO() + '.xlsx', b)).then(ok => { if (ok !== false) toast('Riepilogo CPB esportato.'); }).catch(err => toast('Esportazione non riuscita: ' + err.message, true)); break;
     case 'apri-cliente': chiudiModal(); SCHEDA_CLIENTE = id; setView('schedacliente'); break;
     case 'modifica-cliente': modalCliente(id); break;
     case 'elimina-cliente':
