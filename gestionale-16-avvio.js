@@ -108,7 +108,7 @@ function esportaVistaMCP() {
     moduli: MODULI.map(m => ({ id: m.id, nome: m.label, attivo: moduloAttivo(m.id) })),
     team: { responsabili: STATE.meta.responsabili || [], consulenti: STATE.meta.consulenti || [], ruoli: STATE.meta.ruoli || {} },
     cruscotto: datiCruscotto(),
-    imposte: (STATE.imposte || []).map(r => ({ id: r.id, clienteId: r.clienteId, cliente: nomeCliente(r.clienteId), anno: r.anno, stato: r.tipo, valori: r.valori, totaleImposte: totaleImposte(r.valori), saldo: saldoImposte(r.valori), aggiornatoIl: r.aggiornatoIl, aggiornatoDa: r.aggiornatoDa, nota: r.nota, storico: r.storico })),
+    imposte: (STATE.imposte || []).map(r => ({ id: r.id, clienteId: r.clienteId, cliente: nomeCliente(r.clienteId), anno: r.anno, stato: r.tipo, valori: r.valori, totaleImposte: totaleImposte(r.valori), saldo: saldoImposte(r.valori), aggiornatoIl: r.aggiornatoIl, aggiornatoDa: r.aggiornatoDa, nota: r.nota, storico: r.storico, pagamento: r.pagamento || null, storicoPagamento: r.storicoPagamento || [] })),
     libriSociali: (STATE.libriSociali || []).map(l => ({ id: l.id, clienteId: l.clienteId, cliente: nomeCliente(l.clienteId), tipo: l.tipo, statoFisico: statoFisicoLibro(l), detenutoDa: l.detenutoDa, detentoreNote: l.detentoreNote, ultimaStampa: l.ultimaStampa, ultimaPagina: l.ultimaPagina, vidimazione: l.vidimazione, note: l.note })),
     attivitaFatturabili: (STATE.attivitaFatturabili || []).map(a => ({ id: a.id, clienteId: a.clienteId, cliente: nomeCliente(a.clienteId), data: a.data, descrizione: a.descrizione, importo: a.importo, stato: a.stato, fatturaNumero: a.fatturaNumero, fatturaData: a.fatturaData })),
     incassi: (STATE.incassi || []).map(i => ({ id: i.id, clienteId: i.clienteId, cliente: nomeCliente(i.clienteId), descrizione: i.descrizione, numero: i.numero, importo: i.importo, incassato: i.importoIncassato || 0, residuo: residuoIncasso(i), dataEmissione: i.dataEmissione, dataScadenza: i.dataScadenza, stato: statoIncasso(i), solleciti: (i.solleciti || []).length })),
@@ -1281,7 +1281,7 @@ window.setView = setView;
 window.mostraAvvisoRiavvioServer = mostraAvvisoRiavvioServer;
 window.gestisciRiavvioAnnullato = gestisciRiavvioAnnullato;
 window.cliCsvVistaCorrente = cliCsvVistaCorrente;
-window.cpbCsvRiepilogo = cpbCsvRiepilogo; window.salvaImposte = salvaImposte; window.differenzaRispettoBilancio = differenzaRispettoBilancio; window.recordImposte = recordImposte; window.totaleImposte = totaleImposte; window.saldoImposte = saldoImposte; window.cpbXlsxBlob = cpbXlsxBlob; window.cpbRigheRiepilogo = cpbRigheRiepilogo; window.cpbElencoFiltrato = cpbElencoFiltrato;
+window.cpbCsvRiepilogo = cpbCsvRiepilogo; window.salvaImposte = salvaImposte; window.salvaPagamentoImposte = salvaPagamentoImposte; window.generaF24Imposte = generaF24Imposte; window.pagamentoImposte = pagamentoImposte; window.accontiTotali = accontiTotali; window.differenzaRispettoBilancio = differenzaRispettoBilancio; window.recordImposte = recordImposte; window.totaleImposte = totaleImposte; window.saldoImposte = saldoImposte; window.cpbXlsxBlob = cpbXlsxBlob; window.cpbRigheRiepilogo = cpbRigheRiepilogo; window.cpbElencoFiltrato = cpbElencoFiltrato;
 window.quadroRoCliente = quadroRoCliente; window.quotaTotaleSoci = quotaTotaleSoci;
 window.setSchedaClienteTest = function (id) { SCHEDA_CLIENTE = id; };
 window.getVIEW = () => VIEW;

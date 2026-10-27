@@ -171,6 +171,23 @@ function onClickDelegatoInterno(e) {
       toast(esito.cambiato ? 'Imposte salvate (' + esito.variazioni.length + ' modifiche nello storico).' : 'Nessuna modifica rispetto a prima.');
       break;
     }
+    case 'imposte-pagamento': IMPOSTE_PAG_DRAFT = null; modalPagamentoImposte(id); break;
+    case 'imposte-pag-rata-add': IMPOSTE_PAG_DRAFT.pag.rate.push({ id: uid('rata'), scadenza: null, capitale: '', interessi: '' }); modalPagamentoImposte(IMPOSTE_PAG_DRAFT.clienteId); break;
+    case 'imposte-pag-rata-del': IMPOSTE_PAG_DRAFT.pag.rate.splice(Number(el.dataset.i), 1); modalPagamentoImposte(IMPOSTE_PAG_DRAFT.clienteId); break;
+    case 'imposte-pag-divide': dividiSaldoInRate((document.getElementById('pagN') || {}).value, (document.getElementById('pagPrima') || {}).value); modalPagamentoImposte(IMPOSTE_PAG_DRAFT.clienteId); break;
+    case 'imposte-pag-prospetto-rimuovi': IMPOSTE_PAG_DRAFT.pag.prospetto = null; modalPagamentoImposte(IMPOSTE_PAG_DRAFT.clienteId); break;
+    case 'imposte-pag-salva':
+    case 'imposte-pag-salva-f24': {
+      const dr = IMPOSTE_PAG_DRAFT; if (!dr) break;
+      const esito = salvaPagamentoImposte(dr.clienteId, dr.anno, dr.pag);
+      let msg = esito.cambiato ? 'Pagamento salvato (' + esito.variazioni.length + ' modifiche nello storico).' : 'Nessuna modifica al pagamento.';
+      if (el.dataset.action === 'imposte-pag-salva-f24') {
+        try { const g = generaF24Imposte(dr.clienteId, dr.anno); msg += ' F24: ' + (g.log.length ? g.log.length + ' operazioni (vedi storico).' : 'già aggiornati.'); }
+        catch (err) { msg += ' F24 NON creati: ' + err.message; toast(msg, true); IMPOSTE_PAG_DRAFT = null; chiudiModal(); render(); break; }
+      }
+      IMPOSTE_PAG_DRAFT = null; chiudiModal(); render(); toast(msg);
+      break;
+    }
     case 'carico-dettaglio': modalCaricoDettaglio(el.dataset.resp, el.dataset.mese); break;
     case 'carico-ore-apri': modalCaricoOre(); break;
     case 'carico-ore-salva': salvaCaricoOre(); chiudiModal(); render(); toast('Ore e capacità salvate.'); break;
@@ -2105,6 +2122,8 @@ function onChangeDelegato(e) {
     case 'report-mensile-mese': { const t = h('rmTesto'); if (t) t.value = reportMensileCliente(el.dataset.cliente, el.value || oggiISO().slice(0, 7)); break; }
     case 'cpb-val-input': ricalcolaModalCpb(); break;
     case 'carica-persona-cambia': aggiornaCampiNuovaPersona(); break;
+    case 'imposte-pag-modalita': IMPOSTE_PAG_DRAFT.pag.modalita = el.value; modalPagamentoImposte(IMPOSTE_PAG_DRAFT.clienteId); break;
+    case 'imposte-pag-file': allegaProspettoRate(el.files && el.files[0]); break;
     case 'imposte-filtro': IMPOSTE_FILTRO[el.dataset.k] = el.value; render(); break;
     case 'carico-filtro': CARICO_FILTRO[el.dataset.k] = el.value; render(); break;
     case 'cpb-param': { const v = Number(el.value); if (Number.isFinite(v)) { STATE.meta.cpbParametri = Object.assign({}, STATE.meta.cpbParametri || {}, { [el.dataset.k]: v }); salvaStato(); render(); } break; }
@@ -2514,6 +2533,13 @@ function onInputDelegato(e) {
     case 'import-cli-filtro': filtraAnteprimaImportClienti(); break;
     case 'cli-col-filtro': CLI_TAB.filtri[el.dataset.col] = el.value; resetPagina('clienti'); render(); restoreFocus('[data-action="cli-col-filtro"][data-col="' + el.dataset.col + '"]'); break;
     case 'schcli-ricerca': SCHEDA_RICERCA = el.value; render(); restoreFocus('[data-action="schcli-ricerca"]'); break;
+    case 'imposte-pag-campo': {
+      const rt = IMPOSTE_PAG_DRAFT && IMPOSTE_PAG_DRAFT.pag.rate[Number(el.dataset.i)]; if (!rt) break;
+      rt[el.dataset.k] = el.value;
+      const tot = document.getElementById('pagTot_' + el.dataset.i); if (tot) tot.textContent = fmtEuro(eur2((impNum(rt.capitale) || 0) + (impNum(rt.interessi) || 0)));
+      aggiornaSommaRatePagamento(); break;
+    }
+    case 'imposte-pag-unica': if (IMPOSTE_PAG_DRAFT) IMPOSTE_PAG_DRAFT.pag.scadenzaUnica = el.value || null; break;
     case 'imposte-cerca': IMPOSTE_FILTRO.q = el.value; render(); restoreFocus('[data-action="imposte-cerca"]'); break;
     case 'imposte-input': aggiornaRiepilogoImposte(); break;
     case 'cli-filtro-q': CLI_FILTRO.q = el.value; resetPagina('clienti'); render(); restoreFocus('[data-action="cli-filtro-q"]'); break;

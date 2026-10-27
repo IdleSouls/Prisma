@@ -1645,7 +1645,8 @@ const IMPOSTE_CAMPI = [
   { k: 'irap', l: 'IRAP dovuta' },
   { k: 'addizionali', l: 'Addizionali regionale e comunale' },
   { k: 'altre', l: 'Altre imposte / imposta sostitutiva' },
-  { k: 'acconti', l: 'Acconti versati' },
+  { k: 'accontiIresIrpef', l: 'Acconti IRES / IRPEF versati' },
+  { k: 'accontiIrap', l: 'Acconti IRAP versati' },
   { k: 'accontoSucc', l: 'Acconti anno successivo' },
 ];
 /* Fase in cui le imposte sono state calcolate: prima in sede di BILANCIO (contabilità chiusa e scritture di fine anno), poi in sede di
@@ -1658,7 +1659,9 @@ function recordImposte(clienteId, anno) { return (STATE.imposte || []).find(r =>
 function impNum(v) { if (v === '' || v == null) return null; if (typeof v === 'number') return Number.isFinite(v) ? v : null; let s = String(v).trim().replace(/[€\s]/g, ''); if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.'); const n = Number(s); return Number.isFinite(n) ? n : null; }
 /* Totale imposte dell'anno (IRES/IRPEF + IRAP + addizionali + altre) e saldo (totale − acconti versati; positivo = da versare). */
 function totaleImposte(v) { v = v || {}; return ['iresIrpef', 'irap', 'addizionali', 'altre'].reduce((s, k) => s + (impNum(v[k]) || 0), 0); }
-function saldoImposte(v) { return totaleImposte(v) - (impNum((v || {}).acconti) || 0); }
+/* Acconti già versati (IRES/IRPEF + IRAP; "acconti" è il vecchio campo unico, ancora letto se presente). */
+function accontiTotali(v) { v = v || {}; return ['accontiIresIrpef', 'accontiIrap', 'acconti'].reduce((s, k) => s + (impNum(v[k]) || 0), 0); }
+function saldoImposte(v) { return totaleImposte(v) - accontiTotali(v); }
 function pulisciValoriImposte(v) { const out = {}; IMPOSTE_CAMPI.forEach(c => { const n = impNum((v || {})[c.k]); if (n != null) out[c.k] = n; }); return out; }
 /* Salva le imposte di un cliente/anno. Aggiunge una riga allo storico solo se qualcosa è cambiato (valori, tipo) o se c'è una nota nuova. */
 function salvaImposte(clienteId, anno, valoriNuovi, opz) {
@@ -1720,23 +1723,23 @@ function renderImposte() {
     const r = recordImposte(c.id, anno), v = r ? r.valori : null;
     const nStorico = r ? r.storico.length : 0;
     const nome = `<a href="#" data-action="apri-cliente" data-id="${c.id}" title="Apri l'anagrafica" style="font-weight:700;color:var(--blu-mid);text-decoration:none;">${escapeHtml(c.ragioneSociale)}</a><div class="helptext">${escapeHtml(labelTipoCliente(c.tipo))} · ${escapeHtml(c.regimeFiscale || '—')}</div>`;
-    if (!r) return `<tr><td>${nome}</td><td colspan="10" class="helptext">Nessuna imposta inserita per il ${anno}.</td><td><button class="btn small" data-action="imposte-modifica" data-id="${c.id}">+ Inserisci</button></td></tr>`;
+    if (!r) return `<tr><td>${nome}</td><td colspan="10" class="helptext">Nessuna imposta inserita per il ${anno}.</td><td style="white-space:nowrap;"><button class="btn small" data-action="imposte-modifica" data-id="${c.id}">+ Inserisci</button></td></tr>`;
     const saldo = saldoImposte(v);
     const ultimaVar = r.storico.length ? r.storico[r.storico.length - 1] : null;
     return `<tr><td>${nome}</td>
-      <td><span class="badge ${r.tipo === 'Dichiarazione' ? 'stato-inviato-telematicamente' : 'stato-calcolato'}">${r.tipo}</span></td>
       <td style="text-align:right;">${fmtImp(v.imponibile)}</td><td style="text-align:right;">${fmtImp(v.iresIrpef)}</td><td style="text-align:right;">${fmtImp(v.irap)}</td>
       <td style="text-align:right;">${fmtImp((v.addizionali != null || v.altre != null) ? (v.addizionali || 0) + (v.altre || 0) : null)}</td>
-      <td style="text-align:right;font-weight:700;">${fmtEuro(totaleImposte(v))}</td><td style="text-align:right;">${fmtImp(v.acconti)}</td>
+      <td style="text-align:right;font-weight:700;">${fmtEuro(totaleImposte(v))}</td><td style="text-align:right;">${accontiTotali(v) ? fmtEuro(accontiTotali(v)) : '—'}</td>
       <td style="text-align:right;font-weight:700;color:${saldo > 0 ? 'var(--rosso)' : 'var(--verde)'};" title="${saldo > 0 ? 'Da versare' : 'A credito'}">${saldo > 0 ? '' : '−'}${fmtEuro(Math.abs(saldo))}</td>
+      <td style="white-space:nowrap;font-size:12.5px;">${descrizionePagamentoImposte(r)}</td>
       <td style="white-space:nowrap;">${(() => { const d = differenzaRispettoBilancio(r); return d ? (Math.abs(d.delta) < 0.5 ? '<span class="badge stato-inviato-telematicamente" title="Uguali al calcolo del bilancio">= bilancio</span>' : `<span class="badge stato-errore" title="Totale al bilancio ${fmtEuro(d.bilancio)}">${d.delta > 0 ? '+' : '−'}${fmtEuro(Math.abs(d.delta))}</span>`) : '<span class="helptext">—</span>'; })()}</td>
       <td class="helptext" style="white-space:nowrap;">${fmtData(r.aggiornatoIl)}${r.aggiornatoDa ? '<br>' + escapeHtml(r.aggiornatoDa) : ''}${ultimaVar && ultimaVar.variazioni.length && nStorico > 1 ? '<br><span style="color:var(--blu-mid);">modificato</span>' : ''}</td>
-      <td style="white-space:nowrap;"><button class="btn small" data-action="imposte-modifica" data-id="${c.id}">Modifica</button> <button class="btn small" data-action="imposte-storico" data-id="${c.id}" title="Tutte le modifiche">Storico (${nStorico})</button></td></tr>`;
+      <td style="white-space:nowrap;"><button class="btn small" data-action="imposte-modifica" data-id="${c.id}">Modifica</button> <button class="btn small" data-action="imposte-pagamento" data-id="${c.id}">Pagamento</button> <button class="btn small" data-action="imposte-storico" data-id="${c.id}" title="Tutte le modifiche">Storico (${nStorico + (r.storicoPagamento || []).length})</button></td></tr>`;
   }).join('');
   return `<div class="helptext" style="margin-bottom:8px;">Imposte calcolate per cliente e anno d'imposta. Ogni modifica resta nello <b>storico</b> con data, ora e chi l'ha fatta, così si vede come sono cambiate tra bilancio e dichiarazione. Totale = IRES/IRPEF + IRAP + addizionali + altre; saldo = totale − acconti versati (in rosso se da versare). Flusso: si inseriscono le imposte calcolate in sede di <b>bilancio</b>; poi, preparando la dichiarazione, si aggiornano nella fase <b>dichiarazione</b> e la colonna "Rispetto al bilancio" dice se il totale è cambiato.</div>
     <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);"><div class="kpi completati"><div class="n">${conDati}</div><div class="l">CON IMPOSTE INSERITE</div></div><div class="kpi inscadenza"><div class="n">${tutti.length - conDati}</div><div class="l">SENZA IMPOSTE</div></div><div class="kpi futuri"><div class="n">${fmtEuro((STATE.imposte || []).filter(r => Number(r.anno) === anno).reduce((s, r) => s + Math.max(0, saldoImposte(r.valori)), 0))}</div><div class="l">SALDI DA VERSARE (${anno})</div></div></div>
     ${toolbar}
-    <div class="card" style="padding:0;overflow-x:auto;"><table class="tbl cli-tab"><thead><tr><th>Cliente</th><th>Stato</th><th style="text-align:right;">Imponibile</th><th style="text-align:right;">IRES/IRPEF</th><th style="text-align:right;">IRAP</th><th style="text-align:right;">Addiz. e altre</th><th style="text-align:right;">Totale imposte</th><th style="text-align:right;">Acconti</th><th style="text-align:right;">Saldo</th><th>Rispetto al bilancio</th><th>Aggiornato</th><th></th></tr></thead><tbody>${tr || '<tr><td colspan="12" class="helptext">Nessun cliente con questi filtri.</td></tr>'}</tbody></table></div>`;
+    <div class="card" style="padding:0;overflow-x:auto;"><table class="tbl cli-tab"><thead><tr><th>Cliente</th><th style="text-align:right;">Imponibile</th><th style="text-align:right;">IRES/IRPEF</th><th style="text-align:right;">IRAP</th><th style="text-align:right;">Addiz. e altre</th><th style="text-align:right;">Totale imposte</th><th style="text-align:right;">Acconti</th><th style="text-align:right;">Saldo</th><th>Pagamento</th><th>Rispetto al bilancio</th><th>Aggiornato</th><th></th></tr></thead><tbody>${tr || '<tr><td colspan="12" class="helptext">Nessun cliente con questi filtri.</td></tr>'}</tbody></table></div>`;
 }
 /* Finestra di inserimento/modifica; il riepilogo (totale e saldo) si aggiorna mentre si scrive. */
 let modImposteClienteId = null;
@@ -1775,11 +1778,192 @@ function modalStoricoImposte(clienteId) {
     }).join('');
     return `<tr><td style="white-space:nowrap;vertical-align:top;">${fmtData(s.data)}<div class="helptext">${escapeHtml(s.ora || '')}</div></td><td style="vertical-align:top;">${escapeHtml(s.operatore || '—')}</td><td style="vertical-align:top;"><span class="badge info">${escapeHtml(s.tipo)}</span></td><td>${var_}${dettaglio || (s.nuovo ? '' : '<span class="helptext">solo nota</span>')}${s.causa ? `<div class="helptext">Causa: <b>${escapeHtml(s.causa)}</b></div>` : ''}${s.nota ? `<div class="helptext">📝 ${escapeHtml(s.nota)}</div>` : ''}</td></tr>`;
   }).join('');
-  h('modalRoot').innerHTML = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop"><div class="modal" style="max-width:760px;">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;"><div><h2>Storico imposte ${anno} — ${escapeHtml(c.ragioneSociale)}</h2><div class="modal-sub">Dal più recente al più vecchio. ${r ? r.storico.length + ' registrazioni.' : ''}</div></div><button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button></div>
-    <div style="max-height:56vh;overflow:auto;margin-top:10px;border:1px solid var(--border);border-radius:8px;"><table class="compact"><thead><tr><th>Quando</th><th>Chi</th><th>Fase</th><th>Cosa è cambiato</th></tr></thead><tbody>${righe || '<tr><td colspan="4" class="helptext">Nessuna registrazione.</td></tr>'}</tbody></table></div>
+  const righePag = (r && r.storicoPagamento ? r.storicoPagamento.slice().reverse() : []).map(s => `<tr><td style="white-space:nowrap;vertical-align:top;">${fmtData(s.data)}<div class="helptext">${escapeHtml(s.ora || '')}</div></td><td style="vertical-align:top;">${escapeHtml(s.operatore || '—')}</td><td style="vertical-align:top;"><span class="badge info">${escapeHtml(s.azione)}</span></td><td>${s.dettaglio.map(x => `<div style="font-size:12.5px;">${escapeHtml(x)}</div>`).join('')}</td></tr>`).join('');
+  h('modalRoot').innerHTML = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop"><div class="modal" style="max-width:820px;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;"><div><h2>Storico imposte ${anno} — ${escapeHtml(c.ragioneSociale)}</h2><div class="modal-sub">Dal più recente al più vecchio. ${r ? r.storico.length + ' registrazioni sugli importi.' : ''}</div></div><button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button></div>
+    <div style="max-height:40vh;overflow:auto;margin-top:10px;border:1px solid var(--border);border-radius:8px;"><table class="compact"><thead><tr><th>Quando</th><th>Chi</th><th>Fase</th><th>Cosa è cambiato</th></tr></thead><tbody>${righe || '<tr><td colspan="4" class="helptext">Nessuna registrazione.</td></tr>'}</tbody></table></div>
+    <div class="section-title" style="margin-top:12px;">Pagamento e F24</div>
+    <div style="max-height:30vh;overflow:auto;border:1px solid var(--border);border-radius:8px;"><table class="compact"><thead><tr><th>Quando</th><th>Chi</th><th>Cosa</th><th>Dettaglio</th></tr></thead><tbody>${righePag || '<tr><td colspan="4" class="helptext">Nessuna registrazione sul pagamento.</td></tr>'}</tbody></table></div>
     <div class="modal-actions"><button class="btn" data-action="chiudi-modal">Chiudi</button></div></div></div>`;
 }
+
+/* -------------------- IMPOSTE: PAGAMENTO (unica soluzione / rate), PROSPETTO RATE E F24 --------------------
+   r.pagamento = { modalita, scadenzaUnica, rate:[{id,n,scadenza,capitale,interessi,totale}], prospetto:{documentoId,nome,percorso}|null,
+   f24:[{chiave:'unica'|'rataN', f24Id}] }; r.storicoPagamento = [{id,data,ora,operatore,azione,dettaglio:[testo]}].
+   Gli F24 si creano dal piano e, se il piano cambia, si AGGIORNANO (quelli non ancora pagati) invece di duplicarsi. */
+const IMPOSTE_MODALITA = ['Unica soluzione', 'Rateale'];
+const eur2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+function pagamentoImposte(r) {
+  const p = (r && r.pagamento) || {};
+  return { modalita: p.modalita === 'Rateale' ? 'Rateale' : 'Unica soluzione', scadenzaUnica: p.scadenzaUnica || null, rate: (p.rate || []).map(x => Object.assign({}, x)), prospetto: p.prospetto ? Object.assign({}, p.prospetto) : null, f24: (p.f24 || []).map(x => Object.assign({}, x)) };
+}
+function registraStoricoPagamento(r, azione, dettaglio) {
+  if (!dettaglio || !dettaglio.length) return;
+  if (!Array.isArray(r.storicoPagamento)) r.storicoPagamento = [];
+  r.storicoPagamento.push({ id: uid('imsp'), data: oggiISO(), ora: new Date().toTimeString().slice(0, 5), operatore: operatoreCorrente() || null, azione, dettaglio });
+}
+function recordImposteOCrea(clienteId, anno) {
+  if (!Array.isArray(STATE.imposte)) STATE.imposte = [];
+  let r = recordImposte(clienteId, anno);
+  if (!r) { r = { id: uid('imp'), clienteId, anno: Number(anno), tipo: 'Bilancio', valori: {}, nota: '', aggiornatoIl: null, aggiornatoDa: null, storico: [], storicoPagamento: [] }; STATE.imposte.push(r); }
+  return r;
+}
+function normalizzaRate(rate) {
+  return (rate || []).map((x, i) => ({ id: x.id || uid('rata'), n: i + 1, scadenza: x.scadenza || null, capitale: eur2(impNum(x.capitale)), interessi: eur2(impNum(x.interessi)), totale: eur2((impNum(x.capitale) || 0) + (impNum(x.interessi) || 0)) }));
+}
+/* Salva modalità/rate/prospetto; registra nello storico solo ciò che cambia (rata per rata). */
+function salvaPagamentoImposte(clienteId, anno, np) {
+  const r = recordImposteOCrea(clienteId, anno), prima = pagamentoImposte(r);
+  const modalita = np.modalita === 'Rateale' ? 'Rateale' : 'Unica soluzione';
+  const nuovo = { modalita, scadenzaUnica: np.scadenzaUnica || null, rate: modalita === 'Rateale' ? normalizzaRate(np.rate) : [], prospetto: np.prospetto || null, f24: prima.f24 };
+  const righe = [], D = (d) => d ? fmtData(d) : '—';
+  if (prima.modalita !== nuovo.modalita) righe.push(`Modalità di pagamento: ${prima.modalita} → ${nuovo.modalita}`);
+  if (nuovo.modalita === 'Unica soluzione' && (prima.scadenzaUnica || null) !== nuovo.scadenzaUnica) righe.push(`Scadenza del versamento: ${D(prima.scadenzaUnica)} → ${D(nuovo.scadenzaUnica)}`);
+  const nMax = Math.max(prima.rate.length, nuovo.rate.length);
+  for (let i = 0; i < nMax; i++) {
+    const a = prima.rate[i], b = nuovo.rate[i];
+    if (a && b) {
+      const d = [];
+      if ((a.scadenza || null) !== b.scadenza) d.push(`scadenza ${D(a.scadenza)} → ${D(b.scadenza)}`);
+      if (eur2(a.capitale) !== b.capitale) d.push(`capitale ${fmtEuro(eur2(a.capitale))} → ${fmtEuro(b.capitale)}`);
+      if (eur2(a.interessi) !== b.interessi) d.push(`interessi ${fmtEuro(eur2(a.interessi))} → ${fmtEuro(b.interessi)}`);
+      if (d.length) righe.push(`Rata ${i + 1}: ${d.join('; ')}`);
+    } else if (b) righe.push(`Rata ${i + 1} aggiunta: ${D(b.scadenza)}, totale ${fmtEuro(b.totale)}`);
+    else if (prima.modalita === 'Rateale') righe.push(`Rata ${i + 1} eliminata (era ${D(a.scadenza)}, ${fmtEuro(eur2(a.totale))})`);
+  }
+  const pa = prima.prospetto ? prima.prospetto.nome : null, pb = nuovo.prospetto ? nuovo.prospetto.nome : null;
+  if (pa !== pb) righe.push(pb ? `Prospetto rate allegato: ${pb}` : 'Prospetto rate rimosso');
+  if (!righe.length) return { cambiato: false, variazioni: [], record: r };
+  r.pagamento = nuovo;
+  registraStoricoPagamento(r, 'Pagamento', righe);
+  salvaStato();
+  return { cambiato: true, variazioni: righe, record: r };
+}
+/* Righe F24 del saldo in unica soluzione, per tributo: IRES/IRPEF (saldo = dovuta − acconti), IRAP, addizionali e altre (senza codice: da completare). */
+function righeSaldoImposte(c, r) {
+  const v = r.valori || {}, ires = ['societa_capitali', 'cooperativa', 'impresa_sociale'].includes(c.tipo), n = (k) => impNum(v[k]) || 0, out = [];
+  const a = n('iresIrpef') - n('accontiIresIrpef'); if (a > 0.004) out.push({ codiceTributo: ires ? '2003' : '4001', descrizione: `${ires ? 'IRES' : 'IRPEF'} saldo ${r.anno}`, importo: eur2(a) });
+  const b = n('irap') - n('accontiIrap'); if (b > 0.004) out.push({ codiceTributo: '3800', descrizione: `IRAP saldo ${r.anno}`, importo: eur2(b) });
+  if (n('addizionali') > 0.004) out.push({ codiceTributo: '', descrizione: `Addizionali regionale e comunale ${r.anno}`, importo: eur2(n('addizionali')) });
+  if (n('altre') > 0.004) out.push({ codiceTributo: '', descrizione: `Altre imposte / imposta sostitutiva ${r.anno}`, importo: eur2(n('altre')) });
+  return out;
+}
+/* Crea o aggiorna gli F24 del piano di pagamento. Gli F24 già pagati (anche in parte) non si toccano. Ritorna le righe di log. */
+function generaF24Imposte(clienteId, anno) {
+  const c = clienteById(clienteId), r = recordImposte(clienteId, anno);
+  if (!c || !r) throw new Error('Imposte non inserite per questo cliente e anno.');
+  const pag = pagamentoImposte(r), N = pag.rate.length, wanted = [];
+  if (pag.modalita === 'Rateale') {
+    if (!N) throw new Error('Inserisci le rate prima di creare gli F24.');
+    pag.rate.forEach((x, i) => {
+      if (!x.scadenza) throw new Error(`Manca la data della rata ${i + 1}.`);
+      const righe = [{ id: uid('f24r'), codiceTributo: '', descrizione: `Rata ${i + 1}/${N} - quota capitale imposte ${r.anno}`, importo: eur2(x.capitale), importoPagato: 0 }];
+      if (eur2(x.interessi) > 0.004) righe.push({ id: uid('f24r'), codiceTributo: '1668', descrizione: `Rata ${i + 1}/${N} - interessi rateazione`, importo: eur2(x.interessi), importoPagato: 0 });
+      wanted.push({ chiave: 'rata' + (i + 1), data: x.scadenza, descrizione: `Imposte ${r.anno} - rata ${i + 1}/${N}`, righe });
+    });
+  } else {
+    if (!pag.scadenzaUnica) throw new Error('Indica la scadenza del versamento.');
+    const righe = righeSaldoImposte(c, r).map(x => Object.assign({ id: uid('f24r'), importoPagato: 0 }, x));
+    if (!righe.length) throw new Error('Nessun saldo da versare (imposte inserite non superiori agli acconti).');
+    wanted.push({ chiave: 'unica', data: pag.scadenzaUnica, descrizione: `Imposte ${r.anno} - saldo in unica soluzione`, righe });
+  }
+  const log = [], link = [];
+  wanted.forEach(d => {
+    const l = pag.f24.find(x => x.chiave === d.chiave), f = l ? STATE.f24.find(x => x.id === l.f24Id) : null;
+    if (f) {
+      link.push(l);
+      if ((Number(f.importoPagato) || 0) > 0.004) { log.push(`${d.descrizione}: già pagato (anche in parte), non modificato`); return; }
+      const prima = `${f.data}|${eur2(f.importo)}|${righeF24(f).map(x => x.codiceTributo + ':' + eur2(x.importo)).join(',')}`;
+      aggiornaF24(f.id, { data: d.data, descrizione: d.descrizione, righe: d.righe });
+      const dopo = `${f.data}|${eur2(f.importo)}|${righeF24(f).map(x => x.codiceTributo + ':' + eur2(x.importo)).join(',')}`;
+      if (prima !== dopo) log.push(`${d.descrizione}: F24 aggiornato (era ${fmtData(prima.split('|')[0])}, ${fmtEuro(Number(prima.split('|')[1]))}; ora ${fmtData(d.data)}, ${fmtEuro(f.importo)})`);
+    } else {
+      const nf = aggiungiF24({ clienteId, tipo: 'F24', data: d.data, descrizione: d.descrizione, righe: d.righe, impostaRif: r.id });
+      link.push({ chiave: d.chiave, f24Id: nf.id });
+      log.push(`${d.descrizione}: F24 creato per il ${fmtData(d.data)} (${fmtEuro(nf.importo)})`);
+    }
+  });
+  pag.f24.filter(l => !wanted.some(d => d.chiave === l.chiave)).forEach(l => {
+    const f = STATE.f24.find(x => x.id === l.f24Id); if (!f) return;
+    if ((Number(f.importoPagato) || 0) > 0.004) { link.push(l); log.push(`F24 «${f.descrizione || ''}» già pagato ma non più previsto dal piano: lasciato, da verificare`); }
+    else { eliminaF24(l.f24Id); log.push(`F24 «${f.descrizione || ''}» eliminato (non più previsto dal piano)`); }
+  });
+  r.pagamento = Object.assign({}, r.pagamento || {}, { f24: link });
+  registraStoricoPagamento(r, 'F24', log);
+  salvaStato();
+  return { log };
+}
+/* ---- finestra Pagamento (lavora su una bozza, che si scrive solo con Salva) ---- */
+let IMPOSTE_PAG_DRAFT = null;
+function modalPagamentoImposte(clienteId) {
+  const c = clienteById(clienteId); if (!c) return;
+  const anno = imposteAnno(), r = recordImposte(clienteId, anno);
+  if (!IMPOSTE_PAG_DRAFT || IMPOSTE_PAG_DRAFT.clienteId !== clienteId || IMPOSTE_PAG_DRAFT.anno !== anno) IMPOSTE_PAG_DRAFT = { clienteId, anno, pag: pagamentoImposte(r) };
+  const d = IMPOSTE_PAG_DRAFT.pag, rateale = d.modalita === 'Rateale';
+  const saldo = r ? Math.max(0, saldoImposte(r.valori)) : 0;
+  const righe = d.rate.map((x, i) => `<tr><td style="text-align:center;font-weight:700;">${i + 1}</td>
+    <td><input type="date" value="${x.scadenza || ''}" data-action="imposte-pag-campo" data-k="scadenza" data-i="${i}"></td>
+    <td><input type="text" inputmode="decimal" style="width:110px;text-align:right;" value="${x.capitale != null && x.capitale !== '' ? String(x.capitale).replace('.', ',') : ''}" data-action="imposte-pag-campo" data-k="capitale" data-i="${i}"></td>
+    <td><input type="text" inputmode="decimal" style="width:90px;text-align:right;" value="${x.interessi != null && x.interessi !== '' ? String(x.interessi).replace('.', ',') : ''}" data-action="imposte-pag-campo" data-k="interessi" data-i="${i}"></td>
+    <td style="text-align:right;font-weight:700;" id="pagTot_${i}">${fmtEuro(eur2((impNum(x.capitale) || 0) + (impNum(x.interessi) || 0)))}</td>
+    <td><button class="btn small danger" data-action="imposte-pag-rata-del" data-i="${i}" title="Elimina rata">✕</button></td></tr>`).join('');
+  const nF24 = d.f24.length;
+  h('modalRoot').innerHTML = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop"><div class="modal" style="max-width:720px;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;"><div><h2>Pagamento imposte ${anno} — ${escapeHtml(c.ragioneSociale)}</h2><div class="modal-sub">Saldo da versare calcolato: <b>${fmtEuro(saldo)}</b>${r ? '' : ' (imposte non ancora inserite)'}. Ogni modifica al piano e agli F24 resta nello storico.</div></div><button class="icon-x" data-action="chiudi-modal" title="Chiudi">✕</button></div>
+    <div class="field" style="margin-top:10px;"><label>Modalità</label><select data-action="imposte-pag-modalita">${IMPOSTE_MODALITA.map(m => `<option ${d.modalita === m ? 'selected' : ''}>${m}</option>`).join('')}</select></div>
+    ${rateale ? `
+    <div class="toolbar" style="margin:8px 0;align-items:flex-end;">
+      <div class="field"><label>Dividi in n. rate</label><input type="number" min="1" max="60" id="pagN" value="${d.rate.length || 6}" style="width:80px;"></div>
+      <div class="field"><label>Prima rata</label><input type="date" id="pagPrima"></div>
+      <div class="field"><button class="btn small" data-action="imposte-pag-divide" title="Divide il saldo in rate di capitale uguali, una al mese; gli interessi vanno inseriti dal prospetto">Dividi il saldo</button></div>
+    </div>
+    <div style="max-height:34vh;overflow:auto;border:1px solid var(--border);border-radius:8px;"><table class="compact"><thead><tr><th>Rata</th><th>Scadenza</th><th style="text-align:right;">Quota capitale</th><th style="text-align:right;">Interessi</th><th style="text-align:right;">Totale</th><th></th></tr></thead><tbody>${righe || '<tr><td colspan="6" class="helptext">Nessuna rata: aggiungila o dividi il saldo.</td></tr>'}</tbody></table></div>
+    <div style="margin:6px 0;"><button class="btn small" data-action="imposte-pag-rata-add">+ Aggiungi rata</button> <span class="helptext" id="pagSomma"></span></div>
+    <div class="field" style="margin-top:8px;"><label>Prospetto delle rate (file)</label>
+      ${d.prospetto ? `<div class="helptext" style="margin-bottom:4px;">📎 ${escapeHtml(d.prospetto.nome)} <button class="btn small" data-action="imposte-pag-prospetto-rimuovi">Rimuovi</button></div>` : ''}
+      <input type="file" accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.csv" data-action="imposte-pag-file"></div>
+    ` : `<div class="field" style="margin-top:8px;"><label>Scadenza del versamento</label><input type="date" id="pagUnica" value="${d.scadenzaUnica || ''}" data-action="imposte-pag-unica"><div class="helptext">Controlla la scadenza reale (proroghe, eventuale maggiorazione dello 0,40% se dopo il 30 giugno).</div></div>`}
+    <div class="helptext" style="margin-top:8px;">${nF24 ? nF24 + ' F24 già collegati a questo piano: «Salva e crea/aggiorna F24» aggiorna quelli non ancora pagati senza duplicarli.' : 'Nessun F24 ancora creato per questo piano.'}</div>
+    <div class="modal-actions"><button class="btn" data-action="chiudi-modal">Annulla</button><button class="btn" data-action="imposte-pag-salva">Salva</button><button class="btn primary" data-action="imposte-pag-salva-f24">Salva e crea/aggiorna F24</button></div></div></div>`;
+  aggiornaSommaRatePagamento();
+}
+function aggiornaSommaRatePagamento() {
+  const box = document.getElementById('pagSomma'); if (!box || !IMPOSTE_PAG_DRAFT) return;
+  const rate = IMPOSTE_PAG_DRAFT.pag.rate, cap = rate.reduce((s, x) => s + (impNum(x.capitale) || 0), 0), tot = rate.reduce((s, x) => s + (impNum(x.capitale) || 0) + (impNum(x.interessi) || 0), 0);
+  const r = recordImposte(IMPOSTE_PAG_DRAFT.clienteId, IMPOSTE_PAG_DRAFT.anno), saldo = r ? Math.max(0, saldoImposte(r.valori)) : null;
+  const diff = saldo != null && rate.length ? eur2(cap - saldo) : 0;
+  box.innerHTML = `Capitale ${fmtEuro(cap)} · totale con interessi ${fmtEuro(tot)}${saldo != null && rate.length && Math.abs(diff) > 0.5 ? ` · <span style="color:var(--rosso);">capitale diverso dal saldo calcolato di ${fmtEuro(Math.abs(diff))}</span>` : ''}`;
+}
+function dividiSaldoInRate(n, primaData) {
+  const dr = IMPOSTE_PAG_DRAFT; if (!dr) return;
+  const r = recordImposte(dr.clienteId, dr.anno), saldo = r ? Math.max(0, saldoImposte(r.valori)) : 0;
+  n = Math.max(1, Math.min(60, Number(n) || 1));
+  const quota = eur2(saldo / n), rate = [];
+  for (let i = 0; i < n; i++) {
+    let data = null;
+    if (primaData) { const dt = new Date(primaData + 'T00:00:00'); dt.setMonth(dt.getMonth() + i); data = dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0'); }
+    rate.push({ id: uid('rata'), scadenza: data, capitale: i === n - 1 ? eur2(saldo - quota * (n - 1)) : quota, interessi: 0 });
+  }
+  dr.pag.rate = rate;
+}
+async function allegaProspettoRate(file) {
+  const dr = IMPOSTE_PAG_DRAFT, c = dr && clienteById(dr.clienteId);
+  if (!file || !c) return;
+  if (!HTTP_SYNC_ATTIVO) { toast('Per allegare il file serve il server di Prisma attivo.', true); return; }
+  try {
+    const up = await uploadFileReale(file, c.id, c.ragioneSociale, sottocartellaArea('fiscale', dr.anno, 'Imposte'));
+    const doc = aggiungiDocumento({ clienteId: c.id, categoria: 'Dichiarazione fiscale', nome: `Prospetto rate imposte ${dr.anno} - ${file.name}`, dataCaricamento: oggiISO(), dataScadenza: null, filePercorso: up.percorso, fileNome: up.nomeFile, fileDimensione: up.dimensione });
+    dr.pag.prospetto = { documentoId: doc.id, nome: file.name, percorso: up.percorso };
+    modalPagamentoImposte(dr.clienteId);
+    toast('Prospetto allegato (salva per registrarlo nello storico).');
+  } catch (err) { toast('Allegato non caricato: ' + err.message, true); }
+}
+function descrizionePagamentoImposte(r) {
+  const p = pagamentoImposte(r), nF = p.f24.length;
+  const base = p.modalita === 'Rateale' ? `${p.rate.length} rate · ${fmtEuro(p.rate.reduce((s, x) => s + eur2(x.totale), 0))}${p.prospetto ? ' 📎' : ''}` : (r.pagamento ? 'Unica soluzione' + (p.scadenzaUnica ? ' · ' + fmtData(p.scadenzaUnica) : '') : '<span class="helptext">da indicare</span>');
+  return base + (nF ? `<div class="helptext">${nF} F24 creati</div>` : '');
+}
+
 
 /* -------------------- REPORT MENSILE AL CLIENTE --------------------
    "Cosa abbiamo fatto e cosa scade": generato dai dati già presenti (nessun inserimento), mostrato in anteprima

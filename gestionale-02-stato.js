@@ -1592,6 +1592,21 @@ const AZIONI_MCP = {
   },
 
   /* Imposte calcolate (tab "Imposte calcolate"): inserisce/aggiorna e registra la modifica nello storico. */
+  registraPagamentoImposte: (p) => {
+    const q = String(p.cliente || '').trim().toLowerCase();
+    const c = STATE.clienti.find(x => x.id === p.cliente || (x.ragioneSociale || '').toLowerCase() === q) || STATE.clienti.find(x => q && (x.ragioneSociale || '').toLowerCase().includes(q));
+    if (!c) throw new Error('Cliente non trovato: ' + p.cliente);
+    const anno = Number(p.anno); if (!Number.isInteger(anno)) throw new Error('Anno non valido.');
+    const prima = pagamentoImposte(recordImposte(c.id, anno));
+    const np = Object.assign({}, prima, { modalita: p.modalita || (p.rate && p.rate.length ? 'Rateale' : prima.modalita) });
+    if (p.scadenzaUnica !== undefined) np.scadenzaUnica = p.scadenzaUnica;
+    if (Array.isArray(p.rate)) np.rate = p.rate.map(x => ({ scadenza: x.scadenza, capitale: x.capitale, interessi: x.interessi || 0 }));
+    const esito = salvaPagamentoImposte(c.id, anno, np);
+    let f24 = null;
+    if (p.creaF24) f24 = generaF24Imposte(c.id, anno).log;
+    render();
+    return { cliente: c.ragioneSociale, anno, cambiato: esito.cambiato, variazioni: esito.variazioni, f24 };
+  },
   registraImposte: (p) => {
     const q = String(p.cliente || '').trim().toLowerCase();
     const c = STATE.clienti.find(x => x.id === p.cliente || (x.ragioneSociale || '').toLowerCase() === q) || STATE.clienti.find(x => q && (x.ragioneSociale || '').toLowerCase().includes(q));

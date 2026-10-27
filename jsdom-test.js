@@ -2224,15 +2224,34 @@ async function main() {
     {
       const cl = window.getSTATE().clienti.find(c => c.stato !== 'cessato' && c.stato !== 'potenziale');
       const a = Number(window.getSTATE().annoCorrente) - 1;
-      let e1 = window.salvaImposte(cl.id, a, { iresIrpef: '1.000,50', irap: 200, acconti: 800 }, { tipo: 'Bilancio', nota: 'prima stima' });
+      let e1 = window.salvaImposte(cl.id, a, { iresIrpef: '1.000,50', irap: 200, accontiIresIrpef: 500, accontiIrap: 300 }, { tipo: 'Bilancio', nota: 'prima stima' });
       assert(e1.cambiato && e1.record.storico.length === 1 && e1.record.valori.iresIrpef === 1000.5, 'imposte: primo salvataggio');
       assert(Math.abs(window.totaleImposte(e1.record.valori) - 1200.5) < 0.001 && Math.abs(window.saldoImposte(e1.record.valori) - 400.5) < 0.001, 'imposte: totale e saldo');
-      let e2 = window.salvaImposte(cl.id, a, { iresIrpef: 1000.5, irap: 200, acconti: 800 }, {});
+      let e2 = window.salvaImposte(cl.id, a, { iresIrpef: 1000.5, irap: 200, accontiIresIrpef: 500, accontiIrap: 300 }, {});
       assert(!e2.cambiato && e2.record.storico.length === 1, 'imposte: nessuna modifica = nessuna riga di storico');
-      let e3 = window.salvaImposte(cl.id, a, { iresIrpef: 1100, irap: 200, acconti: 800 }, { tipo: 'Dichiarazione', causa: 'Errore o rettifica nostra' });
+      let e3 = window.salvaImposte(cl.id, a, { iresIrpef: 1100, irap: 200, accontiIresIrpef: 500, accontiIrap: 300 }, { tipo: 'Dichiarazione', causa: 'Errore o rettifica nostra' });
       assert(e3.cambiato && e3.record.storico.length === 2 && e3.variazioni.some(v => v.campo.startsWith('IRES') && v.da === 1000.5 && v.a === 1100), 'imposte: variazione nello storico');
       assert(e3.record.storico[1].data && e3.record.storico[1].ora && e3.record.storico[1].causa === 'Errore o rettifica nostra', 'imposte: data, ora e causa nello storico');
       assert(Math.abs(window.differenzaRispettoBilancio(e3.record).delta - 99.5) < 0.001, 'imposte: differenza rispetto al bilancio');
+      {
+        // pagamento rateale + F24 con storico
+        const nF24Prima = window.getSTATE().f24.length;
+        let ep = window.salvaPagamentoImposte(cl.id, a, { modalita: 'Rateale', rate: [{ scadenza: '2026-07-20', capitale: 600, interessi: 0 }, { scadenza: '2026-08-20', capitale: 600, interessi: 4.5 }] });
+        assert(ep.cambiato && ep.record.pagamento.rate.length === 2 && ep.record.pagamento.rate[1].totale === 604.5 && ep.record.storicoPagamento.length === 1, 'imposte: piano rate salvato e registrato');
+        assert(!window.salvaPagamentoImposte(cl.id, a, { modalita: 'Rateale', rate: [{ scadenza: '2026-07-20', capitale: 600 }, { scadenza: '2026-08-20', capitale: 600, interessi: 4.5 }] }).cambiato, 'imposte: piano identico = nessuna riga di storico');
+        let g = window.generaF24Imposte(cl.id, a);
+        assert(g.log.length === 2 && window.getSTATE().f24.length === nF24Prima + 2, 'imposte: creati 2 F24 per 2 rate');
+        const f1 = window.getSTATE().f24.find(f => f.id === ep.record.pagamento.f24[1].f24Id);
+        assert(Math.abs(f1.importo - 604.5) < 0.001 && f1.righe.some(r => r.codiceTributo === '1668'), 'imposte: F24 rata con interessi (1668)');
+        window.salvaPagamentoImposte(cl.id, a, { modalita: 'Rateale', rate: [{ scadenza: '2026-07-20', capitale: 600 }, { scadenza: '2026-09-21', capitale: 600, interessi: 4.5 }] });
+        g = window.generaF24Imposte(cl.id, a);
+        assert(window.getSTATE().f24.length === nF24Prima + 2 && g.log.some(x => /aggiornato/.test(x)), 'imposte: rigenerando gli F24 si aggiornano, non si duplicano');
+        window.salvaPagamentoImposte(cl.id, a, { modalita: 'Unica soluzione', scadenzaUnica: '2026-06-30', rate: [] });
+        g = window.generaF24Imposte(cl.id, a);
+        assert(window.getSTATE().f24.length === nF24Prima + 1 && window.getSTATE().f24.find(f => f.id === window.recordImposte(cl.id, a).pagamento.f24[0].f24Id).righe.some(r => r.codiceTributo === '2003' || r.codiceTributo === '4001'), 'imposte: passando a unica soluzione restano 1 F24 con il saldo');
+        assert(window.recordImposte(cl.id, a).storicoPagamento.length >= 5, 'imposte: storico del pagamento e degli F24');
+        window.getSTATE().f24 = window.getSTATE().f24.filter(f => !(window.recordImposte(cl.id, a).pagamento.f24 || []).some(l => l.f24Id === f.id));
+      }
       click(q('[data-nav="imposte"]')); await wait(30);
       assert(/Imposte calcolate/.test(q('#content').textContent) && q('[data-action="imposte-storico"]'), 'imposte: tab non mostra la tabella');
       click(q('[data-action="imposte-storico"]')); await wait(20);
