@@ -116,7 +116,7 @@ function trovaFileNelPc(nome) {
       if (v.isDirectory()) {
         if (/^(node_modules|\.git|cache|code cache|gpucache)$/i.test(v.name)) continue;
         // sotto AppData/Packages si scende solo verso le cartelle uploads di Claude
-        if (dentroUploads === 'solo-uploads' && prof > 2 && !/uploads|local-agent|claude|local_|\.claude|sessions|LocalCache|Roaming/i.test(v.name)) continue;
+        if (dentroUploads === 'solo-uploads' && prof > 2 && !/uploads|local-agent|claude|local_|\.claude|sessions|LocalCache|Roaming|^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(v.name)) continue;
         visita(p, prof + 1, dentroUploads);
       } else if (v.name.toLowerCase() === nome.toLowerCase()) trovati.push(p);
     }
@@ -124,6 +124,32 @@ function trovaFileNelPc(nome) {
   radici.forEach((r, i) => { if (existsSync(r)) visita(r, 0, i >= 3 ? 'solo-uploads' : null); });
   return trovati.sort((a, b) => { try { return statSync(b).mtimeMs - statSync(a).mtimeMs; } catch (e) { return 0; } });
 }
+
+/* File caricati di recente nelle chat/sessioni di Claude (cartelle "uploads") e in Download/Desktop: serve a ritrovare gli allegati
+   senza che l'IA conosca il percorso. */
+function fileRecentiNelPc(giorni) {
+  const limite = Date.now() - (giorni || 3) * 86400000;
+  const radici = [join(homedir(), 'Downloads'), join(homedir(), 'Desktop'), process.env.APPDATA ? join(process.env.APPDATA, 'Claude') : null, process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, 'Packages') : null].filter(Boolean);
+  const out = [];
+  const visita = (dir, prof, soloUploads, inUploads) => {
+    if (prof > 10 || out.length >= 200) return;
+    let voci; try { voci = readdirSync(dir, { withFileTypes: true }); } catch (e) { return; }
+    for (const v of voci) {
+      const p = join(dir, v.name);
+      if (v.isDirectory()) {
+        if (/^(node_modules|\.git|cache|code cache|gpucache)$/i.test(v.name)) continue;
+        if (soloUploads && prof > 2 && !/uploads|local-agent|claude|local_|\.claude|sessions|LocalCache|Roaming|^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(v.name)) continue;
+        visita(p, prof + 1, soloUploads, inUploads || /^uploads$/i.test(v.name));
+      } else if (!soloUploads || inUploads) {
+        let st; try { st = statSync(p); } catch (e) { continue; }
+        if (st.mtimeMs >= limite && ESTENSIONI_RECENTI.test(v.name)) out.push({ nome: v.name, percorso: p, kb: Math.round(st.size / 1024), data: new Date(st.mtimeMs).toISOString().slice(0, 16).replace('T', ' ') });
+      }
+    }
+  };
+  radici.forEach((r, i) => { if (existsSync(r)) visita(r, 0, i >= 2, false); });
+  return out.sort((a, b) => b.data.localeCompare(a.data)).slice(0, 40);
+}
+const ESTENSIONI_RECENTI = /\.(pdf|xlsx|xls|csv|docx|doc|txt|xml|p7m|jpe?g|png|zip)$/i;
 
 /* Costruisce e restituisce un McpServer con tutti i tool registrati, che legge dal percorso
    indicato. Non si connette a nessun transport: sta a chi chiama (server.js per stdio,
@@ -138,7 +164,7 @@ export function creaServer(filePath, baseUrl) {
   const server = new McpServer({ name: 'gestionale-studio', version: '1.0.0' }, { instructions:
     'REGOLA DI ARCHIVIAZIONE DOCUMENTI (vale sempre, anche se Matteo non la nomina): ogni volta che Matteo ti dà uno o più file di un cliente dello studio ' +
     '(dichiarazioni, bilanci, situazioni contabili, proposta CPB, F24, visure, bozze, previsionali...) per fare un lavoro su Prisma o rispondere a una domanda su quel cliente, ' +
-    'alla fine del lavoro occupati dell\'archiviazione con il tool salva_documento_cliente, senza aspettare che te lo chieda. Prima controlla con elenco_documenti cosa c\'è già per quel cliente e anno. ' +
+    'alla fine del lavoro occupati dell\'archiviazione con il tool salva_documento_cliente, senza aspettare che te lo chieda. I file allegati in chat/Cowork sono su disco nel PC: se non conosci il percorso usa elenco_file_caricati (o passa il solo nome del file). Prima controlla con elenco_documenti cosa c\'è già per quel cliente e anno. ' +
     '- Documenti definitivi (dichiarazione presentata, situazione/bilancio definitivo, proposta CPB dell\'Agenzia, F24, certificazioni, visure): salvali subito, in automatico. ' +
     '- Bozze, previsionali, stime, file non definitivi: CHIEDI a Matteo in chat prima di salvarli (una domanda sola, con l\'elenco dei file), poi salva solo quelli confermati. ' +
     '- Non salvare screenshot, file temporanei, duplicati o file non riferiti a un cliente. ' +
@@ -974,6 +1000,18 @@ export function creaServer(filePath, baseUrl) {
         giaPresentiNellaStessaCartella: conf.nellaDestinazione.length ? conf.nellaDestinazione : undefined,
         nota: conf.nellaDestinazione.length ? 'Nella stessa cartella c\'erano già altri file: se sono dello stesso documento (es. un\'altra versione), segnalalo a Matteo.' : undefined,
       });
+    }
+  );
+  server.registerTool(
+    'elenco_file_caricati',
+    {
+      title: 'File caricati di recente sul PC (allegati di chat/Cowork)',
+      description: 'Elenca i file arrivati negli ultimi giorni nelle cartelle degli allegati di Claude (chat e Cowork), Download e Desktop, con percorso completo. Usalo PRIMA di salva_documento_cliente quando Matteo ti ha allegato dei PDF in chat e non conosci il percorso: poi passa il percorso (o il solo nome) a salva_documento_cliente.',
+      inputSchema: { giorni: z.number().int().min(1).max(60).optional().describe('Quanti giorni indietro guardare (default 3).') },
+    },
+    async ({ giorni }) => {
+      const f = fileRecentiNelPc(giorni || 3);
+      return testoJson(f.length ? f : { file: [], nota: 'Nessun file recente trovato: gli allegati di questa chat potrebbero non essere su disco. Dillo a Matteo.' });
     }
   );
   server.registerTool(
