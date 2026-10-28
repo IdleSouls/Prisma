@@ -782,7 +782,7 @@ export function creaServer(filePath, baseUrl) {
     'registra_notizie',
     {
       title: 'Novità fiscali nella home di Prisma',
-      description: 'Aggiunge novità/aggiornamenti (es. dalle news di SEAC, Agenzia delle Entrate, circolari) nella sezione "Novità fiscali e di studio" della home "Il mio lavoro". Per ogni notizia: titolo, sintesi breve in italiano (1-2 frasi, riscritta con parole tue, non copiata), fonte, link e data (AAAA-MM-GG). Le notizie già presenti (stesso titolo) non si duplicano; restano le ultime 30. Usa solo contenuti letti davvero da fonti affidabili, mai inventati. Richiede il gestionale aperto via server.js.',
+      description: 'Aggiunge novità/aggiornamenti (es. dalle news di SEAC, Agenzia delle Entrate, circolari) nella sezione "Novità fiscali e di studio" della home "Il mio lavoro". Per ogni notizia: titolo, sintesi breve in italiano (1-2 frasi, riscritta con parole tue, non copiata), fonte, link e data (AAAA-MM-GG). Se una notizia con lo stesso titolo esiste già non si duplica ma viene completata con i campi nuovi (es. il dettaglio); restano le ultime 80. Usa solo contenuti letti davvero da fonti affidabili, mai inventati. Richiede il gestionale aperto via server.js.',
       inputSchema: {
         notizie: z.array(z.object({
           titolo: z.string(),
@@ -790,6 +790,9 @@ export function creaServer(filePath, baseUrl) {
           fonte: z.string().optional().describe('Es. "SEAC", "Agenzia delle Entrate", "Gazzetta Ufficiale".'),
           url: z.string().optional(),
           data: z.string().optional().describe('AAAA-MM-GG'),
+          settore: z.string().optional().describe('Es. "Dichiarazioni", "IVA UE", "Imposte Dirette".'),
+          numero: z.union([z.string(), z.number()]).optional().describe('Numero dell\'informativa (es. 309).'),
+          dettaglio: z.string().optional().describe('Riassunto del testo completo in 4-8 righe, con parole tue: cosa cambia, chi riguarda, scadenze/importi/norme chiave. Con righe separate da a capo.'),
         })).min(1).max(20),
       },
     },

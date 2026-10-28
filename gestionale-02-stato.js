@@ -1615,18 +1615,24 @@ const AZIONI_MCP = {
   /* Novità fiscali (home "Il mio lavoro"): aggiunte dall'IA da fonti affidabili; niente duplicati (stesso titolo), restano le ultime 30. */
   registraNotizie: (p) => {
     if (!Array.isArray(STATE.notizie)) STATE.notizie = [];
-    let aggiunte = 0;
+    let aggiunte = 0, aggiornate = 0;
     (p.notizie || []).forEach(n => {
       const titolo = String(n.titolo || '').trim(); if (!titolo) return;
-      const url = String(n.url || '').trim();
-      if (STATE.notizie.some(x => x.titolo.toLowerCase() === titolo.toLowerCase())) return; // solo il titolo: piu' notizie possono puntare alla stessa pagina elenco
-      STATE.notizie.push({ id: uid('news'), titolo, sintesi: String(n.sintesi || '').trim(), fonte: String(n.fonte || '').trim(), url, data: /^\d{4}-\d{2}-\d{2}$/.test(n.data || '') ? n.data : oggiISO(), aggiuntaIl: oggiISO() });
+      const campi = { sintesi: String(n.sintesi || '').trim(), fonte: String(n.fonte || '').trim(), url: String(n.url || '').trim(), settore: String(n.settore || '').trim(), numero: n.numero != null ? String(n.numero).trim() : '', dettaglio: String(n.dettaglio || '').trim() };
+      const esistente = STATE.notizie.find(x => x.titolo.toLowerCase() === titolo.toLowerCase());
+      if (esistente) { // stesso titolo: non si duplica, ma si completa con i dettagli nuovi (es. riassunto del testo completo)
+        let cambiato = false;
+        Object.keys(campi).forEach(k => { if (campi[k] && campi[k] !== esistente[k]) { esistente[k] = campi[k]; cambiato = true; } });
+        if (cambiato) aggiornate++;
+        return;
+      }
+      STATE.notizie.push(Object.assign({ id: uid('news'), titolo, data: /^\d{4}-\d{2}-\d{2}$/.test(n.data || '') ? n.data : oggiISO(), aggiuntaIl: oggiISO() }, campi));
       aggiunte++;
     });
-    STATE.notizie.sort((a, b) => (b.data || '').localeCompare(a.data || ''));
-    STATE.notizie = STATE.notizie.slice(0, 30);
+    STATE.notizie.sort((a, b) => (b.data || '').localeCompare(a.data || '') || Number(b.numero || 0) - Number(a.numero || 0));
+    STATE.notizie = STATE.notizie.slice(0, 80);
     salvaStato(); render();
-    return { aggiunte, totale: STATE.notizie.length };
+    return { aggiunte, aggiornate, totale: STATE.notizie.length };
   },
   registraImposte: (p) => {
     const q = String(p.cliente || '').trim().toLowerCase();

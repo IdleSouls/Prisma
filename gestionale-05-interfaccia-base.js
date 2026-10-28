@@ -1037,14 +1037,16 @@ function renderOggi() {
       ${giorniSett || '<div class="empty">Nessuna scadenza nei prossimi 7 giorni.</div>'}
     </div>
   </div>`;
-  const notizie = (STATE.notizie || []).slice().sort((a, b) => (b.data || '').localeCompare(a.data || '')).slice(0, 5);
+  const notizie = (STATE.notizie || []).slice().sort((a, b) => (b.data || '').localeCompare(a.data || '') || Number(b.numero || 0) - Number(a.numero || 0)).slice(0, 10);
   const sezNotizie = `<div class="card">
     <div class="section-title">Novità fiscali e di studio ${notizie.length ? `<span class="cnt">${notizie.length}</span>` : ''}</div>
-    ${notizie.length ? notizie.map(n => `<div style="padding:9px 0;border-bottom:1px solid var(--border);">
-      <div style="font-weight:700;font-size:13px;">${n.url ? `<a href="${escapeHtml(n.url)}" target="_blank" rel="noopener">${escapeHtml(n.titolo)}</a>` : escapeHtml(n.titolo)}</div>
-      <div class="helptext">${escapeHtml(n.fonte || '')}${n.fonte && n.data ? ' · ' : ''}${n.data ? fmtDataBreve(n.data) : ''}</div>
-      ${n.sintesi ? `<div style="font-size:12.5px;margin-top:3px;">${escapeHtml(n.sintesi)}</div>` : ''}</div>`).join('')
-      : '<div class="empty" style="padding:6px 0;">Nessuna novità ancora. Chiedi a Claude di aggiornarle (es. dalle news di SEAC): compariranno qui.</div>'}
+    ${notizie.length ? notizie.map(n => `<details class="notizia">
+      <summary><span class="notizia-titolo">${escapeHtml(n.titolo)}</span><span class="helptext"> ${escapeHtml(n.settore || '')}${n.settore && n.data ? ' · ' : ''}${n.data ? fmtDataBreve(n.data) : ''}${n.numero ? ' · n. ' + escapeHtml(n.numero) : ''}</span>
+        ${n.sintesi ? `<div class="notizia-sintesi">${escapeHtml(n.sintesi)}</div>` : ''}</summary>
+      ${n.dettaglio ? `<div class="notizia-dettaglio">${escapeHtml(n.dettaglio)}</div>` : ''}
+      <div class="helptext" style="margin-top:6px;">${escapeHtml(n.fonte || '')}${n.url ? ` · <a href="${escapeHtml(n.url)}" target="_blank" rel="noopener">Apri l'originale</a>` : ''}</div>
+    </details>`).join('')
+      : '<div class="empty" style="padding:6px 0;">Nessuna novità ancora. Chiedi a Claude di aggiornarle (es. dalle informative di SEAC): compariranno qui.</div>'}
   </div>`;
 
   const sezTask = (operatorePuoVedere('taskteam') && taskMiei.length) ? `<div class="card">
