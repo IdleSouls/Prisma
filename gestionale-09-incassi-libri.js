@@ -1449,9 +1449,28 @@ function renderCpb() {
       <td>${amm.ok ? `<button class="btn small" data-action="cpb-valuta" data-id="${c.id}">Valuta</button>` : ''}</td></tr>`;
   }).join('');
   const tabella = lista.length ? `<div class="card" style="overflow-x:auto;"><table class="compact"><thead><tr><th>Cliente</th><th>Stato</th><th style="text-align:right;">Concordato 2026</th><th style="text-align:right;">Stimato 2026</th><th style="text-align:right;">Imposte senza CPB (2026+27)</th><th style="text-align:right;">Imposte con CPB (2026+27)</th><th style="text-align:right;">Differenza</th><th>Indicazione</th><th>Nota</th><th></th></tr></thead><tbody>${tr}</tbody></table></div>` : `<div class="card"><div class="empty">Nessun cliente corrisponde ai filtri.</div></div>`;
-  return avvisoCpbIsa() + `<div class="helptext" style="margin-bottom:8px;">Concordato preventivo biennale 2026-2027: possono aderire solo i contribuenti che applicano gli ISA (i <strong>forfettari sono esclusi</strong>), senza debiti tributari/contributivi definitivi oltre 5.000 € e senza dichiarazioni omesse negli ultimi tre anni. Per ogni società: stato dell'adesione e confronto tra le imposte stimate <strong>con</strong> e <strong>senza</strong> concordato (clicca "Valuta" per inserire la proposta dell'Agenzia e la proiezione dal bilancio provvisorio). Termine di adesione: 2/11/2026 (da verificare).<br><strong>Documenti per ogni società:</strong> proposta di concordato · bilancio 2025 (4 sezioni) · bilancio provvisorio 2026 alla data odierna (4 sezioni) · dichiarazione 2024 e bozza 2025 · <strong>dati ISA precompilati</strong> (stato "Dati ISA mancanti" finché non importati). La decisione resta al professionista.</div>` + kpi + toolbar + tabella + cpbParametriHtml();
+  return avvisoCpbIsa() + `<div class="helptext" style="margin-bottom:8px;">Concordato preventivo biennale 2026-2027: possono aderire solo i contribuenti che applicano gli ISA (i <strong>forfettari sono esclusi</strong>), senza debiti tributari/contributivi definitivi oltre 5.000 € e senza dichiarazioni omesse negli ultimi tre anni. Per ogni società: stato dell'adesione e confronto tra le imposte stimate <strong>con</strong> e <strong>senza</strong> concordato (clicca "Valuta" per inserire la proposta dell'Agenzia e la proiezione dal bilancio provvisorio). Termine di adesione: 2/11/2026 (da verificare).<br><strong>Documenti per ogni società:</strong> proposta di concordato · bilancio 2025 (4 sezioni) · bilancio provvisorio 2026 alla data odierna (4 sezioni) · dichiarazione 2024 e bozza 2025 · <strong>dati ISA precompilati</strong> (stato "Dati ISA mancanti" finché non importati). La decisione resta al professionista.</div>` + kpi + toolbar + tabella + cpbParametriHtml() + cpbModelliHtml();
 }
 
+/* Riquadro "Comunicazione al cliente" nella finestra di valutazione. */
+function cpbBloccoComunicazione(id) {
+  const info = infoComunicazioneCpb(id);
+  let testo, bott = '';
+  if (!info) testo = 'Nessuna comunicazione ancora: si prepara da sola (come bozza) quando salvi il calcolo completo.';
+  else if (info.stato === 'Inviata') { testo = `Pubblicata sul portale del cliente${info.verdetto ? ' (esito: ' + escapeHtml(info.verdetto) + ')' : ''}.`; bott = `<button class="btn small" data-action="cpb-com-nuova" data-id="${id}">Nuova comunicazione con l'esito attuale</button>`; }
+  else { testo = `Bozza pronta in Comunicazioni${info.verdetto ? ' (esito: ' + escapeHtml(info.verdetto) + ')' : ''}: il cliente non la vede finché non la pubblichi.`; bott = `<button class="btn small primary" data-action="cpb-com-pubblica" data-id="${id}">Pubblica sul portale</button>`; }
+  return `<div style="margin-top:12px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;"><div style="font-size:12px;font-weight:700;color:var(--text-mut);text-transform:uppercase;">Comunicazione al cliente</div><div class="helptext" style="margin:4px 0 6px;">${testo}</div>${bott}</div>`;
+}
+/* Editor dei testi standard (tab CPB). */
+function cpbModelliHtml() {
+  const m = cpbModelli();
+  return `<details class="card" style="margin-top:12px;"><summary style="cursor:pointer;font-weight:700;">Testi delle comunicazioni al cliente (area privata)</summary>
+    <div class="helptext" style="margin:8px 0;">Segnaposto: {{cliente}}, {{imposteCon}}, {{imposteSenza}}, {{differenza}}, {{esitoDifferenza}}. Dopo il calcolo Prisma prepara una bozza con il testo dell'esito; la bozza compare in Comunicazioni e la pubblichi tu.</div>
+    ${CPB_ESITI_COM.map(k => `<div style="margin-top:10px;"><strong>${k}</strong>
+      <input type="text" value="${escapeHtml(m[k].oggetto)}" data-action="cpb-modello" data-esito="${k}" data-campo="oggetto" style="width:100%;margin:4px 0;">
+      <textarea rows="9" data-action="cpb-modello" data-esito="${k}" data-campo="corpo" style="width:100%;font-size:13px;line-height:1.5;">${escapeHtml(m[k].corpo)}</textarea></div>`).join('')}
+    <div style="margin-top:8px;"><button class="btn small" data-action="cpb-modelli-ripristina">Ripristina i testi standard</button></div></details>`;
+}
 function cpbParametriHtml() {
   const P = cpbParametri();
   return `<details class="card" style="margin-top:12px;"><summary style="cursor:pointer;font-weight:700;">Parametri di calcolo (da verificare sulla circolare 8/E)</summary>
@@ -1482,6 +1501,7 @@ function modalValutazioneCpb(id) {
     <div class="form-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">${CPB_CAMPI.slice(6).map(campo).join('')}</div>
     <label class="checkline" style="margin-top:10px;"><input type="checkbox" id="cpbv_optSost" data-action="cpb-val-input" ${d.optSost === false ? '' : 'checked'}> Opta per l'imposta sostitutiva sulla parte di reddito concordato oltre il riferimento</label>
     <div id="cpbvRisultato" style="margin-top:12px;"></div>
+    ${cpbBloccoComunicazione(id)}
     <div class="field" style="margin-top:10px;"><label>Note di valutazione (Federico / Matteo)</label><textarea id="cpbv_nota" rows="8" style="width:100%;font-size:13px;line-height:1.5;">${escapeHtml(((STATE.cpb || {})[id] || {}).nota || '')}</textarea></div>
     <div class="modal-actions" style="flex-wrap:wrap;">
       <button class="btn" data-action="chiudi-modal">Chiudi</button>
@@ -1519,6 +1539,13 @@ function salvaValutazioneCpb(id, nuovoStato) {
   STATE.cpb[id] = Object.assign({}, cur, { dati, nota: nota != null ? nota : cur.nota }, nuovoStato ? { stato: nuovoStato } : {});
   if (!nuovoStato) { const s = statoAutoCalcolato(id, dati); if (s) STATE.cpb[id].stato = s; }
   salvaStato();
+  if (!nuovoStato) return autoComunicazioneCpb(id);
+  return null;
+}
+/* Dopo un salvataggio dei dati: se il cliente non ha ancora deciso (Aderito / Non aderito / Non applicabile) prepara o aggiorna la bozza di comunicazione. */
+function autoComunicazioneCpb(id) {
+  if (['Aderito', 'Non aderito', 'Non applicabile'].includes(statoCpbCliente(id))) return null;
+  return sincronizzaComunicazioneCpb(id, false);
 }
 /* Con i dati completi (proposta AdE + proiezione) lo stato passa da solo a "Calcolato", ma solo se era ancora
    "Dati ISA mancanti" o "Da valutare": Aderito / Non aderito / Non applicabile restano come decisi a mano. */
@@ -1526,6 +1553,101 @@ function statoAutoCalcolato(id, dati) {
   const c = clienteById(id);
   if (!c || !['Dati ISA mancanti', 'Da valutare'].includes(statoCpbCliente(id))) return null;
   return calcolaCpb(c, dati, cpbParametri()).completo ? 'Calcolato' : null;
+}
+/* -------------------- CPB: comunicazione standard al cliente (area privata) --------------------
+   Finito il calcolo di convenienza Prisma prepara in Comunicazioni una BOZZA già scritta (testo diverso per Conviene / Al limite / Non conviene,
+   con le cifre del confronto). Il portale mostra solo le comunicazioni "Inviata": la bozza va quindi rivista e pubblicata (bottone nella
+   finestra di valutazione o dall'elenco Comunicazioni). Se la bozza esiste già e il calcolo cambia, la bozza si aggiorna; se è già stata
+   pubblicata non si tocca e se ne può creare una nuova a mano. I testi si modificano nel tab CPB ("Testi delle comunicazioni al cliente"). */
+const CPB_MODELLI_DEFAULT = {
+  'Conviene': {
+    oggetto: 'Concordato preventivo biennale 2026-2027: conviene aderire',
+    corpo: `Gentile {{cliente}},
+
+abbiamo completato la valutazione del concordato preventivo biennale (CPB) 2026-2027 sulla base della proposta dell'Agenzia delle Entrate e delle stime sul vostro andamento.
+
+Dal confronto l'adesione risulta conveniente: stimiamo imposte (IRES/IRPEF e IRAP) per circa {{imposteCon}} nel biennio con il concordato, contro circa {{imposteSenza}} senza, cioè {{esitoDifferenza}}. Sono stime indicative.
+
+Va tenuto presente che con il CPB il reddito è fissato per due anni: se l'andamento reale fosse molto inferiore alle previsioni, le imposte restano calcolate sul reddito concordato, e occorre mantenere regolari dichiarazioni e versamenti per non decadere dal beneficio.
+
+Vi consigliamo quindi di aderire. Vi contatteremo per confermare la vostra decisione prima della scadenza prevista per l'adesione; per qualsiasi dubbio potete rispondere a questo messaggio.
+
+Lo studio`,
+  },
+  'Al limite': {
+    oggetto: 'Concordato preventivo biennale 2026-2027: valutazione da condividere',
+    corpo: `Gentile {{cliente}},
+
+abbiamo completato la valutazione del concordato preventivo biennale (CPB) 2026-2027 sulla base della proposta dell'Agenzia delle Entrate e delle stime sul vostro andamento.
+
+Il risultato è al limite: stimiamo imposte (IRES/IRPEF e IRAP) per circa {{imposteCon}} nel biennio con il concordato, contro circa {{imposteSenza}} senza, cioè {{esitoDifferenza}}. La differenza è modesta e dipende molto dall'andamento reale dei prossimi due anni.
+
+Con il CPB il reddito è fissato per due anni, con maggiore certezza ma senza possibilità di beneficiare di un eventuale calo dei risultati; senza concordato le imposte seguono l'andamento effettivo. Preferiamo quindi decidere insieme a voi.
+
+Vi contatteremo per fissare un breve confronto prima della scadenza prevista per l'adesione; per qualsiasi dubbio potete rispondere a questo messaggio.
+
+Lo studio`,
+  },
+  'Non conviene': {
+    oggetto: 'Concordato preventivo biennale 2026-2027: non conviene aderire',
+    corpo: `Gentile {{cliente}},
+
+abbiamo completato la valutazione del concordato preventivo biennale (CPB) 2026-2027 sulla base della proposta dell'Agenzia delle Entrate e delle stime sul vostro andamento.
+
+Dal confronto l'adesione non risulta conveniente: stimiamo imposte (IRES/IRPEF e IRAP) per circa {{imposteCon}} nel biennio con il concordato, contro circa {{imposteSenza}} senza, cioè {{esitoDifferenza}}. Sono stime indicative.
+
+Per questo motivo vi consigliamo di non aderire. Se la vostra situazione cambiasse o aveste elementi nuovi da segnalarci, potremo rivedere la valutazione prima della scadenza prevista per l'adesione; per qualsiasi dubbio potete rispondere a questo messaggio.
+
+Lo studio`,
+  },
+};
+const CPB_ESITI_COM = ['Conviene', 'Al limite', 'Non conviene'];
+function cpbModelli() {
+  const salvati = (STATE.meta && STATE.meta.cpbModelli) || {};
+  const out = {};
+  CPB_ESITI_COM.forEach(k => { out[k] = Object.assign({}, CPB_MODELLI_DEFAULT[k], salvati[k] || {}); });
+  return out;
+}
+function cpbTestoComunicazione(c, r) {
+  const m = cpbModelli()[r.verdetto]; if (!m) return null;
+  const abs = Math.abs(r.delta);
+  const esito = r.delta <= 0 ? `un risparmio di circa ${fmtEuro(abs)}` : `un maggior costo di circa ${fmtEuro(abs)}`;
+  const sost = (t) => String(t || '').replace(/\{\{cliente\}\}/g, c.ragioneSociale || '').replace(/\{\{imposteCon\}\}/g, fmtEuro(r.totCon)).replace(/\{\{imposteSenza\}\}/g, fmtEuro(r.totSenza)).replace(/\{\{differenza\}\}/g, fmtEuro(abs)).replace(/\{\{esitoDifferenza\}\}/g, esito);
+  return { oggetto: sost(m.oggetto), corpo: sost(m.corpo) };
+}
+/* Crea (o aggiorna, se è ancora bozza) la comunicazione CPB del cliente. forza = crea comunque una nuova bozza anche se la precedente è già stata pubblicata.
+   Ritorna { azione: 'creata'|'aggiornata'|'esistente'|'nessuna', id, motivo? }. Non invia mai nulla da sola. */
+function sincronizzaComunicazioneCpb(id, forza) {
+  const c = clienteById(id); if (!c) return { azione: 'nessuna', motivo: 'Cliente non trovato.' };
+  if (!ammissibilitaCpb(c).ok) return { azione: 'nessuna', motivo: 'Cliente non ammesso al CPB.' };
+  const e = (STATE.cpb || {})[id] || {};
+  const r = calcolaCpb(c, e.dati || {}, cpbParametri());
+  if (!r.completo) return { azione: 'nessuna', motivo: 'Calcolo non completo.' };
+  const t = cpbTestoComunicazione(c, r); if (!t) return { azione: 'nessuna', motivo: 'Nessun testo per l\'esito.' };
+  const esistente = e.comunicazioneId ? (STATE.comunicazioni || []).find(x => x.id === e.comunicazioneId) : null;
+  if (esistente && !forza) {
+    if (esistente.stato === 'Bozza') {
+      aggiornaComunicazione(esistente.id, { oggetto: t.oggetto, corpo: t.corpo, data: oggiISO() });
+      STATE.cpb[id] = Object.assign({}, e, { comunicazioneVerdetto: r.verdetto }); salvaStato();
+      return { azione: 'aggiornata', id: esistente.id, verdetto: r.verdetto };
+    }
+    return { azione: 'esistente', id: esistente.id, verdetto: r.verdetto, motivo: 'La comunicazione è già stata pubblicata: per un nuovo messaggio usa "Nuova comunicazione".' };
+  }
+  aggiungiComunicazione({ clienteId: id, data: oggiISO(), categoria: 'Amministrativa', stato: 'Bozza', oggetto: t.oggetto, corpo: t.corpo, note: 'Generata dal calcolo di convenienza CPB', visibilePortale: true, origineCpb: true });
+  const nuova = STATE.comunicazioni[STATE.comunicazioni.length - 1];
+  STATE.cpb[id] = Object.assign({}, STATE.cpb[id] || e, { comunicazioneId: nuova.id, comunicazioneVerdetto: r.verdetto }); salvaStato();
+  return { azione: 'creata', id: nuova.id, verdetto: r.verdetto };
+}
+/* Stato della comunicazione CPB del cliente per la finestra di valutazione. */
+function infoComunicazioneCpb(id) {
+  const e = (STATE.cpb || {})[id] || {};
+  const com = e.comunicazioneId ? (STATE.comunicazioni || []).find(x => x.id === e.comunicazioneId) : null;
+  return com ? { id: com.id, stato: com.stato, verdetto: e.comunicazioneVerdetto || '' } : null;
+}
+function pubblicaComunicazioneCpb(id) {
+  const info = infoComunicazioneCpb(id); if (!info || info.stato === 'Inviata') return false;
+  aggiornaComunicazione(info.id, { stato: 'Inviata', data: oggiISO() });
+  return true;
 }
 /* Clienti del tab CPB come li vede l'utente: stessi filtri della tabella (tipo, regime, stato, "mostra non ammessi").
    attivi = dopo tipo/regime (servono ai contatori); lista = dopo anche il filtro di stato. */

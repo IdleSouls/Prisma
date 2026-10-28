@@ -2220,6 +2220,40 @@ async function main() {
       assert(window.risultatiRicercaGlobale('zzq').some(r => r.categoria === 'Libri sociali'), 'ricerca globale non trova i libri sociali');
       st().libriSociali = st().libriSociali.filter(x => x.id !== lb.id);
     }
+    // CPB: comunicazione standard al cliente
+    {
+      const S = window.getSTATE();
+      const cl = S.clienti.find(c => c.stato !== 'cessato' && c.stato !== 'potenziale' && c.tipo === 'societa_capitali' && c.regimeFiscale !== 'Forfettario');
+      assert(cl, 'cpb-com: nessun cliente società di capitali');
+      S.cpb = S.cpb || {};
+      S.cpb[cl.id] = { dati: { redConc26: 100000, redConc27: 100000, vpnConc26: 0, redRif: 90000, isa: 8, redProj26: 150000, redProj27: 150000, vpnProj26: 0 } };
+      const prima = S.comunicazioni.length;
+      let r = window.sincronizzaComunicazioneCpb(cl.id, false);
+      assert(r.azione === 'creata' && S.comunicazioni.length === prima + 1, 'cpb-com: bozza non creata');
+      const com = S.comunicazioni.find(x => x.id === r.id);
+      assert(com.stato === 'Bozza' && com.visibilePortale === true && /Conviene|conveniente|conviene/i.test(com.oggetto + com.corpo) && com.corpo.includes(cl.ragioneSociale) && !/\{\{/.test(com.corpo), 'cpb-com: testo/stato errati: ' + com.oggetto);
+      r = window.sincronizzaComunicazioneCpb(cl.id, false);
+      assert(r.azione === 'aggiornata' && S.comunicazioni.length === prima + 1, 'cpb-com: seconda chiamata deve aggiornare la bozza');
+      S.cpb[cl.id].dati.redProj26 = 20000; S.cpb[cl.id].dati.redProj27 = 20000;
+      r = window.sincronizzaComunicazioneCpb(cl.id, false);
+      assert(r.verdetto !== 'Conviene' && /non conviene|al limite|limite/i.test(S.comunicazioni.find(x => x.id === r.id).oggetto), 'cpb-com: esito diverso non riflesso nel testo');
+      assert(window.pubblicaComunicazioneCpb(cl.id) && S.comunicazioni.find(x => x.id === r.id).stato === 'Inviata', 'cpb-com: pubblicazione');
+      r = window.sincronizzaComunicazioneCpb(cl.id, false);
+      assert(r.azione === 'esistente', 'cpb-com: una comunicazione pubblicata non va toccata');
+      r = window.sincronizzaComunicazioneCpb(cl.id, true);
+      assert(r.azione === 'creata', 'cpb-com: forza deve creare una nuova bozza');
+      S.comunicazioni = S.comunicazioni.filter(x => x.id !== r.id && x.id !== com.id); delete S.cpb[cl.id];
+      console.log('=== CPB: comunicazione standard al cliente OK');
+    }
+    // Home "Il mio lavoro" con notizie
+    {
+      const S = window.getSTATE();
+      S.notizie = [{ id: 'n1', titolo: 'Titolo prova ZZN', sintesi: 'Sintesi', fonte: 'SEAC', url: 'https://example.com/a', data: '2026-10-20' }];
+      const html = window.renderOggi();
+      assert(/hero-oggi/.test(html) && /Titolo prova ZZN/.test(html) && /Oggi tocca a te/.test(html), 'home: hero/novità/oggi mancanti');
+      S.notizie = [];
+      console.log('=== Home Il mio lavoro OK');
+    }
     // Imposte calcolate con storico
     {
       const cl = window.getSTATE().clienti.find(c => c.stato !== 'cessato' && c.stato !== 'potenziale');
@@ -4731,7 +4765,7 @@ async function main() {
     window.setView('oggi');
     await wait(20);
     assert(window.getVIEW() === 'oggi', '#213: la vista "oggi" (Il mio lavoro) deve essere raggiungibile');
-    assert(q('#content').innerHTML.includes('Da fare per primo'), '#213: la home Oggi deve mostrare il blocco "Da fare per primo"');
+    assert(q('#content').innerHTML.includes('Oggi tocca a te') && q('#content').innerHTML.includes('hero-oggi'), '#213: la home Oggi deve mostrare banner e blocco "Oggi tocca a te"');
     assert(qa('.navitem').some(el => el.dataset.nav === 'oggi' && el.textContent.includes('Il mio lavoro')) && qa('.navitem').some(el => el.dataset.nav === 'dashboard' && el.textContent.includes('Dashboard')), '#213: nel menu devono esserci "Il mio lavoro" e "Dashboard", distinti');
     // modulo team spento: nessun riferimento a chat/task nella home
     st.meta.moduliDisattivati = ['team'];

@@ -1407,3 +1407,4 @@ document.addEventListener('contextmenu', (e) => {
     sel.removeAllRanges(); sel.addRange(r);
   } catch (err) { /* nessuna selezione automatica: il menu si apre comunque */ }
 });
+window.sincronizzaComunicazioneCpb = sincronizzaComunicazioneCpb; window.infoComunicazioneCpb = infoComunicazioneCpb; window.pubblicaComunicazioneCpb = pubblicaComunicazioneCpb; window.cpbModelli = cpbModelli; window.renderOggi = renderOggi;

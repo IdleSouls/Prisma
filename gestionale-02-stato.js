@@ -396,6 +396,7 @@ function statoIniziale() {
     cpb: {},
     /* Imposte calcolate per cliente/anno con storico delle modifiche (tab Imposte calcolate). */
     imposte: [],
+    notizie: [],
     fpc: [],
     impegniRiservatezza: [],
     /* Procedure interne dello studio (task #146): raccolta di SOP/indicazioni operative per lo staff
@@ -1019,7 +1020,7 @@ function tentaSceltaOperatore(nome) {
     .catch(() => { impostaOperatore(nome); chiudiModal(); }); // server irraggiungibile: non blocchiamo la scelta locale
 }
 function impostaOperatore(nome) {
-  if (nome) fineAttesaAvvio(); // scelta fatta: l'app puo' comparire
+  if (nome) { try { window.__attesaScelta = false; } catch (e) { /* ignora */ } fineAttesaAvvio(); } // scelta fatta: l'app puo' comparire
   OPERATORE = (nome && STATE.meta.responsabili.includes(nome)) ? nome : null;
   try {
     if (typeof localStorage === 'undefined') { /* niente da fare, es. ambiente di test senza DOM */ }
@@ -1117,6 +1118,8 @@ function operatoreObbligatorio() { return STATE.meta.responsabili.length >= 2 &&
 function modalSelettoreOperatore() {
   caricaResponsabiliConPassword();
   const obbligatorio = operatoreObbligatorio();
+  // Scelta utente obbligatoria: il timer di sicurezza dell'avvio (8 s, vedi gestionale.htm) non deve far comparire l'app dietro alla scelta/password.
+  try { window.__attesaScelta = !!obbligatorio; } catch (e) { /* ignora */ }
   const html = `<div class="modal-backdrop" data-action="chiudi-modal-backdrop" ${obbligatorio ? 'data-obbligatorio="1"' : ''}>
     <div class="modal" style="max-width:380px;">
       <h2>Chi sta usando questo PC?</h2>
@@ -1587,8 +1590,10 @@ const AZIONI_MCP = {
     if (p.nota !== undefined) nuovo.nota = p.nota;
     if (p.stato !== undefined) { if (!STATI_CPB.includes(p.stato)) throw new Error('Stato CPB non valido: ' + p.stato); nuovo.stato = p.stato; }
     if (p.stato === undefined) { const s = statoAutoCalcolato(c.id, dati); if (s) nuovo.stato = s; }
-    STATE.cpb[c.id] = nuovo; salvaStato(); render();
-    return { aggiornato: true, cliente: c.ragioneSociale };
+    STATE.cpb[c.id] = nuovo; salvaStato();
+    const com = (p.stato === undefined) ? autoComunicazioneCpb(c.id) : null;
+    render();
+    return { aggiornato: true, cliente: c.ragioneSociale, comunicazioneCliente: com && com.azione !== 'nessuna' ? { azione: com.azione, id: com.id, verdetto: com.verdetto, nota: 'Bozza in Comunicazioni: non è visibile al cliente finché non viene pubblicata (stato Inviata).' } : undefined };
   },
 
   /* Imposte calcolate (tab "Imposte calcolate"): inserisce/aggiorna e registra la modifica nello storico. */
@@ -1606,6 +1611,22 @@ const AZIONI_MCP = {
     if (p.creaF24) f24 = generaF24Imposte(c.id, anno).log;
     render();
     return { cliente: c.ragioneSociale, anno, cambiato: esito.cambiato, variazioni: esito.variazioni, f24 };
+  },
+  /* Novità fiscali (home "Il mio lavoro"): aggiunte dall'IA da fonti affidabili; niente duplicati (stesso link o titolo), restano le ultime 30. */
+  registraNotizie: (p) => {
+    if (!Array.isArray(STATE.notizie)) STATE.notizie = [];
+    let aggiunte = 0;
+    (p.notizie || []).forEach(n => {
+      const titolo = String(n.titolo || '').trim(); if (!titolo) return;
+      const url = String(n.url || '').trim();
+      if (STATE.notizie.some(x => (url && x.url === url) || x.titolo.toLowerCase() === titolo.toLowerCase())) return;
+      STATE.notizie.push({ id: uid('news'), titolo, sintesi: String(n.sintesi || '').trim(), fonte: String(n.fonte || '').trim(), url, data: /^\d{4}-\d{2}-\d{2}$/.test(n.data || '') ? n.data : oggiISO(), aggiuntaIl: oggiISO() });
+      aggiunte++;
+    });
+    STATE.notizie.sort((a, b) => (b.data || '').localeCompare(a.data || ''));
+    STATE.notizie = STATE.notizie.slice(0, 30);
+    salvaStato(); render();
+    return { aggiunte, totale: STATE.notizie.length };
   },
   registraImposte: (p) => {
     const q = String(p.cliente || '').trim().toLowerCase();

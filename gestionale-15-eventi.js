@@ -192,7 +192,10 @@ function onClickDelegatoInterno(e) {
     case 'carico-ore-apri': modalCaricoOre(); break;
     case 'carico-ore-salva': salvaCaricoOre(); chiudiModal(); render(); toast('Ore e capacità salvate.'); break;
     case 'cpb-nota-salva': { if (!STATE.cpb) STATE.cpb = {}; STATE.cpb[id] = Object.assign({}, STATE.cpb[id] || {}, { nota: h('cpbNotaTesto').value }); salvaStato(); chiudiModal(); render(); toast('Nota salvata.'); break; }
-    case 'cpb-val-salva': salvaValutazioneCpb(id); chiudiModal(); render(); toast('Valutazione CPB salvata.'); break;
+    case 'cpb-val-salva': { const com = salvaValutazioneCpb(id); chiudiModal(); render(); toast('Valutazione CPB salvata.' + (com && com.azione === 'creata' ? ' Bozza di comunicazione al cliente creata in Comunicazioni.' : (com && com.azione === 'aggiornata' ? ' Bozza di comunicazione aggiornata.' : ''))); break; }
+    case 'cpb-com-pubblica': { if (pubblicaComunicazioneCpb(id)) { modalValutazioneCpb(id); render(); toast('Comunicazione pubblicata sul portale del cliente.'); } break; }
+    case 'cpb-com-nuova': { const r = sincronizzaComunicazioneCpb(id, true); modalValutazioneCpb(id); render(); toast(r.azione === 'creata' ? 'Nuova bozza creata in Comunicazioni.' : (r.motivo || 'Nessuna comunicazione creata.')); break; }
+    case 'cpb-modelli-ripristina': if (confermaAzione('Ripristinare i tre testi standard? Le tue modifiche ai testi andranno perse.')) { delete STATE.meta.cpbModelli; salvaStato(); render(); } break;
     case 'cpb-val-decisione': salvaValutazioneCpb(id, el.dataset.stato); chiudiModal(); render(); toast('Valutazione salvata: ' + el.dataset.stato + '.'); break;
     case 'cpb-val-esporta': cpbXlsxBlob().then(b => salvaFileScaricabile('cpb-riepilogo-' + oggiISO() + '.xlsx', b)).then(ok => { if (ok !== false) toast('Riepilogo CPB esportato.'); }).catch(err => toast('Esportazione non riuscita: ' + err.message, true)); break;
     case 'apri-cliente': chiudiModal(); SCHEDA_CLIENTE = id; setView('schedacliente'); break;
@@ -2127,6 +2130,7 @@ function onChangeDelegato(e) {
     case 'imposte-filtro': IMPOSTE_FILTRO[el.dataset.k] = el.value; render(); break;
     case 'carico-filtro': CARICO_FILTRO[el.dataset.k] = el.value; render(); break;
     case 'cpb-param': { const v = Number(el.value); if (Number.isFinite(v)) { STATE.meta.cpbParametri = Object.assign({}, STATE.meta.cpbParametri || {}, { [el.dataset.k]: v }); salvaStato(); render(); } break; }
+    case 'cpb-modello': { const k = el.dataset.esito, c = el.dataset.campo; if (!CPB_ESITI_COM.includes(k) || !['oggetto', 'corpo'].includes(c)) break; if (!STATE.meta.cpbModelli) STATE.meta.cpbModelli = {}; STATE.meta.cpbModelli[k] = Object.assign({}, STATE.meta.cpbModelli[k] || {}, { [c]: el.value }); salvaStato(); toast('Testo salvato.'); break; }
     case 'cpb-filtro-tipo': CPB_FILTRO.tipo = el.value; render(); break;
     case 'cpb-filtro-regime': CPB_FILTRO.regime = el.value; render(); break;
     case 'cpb-filtro-stato': CPB_FILTRO.stato = el.value; render(); break;

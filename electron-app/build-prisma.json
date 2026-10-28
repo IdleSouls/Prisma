@@ -1,8 +1,25 @@
 {
   "appId": "it.studioquadra.prisma",
   "productName": "Prisma",
-  "extraMetadata": { "main": "main.js" },
-  "files": ["main.js", "icona.ico", "package.json"],
-  "win": { "target": "portable", "icon": "icona.ico" },
-  "portable": { "artifactName": "Prisma.exe" }
+  "extraMetadata": {
+    "main": "main.js"
+  },
+  "files": [
+    "main.js",
+    "attivazione-logica.js",
+    "setup-dati.js",
+    "attivazione.html",
+    "preload-attivazione.js",
+    "installazione.html",
+    "preload-installazione.js",
+    "icona.ico",
+    "package.json"
+  ],
+  "win": {
+    "target": "portable",
+    "icon": "icona.ico"
+  },
+  "portable": {
+    "artifactName": "Prisma.exe"
+  }
 }

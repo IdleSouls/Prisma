@@ -779,6 +779,23 @@ export function creaServer(filePath, baseUrl) {
     async (campi) => conPromemoria(testoEsitoScrittura(await inviaComando(url, 'registraImposte', pulisciUndefined(campi))))
   );
   server.registerTool(
+    'registra_notizie',
+    {
+      title: 'Novità fiscali nella home di Prisma',
+      description: 'Aggiunge novità/aggiornamenti (es. dalle news di SEAC, Agenzia delle Entrate, circolari) nella sezione "Novità fiscali e di studio" della home "Il mio lavoro". Per ogni notizia: titolo, sintesi breve in italiano (1-2 frasi, riscritta con parole tue, non copiata), fonte, link e data (AAAA-MM-GG). Le notizie già presenti (stesso link o stesso titolo) non si duplicano; restano le ultime 30. Usa solo contenuti letti davvero da fonti affidabili, mai inventati. Richiede il gestionale aperto via server.js.',
+      inputSchema: {
+        notizie: z.array(z.object({
+          titolo: z.string(),
+          sintesi: z.string().optional(),
+          fonte: z.string().optional().describe('Es. "SEAC", "Agenzia delle Entrate", "Gazzetta Ufficiale".'),
+          url: z.string().optional(),
+          data: z.string().optional().describe('AAAA-MM-GG'),
+        })).min(1).max(20),
+      },
+    },
+    async (campi) => testoEsitoScrittura(await inviaComando(url, 'registraNotizie', pulisciUndefined(campi)))
+  );
+  server.registerTool(
     'registra_pagamento_imposte',
     {
       title: 'Pagamento delle imposte (unica soluzione o rate) e F24',

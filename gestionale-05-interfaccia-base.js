@@ -966,14 +966,40 @@ function renderOggi() {
   // la Dashboard è il quadro NUMERICO di tutto lo studio (griglia di contatori, tabelle, avanzamenti);
   // "Il mio lavoro" è PERSONALE e a lista: una frase di riepilogo con pillole cliccabili, poi le cose da
   // fare, una per riga. Nessun contatore a riquadri qui, per non somigliare alla Dashboard.
-  const pill = (n, singolare, plurale, azione, cls) => n ? `<button class="pill-lavoro ${cls}" ${azione}><strong>${n}</strong> ${n === 1 ? singolare : plurale}</button>` : '';
-  const pillole = [
-    pill(scaduti.length, 'scadenza in ritardo', 'scadenze in ritardo', 'data-action="goto-scadenze" data-filtro="scaduti"', 'rosso'),
-    pill(entro7.length, 'scadenza entro 7 giorni', 'scadenze entro 7 giorni', 'data-action="goto-scadenze" data-filtro="inscadenza"', 'giallo'),
-    operatorePuoVedere('taskteam') ? pill(taskMiei.length, me ? 'tuo task aperto' : 'task aperto', me ? 'tuoi task aperti' : 'task aperti', 'data-action="nav" data-nav="taskteam"', 'blu') : '',
-    (operatorePuoVedere('comunicazioni') && moduloAttivo('portale')) ? pill(comDaLeggere, 'messaggio da leggere', 'messaggi da leggere', 'data-action="nav" data-nav="comunicazioni"', 'viola') : '',
+  // Nuova home (richiesta Matteo: "non dà l'effetto che vorrei"): banner con l'immagine Prisma, numeri grandi cliccabili,
+  // avanzamento della settimana con una frase, "oggi tocca a te" a schede, settimana a giorni, pratiche annuali con barra a fasi e novità.
+  const oggiList = inScadenza.filter(s => s.data === oggi);
+  const prossimi = inScadenza.filter(s => s.data !== oggi && giorniTra(oggi, s.data) <= 7).sort((a, b) => a.data.localeCompare(b.data));
+  const dow = (new Date().getDay() + 6) % 7; // 0 = lunedì
+  const lunISO = (() => { const d = new Date(); d.setDate(d.getDate() - dow); return d.toISOString().slice(0, 10); })();
+  const domISO = (() => { const d = new Date(lunISO + 'T00:00:00'); d.setDate(d.getDate() + 6); return d.toISOString().slice(0, 10); })();
+  const settimana = mie.filter(s => s.data >= lunISO && s.data <= domISO);
+  const settChiuse = settimana.filter(s => STATI_SCADENZA_CHIUSI.includes(s.stato)).length;
+  const settPct = settimana.length ? Math.round(settChiuse / settimana.length * 100) : 0;
+  const frase = (() => {
+    const giorno = Math.floor(Date.now() / 86400000);
+    const neutre = ['Un passo alla volta: le scadenze si battono così.', 'Chi chiude oggi, dorme tranquillo domani.', 'Poche cose fatte bene valgono più di tante a metà.', 'Il lavoro di oggi è la serenità dei tuoi clienti.'];
+    if (scaduti.length > 5) return 'Parti dalle scadute: una alla volta, e la settimana si rimette in carreggiata.';
+    if (settimana.length && settPct === 100) return 'Settimana in pari: tutto chiuso. Ottimo lavoro! 🎉';
+    if (settimana.length && settPct >= 60) return 'Sei a buon punto: ancora un piccolo sforzo per chiudere la settimana.';
+    return neutre[giorno % neutre.length];
+  })();
+  const kpi = (n, label, azione, cls) => `<button class="hero-k ${cls}" ${azione}><span class="hero-n">${n}</span><span class="hero-l">${label}</span></button>`;
+  const heroKpi = [
+    kpi(scaduti.length, scaduti.length === 1 ? 'in ritardo' : 'in ritardo', 'data-action="goto-scadenze" data-filtro="scaduti"', scaduti.length ? 'k-rosso' : 'k-ok'),
+    kpi(oggiList.length, 'oggi', 'data-action="goto-scadenze" data-filtro="inscadenza"', oggiList.length ? 'k-giallo' : 'k-ok'),
+    kpi(prossimi.length, 'prossimi 7 giorni', 'data-action="goto-scadenze" data-filtro="inscadenza"', ''),
+    operatorePuoVedere('taskteam') ? kpi(taskMiei.length, me ? 'tuoi task' : 'task aperti', 'data-action="nav" data-nav="taskteam"', '') : '',
+    (operatorePuoVedere('comunicazioni') && moduloAttivo('portale')) ? kpi(comDaLeggere, comDaLeggere === 1 ? 'messaggio' : 'messaggi', 'data-action="nav" data-nav="comunicazioni"', comDaLeggere ? 'k-viola' : '') : '',
   ].join('');
-  const tiles = `<div class="riepilogo-lavoro">${pillole || '<span class="helptext">Per ora non hai niente di urgente: bel lavoro. 🎉</span>'}</div>`;
+  const hero = `<div class="hero-oggi">
+    <div class="hero-testo"><div class="hero-saluto">${saluto}${me ? ', ' + escapeHtml(me) : ''}</div><div class="hero-data">${escapeHtml(dataEstesa)}</div><div class="hero-frase">${escapeHtml(frase)}</div></div>
+    <div class="hero-kpi">${heroKpi}</div>
+  </div>`;
+  const tiles = settimana.length ? `<div class="card avanzamento-sett">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;"><div class="section-title" style="margin:0;">La tua settimana</div><div class="helptext"><strong>${settChiuse}</strong> chiuse su <strong>${settimana.length}</strong> scadenze (${settPct}%)</div></div>
+    <div class="progress" style="margin:10px 0 0;"><div style="width:${settPct}%"></div></div>
+  </div>` : '';
 
   const rigaScadenza = (s) => {
     const d = deltaLabel(s.data);
@@ -983,10 +1009,42 @@ function renderOggi() {
       <span class="helptext">${fmtDataBreve(s.data)}</span>
     </div>`;
   };
-  const sezUrgenti = `<div class="card">
-    <div class="section-title">Da fare per primo <span class="cnt">${urgenti.length}</span></div>
-    ${urgenti.length ? urgenti.slice(0, 7).map(rigaScadenza).join('') + (urgenti.length > 7 ? `<div style="margin-top:10px;"><button class="btn small" data-action="goto-scadenze" data-filtro="inscadenza">Vedi tutte le ${urgenti.length} →</button></div>` : '')
-      : '<div class="empty">Niente di scaduto o in arrivo nei prossimi 7 giorni' + (me ? ' a tuo nome' : '') + '. 🎉</div>'}
+  const daFareOra = scaduti.slice().sort((a, b) => a.data.localeCompare(b.data)).concat(oggiList);
+  const schedaScad = (s) => {
+    const d = deltaLabel(s.data);
+    return `<div class="scheda-oggi ${d.cls}" data-action="apri-dettaglio-scadenza" data-id="${s.id}" title="Apri il riepilogo della scadenza">
+      <span class="pill-delta ${d.cls}">${d.txt}</span>
+      <div class="scheda-cliente">${escapeHtml(nomeCliente(s.clienteId))}</div>
+      <div class="helptext">${escapeHtml(s.nome)}</div>
+    </div>`;
+  };
+  const giorniSett = (() => {
+    const per = {};
+    prossimi.forEach(s => { (per[s.data] = per[s.data] || []).push(s); });
+    return Object.keys(per).sort().map(dt => {
+      const nome = new Date(dt + 'T00:00:00').toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'short' });
+      return `<div class="giorno-sett"><div class="giorno-nome">${escapeHtml(nome)}</div>${per[dt].slice(0, 4).map(rigaScadenza).join('')}${per[dt].length > 4 ? `<div class="helptext">+ altre ${per[dt].length - 4}</div>` : ''}</div>`;
+    }).join('');
+  })();
+  const sezUrgenti = `<div class="oggi-colonne">
+    <div class="card">
+      <div class="section-title">Oggi tocca a te <span class="cnt">${daFareOra.length}</span></div>
+      ${daFareOra.length ? `<div class="schede-oggi">${daFareOra.slice(0, 8).map(schedaScad).join('')}</div>` + (daFareOra.length > 8 ? `<div style="margin-top:10px;"><button class="btn small" data-action="goto-scadenze" data-filtro="scaduti">Vedi tutte le ${daFareOra.length} →</button></div>` : '')
+        : '<div class="empty">Niente di scaduto o in scadenza oggi' + (me ? ' a tuo nome' : '') + '. 🎉</div>'}
+    </div>
+    <div class="card">
+      <div class="section-title">Prossimi giorni <span class="cnt">${prossimi.length}</span></div>
+      ${giorniSett || '<div class="empty">Nessuna scadenza nei prossimi 7 giorni.</div>'}
+    </div>
+  </div>`;
+  const notizie = (STATE.notizie || []).slice().sort((a, b) => (b.data || '').localeCompare(a.data || '')).slice(0, 5);
+  const sezNotizie = `<div class="card">
+    <div class="section-title">Novità fiscali e di studio ${notizie.length ? `<span class="cnt">${notizie.length}</span>` : ''}</div>
+    ${notizie.length ? notizie.map(n => `<div style="padding:9px 0;border-bottom:1px solid var(--border);">
+      <div style="font-weight:700;font-size:13px;">${n.url ? `<a href="${escapeHtml(n.url)}" target="_blank" rel="noopener">${escapeHtml(n.titolo)}</a>` : escapeHtml(n.titolo)}</div>
+      <div class="helptext">${escapeHtml(n.fonte || '')}${n.fonte && n.data ? ' · ' : ''}${n.data ? fmtDataBreve(n.data) : ''}</div>
+      ${n.sintesi ? `<div style="font-size:12.5px;margin-top:3px;">${escapeHtml(n.sintesi)}</div>` : ''}</div>`).join('')
+      : '<div class="empty" style="padding:6px 0;">Nessuna novità ancora. Chiedi a Claude di aggiornarle (es. dalle news di SEAC): compariranno qui.</div>'}
   </div>`;
 
   const sezTask = (operatorePuoVedere('taskteam') && taskMiei.length) ? `<div class="card">
@@ -1011,11 +1069,21 @@ function renderOggi() {
     ${fasiPronte.slice(0, 8).map(a => rigaFase(a, false)).join('') || '<div class="helptext">Nessuna fase pronta per te al momento.</div>'}
     ${fasiAttesa.length ? `<div class="helptext" style="margin:10px 0 2px;">In attesa di altri (${fasiAttesa.length})</div>` + fasiAttesa.slice(0, 6).map(a => rigaFase(a, true)).join('') : ''}
   </div>` : '';
+  const aperteMie = me ? fasiPronte.concat(fasiAttesa) : annualiAperti;
+  const sezAnnuali = (operatorePuoVedere('annuali') && aperteMie.length) ? `<div class="card">
+    <div class="section-title">Pratiche in corso <span class="cnt">${aperteMie.length}</span></div>
+    <div class="schede-annuali">${aperteMie.slice().sort((a, b) => (a.scadenza || '9999').localeCompare(b.scadenza || '9999')).slice(0, 6).map(a => `<div class="scheda-annuale" data-action="dash-apri-annuale" data-id="${a.id}">
+      <div class="scheda-cliente">${escapeHtml(nomeCliente(a.clienteId))}</div>
+      <div class="helptext">${escapeHtml(a.tipoNome)}${a.scadenza ? ' · entro il ' + fmtDataBreve(a.scadenza) : ''}</div>
+      <div class="progress" style="margin:8px 0 4px;"><div style="width:${a.percentuale || 0}%"></div></div>
+      <div class="helptext">${a.percentuale || 0}% · ${escapeHtml(a.faseCorrente ? a.faseCorrente.nome : '')}</div>
+    </div>`).join('')}</div>
+  </div>` : '';
   const chatRiga = chatNL ? `<div class="card" style="cursor:pointer;" data-action="nav" data-nav="chat"><strong>💬 ${chatNL}</strong> ${chatNL === 1 ? 'messaggio non letto' : 'messaggi non letti'} in chat <span class="badge" style="float:right;">Apri →</span></div>` : '';
 
   const altro = operatorePuoVedere('dashboard') ? `<div style="margin-top:6px;"><button class="btn small" data-action="nav" data-nav="dashboard">Vai alla Dashboard dello studio →</button></div>` : '';
 
-  return intest + renderChecklistSetup() + tiles + sezUrgenti + sezFasi + sezTask + chatRiga + altro;
+  return hero + renderChecklistSetup() + tiles + sezUrgenti + sezAnnuali + sezTask + chatRiga + sezNotizie + altro;
 }
 
 /* -------------------- PAGINAZIONE LISTE --------------------
