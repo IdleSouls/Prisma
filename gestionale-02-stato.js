@@ -1612,14 +1612,14 @@ const AZIONI_MCP = {
     render();
     return { cliente: c.ragioneSociale, anno, cambiato: esito.cambiato, variazioni: esito.variazioni, f24 };
   },
-  /* Novità fiscali (home "Il mio lavoro"): aggiunte dall'IA da fonti affidabili; niente duplicati (stesso link o titolo), restano le ultime 30. */
+  /* Novità fiscali (home "Il mio lavoro"): aggiunte dall'IA da fonti affidabili; niente duplicati (stesso titolo), restano le ultime 30. */
   registraNotizie: (p) => {
     if (!Array.isArray(STATE.notizie)) STATE.notizie = [];
     let aggiunte = 0;
     (p.notizie || []).forEach(n => {
       const titolo = String(n.titolo || '').trim(); if (!titolo) return;
       const url = String(n.url || '').trim();
-      if (STATE.notizie.some(x => (url && x.url === url) || x.titolo.toLowerCase() === titolo.toLowerCase())) return;
+      if (STATE.notizie.some(x => x.titolo.toLowerCase() === titolo.toLowerCase())) return; // solo il titolo: piu' notizie possono puntare alla stessa pagina elenco
       STATE.notizie.push({ id: uid('news'), titolo, sintesi: String(n.sintesi || '').trim(), fonte: String(n.fonte || '').trim(), url, data: /^\d{4}-\d{2}-\d{2}$/.test(n.data || '') ? n.data : oggiISO(), aggiuntaIl: oggiISO() });
       aggiunte++;
     });

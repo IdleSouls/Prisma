@@ -782,7 +782,7 @@ export function creaServer(filePath, baseUrl) {
     'registra_notizie',
     {
       title: 'Novità fiscali nella home di Prisma',
-      description: 'Aggiunge novità/aggiornamenti (es. dalle news di SEAC, Agenzia delle Entrate, circolari) nella sezione "Novità fiscali e di studio" della home "Il mio lavoro". Per ogni notizia: titolo, sintesi breve in italiano (1-2 frasi, riscritta con parole tue, non copiata), fonte, link e data (AAAA-MM-GG). Le notizie già presenti (stesso link o stesso titolo) non si duplicano; restano le ultime 30. Usa solo contenuti letti davvero da fonti affidabili, mai inventati. Richiede il gestionale aperto via server.js.',
+      description: 'Aggiunge novità/aggiornamenti (es. dalle news di SEAC, Agenzia delle Entrate, circolari) nella sezione "Novità fiscali e di studio" della home "Il mio lavoro". Per ogni notizia: titolo, sintesi breve in italiano (1-2 frasi, riscritta con parole tue, non copiata), fonte, link e data (AAAA-MM-GG). Le notizie già presenti (stesso titolo) non si duplicano; restano le ultime 30. Usa solo contenuti letti davvero da fonti affidabili, mai inventati. Richiede il gestionale aperto via server.js.',
       inputSchema: {
         notizie: z.array(z.object({
           titolo: z.string(),
