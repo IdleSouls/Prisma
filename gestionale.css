@@ -782,7 +782,7 @@ html:not(.app-pronta) body{min-height:100vh;background:var(--hero) center 25%/co
 html:not(.app-pronta) #sidebar, html:not(.app-pronta) #main{display:none !important;}
 
 /* Home "Il mio lavoro": banner con immagine Prisma, numeri grandi, schede */
-.hero-oggi{position:relative;border-radius:16px;padding:26px 28px 22px;margin:0 0 16px;color:#fff;background:linear-gradient(100deg,rgba(8,14,30,.82),rgba(8,14,30,.35)),var(--hero) center 30%/cover no-repeat #0b1426;box-shadow:0 8px 28px rgba(8,14,30,.22);overflow:hidden;}
+.hero-oggi{position:relative;border-radius:16px;padding:26px 28px 22px;margin:0 0 16px;color:#fff;min-height:clamp(300px,30vw,420px);display:flex;flex-direction:column;justify-content:flex-end;background:linear-gradient(100deg,rgba(8,14,30,.78) 0%,rgba(8,14,30,.25) 55%,rgba(8,14,30,.05) 100%),var(--hero) center 22%/cover no-repeat #0b1426;box-shadow:0 8px 28px rgba(8,14,30,.22);overflow:hidden;}
 .hero-saluto{font-size:28px;font-weight:800;letter-spacing:-.3px;}
 .hero-data{font-size:13px;opacity:.8;text-transform:capitalize;margin-top:2px;}
 .hero-frase{font-size:14.5px;margin-top:10px;max-width:560px;opacity:.95;}
