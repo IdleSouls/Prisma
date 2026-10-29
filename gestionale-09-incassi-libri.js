@@ -1197,7 +1197,10 @@ function datiCarico() {
   const anni = Array.from(new Set(voci.map(x => x.data.slice(0, 4)))).sort();
   const anno = String(f.anno || (anni.includes(String(STATE.annoCorrente)) ? STATE.annoCorrente : (anni[anni.length - 1] || STATE.annoCorrente)));
   voci = voci.filter(x => x.data.slice(0, 4) === anno && (f.tipo === 'Tutti' || x.fonte === f.tipo));
-  const resp = Array.from(new Set((STATE.meta.responsabili || []).concat(voci.map(x => x.resp)).concat(['—'])));
+  const ufficiali = STATE.meta.responsabili || [];
+  const canon = (n) => { const c = ufficiali.find(u => String(u).trim().toLowerCase() === String(n).trim().toLowerCase()); return c || n; };
+  voci.forEach(x => { x.resp = canon(x.resp); });
+  const resp = Array.from(new Set(ufficiali.concat(voci.map(x => x.resp)).concat(['—'])));
   const m = {};
   resp.forEach(r => { m[r] = { aperte: Array(12).fill(0), chiuse: Array(12).fill(0), ore: Array(12).fill(0), scadute: 0, voci: [] }; });
   voci.forEach(x => {

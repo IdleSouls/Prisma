@@ -2266,6 +2266,17 @@ async function main() {
       if (S.taskTeam.length > nPrima) S.taskTeam = S.taskTeam.filter(t => t.titolo !== 'Task prova ZZE');
       console.log('=== Task team: elenco compatto e Kanban OK');
     }
+    // Carico di lavoro: stesso nome con maiuscole diverse = una sola persona
+    {
+      const S = window.getSTATE();
+      const nome = (S.meta.responsabili || [])[1] || (S.meta.responsabili || [])[0];
+      S.taskTeam.push({ id: 'tz_case', titolo: 'Task case ZZ', stato: 'Da fare', assegnatoA: nome.toLowerCase(), scadenza: '2026-11-10' });
+      const d = window.datiCarico();
+      const uguali = d.tutteLePersone.filter(r => r.toLowerCase() === nome.toLowerCase());
+      assert(uguali.length === 1 && uguali[0] === nome, 'carico: la stessa persona compare piu\' volte: ' + uguali.join(','));
+      S.taskTeam = S.taskTeam.filter(t => t.id !== 'tz_case');
+      console.log('=== Carico di lavoro: nomi con maiuscole diverse unificati OK');
+    }
     // Home "Il mio lavoro" con notizie
     {
       const S = window.getSTATE();

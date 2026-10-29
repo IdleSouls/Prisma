@@ -541,6 +541,24 @@ function migraCampiCredenziali(stato) {
   return migrati;
 }
 
+/* "sabrina" e "Sabrina" sono la stessa persona: i nomi di responsabile/assegnatario scritti con maiuscole diverse (da import, MCP o a mano)
+   si riportano al nome ufficiale dell'elenco responsabili, così nel carico di lavoro e nei filtri non compaiono due volte. */
+const CHIAVI_NOME_PERSONA = new Set(['responsabileStudio', 'responsabile', 'assegnatoA', 'completatoDa', 'creatoDa', 'operatore', 'nonDovutoDa']);
+function migraNomiResponsabili(stato) {
+  const ufficiali = (stato.meta && Array.isArray(stato.meta.responsabili)) ? stato.meta.responsabili : [];
+  if (!ufficiali.length) return;
+  const mappa = {}; ufficiali.forEach(n => { mappa[String(n).trim().toLowerCase()] = n; });
+  const visita = (o, prof) => {
+    if (!o || typeof o !== 'object' || prof > 8) return;
+    if (Array.isArray(o)) { o.forEach(x => visita(x, prof + 1)); return; }
+    Object.keys(o).forEach(k => {
+      const v = o[k];
+      if (typeof v === 'string') { if (CHIAVI_NOME_PERSONA.has(k)) { const c = mappa[v.trim().toLowerCase()]; if (c && c !== v) o[k] = c; } }
+      else if (v && typeof v === 'object') visita(v, prof + 1);
+    });
+  };
+  Object.keys(stato).forEach(k => { if (k !== 'meta' && k !== 'chatMessaggi') visita(stato[k], 0); });
+}
 function normalizzaStatoCaricato(parsed) {
   const stato = Object.assign(statoIniziale(), parsed);
   stato.meta = Object.assign(statoIniziale().meta, parsed.meta || {});
@@ -554,6 +572,7 @@ function normalizzaStatoCaricato(parsed) {
   migraPacchettoPortale(stato);
   migraModelloPreventivoStudio(stato);
   migraCampiCredenziali(stato);
+  migraNomiResponsabili(stato);
   unisciLibriSociali(stato);
   assicuraLibriSocieta(stato);
   if (!Array.isArray(stato.stampeLibri)) stato.stampeLibri = [];
