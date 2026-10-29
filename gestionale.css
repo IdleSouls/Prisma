@@ -782,11 +782,11 @@ html:not(.app-pronta) body{min-height:100vh;background:var(--hero) center 25%/co
 html:not(.app-pronta) #sidebar, html:not(.app-pronta) #main{display:none !important;}
 
 /* Home "Il mio lavoro": banner con immagine Prisma, numeri grandi, schede */
-.hero-oggi{position:relative;border-radius:16px;padding:26px 28px 22px;margin:0 0 16px;color:#fff;min-height:clamp(300px,30vw,420px);display:flex;flex-direction:column;justify-content:flex-end;background:linear-gradient(100deg,rgba(8,14,30,.78) 0%,rgba(8,14,30,.25) 55%,rgba(8,14,30,.05) 100%),var(--hero) center 22%/cover no-repeat #0b1426;box-shadow:0 8px 28px rgba(8,14,30,.22);overflow:hidden;}
+.hero-oggi{position:relative;border-radius:16px;padding:28px 28px 26px;margin:0 0 16px;color:#fff;text-align:center;min-height:clamp(320px,32vw,440px);display:flex;flex-direction:column;justify-content:flex-end;align-items:center;background:linear-gradient(180deg,rgba(8,14,30,.05) 0%,rgba(8,14,30,.45) 55%,rgba(8,14,30,.88) 100%),var(--hero) center 22%/cover no-repeat #0b1426;box-shadow:0 8px 28px rgba(8,14,30,.22);overflow:hidden;}
 .hero-saluto{font-size:28px;font-weight:800;letter-spacing:-.3px;}
 .hero-data{font-size:13px;opacity:.8;text-transform:capitalize;margin-top:2px;}
-.hero-frase{font-size:14.5px;margin-top:10px;max-width:560px;opacity:.95;}
-.hero-kpi{display:flex;flex-wrap:wrap;gap:12px;margin-top:20px;}
+.hero-frase{font-size:14.5px;margin:10px auto 0;max-width:560px;opacity:.95;}
+.hero-kpi{display:flex;flex-wrap:wrap;gap:12px;margin-top:20px;justify-content:center;}
 .hero-k{background:rgba(255,255,255,.14);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.28);border-radius:14px;padding:12px 18px;min-width:104px;color:#fff;cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:2px;transition:transform .12s,background .12s;}
 .hero-k:hover{background:rgba(255,255,255,.24);transform:translateY(-2px);}
 .hero-n{font-size:34px;font-weight:800;line-height:1;}
@@ -796,9 +796,10 @@ html:not(.app-pronta) #sidebar, html:not(.app-pronta) #main{display:none !import
 .hero-k.k-viola{background:rgba(120,70,200,.5);border-color:rgba(200,170,255,.6);}
 .hero-k.k-ok .hero-n{color:#9ff0b5;}
 .avanzamento-sett{margin-bottom:16px;}
-.oggi-colonne{display:grid;grid-template-columns:3fr 2fr;gap:16px;align-items:start;}
+.oggi-colonne{display:grid;grid-template-columns:3fr 2fr;gap:16px;align-items:stretch;margin-bottom:16px;}
+.oggi-colonne>.card{margin:0 !important;}
 @media (max-width:1000px){.oggi-colonne{grid-template-columns:1fr;}}
-.schede-oggi,.schede-annuali{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;}
+.schede-oggi,.schede-annuali{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;}
 .scheda-oggi,.scheda-annuale{border:1px solid var(--border);border-radius:12px;padding:12px 14px;cursor:pointer;background:var(--card-bg,#fff);transition:box-shadow .12s,transform .12s;}
 .scheda-oggi:hover,.scheda-annuale:hover{box-shadow:0 4px 14px rgba(20,30,60,.14);transform:translateY(-1px);}
 .scheda-oggi.scaduto{border-left:4px solid var(--rosso,#d33);}

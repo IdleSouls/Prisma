@@ -1686,9 +1686,9 @@ function modalTaskTeam(taskId, presetClienteId) {
   </div>`;
   const campoProcedura = `<div class="field full" style="grid-column:1/-1;">
     <label>Procedura collegata (opzionale)</label>
-    <div style="display:flex;gap:8px;align-items:center;">
-      ${selectProcedura}
-      <button type="button" class="btn small" data-action="task-vedi-procedura-selezionata">👁 Vedi</button>
+    <div style="display:flex;gap:8px;align-items:flex-end;"><div style="flex:1;min-width:0;">
+      ${selectProcedura}</div>
+      <button type="button" class="btn small" data-action="task-vedi-procedura-selezionata" style="flex:none;height:38px;margin-bottom:0;">👁 Vedi</button>
     </div>
     <div class="helptext" style="margin-top:4px;">Una linea guida su cosa fare in questo task — la procedura resta invariata, qui è solo un riferimento.</div>
   </div>`;
