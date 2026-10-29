@@ -690,6 +690,7 @@ async function main() {
     const trov = window.procedureTaskFiltrate(parolaS);
     assert(trov.some(pp => pp.id === bersaglio.id), 'ricerca procedure: parola in fondo al nome non trovata');
     assert(window.htmlListaProcedureTask('zzzzqqqq').includes('Nessuna procedura'), 'ricerca procedure: attesa la scritta "Nessuna procedura"');
+    window.impostaVistaTask('kanban'); // i test storici controllano le schede Kanban; l'elenco ha il suo test dedicato
     click(q('[data-nav="taskteam"]'));
     await wait(20);
     click(q('[data-action="nuovo-task-team"]'));
@@ -2244,6 +2245,26 @@ async function main() {
       assert(r.azione === 'creata', 'cpb-com: forza deve creare una nuova bozza');
       S.comunicazioni = S.comunicazioni.filter(x => x.id !== r.id && x.id !== com.id); delete S.cpb[cl.id];
       console.log('=== CPB: comunicazione standard al cliente OK');
+    }
+    // Task team: elenco compatto raggruppato + interruttore Kanban
+    {
+      const S = window.getSTATE();
+      const nPrima = S.taskTeam.length;
+      window.aggiungiTaskTeam && window.aggiungiTaskTeam({ titolo: 'Task prova ZZE', stato: 'Da fare', assegnatoA: (S.meta.responsabili || [])[0] || '', scadenza: '2020-01-01' });
+      window.impostaVistaTask('elenco'); window.impostaGruppoTask('stato');
+      window.setView('taskteam'); window.render();
+      const html = q('#content').innerHTML;
+      assert(q('.task-elenco') && q('.task-riga') && html.includes('data-action="task-gruppo-toggle"'), 'task elenco: mancano gruppi/righe');
+      assert(!q('.task-board'), 'task elenco: il Kanban non deve comparire');
+      if (S.taskTeam.length > nPrima) assert(html.includes('Task prova ZZE'), 'task elenco: task nuovo non in elenco');
+      click(q('[data-action="task-vista"][data-v="kanban"]'));
+      assert(q('.task-board') && !q('.task-elenco') && window.getTaskVista() === 'kanban', 'task: passaggio a Kanban');
+      window.impostaVistaTask('elenco'); window.impostaGruppoTask('scadenza'); window.render();
+      assert(q('.task-gruppo-head'), 'task elenco: raggruppamento per scadenza');
+      window.impostaGruppoTask('cliente'); window.render(); assert(q('.task-gruppo-head'), 'task elenco: raggruppamento per cliente');
+      window.impostaGruppoTask('stato'); window.impostaVistaTask('kanban');
+      if (S.taskTeam.length > nPrima) S.taskTeam = S.taskTeam.filter(t => t.titolo !== 'Task prova ZZE');
+      console.log('=== Task team: elenco compatto e Kanban OK');
     }
     // Home "Il mio lavoro" con notizie
     {

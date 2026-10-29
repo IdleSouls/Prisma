@@ -1408,3 +1408,4 @@ document.addEventListener('contextmenu', (e) => {
   } catch (err) { /* nessuna selezione automatica: il menu si apre comunque */ }
 });
 window.sincronizzaComunicazioneCpb = sincronizzaComunicazioneCpb; window.infoComunicazioneCpb = infoComunicazioneCpb; window.pubblicaComunicazioneCpb = pubblicaComunicazioneCpb; window.cpbModelli = cpbModelli; window.renderOggi = renderOggi;
+window.impostaVistaTask = impostaVistaTask; window.impostaGruppoTask = impostaGruppoTask; window.getTaskVista = () => TASK_VISTA;

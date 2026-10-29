@@ -1184,8 +1184,78 @@ function testoRicercaTask(t) {
   ].filter(Boolean).join(' \n ').toLowerCase();
 }
 
+
+/* Vista della pagina Task team: "elenco" (una riga per task, raggruppata) oppure "kanban" (colonne). Si ricorda l'ultima scelta su questo PC. */
+let TASK_VISTA = (() => { try { return localStorage.getItem('prisma_task_vista') === 'kanban' ? 'kanban' : 'elenco'; } catch (e) { return 'elenco'; } })();
+let TASK_GRUPPO = (() => { try { const g = localStorage.getItem('prisma_task_gruppo'); return ['stato', 'scadenza', 'cliente', 'nessuno'].includes(g) ? g : 'stato'; } catch (e) { return 'stato'; } })();
+let TASK_GRUPPI_CHIUSI = { 'stato|Fatto': true };
+function impostaVistaTask(v) { TASK_VISTA = v === 'kanban' ? 'kanban' : 'elenco'; try { localStorage.setItem('prisma_task_vista', TASK_VISTA); } catch (e) { /* ignora */ } }
+function impostaGruppoTask(g) { TASK_GRUPPO = ['stato', 'scadenza', 'cliente', 'nessuno'].includes(g) ? g : 'stato'; try { localStorage.setItem('prisma_task_gruppo', TASK_GRUPPO); } catch (e) { /* ignora */ } }
+/* Gruppi dell'elenco: [{ chiave, titolo, colore?, task: [...] }] già ordinati. */
+function gruppiTaskElenco(filtrati) {
+  const perScad = (a, b) => (a.scadenza || '9999-99-99').localeCompare(b.scadenza || '9999-99-99') || String(a.titolo).localeCompare(String(b.titolo));
+  const ord = filtrati.slice().sort(perScad);
+  if (TASK_GRUPPO === 'nessuno') return [{ chiave: 'tutti', titolo: 'Tutti i task', task: ord }];
+  if (TASK_GRUPPO === 'stato') return STATI_TASK_TEAM.map(st => ({ chiave: st, titolo: st, colore: COLORI_STATO_TASK[st].c, task: ord.filter(t => t.stato === st) })).filter(g => g.task.length);
+  if (TASK_GRUPPO === 'cliente') {
+    const m = {};
+    ord.forEach(t => { const k = t.clienteId || '__nessuno__'; (m[k] = m[k] || []).push(t); });
+    return Object.keys(m).map(k => ({ chiave: k, titolo: k === '__nessuno__' ? 'Senza cliente (task generali)' : nomeCliente(k), task: m[k] })).sort((a, b) => (a.chiave === '__nessuno__') - (b.chiave === '__nessuno__') || a.titolo.localeCompare(b.titolo));
+  }
+  const oggi = oggiISO();
+  const fascia = (t) => { if (t.stato === 'Fatto') return 5; if (!t.scadenza) return 4; const d = giorniTra(oggi, t.scadenza); return d < 0 ? 0 : (d <= 7 ? 1 : (d <= 31 ? 2 : 3)); };
+  const nomi = ['In ritardo', 'Entro 7 giorni', 'Entro un mese', 'Più avanti', 'Senza scadenza', 'Completati'];
+  const cols = ['var(--rosso)', 'var(--giallo)', 'var(--blu-mid)', 'var(--text-mut)', 'var(--text-mut)', 'var(--verde)'];
+  return nomi.map((n, i) => ({ chiave: 'f' + i, titolo: n, colore: cols[i], task: ord.filter(t => fascia(t) === i) })).filter(g => g.task.length);
+}
+function rigaTaskElenco(t) {
+  const ritardo = taskInRitardo(t);
+  const col = COLORI_STATO_TASK[t.stato] || COLORI_STATO_TASK['Da fare'];
+  const proc = t.procedureId ? procedureById(t.procedureId) : null;
+  const nNote = (t.noteStorico || []).length;
+  const motivo = STATI_TASK_CON_MOTIVO.includes(t.stato) ? `<tr class="task-riga-motivo"><td colspan="6" style="padding:0 10px 8px 26px;">${boxMotivoTask(t)}</td></tr>` : '';
+  return `<tr class="task-riga${t.stato === 'Fatto' ? ' fatto' : ''}" style="--tc:${col.c};">
+    <td class="task-r-titolo" data-action="apri-dettaglio-task-team" data-id="${t.id}" title="Apri (senza modificare)"><span class="task-r-barra"></span><span class="task-r-t">${escapeHtml(t.titolo)}</span>
+      <span class="task-r-ico">${t.pratica ? '<span title="Pratica">📁</span>' : ''}${proc ? `<span title="Procedura: ${escapeHtml(proc.nome)}">📋</span>` : ''}${nNote ? `<span title="Note operative: ${nNote}">📝${nNote}</span>` : ''}</span></td>
+    <td class="task-r-cliente">${t.clienteId ? escapeHtml(nomeCliente(t.clienteId)) : '<span class="helptext">—</span>'}</td>
+    <td class="task-r-chi">${escapeHtml(t.assegnatoA || '—')}</td>
+    <td class="task-r-scad">${t.scadenza ? `<span class="pill-delta ${ritardo ? 'scaduto' : 'lontano'}">${fmtDataBreve(t.scadenza)}</span>` : '<span class="helptext">—</span>'}</td>
+    <td class="task-r-stato"><select data-action="task-cambia-stato" data-id="${t.id}" style="color:${col.c};">${STATI_TASK_TEAM.map(x => `<option ${t.stato === x ? 'selected' : ''}>${x}</option>`).join('')}</select></td>
+    <td class="task-r-az"><button class="btn small" data-action="modifica-task-team" data-id="${t.id}" title="Modifica">✎</button><button class="btn small danger" data-action="elimina-task-team" data-id="${t.id}" title="Elimina">🗑</button></td>
+  </tr>${motivo}`;
+}
+function elencoTaskHtml(filtrati) {
+  const gruppi = gruppiTaskElenco(filtrati);
+  if (!gruppi.length) return '<div class="card"><div class="empty">Nessun task corrisponde ai filtri.</div></div>';
+  return `<div class="card task-elenco">` + gruppi.map(g => {
+    const chiave = TASK_GRUPPO + '|' + g.chiave;
+    const chiuso = !!TASK_GRUPPI_CHIUSI[chiave];
+    return `<div class="task-gruppo"><div class="task-gruppo-head" data-action="task-gruppo-toggle" data-g="${escapeHtml(chiave)}" style="--tc:${g.colore || 'var(--text-mut)'};"><span class="chev">${chiuso ? '▸' : '▾'}</span><span class="task-pallino"></span><strong>${escapeHtml(g.titolo)}</strong><span class="cnt">${g.task.length}</span></div>
+      ${chiuso ? '' : `<table class="task-tabella"><thead><tr><th>Task</th><th>Cliente</th><th>Assegnato</th><th>Scadenza</th><th>Stato</th><th></th></tr></thead><tbody>${g.task.map(rigaTaskElenco).join('')}</tbody></table>`}</div>`;
+  }).join('') + `</div>`;
+}
+
 function taskInRitardo(t) {
   return t.stato !== 'Fatto' && t.scadenza && giorniTra(oggiISO(), t.scadenza) < 0;
+}
+
+/* Riquadro motivo (In attesa / Bloccata) di un task: usato dalla scheda Kanban e dalla riga dell'elenco. */
+function boxMotivoTask(t) {
+  const col = COLORI_STATO_TASK[t.stato] || COLORI_STATO_TASK['Da fare'];
+    const conMotivo = STATI_TASK_CON_MOTIVO.includes(t.stato);
+    const giorniStato = conMotivo && t.statoDal ? giorniTra(t.statoDal, oggiISO()) : null;
+    const inMod = conMotivo && (!t.motivoConfermato || MOTIVO_IN_MODIFICA === t.id);
+    const titoloMotivo = `<b>${t.stato === 'Bloccata' ? '⛔ Bloccata' : '⏳ In attesa'}${giorniStato != null && giorniStato > 0 ? ' da ' + giorniStato + (giorniStato === 1 ? ' giorno' : ' giorni') : ''}</b>`;
+    const boxMotivo = !conMotivo ? '' : (inMod
+      ? `<div class="task-motivo" style="background:${col.bg};color:${col.c};">${titoloMotivo}
+        <div style="display:flex;gap:6px;"><input type="text" id="motivo_${t.id}" data-action="task-motivo" data-id="${t.id}" value="${escapeHtml(t.motivoStato || '')}" placeholder="${t.stato === 'Bloccata' ? 'Perché è bloccata? (es. errore da risolvere)' : 'In attesa di… (es. documenti dal cliente)'}" style="flex:1;min-width:0;">
+        <button type="button" class="btn small primary" data-action="task-motivo-conferma" data-id="${t.id}" title="Conferma (o premi Invio)">✓ Conferma</button>${MOTIVO_IN_MODIFICA === t.id ? `<button type="button" class="btn small" data-action="task-motivo-annulla" data-id="${t.id}">Annulla</button>` : ''}</div>
+      </div>`
+      : `<div class="task-motivo" style="background:${col.bg};color:${col.c};">${titoloMotivo}
+        <div style="display:flex;gap:6px;align-items:flex-start;"><div style="flex:1;white-space:pre-wrap;color:var(--text);font-size:12.5px;">${escapeHtml(t.motivoStato || '')}</div>
+        <button type="button" class="btn small" data-action="task-motivo-modifica" data-id="${t.id}">✎ Modifica</button></div>
+      </div>`);
+  return boxMotivo;
 }
 
 function renderTaskTeam() {
@@ -1241,6 +1311,8 @@ function renderTaskTeam() {
     <div class="field"><label>Al</label>${campoDataTesto('task-filtro-data-a', TASK_FILTRO.dataA)}</div>
     ${(TASK_FILTRO.q || TASK_FILTRO.dataDa || TASK_FILTRO.dataA || TASK_FILTRO.ritardo) ? `<div class="field" style="min-width:max-content;"><label>&nbsp;</label><button class="btn small" data-action="task-filtro-azzera">✕ Azzera ricerca</button></div>` : ''}
     <div class="field" style="min-width:max-content;"><label>&nbsp;</label><label class="checkline" style="white-space:nowrap;"><input type="checkbox" data-action="task-filtro-mostra-fatti" ${TASK_FILTRO.mostraFatti?'checked':''}> Mostra completati</label></div>
+    <div class="field"><label>Vista</label><div class="seg-vista"><button type="button" class="${TASK_VISTA === 'elenco' ? 'attivo' : ''}" data-action="task-vista" data-v="elenco">☰ Elenco</button><button type="button" class="${TASK_VISTA === 'kanban' ? 'attivo' : ''}" data-action="task-vista" data-v="kanban">▦ Kanban</button></div></div>
+    ${TASK_VISTA === 'elenco' ? `<div class="field"><label>Raggruppa per</label><select data-action="task-gruppo"><option value="stato" ${TASK_GRUPPO === 'stato' ? 'selected' : ''}>Stato</option><option value="scadenza" ${TASK_GRUPPO === 'scadenza' ? 'selected' : ''}>Scadenza</option><option value="cliente" ${TASK_GRUPPO === 'cliente' ? 'selected' : ''}>Cliente</option><option value="nessuno" ${TASK_GRUPPO === 'nessuno' ? 'selected' : ''}>Nessuno</option></select></div>` : ''}
     <div class="field" style="margin-left:auto;"><label>&nbsp;</label><button class="btn primary" data-action="nuovo-task-team">+ Nuovo task</button></div>
   </div>`;
 
@@ -1267,25 +1339,13 @@ function renderTaskTeam() {
     // operative (scritte dagli utenti man mano che lavorano) stanno nel modale, qui resta solo un conteggio.
     const nNoteOperative = (t.noteStorico || []).length;
     const anteprimaNota = t.descrizione
-      ? `<div class="note" style="display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap;">${escapeHtml(t.descrizione)}</div>`
+      ? `<div class="note" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap;">${escapeHtml(t.descrizione)}</div>`
       : '';
     // Task #155: badge cliccabile verso la procedura collegata (se esiste ancora - una procedura
     // può essere stata eliminata dopo il collegamento, in tal caso il badge non compare).
     const proceduraCollegata = t.procedureId ? procedureById(t.procedureId) : null;
     const col = COLORI_STATO_TASK[t.stato] || COLORI_STATO_TASK['Da fare'];
-    const conMotivo = STATI_TASK_CON_MOTIVO.includes(t.stato);
-    const giorniStato = conMotivo && t.statoDal ? giorniTra(t.statoDal, oggiISO()) : null;
-    const inMod = conMotivo && (!t.motivoConfermato || MOTIVO_IN_MODIFICA === t.id);
-    const titoloMotivo = `<b>${t.stato === 'Bloccata' ? '⛔ Bloccata' : '⏳ In attesa'}${giorniStato != null && giorniStato > 0 ? ' da ' + giorniStato + (giorniStato === 1 ? ' giorno' : ' giorni') : ''}</b>`;
-    const boxMotivo = !conMotivo ? '' : (inMod
-      ? `<div class="task-motivo" style="background:${col.bg};color:${col.c};">${titoloMotivo}
-        <div style="display:flex;gap:6px;"><input type="text" id="motivo_${t.id}" data-action="task-motivo" data-id="${t.id}" value="${escapeHtml(t.motivoStato || '')}" placeholder="${t.stato === 'Bloccata' ? 'Perché è bloccata? (es. errore da risolvere)' : 'In attesa di… (es. documenti dal cliente)'}" style="flex:1;min-width:0;">
-        <button type="button" class="btn small primary" data-action="task-motivo-conferma" data-id="${t.id}" title="Conferma (o premi Invio)">✓ Conferma</button>${MOTIVO_IN_MODIFICA === t.id ? `<button type="button" class="btn small" data-action="task-motivo-annulla" data-id="${t.id}">Annulla</button>` : ''}</div>
-      </div>`
-      : `<div class="task-motivo" style="background:${col.bg};color:${col.c};">${titoloMotivo}
-        <div style="display:flex;gap:6px;align-items:flex-start;"><div style="flex:1;white-space:pre-wrap;color:var(--text);font-size:12.5px;">${escapeHtml(t.motivoStato || '')}</div>
-        <button type="button" class="btn small" data-action="task-motivo-modifica" data-id="${t.id}">✎ Modifica</button></div>
-      </div>`);
+    const boxMotivo = boxMotivoTask(t);
     return `<div class="task-card" style="border-left:4px solid ${col.c};${t.stato === 'Fatto' ? 'opacity:.78;' : ''}">
       <div class="titolo" style="cursor:pointer;" data-action="apri-dettaglio-task-team" data-id="${t.id}" title="Visualizza (senza modificare)">${escapeHtml(t.titolo)}</div>
       <div class="meta">
@@ -1318,6 +1378,7 @@ function renderTaskTeam() {
     </div>`;
   }).join('');
 
+  if (TASK_VISTA === 'elenco') return banner + kpi + toolbar + elencoTaskHtml(filtrati);
   return banner + kpi + toolbar + `<div class="task-board">${colonne}</div>`;
 }
 

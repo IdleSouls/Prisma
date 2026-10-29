@@ -555,6 +555,8 @@ function onClickDelegatoInterno(e) {
       break;
     // Task #215: bottoni della checklist di avvio in "Oggi". "manuale" = passo senza un dato che lo
     // dimostri (es. team): si considera fatto nel momento in cui l'utente ci va.
+    case 'task-vista': impostaVistaTask(el.dataset.v); render(); break;
+    case 'task-gruppo-toggle': { const g = el.dataset.g; TASK_GRUPPI_CHIUSI[g] = !TASK_GRUPPI_CHIUSI[g]; render(); break; }
     case 'task-filtro-azzera': TASK_FILTRO.q = ''; TASK_FILTRO.dataDa = ''; TASK_FILTRO.dataA = ''; TASK_FILTRO.stato = 'Tutti'; TASK_FILTRO.ritardo = false; STATI_TASK_TEAM.forEach(s=>resetPagina('taskteam-'+s)); render(); break;
     case 'task-filtro-ritardo': TASK_FILTRO.ritardo = !TASK_FILTRO.ritardo; STATI_TASK_TEAM.forEach(s=>resetPagina('taskteam-'+s)); render(); break;
     case 'task-filtro-stato': TASK_FILTRO.stato = TASK_FILTRO.stato === el.dataset.stato ? 'Tutti' : el.dataset.stato; STATI_TASK_TEAM.forEach(s=>resetPagina('taskteam-'+s)); render(); break;
@@ -2343,6 +2345,7 @@ function onChangeDelegato(e) {
     // solo un flag sul nodo DOM, il modale resta aperto e invariato.
     case 'doc-categoria-manual': el.dataset.userSet = '1'; break;
 
+    case 'task-gruppo': impostaGruppoTask(el.value); render(); break;
     case 'task-filtro-assegnato': TASK_FILTRO.assegnato = el.value; STATI_TASK_TEAM.forEach(s=>resetPagina('taskteam-'+s)); render(); break;
     case 'task-filtro-cliente': TASK_FILTRO.cliente = el.value; STATI_TASK_TEAM.forEach(s=>resetPagina('taskteam-'+s)); render(); break;
     case 'task-filtro-stato': TASK_FILTRO.stato = TASK_FILTRO.stato === el.dataset.stato ? 'Tutti' : el.dataset.stato; STATI_TASK_TEAM.forEach(s=>resetPagina('taskteam-'+s)); render(); break;
